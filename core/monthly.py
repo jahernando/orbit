@@ -162,7 +162,7 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int
             update_proyecto_field(c["proyecto_path"], "prioridad", f"{PRIORITY_MAP[pk]} {pk.capitalize()}")
         print(f"✓ {len(changes)} proyecto(s) actualizado(s) en proyecto.md")
     elif changes:
-        print(f"  {len(changes)} cambio(s) propuesto(s) — ejecuta con --apply para aplicarlos")
+        print(f"  {len(changes)} cambio(s) propuesto(s) — ejecuta orbit activity --apply para aplicarlos")
 
     # Collect tasks due this month
     tasks_due = []
