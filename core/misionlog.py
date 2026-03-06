@@ -37,7 +37,7 @@ def _write(dest: Path, content: str, copy: Optional[str], force: bool) -> int:
 
 # ── day ──────────────────────────────────────────────────────────────────────
 
-def run_day(date_str: Optional[str], copy: Optional[str], force: bool) -> int:
+def run_day(date_str: Optional[str], copy: Optional[str], force: bool, focus: list = None) -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()
     dest   = DIARIO_DIR / f"{target.isoformat()}.md"
 
@@ -57,7 +57,10 @@ def run_day(date_str: Optional[str], copy: Optional[str], force: bool) -> int:
             return 1
         content = tpl.read_text().replace("YYYY-MM-DD", target.isoformat())
 
-    return _write(dest, content, copy, force)
+    rc = _write(dest, content, copy, force)
+    if rc == 0 and focus:
+        _inject_focus_projects(dest, focus[:1], "## 🎯 Proyecto en foco")
+    return rc
 
 
 # ── logday ────────────────────────────────────────────────────────────────────
@@ -89,7 +92,7 @@ def run_logday(message: str, tipo: str, date_str: Optional[str]) -> int:
 
 # ── week ─────────────────────────────────────────────────────────────────────
 
-def run_week(date_str: Optional[str], copy: Optional[str], force: bool) -> int:
+def run_week(date_str: Optional[str], copy: Optional[str], force: bool, focus: list = None) -> int:
     d      = date.fromisoformat(date_str) if date_str else date.today()
     wkey   = _week_key(d)
     mon, sun = _week_bounds(d)
@@ -116,12 +119,15 @@ def run_week(date_str: Optional[str], copy: Optional[str], force: bool) -> int:
                     .replace("YYYY-MM-DD", sun.isoformat(), 1))
         content = "\n".join(lines)
 
-    return _write(dest, content, copy, force)
+    rc = _write(dest, content, copy, force)
+    if rc == 0 and focus:
+        _inject_focus_projects(dest, focus[:2], "## 🎯 Proyectos en foco")
+    return rc
 
 
 # ── month ─────────────────────────────────────────────────────────────────────
 
-def run_month(date_str: Optional[str], copy: Optional[str], force: bool) -> int:
+def run_month(date_str: Optional[str], copy: Optional[str], force: bool, focus: list = None) -> int:
     if date_str:
         y, m = int(date_str[:4]), int(date_str[5:7])
     else:
@@ -152,7 +158,10 @@ def run_month(date_str: Optional[str], copy: Optional[str], force: bool) -> int:
                             f"← [Mes anterior](./{prev_str}.md)")
                    .replace("YYYY-MM", month_str))
 
-    return _write(dest, content, copy, force)
+    rc = _write(dest, content, copy, force)
+    if rc == 0 and focus:
+        _inject_focus_projects(dest, focus[:3], "## 🎯 Proyectos en foco")
+    return rc
 
 
 # ── dayreport / weekreport ────────────────────────────────────────────────────
@@ -279,6 +288,52 @@ def _format_tomato_block(results: dict, label: str) -> str:
         verdict = "⬜ Sin actividad en proyectos en foco"
     lines.append(f"\n**{verdict.strip()}**")
     return "\n".join(lines) + "\n"
+
+
+def _resolve_focus_link(name: str):
+    """Find project dir by partial name and return (dir_name, relative_path)."""
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if project_dir.is_dir() and name.lower() in project_dir.name.lower():
+            proyecto_path = find_proyecto_file(project_dir)
+            if proyecto_path:
+                return project_dir.name, f"../../🚀proyectos/{project_dir.name}/{proyecto_path.name}"
+    return None
+
+
+def _inject_focus_projects(dest: Path, names: list, heading: str) -> None:
+    """Replace placeholder focus links in a section with real project links."""
+    resolved = []
+    for name in names:
+        result = _resolve_focus_link(name)
+        if result:
+            resolved.append(result)
+        else:
+            print(f"  ⚠️ Proyecto '{name}' no encontrado")
+    if not resolved:
+        return
+
+    lines = dest.read_text().splitlines()
+    in_section = False
+    link_idx = 0
+    new_lines = []
+    for line in lines:
+        if line.strip().startswith(heading):
+            in_section = True
+            new_lines.append(line)
+            continue
+        if in_section and line.startswith("## "):
+            in_section = False
+        if in_section and re.search(r'\[.*?\]\(', line) and link_idx < len(resolved):
+            dir_name, path = resolved[link_idx]
+            marker_match = re.match(r'^(\s*(?:-|\d+\.)\s*)', line)
+            marker = marker_match.group(1) if marker_match else "- "
+            new_lines.append(f"{marker}[{dir_name}]({path})")
+            link_idx += 1
+            continue
+        new_lines.append(line)
+    dest.write_text("\n".join(new_lines) + "\n")
+    for dir_name, _ in resolved:
+        print(f"  🎯 Foco: {dir_name}")
 
 
 def _collect_tasks_due(start: date, end: date) -> list:

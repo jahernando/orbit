@@ -89,15 +89,15 @@ def cmd_logday(args):
 
 
 def cmd_day(args):
-    return run_day(date_str=args.date, copy=args.copy, force=args.force)
+    return run_day(date_str=args.date, copy=args.copy, force=args.force, focus=args.focus)
 
 
 def cmd_week(args):
-    return run_week(date_str=args.date, copy=args.copy, force=args.force)
+    return run_week(date_str=args.date, copy=args.copy, force=args.force, focus=args.focus)
 
 
 def cmd_month(args):
-    return run_month(date_str=args.date, copy=args.copy, force=args.force)
+    return run_month(date_str=args.date, copy=args.copy, force=args.force, focus=args.focus)
 
 
 def cmd_activity(args):
@@ -199,18 +199,21 @@ def main():
     day_p.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today)")
     day_p.add_argument("--copy", default=None, metavar="YYYY-MM-DD", help="Copy this existing day instead of template")
     day_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
+    day_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Focus project (partial name)")
 
     # --- week ---
     week_p = subparsers.add_parser("week", help="Create weekly log file in ☀️mision-log/semanal/")
     week_p.add_argument("--date", default=None, help="Any date in the target week YYYY-MM-DD (default: today)")
     week_p.add_argument("--copy", default=None, metavar="YYYY-Wnn", help="Copy this existing week instead of template")
     week_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
+    week_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Up to 2 focus projects (partial name)")
 
     # --- month ---
     month_p = subparsers.add_parser("month", help="Create monthly log file in ☀️mision-log/mensual/")
     month_p.add_argument("--date", default=None, help="Target month YYYY-MM (default: current month)")
     month_p.add_argument("--copy", default=None, metavar="YYYY-MM", help="Copy this existing month instead of template")
     month_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
+    month_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Up to 3 focus projects (partial name)")
 
     # --- monthreport ---
     mon_p = subparsers.add_parser("monthreport", help="Generate monthly review table and inject into mensual/YYYY-MM.md")
