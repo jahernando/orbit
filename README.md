@@ -184,4 +184,17 @@ Crea `☀️mision-log/mensual/YYYY-MM.md` desde la plantilla si no existe, e in
 - **Nombre de directorio** del proyecto: kebab-case con emoji de tipo opcional (`detector-xenon`, `💻-orbit`)
 - **Referencias, figuras y resultados** binarios no se suben a git — solo el texto markdown
 - **Fuente de verdad** de las tareas: sección `## ✅ Tareas` de `proyecto.md`
-- **Fuente de verdad** del historial: `logbook.md` del proyecto
+- **Fuente de verdad** del historial: logbook del proyecto
+
+### Entradas multilínea en el logbook
+
+Para entradas con varias líneas o listas, edita el logbook directamente. La fecha y el hashtag van en la primera línea; las líneas indentadas forman parte de la misma entrada:
+
+```
+2026-03-06 Resultados del fit de calibración #resultado
+  - σ/E = 2.3% @ 1 MeV
+  - σ/E = 1.8% @ 3 MeV
+  - El modelo lineal ajusta bien en todo el rango
+```
+
+El comando `orbit log` sigue siendo útil para entradas rápidas de una línea.
