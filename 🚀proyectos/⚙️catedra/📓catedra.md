@@ -1,4 +1,4 @@
-# Logbook — ⚙️-catedra
+# Logbook — ⚙️catedra
 
 <!-- Tipos: #idea #referencia #tarea #problema #resultado #apunte #decision -->
 

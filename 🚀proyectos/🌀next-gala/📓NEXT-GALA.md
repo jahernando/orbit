@@ -1,4 +1,4 @@
-# Logbook — 🌀-next-gala
+# Logbook — 🌀next-gala
 
 <!-- Tipos: #idea #referencia #tarea #problema #resultado #apunte #decision -->
 

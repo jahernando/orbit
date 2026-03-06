@@ -1,4 +1,4 @@
-# 🌀-next-gala
+# 🌀next-gala
 
 ## 🏷️ Tipo
 🌀 Investigación

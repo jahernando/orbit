@@ -1,4 +1,4 @@
-# Logbook — 💻-orbit
+# Logbook — 💻orbit
 
 <!-- Tipos: #idea #referencia #tarea #problema #resultado #apunte #decision -->
 

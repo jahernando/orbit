@@ -37,7 +37,7 @@ def run_project(name: str, tipo: str, prioridad: str) -> int:
     prio_emoji  = PRIORITY_MAP[prio_key]
     prio_label  = prio_key.capitalize()
 
-    dir_name    = f"{tipo_emoji}-{name.lower()}"
+    dir_name    = f"{tipo_emoji}{name.lower()}"
     project_dir = PROJECTS_DIR / dir_name
 
     if project_dir.exists():

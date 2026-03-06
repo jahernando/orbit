@@ -1,10 +1,12 @@
 """orbit import — convert an Evernote .enex note into Orbit project files."""
 
+import base64
+import hashlib
 import re
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 
 from core.log import PROJECTS_DIR, find_proyecto_file, find_logbook_file
 
@@ -106,14 +108,49 @@ def _strip_tags(html: str) -> str:
 
 # ── ENEX loading ───────────────────────────────────────────────────────────────
 
-def _load_enex(path: Path) -> Tuple[str, str]:
-    """Return (title, enml_content) from an .enex file."""
+def _load_enex(path: Path) -> Tuple[str, str, list, Dict]:
+    """Return (title, enml_content, enex_tasks, resources) from an .enex file.
+
+    resources: {md5_hex: {"bytes": bytes, "mime": str, "filename": str}}
+    """
     tree = ET.parse(path)
     root = tree.getroot()
     note = root.find("note")
     title   = note.find("title").text or ""
     content = note.find("content").text or ""
-    return title, content
+    # Parse native <task> XML elements (new Evernote format)
+    enex_tasks = []
+    for t in note.findall("task"):
+        title_el  = t.find("title")
+        status_el = t.find("taskStatus")
+        due_el    = t.find("dueDate")
+        text = (title_el.text or "").strip() if title_el is not None else ""
+        done = (status_el.text or "open") == "completed"
+        due  = None
+        if due_el is not None and due_el.text:
+            d = due_el.text[:8]
+            due = f"{d[:4]}-{d[4:6]}-{d[6:8]}"
+        if text:
+            enex_tasks.append({"done": done, "text": text, "due": due})
+    # Parse <resource> elements (embedded images/attachments)
+    resources: Dict = {}
+    for r in note.findall("resource"):
+        data_el = r.find("data")
+        mime_el = r.find("mime")
+        attr_el = r.find("resource-attributes")
+        if data_el is None or not data_el.text:
+            continue
+        raw_b64 = data_el.text.strip().replace("\n", "").replace(" ", "")
+        raw_bytes = base64.b64decode(raw_b64)
+        md5 = hashlib.md5(raw_bytes).hexdigest()
+        mime = mime_el.text.strip() if mime_el is not None and mime_el.text else "application/octet-stream"
+        filename = ""
+        if attr_el is not None:
+            fn_el = attr_el.find("file-name")
+            if fn_el is not None and fn_el.text:
+                filename = fn_el.text.strip()
+        resources[md5] = {"bytes": raw_bytes, "mime": mime, "filename": filename}
+    return title, content, enex_tasks, resources
 
 
 def _split_sections(enml: str) -> List[Tuple[str, str]]:
@@ -131,30 +168,53 @@ def _split_sections(enml: str) -> List[Tuple[str, str]]:
 # ── Logbook parsing ────────────────────────────────────────────────────────────
 
 def _parse_logbook(html: str) -> List[dict]:
-    """Extract {date, items} dicts from an Evernote logbook section."""
+    """Extract {date, items} dicts from an Evernote logbook section.
+
+    Handles date divs with optional text on the same line:
+      <div>260304 Response of Martin</div>
+      <div><b>260411</b> Martin, Samuele...</div>
+    """
     entries = []
-    pattern = re.compile(
-        r'<div[^>]*>\s*(\d{6})\s*</div>(.*?)(?=<div[^>]*>\s*\d{6}\s*</div>|$)',
-        re.DOTALL,
-    )
-    for m in pattern.finditer(html):
-        raw = m.group(1)
-        iso = f"20{raw[:2]}-{raw[2:4]}-{raw[4:]}"
+    # Find all divs whose stripped text content starts with 6 digits
+    div_pattern = re.compile(r'<div[^>]*>(.*?)</div>', re.DOTALL)
+    date_divs = []
+    for m in div_pattern.finditer(html):
+        stripped = re.sub(r"\s+", " ", _strip_tags(m.group(1))).strip()
+        dm = re.match(r'^(\d{6})\s*(.*)', stripped)
+        if dm:
+            date_divs.append((m.end(), dm.group(1), dm.group(2).strip()))
+
+    for i, (end_pos, raw, header) in enumerate(date_divs):
+        next_pos = date_divs[i + 1][0] if i + 1 < len(date_divs) else len(html)
+        block = html[end_pos:next_pos]
+        iso   = f"20{raw[:2]}-{raw[2:4]}-{raw[4:]}"
+
         items = []
-        for li in re.finditer(r"<li[^>]*>(.*?)</li>", m.group(2), re.DOTALL):
+        if header:
+            items.append(header)
+        for li in re.finditer(r"<li[^>]*>(.*?)</li>", block, re.DOTALL):
             text = re.sub(r"\s+", " ", _strip_tags(li.group(1))).strip()
             if text and text not in ("-", "–"):
                 items.append(text)
-        if items:
-            entries.append({"date": iso, "items": items})
+        hashes = re.findall(r'<en-media[^>]*\bhash="([a-f0-9]+)"', block, re.IGNORECASE)
+        if items or hashes:
+            entries.append({"date": iso, "items": items, "hashes": hashes})
     return entries
 
 
-def _format_entry(e: dict) -> str:
+def _format_entry(e: dict, hash_to_file: Dict = None) -> str:
     d, items = e["date"], e["items"]
-    if len(items) == 1:
+    hashes = e.get("hashes", [])
+    img_lines = []
+    if hash_to_file:
+        for h in hashes:
+            fn = hash_to_file.get(h)
+            if fn:
+                img_lines.append(f"  - ![{fn}](./references/{fn})")
+    if len(items) == 1 and not img_lines:
         return f"{d} {items[0]} #apunte"
-    return d + " #apunte\n" + "\n".join(f"  - {i}" for i in items)
+    lines = [d + " #apunte"] + [f"  - {i}" for i in items] + img_lines
+    return "\n".join(lines)
 
 
 # ── References parsing ─────────────────────────────────────────────────────────
@@ -194,9 +254,11 @@ def _parse_tasks(html: str) -> List[dict]:
 def _inject_tasks(proyecto_path: Path, tasks: List[dict]) -> int:
     """Inject tasks into ## ✅ Tareas section of proyecto.md."""
     md = proyecto_path.read_text()
-    new_lines = "\n".join(
-        f"- [{'x' if t['done'] else ' '}] {t['text']}" for t in tasks
-    )
+    def _fmt(t):
+        check = 'x' if t['done'] else ' '
+        due   = f" ({t['due']})" if t.get('due') else ''
+        return f"- [{check}] {t['text']}{due}"
+    new_lines = "\n".join(_fmt(t) for t in tasks)
     # Replace template placeholder lines
     md = re.sub(
         r"(## ✅ Tareas\n)- \[ \] Ejemplo de tarea con fecha \([\d-]+\)\n- \[ \] Ejemplo de tarea sin fecha\n",
@@ -208,6 +270,26 @@ def _inject_tasks(proyecto_path: Path, tasks: List[dict]) -> int:
         md = re.sub(r"(## ✅ Tareas\n)", r"\1" + new_lines + "\n", md)
     proyecto_path.write_text(md)
     return len(tasks)
+
+
+# ── Resource saving ───────────────────────────────────────────────────────────
+
+def _save_resources(resources: Dict, ref_dir: Path) -> Dict[str, str]:
+    """Save image resources to ref_dir. Returns {md5: saved_filename}."""
+    _EXT = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
+            "image/gif": "gif", "image/webp": "webp"}
+    hash_to_file: Dict[str, str] = {}
+    idx = 1
+    for md5, res in resources.items():
+        mime = res["mime"]
+        if not mime.startswith("image/"):
+            continue
+        ext = _EXT.get(mime, mime.split("/")[-1])
+        name = f"fig-{idx:02d}.{ext}"
+        idx += 1
+        (ref_dir / name).write_bytes(res["bytes"])
+        hash_to_file[md5] = name
+    return hash_to_file
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -223,7 +305,7 @@ def run_import(enex_path: str, project: str) -> int:
     if not project_dir:
         return 1
 
-    title, enml = _load_enex(path)
+    title, enml, enex_tasks, resources = _load_enex(path)
     sections = _split_sections(enml)
     if not sections:
         print("Error: no se encontraron secciones <h2> en la nota")
@@ -241,11 +323,20 @@ def run_import(enex_path: str, project: str) -> int:
         elif any(k in key for k in REFERENCE_KEYS):
             ref_links = _parse_references(sec_html)
         elif any(k in key for k in TASKS_KEYS):
-            task_items = _parse_tasks(sec_html)
+            task_items = _parse_tasks(sec_html)  # old --en-checked format
         else:
             md = _to_md(sec_html)
             if md.strip():
                 info_parts.append(f"## {sec_title}\n\n{md}")
+
+    # 0 — Save image resources → references/fig-NN.ext
+    hash_to_file: Dict[str, str] = {}
+    if resources:
+        ref_dir = project_dir / "references"
+        ref_dir.mkdir(exist_ok=True)
+        hash_to_file = _save_resources(resources, ref_dir)
+        if hash_to_file:
+            print(f"✓ {len(hash_to_file)} imagen(es) guardadas en references/")
 
     # 1 — Logbook entries → 📓name.md
     if logbook_entries:
@@ -257,14 +348,15 @@ def run_import(enex_path: str, project: str) -> int:
         existing = set(re.findall(r"^(\d{4}-\d{2}-\d{2})", logbook_path.read_text(), re.MULTILINE))
         new = [e for e in logbook_entries if e["date"] not in existing]
         if new:
-            text = "\n\n".join(_format_entry(e) for e in new)
+            text = "\n\n".join(_format_entry(e, hash_to_file) for e in new)
             with open(logbook_path, "a") as f:
                 f.write("\n" + text + "\n")
             print(f"✓ {len(new)} entrada(s) añadidas a {logbook_path.name}")
         else:
             print("  Logbook: todas las fechas ya existían, nada añadido")
 
-    # 2 — Tasks → ## ✅ Tareas in {emoji}name.md
+    # 2 — Tasks → ## ✅ Tareas in {emoji}name.md (merge both formats)
+    task_items = task_items + enex_tasks
     if task_items:
         proyecto_path = find_proyecto_file(project_dir)
         if proyecto_path and proyecto_path.exists():

@@ -1,4 +1,4 @@
-# ⚙️-catedra
+# ⚙️catedra
 
 ## 🏷️ Tipo
 ⚙️ Gestión
