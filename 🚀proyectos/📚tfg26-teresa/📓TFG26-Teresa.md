@@ -1,0 +1,11 @@
+# Logbook — 📚tfg26-teresa
+
+<!-- Tipos: #idea #referencia #tarea #problema #resultado #apunte #decision -->
+
+
+
+2025-12-04 #apunte
+  - Reunión Teresa, Diego
+  - Hemos hecho un fork del respositorio de Diego (NiCf_analysis), un clone local en la cuenta del CESGA, hemos seteado el environment de Diego
+  - Hemos creado un NB para leer los ficheros de datos
+  - Primeras tareas de Teresa, hacer un histograma con el número de hit per event y la carga total.
