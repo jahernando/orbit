@@ -74,12 +74,14 @@ def cmd_setpriority(args):
     return 1 if errors else 0
 
 
-def cmd_dayreport(args):
-    return run_dayreport(date_str=args.date, inject=args.inject)
-
-
-def cmd_weekreport(args):
-    return run_weekreport(date_str=args.date, inject=args.inject)
+def cmd_report(args):
+    if args.period == "day":
+        return run_dayreport(date_str=args.date, inject=args.inject)
+    elif args.period == "week":
+        return run_weekreport(date_str=args.date, inject=args.inject)
+    elif args.period == "month":
+        return run_monthly(month=args.date, apply=args.apply, output=args.output)
+    return 1
 
 
 def cmd_logday(args):
@@ -173,15 +175,13 @@ def main():
     proj_p.add_argument("--type", required=True, help="Project type: investigacion, docencia, gestion, formacion, software, personal")
     proj_p.add_argument("--priority", default="media", help="Initial priority: alta, media, baja (default: media)")
 
-    # --- dayreport ---
-    dr_p = subparsers.add_parser("dayreport", help="List projects with activity on a given day")
-    dr_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (default: today)")
-    dr_p.add_argument("--inject", action="store_true", help="Inject report into the daily file")
-
-    # --- weekreport ---
-    wr_p = subparsers.add_parser("weekreport", help="List projects with activity during a given week")
-    wr_p.add_argument("--date", default=None, help="Any date in the target week YYYY-MM-DD (default: today)")
-    wr_p.add_argument("--inject", action="store_true", help="Inject report into the weekly file")
+    # --- report ---
+    rep_p = subparsers.add_parser("report", help="Generate activity report for a day, week or month")
+    rep_p.add_argument("period", choices=["day", "week", "month"], help="Report period")
+    rep_p.add_argument("--date", default=None, help="Date: YYYY-MM-DD for day/week, YYYY-MM for month (default: today/current)")
+    rep_p.add_argument("--inject", action="store_true", help="Inject report into the log file (day/week)")
+    rep_p.add_argument("--apply", action="store_true", help="Apply status/priority changes to proyecto.md (month)")
+    rep_p.add_argument("--output", default=None, help="Save output to file (month)")
 
     # --- logday ---
     logday_p = subparsers.add_parser("logday", help="Add a note to today's daily log")
@@ -238,10 +238,8 @@ def main():
 
     if args.command == "logday":
         sys.exit(cmd_logday(args))
-    elif args.command == "dayreport":
-        sys.exit(cmd_dayreport(args))
-    elif args.command == "weekreport":
-        sys.exit(cmd_weekreport(args))
+    elif args.command == "report":
+        sys.exit(cmd_report(args))
     elif args.command == "update":
         sys.exit(cmd_update(args))
     elif args.command == "import":

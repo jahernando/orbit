@@ -19,18 +19,24 @@ orbit tasks [--project P] [--type T] [--status S] [--priority P] [--date D]
 ## Actividad y revisión mensual
 
 ```bash
-orbit activity [--project P] [--type T] [--priority P] [--period D [D]] [--apply]
-orbit monthreport  [--month YYYY-MM] [--apply] [--output FILE]
+orbit activity    [--project P] [--type T] [--priority P] [--period D [D]] [--apply]
+orbit monthreport [--month YYYY-MM] [--apply] [--output FILE]
 ```
 
 ## Planificación
 
 ```bash
-orbit day        [--date YYYY-MM-DD]  [--copy YYYY-MM-DD] [--force]
-orbit week       [--date YYYY-MM-DD]  [--copy YYYY-Wnn]   [--force]
-orbit month      [--date YYYY-MM]     [--copy YYYY-MM]    [--force]
-orbit dayreport  [--date YYYY-MM-DD]  [--inject]
-orbit weekreport [--date YYYY-MM-DD]  [--inject]
+orbit day   [--date YYYY-MM-DD] [--copy YYYY-MM-DD] [--force]
+orbit week  [--date YYYY-MM-DD] [--copy YYYY-Wnn]   [--force]
+orbit month [--date YYYY-MM]    [--copy YYYY-MM]    [--force]
+```
+
+## Reports
+
+```bash
+orbit report day   [--date YYYY-MM-DD] [--inject]
+orbit report week  [--date YYYY-MM-DD] [--inject]
+orbit report month [--date YYYY-MM]    [--apply] [--output FILE]
 ```
 
 ## Proyectos
