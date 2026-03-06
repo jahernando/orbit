@@ -1,12 +1,12 @@
 import calendar
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
 from core.activity import (
-    PRIORITY_ORDER, PASSIVE_STATES, TYPE_EMOJI,
+    PRIORITY_ORDER, TYPE_EMOJI,
     compute_real_priority, compute_real_status,
-    get_logbook_activity, parse_date_range,
+    get_logbook_activity, has_activity_in,
 )
 from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file
 from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field
@@ -55,11 +55,13 @@ def build_table(start: date, end: date, apply: bool) -> tuple:
         nominal_status_key = next((k for k in STATUS_MAP if normalize(k) in estado_raw), "")
         nominal_priority_key = next((k for k in PRIORITY_MAP if normalize(k) in prioridad_raw), "")
 
-        last_entry, counts = get_logbook_activity(find_logbook_file(project_dir), start, end)
-        has_activity = sum(counts.values()) > 0
+        logbook_path = find_logbook_file(project_dir)
+        last_entry, counts = get_logbook_activity(logbook_path, start, end)
+        has_activity_60 = has_activity_in(logbook_path, end - timedelta(days=60), end)
+        has_activity_30 = has_activity_in(logbook_path, end - timedelta(days=30), end)
 
-        real_status_key = compute_real_status(nominal_status_key, has_activity)
-        real_priority_key = compute_real_priority(nominal_priority_key, has_activity, period_days)
+        real_status_key = compute_real_status(nominal_status_key, has_activity_30, has_activity_60)
+        real_priority_key = compute_real_priority(nominal_priority_key, has_activity_30, period_days)
 
         if real_priority_key is None:
             continue

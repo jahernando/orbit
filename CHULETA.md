@@ -20,7 +20,7 @@ orbit tasks [--project P] [--type T] [--status S] [--priority P] [--date D]
 
 ```bash
 orbit activity [--project P] [--type T] [--priority P] [--period D [D]] [--apply]
-orbit monthly  [--month YYYY-MM] [--apply] [--output FILE]
+orbit monthreport  [--month YYYY-MM] [--apply] [--output FILE]
 ```
 
 ## Planificación
@@ -36,9 +36,10 @@ orbit weekreport [--date YYYY-MM-DD]  [--inject]
 ## Proyectos
 
 ```bash
-orbit project --name NOMBRE --type TIPO [--priority PRIORIDAD]
-orbit import  --file FICHERO.enex --project PROYECTO
-orbit update  <proyecto> [--status ESTADO] [--priority PRIORIDAD]
+orbit project     --name NOMBRE --type TIPO [--priority PRIORIDAD]
+orbit import      --file FICHERO.enex --project PROYECTO
+orbit update      <proyecto> [--status ESTADO] [--priority PRIORIDAD]
+orbit setpriority --priority PRIORIDAD --projects P1 P2 ...
 ```
 
 Tipos de proyecto: `investigacion` `docencia` `gestion` `formacion` `software` `personal`

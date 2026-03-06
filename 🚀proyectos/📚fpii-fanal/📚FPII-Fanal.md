@@ -4,10 +4,10 @@
 📚 Docencia
 
 ## 🔄 Estado
-⬜ Inicial
+💤 Durmiendo
 
 ## ⭐ Prioridad
-🟡 Media
+🟠 Alta
 
 ## 🎯 Objetivo
 Descripción breve del objetivo.

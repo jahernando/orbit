@@ -28,7 +28,7 @@ Orbit/
 │   ├── semanal.md
 │   └── mensual.md
 ├── orbit.py                            ← CLI entry point
-└── core/                               ← CLI modules (log, list_entries, tasks, activity, monthly)
+└── core/                               ← CLI modules (log, list_entries, tasks, activity, monthly→monthreport)
 ```
 
 ## Project types
@@ -76,4 +76,4 @@ Valid hashtags: `#idea` `#referencia` `#tarea` `#problema` `#resultado` `#apunte
 | `orbit list <project> [--type TYPE...] [--date DATE] [--output FILE]` | List logbook entries |
 | `orbit tasks [--project P] [--type T] [--status S] [--priority P] [--date D]` | List pending tasks |
 | `orbit activity [--project P] [--type T] [--priority P] [--period D [D]] [--apply]` | Activity report |
-| `orbit monthly [--month YYYY-MM] [--apply] [--output FILE]` | Generate monthly review |
+| `orbit monthreport [--month YYYY-MM] [--apply] [--output FILE]` | Generate monthly review |

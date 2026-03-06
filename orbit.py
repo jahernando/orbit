@@ -45,7 +45,7 @@ def cmd_tasks(args):
     )
 
 
-def cmd_monthly(args):
+def cmd_monthreport(args):
     return run_monthly(
         month=args.month,
         apply=args.apply,
@@ -63,6 +63,15 @@ def cmd_project(args):
 
 def cmd_update(args):
     return run_update(project=args.project, status=args.status, priority=args.priority)
+
+
+def cmd_setpriority(args):
+    errors = 0
+    for project in args.projects:
+        result = run_update(project=project, status=None, priority=args.priority)
+        if result != 0:
+            errors += 1
+    return 1 if errors else 0
 
 
 def cmd_dayreport(args):
@@ -204,11 +213,16 @@ def main():
     month_p.add_argument("--copy", default=None, metavar="YYYY-MM", help="Copy this existing month instead of template")
     month_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
 
-    # --- monthly ---
-    mon_p = subparsers.add_parser("monthly", help="Generate monthly review table and inject into mensual/YYYY-MM.md")
+    # --- monthreport ---
+    mon_p = subparsers.add_parser("monthreport", help="Generate monthly review table and inject into mensual/YYYY-MM.md")
     mon_p.add_argument("--month", default=None, help="Month as YYYY-MM (default: current month)")
     mon_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md")
     mon_p.add_argument("--output", default=None, help="Also save output to file")
+
+    # --- setpriority ---
+    sp_p = subparsers.add_parser("setpriority", help="Set priority for one or more projects at once")
+    sp_p.add_argument("--priority", required=True, help="Priority: alta, media, baja")
+    sp_p.add_argument("--projects", nargs="+", required=True, metavar="PROJECT", help="Project names (partial match supported)")
 
     # --- activity ---
     act_p = subparsers.add_parser("activity", help="Project activity report with real status/priority")
@@ -246,10 +260,12 @@ def main():
         sys.exit(cmd_list(args))
     elif args.command == "tasks":
         sys.exit(cmd_tasks(args))
+    elif args.command == "setpriority":
+        sys.exit(cmd_setpriority(args))
     elif args.command == "activity":
         sys.exit(cmd_activity(args))
-    elif args.command == "monthly":
-        sys.exit(cmd_monthly(args))
+    elif args.command == "monthreport":
+        sys.exit(cmd_monthreport(args))
     else:
         parser.print_help()
 

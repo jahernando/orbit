@@ -4,7 +4,7 @@
 
 
 
-2026-04-11 #apunte
+2026-03-11 #apunte
   - Revisión de los ingresos, cambio en los requisitod, en la memoria
   - Compartir carpeta de la solciitud de la Xunta con cla USC
   - certificado de requisitos ahora correcto en el Xacut
@@ -15,7 +15,7 @@
   - borrador de la Xunta
   - barcasr en borradores o meus procedimientos
 
-2026-04-06 #apunte
+2026-03-06 #apunte
   - Artículos relevantes
   - [bb0nu-next] Demonstration of neutrinoless double beta decay searches in gaseous xenon with NEXT, JHEP 9 (2023) (USC-link), Cuartil maior: Q1, WoS(18), Field Citation Ratio (FCR): 10.17
   - [sipm-next] Measurement of energy resolution with the NEXT-White silicon photomultipliers, Journal of High Energy Physics, (2024), Cuartil maior: Q1, WoS(2), (USC-link)
@@ -36,7 +36,7 @@
   - [TDR-Codex-b] Giulio Aielli; others. 2025. Technical design report for the CODEX-β demonstrator. Journal of Instrumentation 20 (2025) JINST. IOP Publishing Ltd. 20. Cuartil maior: Q4, Citas WoS (0). (USC-link) DOI
   - [t-channel] Chiara Arina; others. 2025. t-channel dark matter models - a whitepaper. European Physical Journal C 9 (2025), Eur. Phys. J. C. SPRINGER. 85. ISSN 1434-6044. Cuartil maior: Q2, Citas WoS (1) (USC-link) DOI
 
-2026-04-05 #apunte
+2026-03-05 #apunte
   - Articulos relevantes
   - Demonstration of neutrinoless double beta decay searches in gaseous xenon with NEXT, JHEP 9 (2023) (USC-link)
   - Articles posibles:
@@ -48,7 +48,7 @@
   - Sensitivity of a tonne-scale NEXT detector for neutrinoless double-beta decay searches, Journal of High Energy Physics, Vol. 2021, Núm. 8
   - Sensitivity of the NEXT experiment to Xe-124 double electron capture, Journal of High Energy Physics, Vol. 2021, Núm. 2
 
-2026-04-05 Xabier: Mis estudiantes son todos predoc de la Xunta salvo Alejandro Novo (FPU) y Alberto Martínez (con cargo al convenio del GAIN) #apunte
+2026-03-05 Xabier: Mis estudiantes son todos predoc de la Xunta salvo Alejandro Novo (FPU) y Alberto Martínez (con cargo al convenio del GAIN) #apunte
 
 2026-02-04 #apunte
   - preparación del texto
@@ -57,7 +57,7 @@
   - Info de Diego
   - ICHEP 2023, PoS 173, Status and Prospects of the Water Cherenkov Test Experiment (WCTE), 42nd International Conference on High Energy Physics (ICHEP2024), 18-24 July 2024, Prague, Czech Republic
 
-2026-04-04 #apunte
+2026-03-04 #apunte
   - Version-1
   - Desarrollo y caracterización de un prototipo de celda modular de electroluminiscencia (EL), denominado GALA, orientado a sustituir la actual región monolítica de EL del detector NEXT-100 por una arquitectura segmentada basada en celdas independientes, con ventajas claras en términos de fabricación, control operativo, escalabilidad y tolerancia a fallos en futuras extensiones del experimento. El diseño se basa en conceptos previamente propuestos y validados por el grupo de la Universidad de Tokio (Japón), liderado por la Profa. Ichikawa, con quien se mantiene una colaboración directa.
   - La celda GALA consiste en una placa dieléctrica de aproximadamente 10 × 10 cm² y 10 mm de espesor, mecanizada con una matriz regular de orificios de 5 mm de diámetro. La aplicación de una diferencia de potencial a ambos lados de la placa genera campos eléctricos intensos y localizados en el interior de los orificios, que focalizan y aceleran los electrones de ionización extraídos del volumen activo. Estos electrones producen luz de electroluminiscencia en xenón gaseoso, con una ganancia controlada y baja fluctuación estadística, permitiendo una medición precisa de la energía. La luz EL es detectada mediante matrices de fotomultiplicadores de silicio (SiPMs) acopladas ópticamente a cada celda.

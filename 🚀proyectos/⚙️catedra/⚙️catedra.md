@@ -7,7 +7,7 @@
 ▶️ En marcha
 
 ## ⭐ Prioridad
-🟡 Media
+🟠 Alta
 
 ## 🎯 Objetivo
 Descripción breve del objetivo.

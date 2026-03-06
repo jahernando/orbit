@@ -88,7 +88,7 @@ Ejemplo:
 3. Revisa qué salió bien, qué no, y arrastra tareas pendientes
 
 ### Cada mes
-1. Ejecuta `python orbit.py monthly` — genera la tabla de actividad en `mensual/YYYY-MM.md`
+1. Ejecuta `python orbit.py monthreport` — genera la tabla de actividad en `mensual/YYYY-MM.md`
 2. Rellena la sección 🎯 Priorización al inicio del mes
 3. Rellena la sección 🍅 Valoración al final del mes
 4. Ejecuta con `--apply` si quieres actualizar los estados reales en `proyecto.md`
@@ -133,6 +133,21 @@ Extrae del `.enex`:
 
 ---
 
+### `setpriority` — establecer prioridad en varios proyectos a la vez
+
+```bash
+python orbit.py setpriority --priority PRIORIDAD --projects P1 P2 ...
+```
+
+```bash
+python orbit.py setpriority --priority alta --projects next-kr next-gala hk-general
+python orbit.py setpriority --priority baja --projects appec catedra
+```
+
+Aplica la misma prioridad a todos los proyectos listados. Usa coincidencia parcial de nombre, igual que `update`.
+
+---
+
 ### `update` — cambiar estado o prioridad de un proyecto
 
 ```bash
@@ -158,7 +173,7 @@ python orbit.py log <proyecto> "<mensaje>" [--type TIPO] [--path RUTA] [--date Y
 ```bash
 python orbit.py log detector-xenon "El fit no converge" --type problema
 python orbit.py log detector-xenon "Gonzalez 2024" --type referencia --path ./references/gonzalez2024.pdf
-python orbit.py log 💻-orbit "Comando monthly implementado" --type resultado
+python orbit.py log 💻-orbit "Comando monthreport implementado" --type resultado
 ```
 
 ### `list` — listar entradas del logbook
@@ -201,15 +216,14 @@ python orbit.py activity --period 2026-02 2026-03
 python orbit.py activity --type investigacion --apply
 ```
 
-Calcula el **estado real** y la **prioridad real** de cada proyecto según su actividad en el período:
+El período por defecto son los **últimos 60 días**. El estado real se calcula así:
 
-| Estado nominal | Con actividad | Sin actividad |
-|---|---|---|
-| ⬜ Inicial | ▶️ En marcha | sin cambio |
-| ▶️ En marcha | sin cambio | ⏸️ Parado |
-| ⏸️ Parado | ▶️ En marcha | 💤 Durmiendo |
-| ⏳ Esperando | sin cambio | sin cambio |
-| 💤 Durmiendo | ▶️ En marcha | sin cambio |
+| Condición | Estado resultante |
+|---|---|
+| Sin actividad en los últimos 60 días | 💤 Durmiendo |
+| Sin actividad en los últimos 30 días | ⏸️ Parado |
+| Actividad en los últimos 30 días | ▶️ En marcha |
+| ⏳ Esperando o ✅ Completado | siempre sin cambio |
 
 La prioridad se degrada un nivel si no hay actividad en un período ≥ 30 días. Proyectos en `🔵 Baja` sin actividad desaparecen del listado.
 
@@ -234,19 +248,19 @@ Crea los ficheros en `☀️mision-log/diario/`, `semanal/` o `mensual/` desde l
 
 ---
 
-### `monthly` — generar revisión mensual
+### `monthreport` — generar revisión mensual
 
 ```bash
-python orbit.py monthly [--month YYYY-MM] [--apply] [--output FICHERO]
+python orbit.py monthreport [--month YYYY-MM] [--apply] [--output FICHERO]
 ```
 
 ```bash
-python orbit.py monthly
-python orbit.py monthly --month 2026-02
-python orbit.py monthly --apply
+python orbit.py monthreport
+python orbit.py monthreport --month 2026-02
+python orbit.py monthreport --apply
 ```
 
-Crea `☀️mision-log/mensual/YYYY-MM.md` desde la plantilla si no existe, e inyecta la tabla de actividad entre los marcadores `<!-- orbit:monthly:start -->` y `<!-- orbit:monthly:end -->`.
+Crea `☀️mision-log/mensual/YYYY-MM.md` desde la plantilla si no existe, e inyecta la tabla de actividad entre los marcadores `<!-- orbit:monthreport:start -->` y `<!-- orbit:monthreport:end -->`. El estado real se evalúa con la misma lógica que `activity` (ventanas de 30 y 60 días desde el fin del mes).
 
 ---
 

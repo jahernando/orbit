@@ -4,7 +4,7 @@
 💻 Software
 
 ## 🔄 Estado
-⏸️ Parado
+▶️ En marcha
 
 ## ⭐ Prioridad
 🟠 Alta

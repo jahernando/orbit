@@ -1,6 +1,5 @@
 import calendar
-import unicodedata
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -21,9 +20,6 @@ TYPE_EMOJI = {
 }
 
 PRIORITY_ORDER = ["alta", "media", "baja"]
-
-# States that are intentionally inactive — no status change, only priority may degrade
-PASSIVE_STATES = {"esperando", "durmiendo"}
 
 
 def parse_date_range(
@@ -52,8 +48,8 @@ def parse_date_range(
             parse_start(desde) if desde else date(today.year, today.month, 1),
             min(parse_end(hasta), today) if hasta else today,
         )
-    # Default: current month
-    return date(today.year, today.month, 1), today
+    # Default: last 60 days
+    return today - timedelta(days=60), today
 
 
 def get_logbook_activity(
@@ -90,19 +86,41 @@ def get_logbook_activity(
     return last_date.isoformat() if last_date else None, counts
 
 
-def compute_real_status(nominal_key: str, has_activity: bool) -> str:
-    if nominal_key in PASSIVE_STATES or nominal_key == "completado":
+def has_activity_in(logbook_path: Optional[Path], start: date, end: date) -> bool:
+    """Return True if there is any logbook entry in [start, end]."""
+    if not logbook_path or not logbook_path.exists():
+        return False
+    today = date.today()
+    for line in logbook_path.read_text().splitlines():
+        line = line.strip()
+        if len(line) < 10 or not line[:4].isdigit() or line[4] != "-":
+            continue
+        try:
+            entry_date = date.fromisoformat(line[:10])
+        except ValueError:
+            continue
+        if entry_date > today:
+            continue
+        if start <= entry_date <= end:
+            return True
+    return False
+
+
+def compute_real_status(nominal_key: str, has_activity_30: bool, has_activity_60: bool) -> str:
+    """Compute real status based on activity in last 30 and 60 days.
+
+    - No activity in 60d → durmiendo
+    - No activity in 30d → parado
+    - Has recent activity → keep nominal status
+    - completado / esperando → always unchanged
+    """
+    if nominal_key in ("completado", "esperando"):
         return nominal_key
-    if has_activity:
-        if nominal_key in ("inicial", "parado"):
-            return "en marcha"
-        return nominal_key
-    else:
-        if nominal_key == "en marcha":
-            return "parado"
-        if nominal_key == "parado":
-            return "durmiendo"
-        return nominal_key
+    if not has_activity_60:
+        return "durmiendo"
+    if not has_activity_30:
+        return "parado"
+    return "en marcha"
 
 
 def compute_real_priority(
@@ -176,10 +194,11 @@ def run_activity(
 
         logbook_path = find_logbook_file(project_dir)
         last_entry, counts = get_logbook_activity(logbook_path, start, end)
-        has_activity = sum(counts.values()) > 0
+        has_activity_60 = has_activity_in(logbook_path, end - timedelta(days=60), end)
+        has_activity_30 = has_activity_in(logbook_path, end - timedelta(days=30), end)
 
-        real_status_key = compute_real_status(nominal_status_key, has_activity)
-        real_priority_key = compute_real_priority(nominal_priority_key, has_activity, period_days)
+        real_status_key = compute_real_status(nominal_status_key, has_activity_30, has_activity_60)
+        real_priority_key = compute_real_priority(nominal_priority_key, has_activity_30, period_days)
 
         if real_priority_key is None:
             continue  # disappears from listing
