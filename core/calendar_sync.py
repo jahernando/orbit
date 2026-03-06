@@ -40,8 +40,17 @@ def _get_service():
                 print(f"Error: no se encontró credentials.json en {CREDENTIALS_PATH.parent}")
                 return None
             from google_auth_oauthlib.flow import InstalledAppFlow
+            import subprocess
+            import webbrowser as _wb
+            _orig_open = _wb.open
+            def _open_mac(url, new=0, autoraise=True):
+                print(f"\nAbre esta URL en tu navegador:\n  {url}\n")
+                subprocess.run(["open", url])
+                return True
+            _wb.open = _open_mac
             flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_PATH), SCOPES)
-            creds = flow.run_local_server(port=0)
+            creds = flow.run_local_server(host="127.0.0.1", port=8080)
+            _wb.open = _orig_open
         TOKEN_PATH.write_text(creds.to_json())
 
     from googleapiclient.discovery import build
@@ -49,8 +58,9 @@ def _get_service():
 
 
 def _day_bounds(target: date) -> tuple:
-    """Return ISO 8601 UTC bounds for a full calendar day."""
-    start = datetime(target.year, target.month, target.day, tzinfo=timezone.utc)
+    """Return ISO 8601 bounds for a full calendar day in local timezone."""
+    local_tz = datetime.now().astimezone().tzinfo
+    start = datetime(target.year, target.month, target.day, tzinfo=local_tz)
     end = start + timedelta(days=1)
     return start.isoformat(), end.isoformat()
 

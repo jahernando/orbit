@@ -63,6 +63,7 @@ Cada entrada es una línea con formato `YYYY-MM-DD mensaje #tipo`:
 | `#resultado` | 📊 Resultado obtenido |
 | `#apunte` | 📝 Nota o apunte general |
 | `#decision` | 🔀 Decisión tomada |
+| `#evento` | 📅 Evento de calendario |
 
 Ejemplo:
 ```
@@ -232,19 +233,69 @@ La prioridad se degrada un nivel si no hay actividad en un período ≥ 30 días
 ### `day` / `week` / `month` — crear ficheros de planificación
 
 ```bash
-python orbit.py day   [--date YYYY-MM-DD] [--copy YYYY-MM-DD] [--force]
-python orbit.py week  [--date YYYY-MM-DD] [--copy YYYY-Wnn]   [--force]
-python orbit.py month [--date YYYY-MM]    [--copy YYYY-MM]    [--force]
+python orbit.py day   [--date YYYY-MM-DD] [--copy YYYY-MM-DD] [--force] [--focus PROYECTO...]
+python orbit.py week  [--date YYYY-MM-DD] [--copy YYYY-Wnn]   [--force] [--focus PROYECTO...]
+python orbit.py month [--date YYYY-MM]    [--copy YYYY-MM]    [--force] [--focus PROYECTO...]
 ```
 
 ```bash
-python orbit.py day                          # crea el diario de hoy
-python orbit.py week --date 2026-03-04       # crea semanal de la semana que contiene esa fecha
-python orbit.py month                        # crea el mensual del mes actual
-python orbit.py week --copy 2026-W09 --force # copia una semana existente como base
+python orbit.py day                                    # crea el diario de hoy
+python orbit.py day --focus next-kr orbit              # crea el diario con proyectos en foco
+python orbit.py week --date 2026-03-04                 # crea semanal de la semana que contiene esa fecha
+python orbit.py month                                  # crea el mensual del mes actual
+python orbit.py week --copy 2026-W09 --force           # copia una semana existente como base
 ```
 
-Crea los ficheros en `☀️mision-log/diario/`, `semanal/` o `mensual/` desde la plantilla. Usa `--force` para sobreescribir si ya existe.
+Crea los ficheros en `☀️mision-log/diario/`, `semanal/` o `mensual/` desde la plantilla. Usa `--force` para sobreescribir si ya existe. Con `--focus` inyecta los proyectos en foco y las tareas próximas.
+
+---
+
+### `report` — generar informe de actividad
+
+```bash
+python orbit.py report day   [--date YYYY-MM-DD] [--inject]
+python orbit.py report week  [--date YYYY-MM-DD] [--inject]
+python orbit.py report month [--date YYYY-MM]    [--output FICHERO]
+```
+
+```bash
+python orbit.py report day                    # informe del día de hoy
+python orbit.py report week --inject          # informe semanal e inyecta en el fichero
+python orbit.py report month --date 2026-02   # informe mensual de febrero
+```
+
+Genera un resumen de actividad con evaluación 🍅 de proyectos en foco, tareas completadas y próximas. `--inject` escribe el informe en el fichero `.md` correspondiente.
+
+---
+
+### `done` — marcar tarea como completada
+
+```bash
+python orbit.py done <proyecto> "<tarea>" [--date YYYY-MM-DD]
+```
+
+```bash
+python orbit.py done next-kr "Reproducir figura 3"
+python orbit.py done orbit "Implementar calendar sync" --date 2026-03-07
+```
+
+Busca la tarea en `proyecto.md` por coincidencia parcial y la marca como `- [x] Descripción (YYYY-MM-DD)`.
+
+---
+
+### `calendar` — sincronizar Google Calendar
+
+```bash
+python orbit.py calendar [--date YYYY-MM-DD] [--dry-run]
+```
+
+```bash
+python orbit.py calendar              # sincroniza eventos de hoy
+python orbit.py calendar --dry-run    # muestra qué se sincronizaría sin escribir
+python orbit.py calendar --date 2026-03-05
+```
+
+Lee los eventos de todos tus calendarios de Google y añade los que tengan `proyecto: nombre` en la descripción al logbook del proyecto como `#evento`. Requiere `credentials.json` en el directorio Orbit (ver Google Cloud Console → OAuth 2.0).
 
 ---
 
