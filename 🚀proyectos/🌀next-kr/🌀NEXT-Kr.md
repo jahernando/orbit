@@ -1,0 +1,36 @@
+# 🌀next-kr
+
+## 🏷️ Tipo
+🌀 Investigación
+
+## 🔄 Estado
+⬜ Inicial
+
+## ⭐ Prioridad
+🟡 Media
+
+## 🎯 Objetivo
+Descripción breve del objetivo.
+
+## 🌀 Pregunta clave
+¿Cuál es la pregunta que este proyecto intenta responder?
+
+## ✅ Tareas
+- [ ] Ejemplo de tarea con fecha (2026-03-15)
+- [ ] Ejemplo de tarea sin fecha
+
+## 📎 Referencias clave
+- [Información Evernote](./references/informacion-evernote.md)
+- [https://zoom.us/j/2434108713?pwd=L3Y0cCtvZGNDRTkxME0xekRxKzRTUT09](https://zoom.us/j/2434108713?pwd=L3Y0cCtvZGNDRTkxME0xekRxKzRTUT09)
+- [Ander's diffusion paper](https://arxiv.org/abs/1804.01680)
+- [ELOG](https://lsc.next-experiment.org:6080/elog/next-100-shift-reports/)
+- [DocDB](https://next.ific.uv.es/cgi-bin/DocDB/private/DocumentDatabase)
+- [NEXT100](https://www.overleaf.com/4213141135zncswxwkmgkh#d6dec1)
+- [CNNS-10 LAr paper](https://www.ornl.gov/publication/development-83-mkr-source-calibration-cenns-10-liquid-argon-detect)
+- [Título](./references/paper.pdf)
+
+## 📊 Últimos resultados
+-
+
+## 📓 Logbook
+[Ver logbook completo](./📓NEXT-Kr.md)
