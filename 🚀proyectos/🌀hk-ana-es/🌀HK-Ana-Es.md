@@ -4,7 +4,7 @@
 🌀 Investigación
 
 ## 🔄 Estado
-⬜ Inicial
+▶️ En marcha
 
 ## ⭐ Prioridad
 🟡 Media

@@ -14,3 +14,4 @@
 2026-03-06 Comandos 'day', 'week', 'month' implementados: crean archivos en ☀️mision-log desde plantilla o --copy #resultado
 2026-03-06 Helpers find_proyecto_file y find_logbook_file añadidos para soportar nueva convención de nombres #decision
 2026-03-06 Emoji 🔬 cambiado a 🌀 para tipo Investigación en todo el proyecto #decision
+2026-03-06 importados proyectos de evernote #apunte

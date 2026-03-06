@@ -1,7 +1,11 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+from core.log import VALID_TYPES, find_logbook_file
+from core.tasks import TYPE_MAP
+
+PROJECTS_DIR   = Path(__file__).parent.parent / "🚀proyectos"
 MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
 TEMPLATES_DIR  = Path(__file__).parent.parent / "📐templates"
 
@@ -52,6 +56,33 @@ def run_day(date_str: Optional[str], copy: Optional[str], force: bool) -> int:
         content = tpl.read_text().replace("YYYY-MM-DD", target.isoformat())
 
     return _write(dest, content, copy, force)
+
+
+# ── logday ────────────────────────────────────────────────────────────────────
+
+def run_logday(message: str, tipo: str, date_str: Optional[str]) -> int:
+    target = date.fromisoformat(date_str) if date_str else date.today()
+    dest = DIARIO_DIR / f"{target.isoformat()}.md"
+
+    if not dest.exists():
+        tpl = TEMPLATES_DIR / "diario.md"
+        if not tpl.exists():
+            print(f"Error: plantilla no encontrada en {tpl}")
+            return 1
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(tpl.read_text().replace("YYYY-MM-DD", target.isoformat()))
+        print(f"✓ Creado {dest}")
+
+    now = datetime.now().strftime("%H:%M")
+    entry = f"{now} {message} #{tipo}\n"
+
+    text = dest.read_text()
+    if not text.endswith("\n"):
+        text += "\n"
+    dest.write_text(text + entry)
+
+    print(f"✓ [{target.isoformat()}] {entry.strip()}")
+    return 0
 
 
 # ── week ─────────────────────────────────────────────────────────────────────
@@ -120,3 +151,128 @@ def run_month(date_str: Optional[str], copy: Optional[str], force: bool) -> int:
                    .replace("YYYY-MM", month_str))
 
     return _write(dest, content, copy, force)
+
+
+# ── dayreport / weekreport ────────────────────────────────────────────────────
+
+_DR_START = "<!-- orbit:dayreport:start -->"
+_DR_END   = "<!-- orbit:dayreport:end -->"
+_WR_START = "<!-- orbit:weekreport:start -->"
+_WR_END   = "<!-- orbit:weekreport:end -->"
+
+
+def _collect_activity(start: date, end: date) -> list:
+    """Return list of {name, entries} for projects with activity in [start, end]."""
+    import re as _re
+    results = []
+    if not PROJECTS_DIR.exists():
+        return results
+
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        logbook_path = find_logbook_file(project_dir)
+        if not logbook_path or not logbook_path.exists():
+            continue
+
+        entries = []
+        for line in logbook_path.read_text().splitlines():
+            stripped = line.strip()
+            if len(stripped) < 10 or not stripped[:4].isdigit() or stripped[4] != "-":
+                continue
+            try:
+                entry_date = date.fromisoformat(stripped[:10])
+            except ValueError:
+                continue
+            if not (start <= entry_date <= end):
+                continue
+            tipo = next((t for t in VALID_TYPES if stripped.endswith(f"#{t}")), None)
+            content = stripped[10:].strip()
+            if tipo and content.endswith(f"#{tipo}"):
+                content = content[: -len(f"#{tipo}")].strip()
+            entries.append({"date": entry_date, "tipo": tipo, "content": content})
+
+        if entries:
+            results.append({"name": project_dir.name, "entries": entries})
+
+    return results
+
+
+def _format_report(activity: list, title: str) -> str:
+    lines = [f"## 📊 {title}", ""]
+    if not activity:
+        lines.append("_Sin actividad registrada en proyectos._")
+    else:
+        for proj in activity:
+            lines.append(f"- **{proj['name']}** ({len(proj['entries'])})")
+            for e in proj["entries"]:
+                tag = f" #{e['tipo']}" if e["tipo"] else ""
+                date_prefix = f"{e['date'].isoformat()} " if e.get("date") else ""
+                lines.append(f"  - {date_prefix}{e['content']}{tag}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _inject_block(dest: Path, block: str, start_marker: str, end_marker: str) -> None:
+    import re as _re
+    text = dest.read_text()
+    injected = f"{start_marker}\n{block}{end_marker}"
+    if start_marker in text:
+        text = _re.sub(
+            rf"{_re.escape(start_marker)}.*?{_re.escape(end_marker)}",
+            injected,
+            text,
+            flags=_re.DOTALL,
+        )
+    else:
+        if not text.endswith("\n"):
+            text += "\n"
+        text += "\n" + injected + "\n"
+    dest.write_text(text)
+
+
+def run_dayreport(date_str: Optional[str], inject: bool) -> int:
+    target = date.fromisoformat(date_str) if date_str else date.today()
+    activity = _collect_activity(target, target)
+    block = _format_report(activity, f"Actividad — {target.isoformat()}")
+    print(block)
+
+    if not inject:
+        return 0
+
+    dest = DIARIO_DIR / f"{target.isoformat()}.md"
+    if not dest.exists():
+        tpl = TEMPLATES_DIR / "diario.md"
+        if not tpl.exists():
+            print(f"Error: plantilla no encontrada en {tpl}")
+            return 1
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(tpl.read_text().replace("YYYY-MM-DD", target.isoformat()))
+        print(f"✓ Creado {dest}")
+
+    _inject_block(dest, block, _DR_START, _DR_END)
+    print(f"✓ Inyectado en {dest}")
+    return 0
+
+
+def run_weekreport(date_str: Optional[str], inject: bool) -> int:
+    d = date.fromisoformat(date_str) if date_str else date.today()
+    wkey = _week_key(d)
+    mon, sun = _week_bounds(d)
+    # cap end at today
+    end = min(sun, date.today())
+    activity = _collect_activity(mon, end)
+    block = _format_report(activity, f"Actividad semana {wkey}  ({mon.isoformat()} — {sun.isoformat()})")
+    print(block)
+
+    if not inject:
+        return 0
+
+    dest = SEMANAL_DIR / f"{wkey}.md"
+    if not dest.exists():
+        print(f"Error: no existe {dest}. Crea el fichero semanal primero con 'orbit week'.")
+        return 1
+
+    _inject_block(dest, block, _WR_START, _WR_END)
+    print(f"✓ Inyectado en {dest}")
+    return 0

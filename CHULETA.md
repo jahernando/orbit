@@ -3,8 +3,9 @@
 ## Logbook
 
 ```bash
-orbit log <proyecto> "<mensaje>" [--type TYPE] [--date YYYY-MM-DD]
-orbit list <proyecto> [--type TYPE...] [--date YYYY-MM o YYYY-MM-DD]
+orbit log    <proyecto> "<mensaje>" [--type TYPE] [--date YYYY-MM-DD]
+orbit list   <proyecto> [--type TYPE...] [--date YYYY-MM o YYYY-MM-DD]
+orbit logday "<mensaje>" [--type TYPE] [--date YYYY-MM-DD]
 ```
 
 Tipos: `apunte` `idea` `referencia` `tarea` `problema` `resultado` `decision`
@@ -25,9 +26,11 @@ orbit monthly  [--month YYYY-MM] [--apply] [--output FILE]
 ## Planificación
 
 ```bash
-orbit day   [--date YYYY-MM-DD]  [--copy YYYY-MM-DD] [--force]
-orbit week  [--date YYYY-MM-DD]  [--copy YYYY-Wnn]   [--force]
-orbit month [--date YYYY-MM]     [--copy YYYY-MM]    [--force]
+orbit day        [--date YYYY-MM-DD]  [--copy YYYY-MM-DD] [--force]
+orbit week       [--date YYYY-MM-DD]  [--copy YYYY-Wnn]   [--force]
+orbit month      [--date YYYY-MM]     [--copy YYYY-MM]    [--force]
+orbit dayreport  [--date YYYY-MM-DD]  [--inject]
+orbit weekreport [--date YYYY-MM-DD]  [--inject]
 ```
 
 ## Proyectos

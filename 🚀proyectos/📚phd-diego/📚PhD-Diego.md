@@ -4,7 +4,7 @@
 📚 Docencia
 
 ## 🔄 Estado
-⬜ Inicial
+▶️ En marcha
 
 ## ⭐ Prioridad
 🟡 Media

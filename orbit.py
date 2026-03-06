@@ -9,7 +9,7 @@ from core.list_entries import list_entries
 from core.tasks import list_tasks
 from core.activity import run_activity
 from core.monthly import run_monthly
-from core.misionlog import run_day, run_week, run_month
+from core.misionlog import run_day, run_week, run_month, run_logday, run_dayreport, run_weekreport
 from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
@@ -63,6 +63,18 @@ def cmd_project(args):
 
 def cmd_update(args):
     return run_update(project=args.project, status=args.status, priority=args.priority)
+
+
+def cmd_dayreport(args):
+    return run_dayreport(date_str=args.date, inject=args.inject)
+
+
+def cmd_weekreport(args):
+    return run_weekreport(date_str=args.date, inject=args.inject)
+
+
+def cmd_logday(args):
+    return run_logday(message=args.message, tipo=args.type, date_str=args.date)
 
 
 def cmd_day(args):
@@ -152,6 +164,28 @@ def main():
     proj_p.add_argument("--type", required=True, help="Project type: investigacion, docencia, gestion, formacion, software, personal")
     proj_p.add_argument("--priority", default="media", help="Initial priority: alta, media, baja (default: media)")
 
+    # --- dayreport ---
+    dr_p = subparsers.add_parser("dayreport", help="List projects with activity on a given day")
+    dr_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (default: today)")
+    dr_p.add_argument("--inject", action="store_true", help="Inject report into the daily file")
+
+    # --- weekreport ---
+    wr_p = subparsers.add_parser("weekreport", help="List projects with activity during a given week")
+    wr_p.add_argument("--date", default=None, help="Any date in the target week YYYY-MM-DD (default: today)")
+    wr_p.add_argument("--inject", action="store_true", help="Inject report into the weekly file")
+
+    # --- logday ---
+    logday_p = subparsers.add_parser("logday", help="Add a note to today's daily log")
+    logday_p.add_argument("message", help="Note text")
+    logday_p.add_argument(
+        "--type",
+        default="apunte",
+        choices=VALID_TYPES,
+        metavar="TYPE",
+        help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
+    )
+    logday_p.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today)")
+
     # --- day ---
     day_p = subparsers.add_parser("day", help="Create daily log file in ☀️mision-log/diario/")
     day_p.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today)")
@@ -188,7 +222,13 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "update":
+    if args.command == "logday":
+        sys.exit(cmd_logday(args))
+    elif args.command == "dayreport":
+        sys.exit(cmd_dayreport(args))
+    elif args.command == "weekreport":
+        sys.exit(cmd_weekreport(args))
+    elif args.command == "update":
         sys.exit(cmd_update(args))
     elif args.command == "import":
         sys.exit(cmd_import(args))

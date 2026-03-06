@@ -4,7 +4,7 @@
 ⚙️ Gestión
 
 ## 🔄 Estado
-⬜ Inicial
+▶️ En marcha
 
 ## ⭐ Prioridad
 🟡 Media
