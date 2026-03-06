@@ -80,7 +80,7 @@ def cmd_report(args):
     elif args.period == "week":
         return run_weekreport(date_str=args.date, inject=args.inject)
     elif args.period == "month":
-        return run_monthly(month=args.date, apply=args.apply, output=args.output)
+        return run_monthly(month=args.date, apply=False, output=args.output)
     return 1
 
 
@@ -180,7 +180,6 @@ def main():
     rep_p.add_argument("period", choices=["day", "week", "month"], help="Report period")
     rep_p.add_argument("--date", default=None, help="Date: YYYY-MM-DD for day/week, YYYY-MM for month (default: today/current)")
     rep_p.add_argument("--inject", action="store_true", help="Inject report into the log file (day/week)")
-    rep_p.add_argument("--apply", action="store_true", help="Apply status/priority changes to proyecto.md (month)")
     rep_p.add_argument("--output", default=None, help="Save output to file (month)")
 
     # --- logday ---

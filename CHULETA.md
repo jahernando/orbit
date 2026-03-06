@@ -36,7 +36,7 @@ orbit month [--date YYYY-MM]    [--copy YYYY-MM]    [--force]
 ```bash
 orbit report day   [--date YYYY-MM-DD] [--inject]
 orbit report week  [--date YYYY-MM-DD] [--inject]
-orbit report month [--date YYYY-MM]    [--apply] [--output FILE]
+orbit report month [--date YYYY-MM]    [--output FILE]
 ```
 
 ## Proyectos
