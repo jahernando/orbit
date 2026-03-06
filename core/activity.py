@@ -4,7 +4,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional, Tuple
 
-from core.log import PROJECTS_DIR, VALID_TYPES
+from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file
 from core.tasks import (
     PRIORITY_MAP, STATUS_MAP, TYPE_MAP,
     normalize, read_proyecto_field,
@@ -151,8 +151,8 @@ def run_activity(
         if project and project.lower() not in project_dir.name.lower():
             continue
 
-        proyecto_path = project_dir / "proyecto.md"
-        if not proyecto_path.exists():
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path or not proyecto_path.exists():
             continue
 
         lines = proyecto_path.read_text().splitlines()
@@ -171,7 +171,8 @@ def run_activity(
         nominal_status_key = next((k for k in STATUS_MAP if normalize(k) in estado_raw), "")
         nominal_priority_key = next((k for k in PRIORITY_MAP if normalize(k) in prioridad_raw), "")
 
-        last_entry, counts = get_logbook_activity(project_dir / "logbook.md", start, end)
+        logbook_path = find_logbook_file(project_dir)
+        last_entry, counts = get_logbook_activity(logbook_path, start, end)
         has_activity = sum(counts.values()) > 0
 
         real_status_key = compute_real_status(nominal_status_key, has_activity)

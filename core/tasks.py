@@ -3,7 +3,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR
+from core.log import PROJECTS_DIR, find_proyecto_file
 
 
 def normalize(text: str) -> str:
@@ -25,8 +25,8 @@ PRIORITY_MAP = {
 }
 
 TYPE_MAP = {
-    "investigación": "🔬",
-    "investigacion": "🔬",
+    "investigación": "🌀",
+    "investigacion": "🌀",
     "docencia":      "📚",
     "gestión":       "⚙️",
     "gestion":       "⚙️",
@@ -139,8 +139,8 @@ def list_tasks(
         if project and project.lower() not in project_dir.name.lower():
             continue
 
-        proyecto_path = project_dir / "proyecto.md"
-        if not proyecto_path.exists():
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path or not proyecto_path.exists():
             continue
 
         meta = load_project_meta(proyecto_path)

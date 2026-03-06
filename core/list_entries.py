@@ -34,14 +34,14 @@ def list_entries(
     fecha: Optional[str],
     output: Optional[str],
 ) -> int:
-    from core.log import find_project
+    from core.log import find_project, find_logbook_file
 
     project_dir = find_project(project)
     if not project_dir:
         return 1
 
-    logbook_path = project_dir / "logbook.md"
-    if not logbook_path.exists():
+    logbook_path = find_logbook_file(project_dir)
+    if not logbook_path or not logbook_path.exists():
         print(f"No logbook found for '{project_dir.name}'")
         return 1
 

@@ -30,7 +30,7 @@ Orbit/
 
 | Emoji | Tipo |
 |-------|------|
-| 🔬 | Investigación |
+| 🌀 | Investigación |
 | 📚 | Docencia |
 | ⚙️ | Gestión |
 | 📖 | Formación |

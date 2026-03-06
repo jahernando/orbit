@@ -8,7 +8,7 @@ from core.activity import (
     compute_real_priority, compute_real_status,
     get_logbook_activity, parse_date_range,
 )
-from core.log import PROJECTS_DIR, VALID_TYPES
+from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file
 from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field
 
 MISSION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log" / "mensual"
@@ -39,8 +39,8 @@ def build_table(start: date, end: date, apply: bool) -> tuple:
         if not project_dir.is_dir():
             continue
 
-        proyecto_path = project_dir / "proyecto.md"
-        if not proyecto_path.exists():
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path or not proyecto_path.exists():
             continue
 
         lines = proyecto_path.read_text().splitlines()
@@ -55,7 +55,7 @@ def build_table(start: date, end: date, apply: bool) -> tuple:
         nominal_status_key = next((k for k in STATUS_MAP if normalize(k) in estado_raw), "")
         nominal_priority_key = next((k for k in PRIORITY_MAP if normalize(k) in prioridad_raw), "")
 
-        last_entry, counts = get_logbook_activity(project_dir / "logbook.md", start, end)
+        last_entry, counts = get_logbook_activity(find_logbook_file(project_dir), start, end)
         has_activity = sum(counts.values()) > 0
 
         real_status_key = compute_real_status(nominal_status_key, has_activity)

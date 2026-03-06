@@ -9,6 +9,8 @@ from core.list_entries import list_entries
 from core.tasks import list_tasks
 from core.activity import run_activity
 from core.monthly import run_monthly
+from core.misionlog import run_day, run_week, run_month
+from core.project import run_project
 
 
 def cmd_log(args):
@@ -47,6 +49,22 @@ def cmd_monthly(args):
         apply=args.apply,
         output=args.output,
     )
+
+
+def cmd_project(args):
+    return run_project(name=args.name, tipo=args.type, prioridad=args.priority)
+
+
+def cmd_day(args):
+    return run_day(date_str=args.date, copy=args.copy, force=args.force)
+
+
+def cmd_week(args):
+    return run_week(date_str=args.date, copy=args.copy, force=args.force)
+
+
+def cmd_month(args):
+    return run_month(date_str=args.date, copy=args.copy, force=args.force)
 
 
 def cmd_activity(args):
@@ -107,6 +125,30 @@ def main():
     tasks_p.add_argument("--date", default=None, help="Filter tasks by due date: YYYY-MM-DD or YYYY-MM")
     tasks_p.add_argument("--output", default=None, help="Save output to file instead of terminal")
 
+    # --- project ---
+    proj_p = subparsers.add_parser("project", help="Create a new project from template")
+    proj_p.add_argument("--name", required=True, help="Project name (e.g. NEXT-GALA)")
+    proj_p.add_argument("--type", required=True, help="Project type: investigacion, docencia, gestion, formacion, software, personal")
+    proj_p.add_argument("--priority", default="media", help="Initial priority: alta, media, baja (default: media)")
+
+    # --- day ---
+    day_p = subparsers.add_parser("day", help="Create daily log file in ☀️mision-log/diario/")
+    day_p.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today)")
+    day_p.add_argument("--copy", default=None, metavar="YYYY-MM-DD", help="Copy this existing day instead of template")
+    day_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
+
+    # --- week ---
+    week_p = subparsers.add_parser("week", help="Create weekly log file in ☀️mision-log/semanal/")
+    week_p.add_argument("--date", default=None, help="Any date in the target week YYYY-MM-DD (default: today)")
+    week_p.add_argument("--copy", default=None, metavar="YYYY-Wnn", help="Copy this existing week instead of template")
+    week_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
+
+    # --- month ---
+    month_p = subparsers.add_parser("month", help="Create monthly log file in ☀️mision-log/mensual/")
+    month_p.add_argument("--date", default=None, help="Target month YYYY-MM (default: current month)")
+    month_p.add_argument("--copy", default=None, metavar="YYYY-MM", help="Copy this existing month instead of template")
+    month_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
+
     # --- monthly ---
     mon_p = subparsers.add_parser("monthly", help="Generate monthly review table and inject into mensual/YYYY-MM.md")
     mon_p.add_argument("--month", default=None, help="Month as YYYY-MM (default: current month)")
@@ -125,7 +167,15 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "log":
+    if args.command == "project":
+        sys.exit(cmd_project(args))
+    elif args.command == "day":
+        sys.exit(cmd_day(args))
+    elif args.command == "week":
+        sys.exit(cmd_week(args))
+    elif args.command == "month":
+        sys.exit(cmd_month(args))
+    elif args.command == "log":
         sys.exit(cmd_log(args))
     elif args.command == "list":
         sys.exit(cmd_list(args))

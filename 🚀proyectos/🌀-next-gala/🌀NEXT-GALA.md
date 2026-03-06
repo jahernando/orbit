@@ -1,13 +1,13 @@
-# [Nombre del proyecto]
+# 🌀-next-gala
 
 ## 🏷️ Tipo
-🌀 Investigación / 📚 Docencia / ⚙️ Gestión / 📖 Formación / 💻 Software / 🌿 Personal
+🌀 Investigación
 
 ## 🔄 Estado
-⬜ Inicial / ▶️ En marcha / ⏸️ Parado / ⏳ Esperando / 💤 Durmiendo / ✅ Completado
+⬜ Inicial
 
 ## ⭐ Prioridad
-🟠 Alta / 🟡 Media / 🔵 Baja
+🟡 Media
 
 ## 🎯 Objetivo
 Descripción breve del objetivo.
@@ -26,4 +26,4 @@ Descripción breve del objetivo.
 -
 
 ## 📓 Logbook
-[Ver logbook completo](./logbook.md)
+[Ver logbook completo](./📓NEXT-GALA.md)

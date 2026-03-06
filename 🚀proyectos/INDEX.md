@@ -2,4 +2,4 @@
 
 | Proyecto | Tipo | Estado | Prioridad |
 |----------|------|--------|-----------|
-| [nombre](./nombre/proyecto.md) | 🔬 | ▶️ En marcha | 🟠 Alta |
+| [nombre](./nombre/proyecto.md) | 🌀 | ▶️ En marcha | 🟠 Alta |

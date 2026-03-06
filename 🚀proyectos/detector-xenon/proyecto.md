@@ -1,7 +1,7 @@
 # detector-xenon
 
 ## 🏷️ Tipo
-🔬 Investigación
+🌀 Investigación
 
 ## 🔄 Estado
 ▶️ En marcha
@@ -12,7 +12,7 @@
 ## 🎯 Objetivo
 Medir la resolución en energía del detector de xenón.
 
-## 🔬 Pregunta clave
+## 🌀 Pregunta clave
 ¿Cuál es la resolución en energía del detector en el rango 1-3 MeV?
 
 ## ✅ Tareas

@@ -32,7 +32,7 @@ Orbit/
 ```
 
 ## Project types
-- 🔬 Investigación
+- 🌀 Investigación
 - 📚 Docencia
 - ⚙️ Gestión
 - 📖 Formación

@@ -7,6 +7,24 @@ PROJECTS_DIR = Path(__file__).parent.parent / "🚀proyectos"
 VALID_TYPES = ["idea", "referencia", "tarea", "problema", "resultado", "apunte", "decision"]
 
 
+def find_proyecto_file(project_dir: Path) -> Optional[Path]:
+    """Find the project index file: proyecto.md (legacy) or {emoji}{name}.md."""
+    legacy = project_dir / "proyecto.md"
+    if legacy.exists():
+        return legacy
+    candidates = [f for f in project_dir.glob("*.md") if not f.name.startswith("📓")]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def find_logbook_file(project_dir: Path) -> Optional[Path]:
+    """Find the logbook file: logbook.md (legacy) or 📓{name}.md."""
+    legacy = project_dir / "logbook.md"
+    if legacy.exists():
+        return legacy
+    candidates = list(project_dir.glob("📓*.md"))
+    return candidates[0] if candidates else None
+
+
 def find_project(name: str) -> Optional[Path]:
     if not PROJECTS_DIR.exists():
         print(f"Error: projects directory not found at {PROJECTS_DIR}")
@@ -45,7 +63,9 @@ def add_entry(project: str, message: str, tipo: str, path: Optional[str], fecha:
     if not project_dir:
         return 1
 
-    logbook_path = project_dir / "logbook.md"
+    logbook_path = find_logbook_file(project_dir)
+    if not logbook_path:
+        logbook_path = project_dir / "logbook.md"
 
     if not logbook_path.exists():
         init_logbook(logbook_path, project_dir.name)
