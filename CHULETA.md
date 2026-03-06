@@ -35,9 +35,12 @@ orbit month [--date YYYY-MM]     [--copy YYYY-MM]    [--force]
 ```bash
 orbit project --name NOMBRE --type TIPO [--priority PRIORIDAD]
 orbit import  --file FICHERO.enex --project PROYECTO
+orbit update  <proyecto> [--status ESTADO] [--priority PRIORIDAD]
 ```
 
 Tipos de proyecto: `investigacion` `docencia` `gestion` `formacion` `software` `personal`
+
+Estados: `inicial` `en marcha` `parado` `esperando` `durmiendo` `completado`
 
 Prioridades: `alta` `media` `baja`
 

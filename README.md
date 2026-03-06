@@ -10,17 +10,18 @@ Sistema personal de gestión de proyectos científicos y personales en markdown 
 Orbit/
 ├── 🚀proyectos/
 │   ├── INDEX.md                        ← tabla maestra de proyectos
-│   └── nombre-proyecto/
-│       ├── proyecto.md                 ← índice del proyecto
-│       ├── logbook.md                  ← registro cronológico de entradas
-│       ├── references/                 ← PDFs locales (no en git)
+│   └── {emoji}nombre/                  ← directorio del proyecto
+│       ├── {emoji}Nombre.md            ← índice: objetivo, tareas, referencias
+│       ├── 📓Nombre.md                 ← logbook cronológico
+│       ├── references/                 ← PDFs e imágenes (no en git)
 │       └── results/                    ← resultados numéricos (no en git)
 ├── ☀️mision-log/
 │   ├── diario/YYYY-MM-DD.md            ← planificación del día
 │   ├── semanal/YYYY-Wnn.md             ← revisión semanal
-│   └── mensual/YYYY-MM.md              ← revisión mensual (generada por script)
+│   └── mensual/YYYY-MM.md              ← revisión mensual
 ├── 📐templates/                        ← plantillas para todos los ficheros
 ├── orbit.py                            ← CLI principal
+├── CHULETA.md                          ← referencia rápida de comandos
 └── core/                               ← módulos del CLI
 ```
 
@@ -96,6 +97,58 @@ Ejemplo:
 
 ## CLI — orbit.py
 
+### `project` — crear un proyecto nuevo
+
+```bash
+python orbit.py project --name NOMBRE --type TIPO [--priority PRIORIDAD]
+```
+
+```bash
+python orbit.py project --name NEXT-GALA --type investigacion
+python orbit.py project --name FNyP --type docencia --priority alta
+```
+
+Crea el directorio `{emoji}nombre/` con `{emoji}Nombre.md` y `📓Nombre.md` desde las plantillas.
+
+Tipos: `investigacion` · `docencia` · `gestion` · `formacion` · `software` · `personal`
+
+---
+
+### `import` — importar nota de Evernote
+
+```bash
+python orbit.py import --file FICHERO.enex --project PROYECTO
+```
+
+```bash
+python orbit.py import --file "~/Downloads/NEXT-Kr.enex" --project next-kr
+```
+
+Extrae del `.enex`:
+- **Logbook** (`<h2>Logbook`) → añade entradas a `📓Nombre.md` (sin duplicar fechas)
+- **Referencias** (`<h2>References/Referencias`) → añade links a `## 📎 Referencias clave`
+- **Tareas** (`<h2>Tasks/Tareas`) → añade a `## ✅ Tareas`
+- **Imágenes** (recursos `<resource>`) → guarda como `fig-NN.png` en `references/` y enlaza en el logbook
+- **Resto de secciones** → `references/informacion-evernote.md`
+
+---
+
+### `update` — cambiar estado o prioridad de un proyecto
+
+```bash
+python orbit.py update <proyecto> [--status ESTADO] [--priority PRIORIDAD]
+```
+
+```bash
+python orbit.py update next-kr --status "en marcha"
+python orbit.py update catedra --priority alta
+python orbit.py update orbit --status completado --priority baja
+```
+
+Estados: `inicial` · `en marcha` · `parado` · `esperando` · `durmiendo` · `completado`
+
+---
+
 ### `log` — añadir entrada al logbook
 
 ```bash
@@ -161,6 +214,25 @@ Calcula el **estado real** y la **prioridad real** de cada proyecto según su ac
 La prioridad se degrada un nivel si no hay actividad en un período ≥ 30 días. Proyectos en `🔵 Baja` sin actividad desaparecen del listado.
 
 `--apply` escribe los cambios directamente en `proyecto.md`.
+
+### `day` / `week` / `month` — crear ficheros de planificación
+
+```bash
+python orbit.py day   [--date YYYY-MM-DD] [--copy YYYY-MM-DD] [--force]
+python orbit.py week  [--date YYYY-MM-DD] [--copy YYYY-Wnn]   [--force]
+python orbit.py month [--date YYYY-MM]    [--copy YYYY-MM]    [--force]
+```
+
+```bash
+python orbit.py day                          # crea el diario de hoy
+python orbit.py week --date 2026-03-04       # crea semanal de la semana que contiene esa fecha
+python orbit.py month                        # crea el mensual del mes actual
+python orbit.py week --copy 2026-W09 --force # copia una semana existente como base
+```
+
+Crea los ficheros en `☀️mision-log/diario/`, `semanal/` o `mensual/` desde la plantilla. Usa `--force` para sobreescribir si ya existe.
+
+---
 
 ### `monthly` — generar revisión mensual
 
