@@ -80,60 +80,94 @@ def _entry_exists(logbook_path: Path, title: str, date_str: str) -> bool:
     return f"{date_str} {title} #evento" in logbook_path.read_text()
 
 
-def run_calendar_sync(date_str: Optional[str], dry_run: bool) -> int:
-    target = date.fromisoformat(date_str) if date_str else date.today()
+def fetch_day_events(target: date) -> Optional[list]:
+    """Return list of event dicts for the day, or None if calendar unavailable.
+
+    Each dict: {title, description, project_name, start_time}
+    start_time is "HH:MM" or "todo el día".
+    Returns None silently if credentials.json is missing.
+    """
+    if not CREDENTIALS_PATH.exists():
+        return None
 
     service = _get_service()
     if not service:
-        return 1
+        return None
 
     time_min, time_max = _day_bounds(target)
-    print(f"Sincronizando eventos — {target.isoformat()}{'  [dry-run]' if dry_run else ''}")
-    print("─" * 50)
-
     calendars = service.calendarList().list().execute().get("items", [])
-    synced = skipped = not_found = 0
-
+    events = []
     for cal in calendars:
-        events = service.events().list(
+        items = service.events().list(
             calendarId=cal["id"],
             timeMin=time_min,
             timeMax=time_max,
             singleEvents=True,
             orderBy="startTime",
         ).execute().get("items", [])
+        for event in items:
+            start = event.get("start", {})
+            start_dt = start.get("dateTime", start.get("date", ""))
+            start_time = start_dt[11:16] if "T" in start_dt else "todo el día"
+            events.append({
+                "title": event.get("summary", "(sin título)"),
+                "description": event.get("description", "") or "",
+                "project_name": _parse_project(event.get("description", "") or ""),
+                "start_time": start_time,
+            })
+    return events
 
-        for event in events:
-            title = event.get("summary", "(sin título)")
-            description = event.get("description", "") or ""
-            project_name = _parse_project(description)
-            if not project_name:
-                continue
 
-            project_dir = find_project(project_name)
-            if not project_dir:
-                print(f"  ⚠️  '{project_name}' no encontrado  ←  {title}")
-                not_found += 1
-                continue
+def sync_events_to_logbooks(events: list, target: date, dry_run: bool) -> tuple:
+    """Write #evento entries to project logbooks. Returns (synced, skipped, not_found)."""
+    synced = skipped = not_found = 0
+    for event in events:
+        project_name = event["project_name"]
+        if not project_name:
+            continue
+        title = event["title"]
 
-            logbook_path = find_logbook_file(project_dir)
-            if not logbook_path:
-                logbook_path = project_dir / "logbook.md"
+        project_dir = find_project(project_name)
+        if not project_dir:
+            print(f"  ⚠️  '{project_name}' no encontrado  ←  {title}")
+            not_found += 1
+            continue
 
-            if _entry_exists(logbook_path, title, target.isoformat()):
-                skipped += 1
-                continue
+        logbook_path = find_logbook_file(project_dir)
+        if not logbook_path:
+            logbook_path = project_dir / "logbook.md"
 
-            entry = f"{target.isoformat()} {title} #evento\n"
-            if dry_run:
-                print(f"  ~  [{project_dir.name}] {entry.strip()}")
-            else:
-                if not logbook_path.exists():
-                    init_logbook(logbook_path, project_dir.name)
-                with open(logbook_path, "a") as f:
-                    f.write(entry)
-                print(f"  ✓  [{project_dir.name}] {entry.strip()}")
-            synced += 1
+        if _entry_exists(logbook_path, title, target.isoformat()):
+            skipped += 1
+            continue
+
+        entry = f"{target.isoformat()} {title} #evento\n"
+        if dry_run:
+            print(f"  ~  [{project_dir.name}] {entry.strip()}")
+        else:
+            if not logbook_path.exists():
+                from core.log import init_logbook
+                init_logbook(logbook_path, project_dir.name)
+            from core.log import _append_entry
+            _append_entry(logbook_path, entry)
+            print(f"  ✓  [{project_dir.name}] {entry.strip()}")
+        synced += 1
+    return synced, skipped, not_found
+
+
+def run_calendar_sync(date_str: Optional[str], dry_run: bool) -> int:
+    target = date.fromisoformat(date_str) if date_str else date.today()
+
+    events = fetch_day_events(target)
+    if events is None:
+        if not CREDENTIALS_PATH.exists():
+            print(f"Error: no se encontró credentials.json en {CREDENTIALS_PATH.parent}")
+        return 1
+
+    print(f"Sincronizando eventos — {target.isoformat()}{'  [dry-run]' if dry_run else ''}")
+    print("─" * 50)
+
+    synced, skipped, not_found = sync_events_to_logbooks(events, target, dry_run)
 
     print("─" * 50)
     parts = [f"Nuevos: {synced}"]

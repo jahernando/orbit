@@ -63,7 +63,39 @@ def run_day(date_str: Optional[str], copy: Optional[str], force: bool, focus: li
             _inject_focus_projects(dest, focus[:1], "## 🎯 Proyecto en foco")
         upcoming = _collect_upcoming_tasks(7)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
+        _sync_calendar_to_day(dest, target)
     return rc
+
+
+def _sync_calendar_to_day(dest: Path, target: date) -> None:
+    """Fetch calendar events, inject into daily note, and sync to project logbooks."""
+    try:
+        from core.calendar_sync import fetch_day_events, sync_events_to_logbooks
+    except ImportError:
+        return
+
+    events = fetch_day_events(target)
+    if events is None:
+        return  # no credentials, skip silently
+
+    # Inject all events into the daily note
+    if events:
+        lines = []
+        for e in events:
+            project_name = e["project_name"]
+            suffix = f" → `{project_name}`" if project_name else ""
+            lines.append(f"- {e['start_time']}  {e['title']}{suffix}")
+        block = "\n".join(lines) + "\n"
+        print(f"  📅 {len(events)} evento(s) del calendario")
+    else:
+        block = "_Sin eventos en el calendario._\n"
+
+    _inject_block(dest, block, _EVENTS_START, _EVENTS_END)
+
+    # Sync events with proyecto: to project logbooks
+    synced, _, not_found = sync_events_to_logbooks(events, target, dry_run=False)
+    if synced:
+        print(f"  ✓  {synced} evento(s) añadido(s) a logbooks de proyectos")
 
 
 # ── logday ────────────────────────────────────────────────────────────────────
@@ -84,10 +116,8 @@ def run_logday(message: str, tipo: str, date_str: Optional[str]) -> int:
     now = datetime.now().strftime("%H:%M")
     entry = f"{now} {message} #{tipo}\n"
 
-    text = dest.read_text()
-    if not text.endswith("\n"):
-        text += "\n"
-    dest.write_text(text + entry)
+    from core.log import _append_entry
+    _append_entry(dest, entry)
 
     print(f"✓ [{target.isoformat()}] {entry.strip()}")
     return 0
@@ -255,6 +285,8 @@ _TOMATO_START    = "<!-- orbit:tomato:start -->"
 _TOMATO_END      = "<!-- orbit:tomato:end -->"
 _UPCOMING_START  = "<!-- orbit:upcoming:start -->"
 _UPCOMING_END    = "<!-- orbit:upcoming:end -->"
+_EVENTS_START    = "<!-- orbit:events:start -->"
+_EVENTS_END      = "<!-- orbit:events:end -->"
 
 
 def _parse_focus_projects(file_path: Path, heading: str = "## 🎯") -> list:

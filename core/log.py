@@ -51,6 +51,16 @@ def format_entry(message: str, tipo: str, path: Optional[str], fecha: Optional[s
     return f"{date_str} {content} #{tipo}\n"
 
 
+def _append_entry(logbook_path: Path, entry: str) -> None:
+    """Append an entry ensuring a blank line separator for markdown readability."""
+    existing = logbook_path.read_text() if logbook_path.exists() else ""
+    with open(logbook_path, "a") as f:
+        if existing and not existing.endswith("\n\n"):
+            f.write("" if existing.endswith("\n") else "\n")
+            f.write("\n")
+        f.write(entry)
+
+
 def init_logbook(logbook_path: Path, project_name: str) -> None:
     logbook_path.write_text(
         f"# Logbook — {project_name}\n\n"
@@ -81,9 +91,7 @@ def add_entry(project: str, message: str, tipo: str, path: Optional[str], fecha:
         init_logbook(logbook_path, project_dir.name)
 
     entry = format_entry(message, tipo, path, fecha)
-
-    with open(logbook_path, "a") as f:
-        f.write(entry)
+    _append_entry(logbook_path, entry)
 
     print(f"✓ [{project_dir.name}] {entry.strip()}")
     return 0
