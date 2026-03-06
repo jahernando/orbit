@@ -79,7 +79,7 @@ def get_logbook_activity(
         if entry_date > today:
             continue  # ignore future-dated entries
 
-        if last_date is None or entry_date > last_date:
+        if entry_date <= end and (last_date is None or entry_date > last_date):
             last_date = entry_date
 
         if start <= entry_date <= end:
