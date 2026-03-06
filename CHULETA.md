@@ -44,6 +44,7 @@ orbit report month [--date YYYY-MM]    [--output FILE]
 ```bash
 orbit project     --name NOMBRE --type TIPO [--priority PRIORIDAD]
 orbit import      --file FICHERO.enex --project PROYECTO
+orbit done        <proyecto> "<tarea>" [--date YYYY-MM-DD]
 orbit update      <proyecto> [--status ESTADO] [--priority PRIORIDAD]
 orbit setpriority --priority PRIORIDAD --projects P1 P2 ...
 ```

@@ -393,6 +393,35 @@ def _format_upcoming_tasks(tasks: list) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _collect_completed_tasks(start: date, end: date) -> list:
+    """Return tasks completed (marked [x] with date) within [start, end]."""
+    results = []
+    if not PROJECTS_DIR.exists():
+        return results
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path or not proyecto_path.exists():
+            continue
+        meta = load_project_meta(proyecto_path)
+        for task in meta["tasks"]:
+            if not task.get("done") or not task.get("completed"):
+                continue
+            try:
+                comp_date = date.fromisoformat(task["completed"])
+            except ValueError:
+                continue
+            if start <= comp_date <= end:
+                results.append({
+                    "completed_date": comp_date,
+                    "project": project_dir.name,
+                    "description": task["description"],
+                })
+    results.sort(key=lambda x: x["completed_date"])
+    return results
+
+
 def _collect_tasks_due(start: date, end: date) -> list:
     """Return list of {project, task} for tasks with due date in [start, end]."""
     results = []
@@ -434,6 +463,7 @@ def run_dayreport(date_str: Optional[str], inject: bool) -> int:
 
     activity = _collect_activity(target, target)
     tasks_due = _collect_tasks_due(target, target)
+    completed = _collect_completed_tasks(target, target)
     focus = _parse_focus_projects(dest, "## 🎯 Proyecto en foco")
     tomato = _check_focus_activity(focus, target, target)
     tomato_block = _format_tomato_block(tomato, target.isoformat())
@@ -446,6 +476,13 @@ def run_dayreport(date_str: Optional[str], inject: bool) -> int:
             task_lines.append(f"- **{item['project']}** — {item['task']['description']}")
         task_lines.append("")
         block += "\n" + "\n".join(task_lines)
+
+    if completed:
+        done_lines = ["## 🏁 Completadas hoy", ""]
+        for item in completed:
+            done_lines.append(f"- **{item['project']}** — {item['description']}")
+        done_lines.append("")
+        block += "\n" + "\n".join(done_lines)
 
     if tomato_block:
         print(tomato_block)
@@ -479,6 +516,7 @@ def run_weekreport(date_str: Optional[str], inject: bool) -> int:
 
     activity = _collect_activity(mon, end)
     tasks_due = _collect_tasks_due(mon, sun)
+    completed = _collect_completed_tasks(mon, end)
     focus = _parse_focus_projects(dest, "## 🎯 Proyectos en foco")
     tomato = _check_focus_activity(focus, mon, end)
     tomato_block = _format_tomato_block(tomato, f"semana {wkey}")
@@ -493,6 +531,13 @@ def run_weekreport(date_str: Optional[str], inject: bool) -> int:
             task_lines.append(f"- **{item['project']}** — {item['task']['description']} ({item['task']['due']})")
         task_lines.append("")
         block += "\n" + "\n".join(task_lines)
+
+    if completed:
+        done_lines = ["## 🏁 Completadas esta semana", ""]
+        for item in completed:
+            done_lines.append(f"- {item['completed_date'].isoformat()}  **{item['project']}** — {item['description']}")
+        done_lines.append("")
+        block += "\n" + "\n".join(done_lines)
 
     if tomato_block:
         print(tomato_block)

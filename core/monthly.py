@@ -10,6 +10,7 @@ from core.activity import (
 )
 from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file
 from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field, load_project_meta
+from core.misionlog import _collect_completed_tasks
 from core.misionlog import _parse_focus_projects, _check_focus_activity, _format_tomato_block, _TOMATO_START, _TOMATO_END, _inject_block
 
 MISSION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log" / "mensual"
@@ -226,6 +227,12 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int
     if decisions:
         out += ["", "── DECISIONES ──────────────────────────────────"]
         out += decisions
+
+    completed = _collect_completed_tasks(start, end)
+    if completed:
+        out += ["", "── COMPLETADAS ─────────────────────────────────"]
+        for item in completed:
+            out.append(f"  🏁 {item['completed_date'].isoformat()}  {item['project']} — {item['description']}")
 
     text = "\n".join(out)
     if output:

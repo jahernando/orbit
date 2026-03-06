@@ -46,23 +46,28 @@ def read_proyecto_field(lines: list, field: str) -> Optional[str]:
     return None
 
 
-def parse_task(line: str) -> Optional[dict]:
-    """Parse a task line: - [ ] Description (YYYY-MM-DD) or - [ ] Description"""
-    stripped = line.strip()
-    if not stripped.startswith("- [ ]"):
-        return None
-    content = stripped[5:].strip()
-
-    due = None
-    # Extract date in parentheses at end: (YYYY-MM-DD)
+def _extract_date_from_parens(content: str):
+    """Extract (YYYY-MM-DD) from end of string. Returns (content_without_date, date_str or None)."""
     if content.endswith(")") and "(" in content:
         paren_start = content.rfind("(")
         candidate = content[paren_start + 1:-1]
         if len(candidate) == 10 and candidate[4] == "-" and candidate[7] == "-":
-            due = candidate
-            content = content[:paren_start].strip()
+            return content[:paren_start].strip(), candidate
+    return content, None
 
-    return {"description": content, "due": due}
+
+def parse_task(line: str) -> Optional[dict]:
+    """Parse a pending or completed task line."""
+    stripped = line.strip()
+    if stripped.startswith("- [x]") or stripped.startswith("- [X]"):
+        content = stripped[5:].strip()
+        content, completed = _extract_date_from_parens(content)
+        return {"description": content, "due": None, "done": True, "completed": completed}
+    if not stripped.startswith("- [ ]"):
+        return None
+    content = stripped[5:].strip()
+    content, due = _extract_date_from_parens(content)
+    return {"description": content, "due": due, "done": False, "completed": None}
 
 
 def is_overdue(due: str, today: date) -> bool:
@@ -157,8 +162,8 @@ def list_tasks(
         if prioridad and normalize(prioridad) not in meta["prioridad_raw"]:
             continue
 
-        # Filter tasks by fecha
-        tasks = meta["tasks"]
+        # Only pending tasks
+        tasks = [t for t in meta["tasks"] if not t.get("done")]
         if fecha:
             tasks = [t for t in tasks if matches_fecha(t["due"], fecha)]
 

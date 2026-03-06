@@ -16,7 +16,7 @@ CLI en Python para gestionar proyectos científicos y personales en markdown.
 ¿Cómo automatizar la gestión de logbooks, tareas y revisiones mensuales desde la terminal?
 
 ## ✅ Tareas
-- [ ] Comando monthly (2026-03-06)
+- [x] Comando monthly (2026-03-06)
 - [ ] Crear proyectos reales desde plantilla
 - [ ] Inicializar repositorio git
 

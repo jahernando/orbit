@@ -13,6 +13,7 @@ from core.misionlog import run_day, run_week, run_month, run_logday, run_dayrepo
 from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
+from core.done import run_done
 
 
 def cmd_log(args):
@@ -63,6 +64,10 @@ def cmd_project(args):
 
 def cmd_update(args):
     return run_update(project=args.project, status=args.status, priority=args.priority)
+
+
+def cmd_done(args):
+    return run_done(project=args.project, task_desc=args.task, done_date=args.date)
 
 
 def cmd_setpriority(args):
@@ -163,6 +168,12 @@ def main():
     imp_p.add_argument("--file", required=True, help="Path to the .enex file")
     imp_p.add_argument("--project", required=True, help="Target project (partial name match)")
 
+    # --- done ---
+    done_p = subparsers.add_parser("done", help="Mark a task as completed")
+    done_p.add_argument("project", help="Project name (partial match)")
+    done_p.add_argument("task", help="Task description (partial match)")
+    done_p.add_argument("--date", default=None, help="Completion date YYYY-MM-DD (default: today)")
+
     # --- update ---
     upd_p = subparsers.add_parser("update", help="Set status and/or priority of a project")
     upd_p.add_argument("project", help="Project name (partial match)")
@@ -242,6 +253,8 @@ def main():
         sys.exit(cmd_logday(args))
     elif args.command == "report":
         sys.exit(cmd_report(args))
+    elif args.command == "done":
+        sys.exit(cmd_done(args))
     elif args.command == "update":
         sys.exit(cmd_update(args))
     elif args.command == "import":
