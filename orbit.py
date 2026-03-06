@@ -14,6 +14,7 @@ from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
 from core.done import run_done
+from core.calendar_sync import run_calendar_sync
 
 
 def cmd_log(args):
@@ -68,6 +69,10 @@ def cmd_update(args):
 
 def cmd_done(args):
     return run_done(project=args.project, task_desc=args.task, done_date=args.date)
+
+
+def cmd_calendar(args):
+    return run_calendar_sync(date_str=args.date, dry_run=args.dry_run)
 
 
 def cmd_setpriority(args):
@@ -168,6 +173,11 @@ def main():
     imp_p.add_argument("--file", required=True, help="Path to the .enex file")
     imp_p.add_argument("--project", required=True, help="Target project (partial name match)")
 
+    # --- calendar ---
+    cal_p = subparsers.add_parser("calendar", help="Sync Google Calendar events to project logbooks")
+    cal_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (default: today)")
+    cal_p.add_argument("--dry-run", action="store_true", help="Preview without writing to logbooks")
+
     # --- done ---
     done_p = subparsers.add_parser("done", help="Mark a task as completed")
     done_p.add_argument("project", help="Project name (partial match)")
@@ -253,6 +263,8 @@ def main():
         sys.exit(cmd_logday(args))
     elif args.command == "report":
         sys.exit(cmd_report(args))
+    elif args.command == "calendar":
+        sys.exit(cmd_calendar(args))
     elif args.command == "done":
         sys.exit(cmd_done(args))
     elif args.command == "update":

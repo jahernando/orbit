@@ -10,3 +10,7 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# Google Calendar credentials (sensitive)
+credentials.json
+token.json

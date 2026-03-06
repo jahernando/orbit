@@ -4,7 +4,7 @@ from typing import Optional
 
 PROJECTS_DIR = Path(__file__).parent.parent / "🚀proyectos"
 
-VALID_TYPES = ["idea", "referencia", "tarea", "problema", "resultado", "apunte", "decision"]
+VALID_TYPES = ["idea", "referencia", "tarea", "problema", "resultado", "apunte", "decision", "evento"]
 
 
 def find_proyecto_file(project_dir: Path) -> Optional[Path]:

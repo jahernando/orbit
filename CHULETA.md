@@ -8,13 +8,22 @@ orbit list   <proyecto> [--type TYPE...] [--date YYYY-MM o YYYY-MM-DD]
 orbit logday "<mensaje>" [--type TYPE] [--date YYYY-MM-DD]
 ```
 
-Tipos: `apunte` `idea` `referencia` `tarea` `problema` `resultado` `decision`
+Tipos: `apunte` `idea` `referencia` `tarea` `problema` `resultado` `decision` `evento`
 
 ## Tareas
 
 ```bash
 orbit tasks [--project P] [--type T] [--status S] [--priority P] [--date D]
 ```
+
+## Google Calendar
+
+```bash
+orbit calendar [--date YYYY-MM-DD] [--dry-run]
+```
+
+Requiere `credentials.json` en el directorio Orbit.
+En la descripción del evento en Google: `proyecto: nombre-proyecto`
 
 ## Actividad y revisión mensual
 

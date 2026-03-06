@@ -17,6 +17,7 @@ TYPE_EMOJI = {
     "resultado":  "📊",
     "apunte":     "📝",
     "decision":   "🔀",
+    "evento":     "📅",
 }
 
 PRIORITY_ORDER = ["alta", "media", "baja"]
