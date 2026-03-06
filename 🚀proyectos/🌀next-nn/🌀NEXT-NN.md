@@ -16,8 +16,6 @@ Descripción breve del objetivo.
 ¿Cuál es la pregunta que este proyecto intenta responder?
 
 ## ✅ Tareas
-- [ ] Ejemplo de tarea con fecha (2026-03-15)
-- [ ] Ejemplo de tarea sin fecha
 
 ## 📎 Referencias clave
 - [Información Evernote](./references/informacion-evernote.md)
