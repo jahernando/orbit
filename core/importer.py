@@ -227,6 +227,12 @@ def _parse_logbook(html: str) -> List[dict]:
             text = re.sub(r"\s+", " ", _strip_tags(li.group(1))).strip()
             if text and text not in ("-", "–"):
                 items.append(text)
+        # Fallback: if no list items, collect content from plain divs
+        if not items:
+            for div in re.finditer(r"<div[^>]*>(.*?)</div>", block, re.DOTALL):
+                text = re.sub(r"\s+", " ", _strip_tags(div.group(1))).strip()
+                if text and text not in ("-", "–") and not re.match(r"^\d{6}", text):
+                    items.append(text)
         hashes = re.findall(r'<en-media[^>]*\bhash="([a-f0-9]+)"', block, re.IGNORECASE)
         if items or hashes:
             entries.append({"date": iso, "items": items, "hashes": hashes})
