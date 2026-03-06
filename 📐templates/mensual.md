@@ -16,6 +16,11 @@
 2. [proyecto-2](../../🚀proyectos/proyecto-2/proyecto.md)
 3. [proyecto-3](../../🚀proyectos/proyecto-3/proyecto.md)
 
+## 📅 Tareas próximas (30 días)
+
+<!-- orbit:upcoming:start -->
+<!-- orbit:upcoming:end -->
+
 ## 📊 Actividad del mes
 
 <!-- orbit:monthly:start -->

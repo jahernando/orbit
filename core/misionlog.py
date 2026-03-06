@@ -58,8 +58,11 @@ def run_day(date_str: Optional[str], copy: Optional[str], force: bool, focus: li
         content = tpl.read_text().replace("YYYY-MM-DD", target.isoformat())
 
     rc = _write(dest, content, copy, force)
-    if rc == 0 and focus:
-        _inject_focus_projects(dest, focus[:1], "## 🎯 Proyecto en foco")
+    if rc == 0:
+        if focus:
+            _inject_focus_projects(dest, focus[:1], "## 🎯 Proyecto en foco")
+        upcoming = _collect_upcoming_tasks(7)
+        _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
     return rc
 
 
@@ -120,8 +123,11 @@ def run_week(date_str: Optional[str], copy: Optional[str], force: bool, focus: l
         content = "\n".join(lines)
 
     rc = _write(dest, content, copy, force)
-    if rc == 0 and focus:
-        _inject_focus_projects(dest, focus[:2], "## 🎯 Proyectos en foco")
+    if rc == 0:
+        if focus:
+            _inject_focus_projects(dest, focus[:2], "## 🎯 Proyectos en foco")
+        upcoming = _collect_upcoming_tasks(15)
+        _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
     return rc
 
 
@@ -159,8 +165,11 @@ def run_month(date_str: Optional[str], copy: Optional[str], force: bool, focus: 
                    .replace("YYYY-MM", month_str))
 
     rc = _write(dest, content, copy, force)
-    if rc == 0 and focus:
-        _inject_focus_projects(dest, focus[:3], "## 🎯 Proyectos en foco")
+    if rc == 0:
+        if focus:
+            _inject_focus_projects(dest, focus[:3], "## 🎯 Proyectos en foco")
+        upcoming = _collect_upcoming_tasks(30)
+        _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
     return rc
 
 
@@ -242,8 +251,10 @@ def _inject_block(dest: Path, block: str, start_marker: str, end_marker: str) ->
     dest.write_text(text)
 
 
-_TOMATO_START = "<!-- orbit:tomato:start -->"
-_TOMATO_END   = "<!-- orbit:tomato:end -->"
+_TOMATO_START    = "<!-- orbit:tomato:start -->"
+_TOMATO_END      = "<!-- orbit:tomato:end -->"
+_UPCOMING_START  = "<!-- orbit:upcoming:start -->"
+_UPCOMING_END    = "<!-- orbit:upcoming:end -->"
 
 
 def _parse_focus_projects(file_path: Path, heading: str = "## 🎯") -> list:
@@ -334,6 +345,52 @@ def _inject_focus_projects(dest: Path, names: list, heading: str) -> None:
     dest.write_text("\n".join(new_lines) + "\n")
     for dir_name, _ in resolved:
         print(f"  🎯 Foco: {dir_name}")
+
+
+def _collect_upcoming_tasks(horizon_days: int) -> list:
+    """Return tasks due within horizon_days from today, including overdue, sorted by date."""
+    today = date.today()
+    horizon = today + timedelta(days=horizon_days)
+    results = []
+    if not PROJECTS_DIR.exists():
+        return results
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path or not proyecto_path.exists():
+            continue
+        meta = load_project_meta(proyecto_path)
+        if "completado" in meta.get("estado_raw", ""):
+            continue
+        for task in meta["tasks"]:
+            if not task["due"]:
+                continue
+            try:
+                due_date = date.fromisoformat(task["due"])
+            except ValueError:
+                continue
+            if due_date <= horizon:
+                results.append({
+                    "due_date": due_date,
+                    "project": project_dir.name,
+                    "tipo": meta["tipo"],
+                    "description": task["description"],
+                    "overdue": due_date < today,
+                })
+    results.sort(key=lambda x: x["due_date"])
+    return results
+
+
+def _format_upcoming_tasks(tasks: list) -> str:
+    """Format upcoming tasks as a markdown list."""
+    if not tasks:
+        return "_Sin tareas con vencimiento próximo._\n"
+    lines = []
+    for t in tasks:
+        marker = "⚠️" if t["overdue"] else "[ ]"
+        lines.append(f"- {marker} {t['due_date'].isoformat()}  {t['project']} — {t['description']}")
+    return "\n".join(lines) + "\n"
 
 
 def _collect_tasks_due(start: date, end: date) -> list:

@@ -3,6 +3,11 @@
 ## 🎯 Proyecto en foco
 - [nombre-proyecto](../../🚀proyectos/nombre-proyecto/proyecto.md)
 
+## 📅 Tareas próximas (7 días)
+
+<!-- orbit:upcoming:start -->
+<!-- orbit:upcoming:end -->
+
 ## ✅ Tareas del día
 - [ ] Tarea 1
 - [ ] Tarea 2
