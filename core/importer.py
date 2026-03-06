@@ -28,6 +28,11 @@ class _MD(HTMLParser):
         self._link_href:  str       = ""
         self._link_buf:   List[str] = []
         self._list_depth: int       = 0
+        # table state
+        self._table_rows: List[List[str]] = []
+        self._row_cells:  List[str]       = []
+        self._cur_cell:   Optional[List[str]] = None
+        self._saved_out:  Optional[List[str]] = None
 
     def handle_starttag(self, tag, attrs):
         if self._skip or tag in ("en-media", "en-todo"):
@@ -54,6 +59,14 @@ class _MD(HTMLParser):
             self._out.append("\n")
         elif tag == "hr":
             self._out.append("\n---\n")
+        elif tag == "table":
+            self._table_rows = []
+        elif tag == "tr":
+            self._row_cells = []
+        elif tag in ("td", "th"):
+            self._cur_cell = []
+            self._saved_out = self._out
+            self._out = self._cur_cell
 
     def handle_endtag(self, tag):
         if self._skip:
@@ -80,6 +93,24 @@ class _MD(HTMLParser):
             self._out.append("*")
         elif tag == "div":
             self._out.append("\n")
+        elif tag in ("td", "th"):
+            if self._cur_cell is not None:
+                cell_text = "".join(self._cur_cell).strip().replace("\n", " ")
+                self._row_cells.append(cell_text)
+                self._out = self._saved_out
+                self._cur_cell = None
+        elif tag == "tr":
+            if self._row_cells:
+                self._table_rows.append(self._row_cells[:])
+        elif tag == "table":
+            if self._table_rows:
+                self._out.append("\n")
+                for i, row in enumerate(self._table_rows):
+                    cells = [c.replace("|", "\\|") for c in row]
+                    self._out.append("| " + " | ".join(cells) + " |\n")
+                    if i == 0:
+                        self._out.append("| " + " | ".join(["---"] * len(row)) + " |\n")
+                self._out.append("\n")
 
     def handle_data(self, data):
         if self._skip:
