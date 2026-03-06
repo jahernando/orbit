@@ -12,6 +12,7 @@ from core.monthly import run_monthly
 from core.misionlog import run_day, run_week, run_month
 from core.project import run_project
 from core.importer import run_import
+from core.update import run_update
 
 
 def cmd_log(args):
@@ -58,6 +59,10 @@ def cmd_import(args):
 
 def cmd_project(args):
     return run_project(name=args.name, tipo=args.type, prioridad=args.priority)
+
+
+def cmd_update(args):
+    return run_update(project=args.project, status=args.status, priority=args.priority)
 
 
 def cmd_day(args):
@@ -135,6 +140,12 @@ def main():
     imp_p.add_argument("--file", required=True, help="Path to the .enex file")
     imp_p.add_argument("--project", required=True, help="Target project (partial name match)")
 
+    # --- update ---
+    upd_p = subparsers.add_parser("update", help="Set status and/or priority of a project")
+    upd_p.add_argument("project", help="Project name (partial match)")
+    upd_p.add_argument("--status", default=None, help="New status: inicial, en marcha, parado, esperando, durmiendo, completado")
+    upd_p.add_argument("--priority", default=None, help="New priority: alta, media, baja")
+
     # --- project ---
     proj_p = subparsers.add_parser("project", help="Create a new project from template")
     proj_p.add_argument("--name", required=True, help="Project name (e.g. NEXT-GALA)")
@@ -177,7 +188,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "import":
+    if args.command == "update":
+        sys.exit(cmd_update(args))
+    elif args.command == "import":
         sys.exit(cmd_import(args))
     elif args.command == "project":
         sys.exit(cmd_project(args))
