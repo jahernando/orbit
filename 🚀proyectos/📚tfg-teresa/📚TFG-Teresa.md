@@ -1,4 +1,4 @@
-# 📚tfg26-teresa
+# 📚tfg-teresa
 
 ## 🏷️ Tipo
 📚 Docencia
@@ -28,4 +28,4 @@ Descripción breve del objetivo.
 -
 
 ## 📓 Logbook
-[Ver logbook completo](./📓TFG26-Teresa.md)
+[Ver logbook completo](./📓TFG-Teresa.md)

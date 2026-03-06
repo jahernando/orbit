@@ -1,4 +1,4 @@
-# Logbook — 📚tfg26-teresa
+# Logbook — 📚tfg-teresa
 
 <!-- Tipos: #idea #referencia #tarea #problema #resultado #apunte #decision -->
 
