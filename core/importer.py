@@ -352,7 +352,7 @@ def run_import(enex_path: str, project: str) -> int:
         if any(k in key for k in LOGBOOK_KEYS):
             logbook_entries = _parse_logbook(sec_html)
         elif any(k in key for k in REFERENCE_KEYS):
-            ref_links = _parse_references(sec_html)
+            ref_links += _parse_references(sec_html)
         elif any(k in key for k in TASKS_KEYS):
             task_items = _parse_tasks(sec_html)  # old --en-checked format
         else:
@@ -395,6 +395,9 @@ def run_import(enex_path: str, project: str) -> int:
             print(f"✓ {n} tarea(s) añadidas a {proyecto_path.name}")
 
     # 3 — References → ## 📎 Referencias clave in {emoji}name.md
+    # deduplicate across multiple reference sections
+    seen_refs: set = set()
+    ref_links = [r for r in ref_links if not (r in seen_refs or seen_refs.add(r))]
     if ref_links:
         proyecto_path = find_proyecto_file(project_dir)
         if proyecto_path and proyecto_path.exists():
