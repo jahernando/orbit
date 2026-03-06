@@ -46,11 +46,11 @@ def parse_date_range(
 
     if desde and not hasta:
         # Single value: full month or single day
-        return parse_start(desde), parse_end(desde)
+        return parse_start(desde), min(parse_end(desde), today)
     if desde or hasta:
         return (
             parse_start(desde) if desde else date(today.year, today.month, 1),
-            parse_end(hasta) if hasta else today,
+            min(parse_end(hasta), today) if hasta else today,
         )
     # Default: current month
     return date(today.year, today.month, 1), today
@@ -66,6 +66,7 @@ def get_logbook_activity(
     if not logbook_path.exists():
         return None, counts
 
+    today = date.today()
     for line in logbook_path.read_text().splitlines():
         line = line.strip()
         if len(line) < 10 or not line[:4].isdigit() or line[4] != "-":
@@ -74,6 +75,9 @@ def get_logbook_activity(
             entry_date = date.fromisoformat(line[:10])
         except ValueError:
             continue
+
+        if entry_date > today:
+            continue  # ignore future-dated entries
 
         if last_date is None or entry_date > last_date:
             last_date = entry_date

@@ -59,6 +59,16 @@ def init_logbook(logbook_path: Path, project_name: str) -> None:
 
 
 def add_entry(project: str, message: str, tipo: str, path: Optional[str], fecha: Optional[str]) -> int:
+    if fecha:
+        try:
+            entry_date = date.fromisoformat(fecha)
+        except ValueError:
+            print(f"Error: fecha '{fecha}' no es válida. Usa formato YYYY-MM-DD")
+            return 1
+        if entry_date > date.today():
+            print(f"Error: la fecha {fecha} es futura. Las entradas deben ser de hoy o anteriores")
+            return 1
+
     project_dir = find_project(project)
     if not project_dir:
         return 1
