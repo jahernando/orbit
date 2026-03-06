@@ -109,13 +109,16 @@ def has_activity_in(logbook_path: Optional[Path], start: date, end: date) -> boo
 def compute_real_status(nominal_key: str, has_activity_30: bool, has_activity_60: bool) -> str:
     """Compute real status based on activity in last 30 and 60 days.
 
+    - completado / esperando → always unchanged
+    - inicial → en marcha if activity in 30d, else stays inicial (not started ≠ sleeping)
     - No activity in 60d → durmiendo
     - No activity in 30d → parado
-    - Has recent activity → keep nominal status
-    - completado / esperando → always unchanged
+    - Activity in 30d → en marcha
     """
     if nominal_key in ("completado", "esperando"):
         return nominal_key
+    if nominal_key == "inicial":
+        return "en marcha" if has_activity_30 else "inicial"
     if not has_activity_60:
         return "durmiendo"
     if not has_activity_30:
@@ -124,16 +127,19 @@ def compute_real_status(nominal_key: str, has_activity_30: bool, has_activity_60
 
 
 def compute_real_priority(
-    priority_key: str, has_activity: bool, period_days: int
+    priority_key: str, has_activity: bool, period_days: int, is_passive: bool = False
 ) -> Optional[str]:
-    """Return new priority key, or None if project should disappear."""
-    if has_activity or period_days < 30:
+    """Return new priority key, or None if project should be archived.
+
+    is_passive: if True (esperando, inicial), skip degradation.
+    """
+    if is_passive or has_activity or period_days < 30:
         return priority_key
     idx = PRIORITY_ORDER.index(priority_key) if priority_key in PRIORITY_ORDER else -1
     if idx == -1:
         return priority_key
     if idx + 1 >= len(PRIORITY_ORDER):
-        return None  # baja + no activity → disappears
+        return None  # baja + no activity → archived
     return PRIORITY_ORDER[idx + 1]
 
 
@@ -165,6 +171,7 @@ def run_activity(
 
     rows = []
     changes = []
+    archived = []
 
     for project_dir in sorted(PROJECTS_DIR.iterdir()):
         if not project_dir.is_dir():
@@ -198,10 +205,12 @@ def run_activity(
         has_activity_30 = has_activity_in(logbook_path, end - timedelta(days=30), end)
 
         real_status_key = compute_real_status(nominal_status_key, has_activity_30, has_activity_60)
-        real_priority_key = compute_real_priority(nominal_priority_key, has_activity_30, period_days)
+        is_passive = nominal_status_key in ("esperando", "inicial")
+        real_priority_key = compute_real_priority(nominal_priority_key, has_activity_30, period_days, is_passive)
 
         if real_priority_key is None:
-            continue  # disappears from listing
+            archived.append(project_dir.name)
+            continue
 
         status_changed = real_status_key != nominal_status_key
         priority_changed = real_priority_key != nominal_priority_key
@@ -264,6 +273,11 @@ def run_activity(
                 out += ["", f"  ✓ {len(changes)} proyecto(s) actualizado(s) en proyecto.md"]
             else:
                 out += ["", "  Ejecuta con --apply para aplicar estos cambios en proyecto.md"]
+
+    if archived:
+        out += ["", "─" * 40, f"ARCHIVADOS — 💤🔵 sin actividad ({len(archived)}):"]
+        for name in archived:
+            out.append(f"  {name}")
 
     text = "\n".join(out)
 

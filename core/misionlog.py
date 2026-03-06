@@ -2,8 +2,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from core.log import VALID_TYPES, find_logbook_file
-from core.tasks import TYPE_MAP
+from core.log import VALID_TYPES, find_logbook_file, find_proyecto_file
+from core.tasks import TYPE_MAP, load_project_meta
 
 PROJECTS_DIR   = Path(__file__).parent.parent / "🚀proyectos"
 MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
@@ -231,10 +231,55 @@ def _inject_block(dest: Path, block: str, start_marker: str, end_marker: str) ->
     dest.write_text(text)
 
 
+def _collect_tasks_due(start: date, end: date) -> list:
+    """Return list of {project, task} for tasks with due date in [start, end]."""
+    results = []
+    if not PROJECTS_DIR.exists():
+        return results
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path or not proyecto_path.exists():
+            continue
+        meta = load_project_meta(proyecto_path)
+        for task in meta["tasks"]:
+            if task["due"]:
+                try:
+                    due_date = date.fromisoformat(task["due"])
+                except ValueError:
+                    continue
+                if start <= due_date <= end:
+                    results.append({"project": project_dir.name, "task": task})
+    return results
+
+
+def _type_summary(activity: list) -> str:
+    """Return a one-line summary of entry counts by type."""
+    from core.activity import TYPE_EMOJI
+    counts = {t: 0 for t in VALID_TYPES}
+    for proj in activity:
+        for e in proj["entries"]:
+            if e["tipo"]:
+                counts[e["tipo"]] += 1
+    parts = [f"{TYPE_EMOJI[t]} {counts[t]}" for t in VALID_TYPES if counts[t] > 0]
+    return "  ".join(parts) if parts else "Sin entradas"
+
+
 def run_dayreport(date_str: Optional[str], inject: bool) -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()
     activity = _collect_activity(target, target)
+    tasks_due = _collect_tasks_due(target, target)
+
     block = _format_report(activity, f"Actividad — {target.isoformat()}")
+
+    if tasks_due:
+        task_lines = [f"## ✅ Tareas vencidas hoy", ""]
+        for item in tasks_due:
+            task_lines.append(f"- **{item['project']}** — {item['task']['description']}")
+        task_lines.append("")
+        block += "\n" + "\n".join(task_lines)
+
     print(block)
 
     if not inject:
@@ -262,7 +307,21 @@ def run_weekreport(date_str: Optional[str], inject: bool) -> int:
     # cap end at today
     end = min(sun, date.today())
     activity = _collect_activity(mon, end)
+    tasks_due = _collect_tasks_due(mon, sun)
+
+    summary = _type_summary(activity)
     block = _format_report(activity, f"Actividad semana {wkey}  ({mon.isoformat()} — {sun.isoformat()})")
+
+    # Prepend type summary after the title
+    block = block.replace("\n\n", f"\n\n_{summary}_\n\n", 1)
+
+    if tasks_due:
+        task_lines = [f"## ✅ Tareas con vencimiento esta semana", ""]
+        for item in tasks_due:
+            task_lines.append(f"- **{item['project']}** — {item['task']['description']} ({item['task']['due']})")
+        task_lines.append("")
+        block += "\n" + "\n".join(task_lines)
+
     print(block)
 
     if not inject:

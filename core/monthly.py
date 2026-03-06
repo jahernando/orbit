@@ -9,7 +9,7 @@ from core.activity import (
     get_logbook_activity, has_activity_in,
 )
 from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file
-from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field
+from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field, load_project_meta
 
 MISSION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log" / "mensual"
 TEMPLATE_PATH = Path(__file__).parent.parent / "📐templates" / "mensual.md"
@@ -61,7 +61,8 @@ def build_table(start: date, end: date, apply: bool) -> tuple:
         has_activity_30 = has_activity_in(logbook_path, end - timedelta(days=30), end)
 
         real_status_key = compute_real_status(nominal_status_key, has_activity_30, has_activity_60)
-        real_priority_key = compute_real_priority(nominal_priority_key, has_activity_30, period_days)
+        is_passive = nominal_status_key in ("esperando", "inicial")
+        real_priority_key = compute_real_priority(nominal_priority_key, has_activity_30, period_days, is_passive)
 
         if real_priority_key is None:
             continue
@@ -163,6 +164,41 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int
     elif changes:
         print(f"  {len(changes)} cambio(s) propuesto(s) — ejecuta con --apply para aplicarlos")
 
+    # Collect tasks due this month
+    tasks_due = []
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path or not proyecto_path.exists():
+            continue
+        meta = load_project_meta(proyecto_path)
+        for task in meta["tasks"]:
+            if task["due"] and task["due"].startswith(month_str):
+                tasks_due.append({"project": project_dir.name, "task": task})
+
+    # Collect decisions logged this month
+    decisions = []
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        logbook_path = find_logbook_file(project_dir)
+        if not logbook_path or not logbook_path.exists():
+            continue
+        for line in logbook_path.read_text().splitlines():
+            stripped = line.strip()
+            if len(stripped) < 10 or not stripped[:4].isdigit() or stripped[4] != "-":
+                continue
+            try:
+                entry_date = date.fromisoformat(stripped[:10])
+            except ValueError:
+                continue
+            if not (start <= entry_date <= end):
+                continue
+            if stripped.endswith("#decision"):
+                content = stripped[10:].strip().removesuffix("#decision").strip()
+                decisions.append(f"  - **{project_dir.name}** — {content}")
+
     # Optional terminal/file output
     type_header = " | ".join(TYPE_EMOJI[t] for t in VALID_TYPES)
     out = [
@@ -172,6 +208,15 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int
         f"| Proyecto | T | Nominal | Real | Última | {type_header} |",
         "|---|---|---|---|---|" + "|".join(["---"] * len(VALID_TYPES)) + "|",
     ] + table_lines[2:]  # skip header/separator already added
+
+    if tasks_due:
+        out += ["", "── TAREAS DEL MES ──────────────────────────────"]
+        for item in tasks_due:
+            out.append(f"  [ ] {item['task']['due']}  {item['project']} — {item['task']['description']}")
+
+    if decisions:
+        out += ["", "── DECISIONES ──────────────────────────────────"]
+        out += decisions
 
     text = "\n".join(out)
     if output:
