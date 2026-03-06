@@ -79,10 +79,9 @@ def get_logbook_activity(
         if entry_date > today:
             continue  # ignore future-dated entries
 
-        if entry_date <= end and (last_date is None or entry_date > last_date):
-            last_date = entry_date
-
         if start <= entry_date <= end:
+            if last_date is None or entry_date > last_date:
+                last_date = entry_date
             for tipo in VALID_TYPES:
                 if line.endswith(f"#{tipo}"):
                     counts[tipo] += 1
