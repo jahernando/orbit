@@ -10,6 +10,7 @@ from core.activity import (
 )
 from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file
 from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field, load_project_meta
+from core.misionlog import _parse_focus_projects, _check_focus_activity, _format_tomato_block, _TOMATO_START, _TOMATO_END, _inject_block
 
 MISSION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log" / "mensual"
 TEMPLATE_PATH = Path(__file__).parent.parent / "📐templates" / "mensual.md"
@@ -151,6 +152,14 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int
     # Inject table into monthly file
     inject_table(monthly_path, table_lines)
     print(f"✓ Table injected into {monthly_path}")
+
+    # Inject tomato block
+    focus = _parse_focus_projects(monthly_path, "## 🎯 Proyectos en foco")
+    tomato = _check_focus_activity(focus, start, end)
+    tomato_block = _format_tomato_block(tomato, month_str)
+    if tomato_block:
+        _inject_block(monthly_path, tomato_block, _TOMATO_START, _TOMATO_END)
+        print(f"✓ Valoración 🍅 inyectada en {monthly_path}")
 
     # Apply status/priority changes if requested
     if apply and changes:

@@ -1,9 +1,11 @@
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 from core.log import VALID_TYPES, find_logbook_file, find_proyecto_file
 from core.tasks import TYPE_MAP, load_project_meta
+from core.activity import has_activity_in
 
 PROJECTS_DIR   = Path(__file__).parent.parent / "🚀proyectos"
 MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
@@ -231,6 +233,54 @@ def _inject_block(dest: Path, block: str, start_marker: str, end_marker: str) ->
     dest.write_text(text)
 
 
+_TOMATO_START = "<!-- orbit:tomato:start -->"
+_TOMATO_END   = "<!-- orbit:tomato:end -->"
+
+
+def _parse_focus_projects(file_path: Path, heading: str = "## 🎯") -> list:
+    """Extract project names from markdown links under a 🎯 heading."""
+    if not file_path or not file_path.exists():
+        return []
+    text = file_path.read_text()
+    match = re.search(rf"{re.escape(heading)}.*?\n(.*?)(?=^##|\Z)", text, re.MULTILINE | re.DOTALL)
+    if not match:
+        return []
+    return re.findall(r'\[([^\]]+)\]', match.group(1))
+
+
+def _check_focus_activity(project_names: list, start: date, end: date) -> dict:
+    """Return {name: has_activity} for each focus project."""
+    results = {}
+    for name in project_names:
+        matched = None
+        for project_dir in sorted(PROJECTS_DIR.iterdir()):
+            if project_dir.is_dir() and name.lower() in project_dir.name.lower():
+                matched = project_dir
+                break
+        logbook = find_logbook_file(matched) if matched else None
+        results[name] = has_activity_in(logbook, start, end)
+    return results
+
+
+def _format_tomato_block(results: dict, label: str) -> str:
+    """Format the 🍅 evaluation block."""
+    if not results:
+        return ""
+    active = sum(1 for v in results.values() if v)
+    total = len(results)
+    lines = []
+    for name, has_act in results.items():
+        lines.append(f"- {'🍅' if has_act else '⬜'} {name}")
+    if active == total:
+        verdict = "🍅 " * total + f"Fructífero"
+    elif active > 0:
+        verdict = f"🍅 ×{active}/{total} Parcialmente fructífero"
+    else:
+        verdict = "⬜ Sin actividad en proyectos en foco"
+    lines.append(f"\n**{verdict.strip()}**")
+    return "\n".join(lines) + "\n"
+
+
 def _collect_tasks_due(start: date, end: date) -> list:
     """Return list of {project, task} for tasks with due date in [start, end]."""
     results = []
@@ -268,24 +318,30 @@ def _type_summary(activity: list) -> str:
 
 def run_dayreport(date_str: Optional[str], inject: bool) -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()
+    dest = DIARIO_DIR / f"{target.isoformat()}.md"
+
     activity = _collect_activity(target, target)
     tasks_due = _collect_tasks_due(target, target)
+    focus = _parse_focus_projects(dest, "## 🎯 Proyecto en foco")
+    tomato = _check_focus_activity(focus, target, target)
+    tomato_block = _format_tomato_block(tomato, target.isoformat())
 
     block = _format_report(activity, f"Actividad — {target.isoformat()}")
 
     if tasks_due:
-        task_lines = [f"## ✅ Tareas vencidas hoy", ""]
+        task_lines = ["## ✅ Tareas vencidas hoy", ""]
         for item in tasks_due:
             task_lines.append(f"- **{item['project']}** — {item['task']['description']}")
         task_lines.append("")
         block += "\n" + "\n".join(task_lines)
 
+    if tomato_block:
+        print(tomato_block)
     print(block)
 
     if not inject:
         return 0
 
-    dest = DIARIO_DIR / f"{target.isoformat()}.md"
     if not dest.exists():
         tpl = TEMPLATES_DIR / "diario.md"
         if not tpl.exists():
@@ -296,6 +352,8 @@ def run_dayreport(date_str: Optional[str], inject: bool) -> int:
         print(f"✓ Creado {dest}")
 
     _inject_block(dest, block, _DR_START, _DR_END)
+    if tomato_block:
+        _inject_block(dest, tomato_block, _TOMATO_START, _TOMATO_END)
     print(f"✓ Inyectado en {dest}")
     return 0
 
@@ -304,34 +362,39 @@ def run_weekreport(date_str: Optional[str], inject: bool) -> int:
     d = date.fromisoformat(date_str) if date_str else date.today()
     wkey = _week_key(d)
     mon, sun = _week_bounds(d)
-    # cap end at today
     end = min(sun, date.today())
+    dest = SEMANAL_DIR / f"{wkey}.md"
+
     activity = _collect_activity(mon, end)
     tasks_due = _collect_tasks_due(mon, sun)
+    focus = _parse_focus_projects(dest, "## 🎯 Proyectos en foco")
+    tomato = _check_focus_activity(focus, mon, end)
+    tomato_block = _format_tomato_block(tomato, f"semana {wkey}")
 
     summary = _type_summary(activity)
     block = _format_report(activity, f"Actividad semana {wkey}  ({mon.isoformat()} — {sun.isoformat()})")
-
-    # Prepend type summary after the title
     block = block.replace("\n\n", f"\n\n_{summary}_\n\n", 1)
 
     if tasks_due:
-        task_lines = [f"## ✅ Tareas con vencimiento esta semana", ""]
+        task_lines = ["## ✅ Tareas con vencimiento esta semana", ""]
         for item in tasks_due:
             task_lines.append(f"- **{item['project']}** — {item['task']['description']} ({item['task']['due']})")
         task_lines.append("")
         block += "\n" + "\n".join(task_lines)
 
+    if tomato_block:
+        print(tomato_block)
     print(block)
 
     if not inject:
         return 0
 
-    dest = SEMANAL_DIR / f"{wkey}.md"
     if not dest.exists():
         print(f"Error: no existe {dest}. Crea el fichero semanal primero con 'orbit week'.")
         return 1
 
     _inject_block(dest, block, _WR_START, _WR_END)
+    if tomato_block:
+        _inject_block(dest, tomato_block, _TOMATO_START, _TOMATO_END)
     print(f"✓ Inyectado en {dest}")
     return 0

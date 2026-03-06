@@ -10,6 +10,12 @@
 | 🟡 Media  |            |            |            |
 | 🔵 Baja   |            |            |            |
 
+## 🎯 Proyectos en foco
+
+1. [proyecto-1](../../🚀proyectos/proyecto-1/proyecto.md)
+2. [proyecto-2](../../🚀proyectos/proyecto-2/proyecto.md)
+3. [proyecto-3](../../🚀proyectos/proyecto-3/proyecto.md)
+
 ## 📊 Actividad del mes
 
 <!-- orbit:monthly:start -->
@@ -18,6 +24,9 @@
 <!-- orbit:monthly:end -->
 
 ## 🍅 Valoración de proyectos
+
+<!-- orbit:tomato:start -->
+<!-- orbit:tomato:end -->
 
 ## 💡 Ideas nuevas
 -
