@@ -11,6 +11,7 @@ from core.activity import run_activity
 from core.monthly import run_monthly
 from core.misionlog import run_day, run_week, run_month
 from core.project import run_project
+from core.importer import run_import
 
 
 def cmd_log(args):
@@ -49,6 +50,10 @@ def cmd_monthly(args):
         apply=args.apply,
         output=args.output,
     )
+
+
+def cmd_import(args):
+    return run_import(enex_path=args.file, project=args.project)
 
 
 def cmd_project(args):
@@ -125,6 +130,11 @@ def main():
     tasks_p.add_argument("--date", default=None, help="Filter tasks by due date: YYYY-MM-DD or YYYY-MM")
     tasks_p.add_argument("--output", default=None, help="Save output to file instead of terminal")
 
+    # --- import ---
+    imp_p = subparsers.add_parser("import", help="Import an Evernote .enex note into a project")
+    imp_p.add_argument("--file", required=True, help="Path to the .enex file")
+    imp_p.add_argument("--project", required=True, help="Target project (partial name match)")
+
     # --- project ---
     proj_p = subparsers.add_parser("project", help="Create a new project from template")
     proj_p.add_argument("--name", required=True, help="Project name (e.g. NEXT-GALA)")
@@ -167,7 +177,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "project":
+    if args.command == "import":
+        sys.exit(cmd_import(args))
+    elif args.command == "project":
         sys.exit(cmd_project(args))
     elif args.command == "day":
         sys.exit(cmd_day(args))
