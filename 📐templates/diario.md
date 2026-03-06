@@ -1,0 +1,10 @@
+# Diario — YYYY-MM-DD
+
+## 🎯 Proyecto en foco
+- [nombre-proyecto](../../🚀proyectos/nombre-proyecto/proyecto.md)
+
+## ✅ Tareas del día
+- [ ] Tarea 1
+- [ ] Tarea 2
+
+## 📝 Notas

@@ -1,0 +1,253 @@
+import calendar
+import unicodedata
+from datetime import date
+from pathlib import Path
+from typing import Optional, Tuple
+
+from core.log import PROJECTS_DIR, VALID_TYPES
+from core.tasks import (
+    PRIORITY_MAP, STATUS_MAP, TYPE_MAP,
+    normalize, read_proyecto_field,
+)
+
+TYPE_EMOJI = {
+    "idea":       "💡",
+    "referencia": "📎",
+    "tarea":      "✅",
+    "problema":   "⚠️",
+    "resultado":  "📊",
+    "apunte":     "📝",
+    "decision":   "🔀",
+}
+
+PRIORITY_ORDER = ["alta", "media", "baja"]
+
+# States that are intentionally inactive — no status change, only priority may degrade
+PASSIVE_STATES = {"esperando", "durmiendo"}
+
+
+def parse_date_range(
+    desde: Optional[str],
+    hasta: Optional[str],
+) -> Tuple[date, date]:
+    today = date.today()
+
+    def parse_start(s: str) -> date:
+        if len(s) == 7:
+            y, m = int(s[:4]), int(s[5:7])
+            return date(y, m, 1)
+        return date.fromisoformat(s)
+
+    def parse_end(s: str) -> date:
+        if len(s) == 7:
+            y, m = int(s[:4]), int(s[5:7])
+            return date(y, m, calendar.monthrange(y, m)[1])
+        return date.fromisoformat(s)
+
+    if desde and not hasta:
+        # Single value: full month or single day
+        return parse_start(desde), parse_end(desde)
+    if desde or hasta:
+        return (
+            parse_start(desde) if desde else date(today.year, today.month, 1),
+            parse_end(hasta) if hasta else today,
+        )
+    # Default: current month
+    return date(today.year, today.month, 1), today
+
+
+def get_logbook_activity(
+    logbook_path: Path, start: date, end: date
+) -> Tuple[Optional[str], dict]:
+    """Return (last_entry_date_str, counts_by_type) for the given period."""
+    counts = {t: 0 for t in VALID_TYPES}
+    last_date = None
+
+    if not logbook_path.exists():
+        return None, counts
+
+    for line in logbook_path.read_text().splitlines():
+        line = line.strip()
+        if len(line) < 10 or not line[:4].isdigit() or line[4] != "-":
+            continue
+        try:
+            entry_date = date.fromisoformat(line[:10])
+        except ValueError:
+            continue
+
+        if last_date is None or entry_date > last_date:
+            last_date = entry_date
+
+        if start <= entry_date <= end:
+            for tipo in VALID_TYPES:
+                if line.endswith(f"#{tipo}"):
+                    counts[tipo] += 1
+                    break
+
+    return last_date.isoformat() if last_date else None, counts
+
+
+def compute_real_status(nominal_key: str, has_activity: bool) -> str:
+    if nominal_key in PASSIVE_STATES or nominal_key == "completado":
+        return nominal_key
+    if has_activity:
+        if nominal_key in ("inicial", "parado"):
+            return "en marcha"
+        return nominal_key
+    else:
+        if nominal_key == "en marcha":
+            return "parado"
+        if nominal_key == "parado":
+            return "durmiendo"
+        return nominal_key
+
+
+def compute_real_priority(
+    priority_key: str, has_activity: bool, period_days: int
+) -> Optional[str]:
+    """Return new priority key, or None if project should disappear."""
+    if has_activity or period_days < 30:
+        return priority_key
+    idx = PRIORITY_ORDER.index(priority_key) if priority_key in PRIORITY_ORDER else -1
+    if idx == -1:
+        return priority_key
+    if idx + 1 >= len(PRIORITY_ORDER):
+        return None  # baja + no activity → disappears
+    return PRIORITY_ORDER[idx + 1]
+
+
+def update_proyecto_field(proyecto_path: Path, field: str, new_value: str) -> None:
+    lines = proyecto_path.read_text().splitlines()
+    for i, line in enumerate(lines):
+        if line.strip().lower().startswith("## ") and field in normalize(line):
+            if i + 1 < len(lines):
+                lines[i + 1] = new_value
+                break
+    proyecto_path.write_text("\n".join(lines) + "\n")
+
+
+def run_activity(
+    project: Optional[str],
+    tipo: Optional[str],
+    prioridad: Optional[str],
+    desde: Optional[str],
+    hasta: Optional[str],
+    apply: bool,
+    output: Optional[str],
+) -> int:
+    if not PROJECTS_DIR.exists():
+        print(f"Error: projects directory not found at {PROJECTS_DIR}")
+        return 1
+
+    start, end = parse_date_range(desde, hasta)
+    period_days = (end - start).days + 1
+
+    rows = []
+    changes = []
+
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        if project and project.lower() not in project_dir.name.lower():
+            continue
+
+        proyecto_path = project_dir / "proyecto.md"
+        if not proyecto_path.exists():
+            continue
+
+        lines = proyecto_path.read_text().splitlines()
+        tipo_raw = normalize(read_proyecto_field(lines, "tipo") or "")
+        estado_raw = normalize(read_proyecto_field(lines, "estado") or "")
+        prioridad_raw = normalize(read_proyecto_field(lines, "prioridad") or "")
+        tipo_emoji = next((TYPE_MAP[k] for k in TYPE_MAP if k in tipo_raw), "")
+
+        if tipo and normalize(tipo) not in tipo_raw:
+            continue
+        if prioridad and normalize(prioridad) not in prioridad_raw:
+            continue
+        if "completado" in estado_raw:
+            continue
+
+        nominal_status_key = next((k for k in STATUS_MAP if normalize(k) in estado_raw), "")
+        nominal_priority_key = next((k for k in PRIORITY_MAP if normalize(k) in prioridad_raw), "")
+
+        last_entry, counts = get_logbook_activity(project_dir / "logbook.md", start, end)
+        has_activity = sum(counts.values()) > 0
+
+        real_status_key = compute_real_status(nominal_status_key, has_activity)
+        real_priority_key = compute_real_priority(nominal_priority_key, has_activity, period_days)
+
+        if real_priority_key is None:
+            continue  # disappears from listing
+
+        status_changed = real_status_key != nominal_status_key
+        priority_changed = real_priority_key != nominal_priority_key
+
+        if status_changed or priority_changed:
+            changes.append({
+                "name": project_dir.name,
+                "proyecto_path": proyecto_path,
+                "real_status_key": real_status_key,
+                "real_priority_key": real_priority_key,
+            })
+
+        rows.append({
+            "name": project_dir.name,
+            "tipo": tipo_emoji,
+            "nominal_status": STATUS_MAP.get(nominal_status_key, ""),
+            "real_status": STATUS_MAP.get(real_status_key, ""),
+            "nominal_priority": PRIORITY_MAP.get(nominal_priority_key, ""),
+            "real_priority": PRIORITY_MAP.get(real_priority_key, ""),
+            "status_changed": status_changed,
+            "priority_changed": priority_changed,
+            "last_entry": last_entry or "—",
+            "counts": counts,
+        })
+
+    # Build output lines
+    out = [
+        f"ACTIVIDAD — {start.isoformat()} → {end.isoformat()}  ({period_days}d)",
+        "═" * 62,
+        "",
+    ]
+
+    if not rows:
+        out.append("No se encontraron proyectos con los filtros indicados.")
+    else:
+        type_header = "  ".join(TYPE_EMOJI[t] for t in VALID_TYPES)
+        out.append(f"{'Proyecto':<24} {'T':<3} {'Nominal':<6} {'Real':<6} {'Última':<12}  {type_header}")
+        out.append("─" * 72)
+
+        for r in rows:
+            nom = f"{r['nominal_status']}{r['nominal_priority']}"
+            real = f"{r['real_status']}{r['real_priority']}"
+            flag = " ⚠️" if r["status_changed"] or r["priority_changed"] else ""
+            counts_str = "   ".join(f"{r['counts'][t]:>1}" for t in VALID_TYPES)
+            out.append(f"{r['name']:<24} {r['tipo']:<3} {nom:<6} {real:<6} {r['last_entry']:<12}  {counts_str}{flag}")
+
+        if changes:
+            out += ["", "─" * 40, "CAMBIOS PROPUESTOS:"]
+            for c in changes:
+                s = f"{STATUS_MAP[c['real_status_key']]} {c['real_status_key']}"
+                p = f"{PRIORITY_MAP[c['real_priority_key']]} {c['real_priority_key']}"
+                out.append(f"  {c['name']}: estado → {s}   prioridad → {p}")
+
+            if apply:
+                for c in changes:
+                    sk = c["real_status_key"]
+                    pk = c["real_priority_key"]
+                    update_proyecto_field(c["proyecto_path"], "estado", f"{STATUS_MAP[sk]} {sk.capitalize()}")
+                    update_proyecto_field(c["proyecto_path"], "prioridad", f"{PRIORITY_MAP[pk]} {pk.capitalize()}")
+                out += ["", f"  ✓ {len(changes)} proyecto(s) actualizado(s) en proyecto.md"]
+            else:
+                out += ["", "  Ejecuta con --apply para aplicar estos cambios en proyecto.md"]
+
+    text = "\n".join(out)
+
+    if output:
+        Path(output).write_text(text + "\n")
+        print(f"✓ Saved to {output}")
+    else:
+        print(text)
+
+    return 0

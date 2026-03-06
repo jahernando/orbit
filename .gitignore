@@ -1,0 +1,12 @@
+# Binarios y resultados locales
+**/references/
+**/results/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+
+# macOS
+.DS_Store
