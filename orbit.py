@@ -47,6 +47,9 @@ def cmd_search(args):
         projects=args.project,
         tag=args.tag,
         date_filter=args.date,
+        tipo=args.type,
+        estado=args.status,
+        prioridad=args.priority,
         output=args.output,
         open_after=args.open,
         editor=args.editor,
@@ -201,6 +204,9 @@ def main():
     search_p.add_argument("--tag", default=None, choices=VALID_TYPES, metavar="TAG",
                           help=f"Filter logbook entries by tag: {', '.join(VALID_TYPES)}")
     search_p.add_argument("--date", default=None, help="Filter by date: YYYY-MM-DD or YYYY-MM")
+    search_p.add_argument("--type", default=None, help="Filter by project type (investigacion, docencia, ...)")
+    search_p.add_argument("--status", default=None, help="Filter by project status (en marcha, parado, ...)")
+    search_p.add_argument("--priority", default=None, help="Filter by project priority (alta, media, baja)")
     search_p.add_argument("--output", default=None, help="Save output to file")
     search_p.add_argument("--open", action="store_true",
                           help="Open results in editor (saves to mision-log/search.md)")

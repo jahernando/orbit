@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.log import PROJECTS_DIR, find_project, find_logbook_file, find_proyecto_file
-from core.tasks import load_project_meta
+from core.tasks import load_project_meta, normalize
 from core.open import open_file
 
 MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
@@ -66,6 +66,9 @@ def run_search(
     projects: Optional[list],
     tag: Optional[str],
     date_filter: Optional[str],
+    tipo: Optional[str],
+    estado: Optional[str],
+    prioridad: Optional[str],
     output: Optional[str],
     open_after: bool,
     editor: str,
@@ -99,6 +102,14 @@ def run_search(
             continue
 
         meta = load_project_meta(proyecto_path)
+
+        # Project-level filters
+        if tipo and normalize(tipo) not in meta["tipo_raw"]:
+            continue
+        if estado and normalize(estado) not in meta["estado_raw"]:
+            continue
+        if prioridad and normalize(prioridad) not in meta["prioridad_raw"]:
+            continue
         project_hits = []
 
         # Search logbook
