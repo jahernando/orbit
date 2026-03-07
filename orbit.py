@@ -155,7 +155,7 @@ def cmd_report(args):
                          tipo=args.type, prioridad=args.priority,
                          output=args.output, open_after=args.open, editor=args.editor)
     elif args.period == "review":
-        return run_review(date_str=_d(args.date), inject=args.inject, apply=args.apply,
+        return run_review(date_str=_d(args.date), inject=False, apply=False,
                           output=args.output, open_after=args.open, editor=args.editor)
     return 1
 
@@ -343,8 +343,6 @@ def main():
     rrev_p = rep_sub.add_parser("review", help="Focus check + project health for a period")
     rrev_p.add_argument("--date", default=None,
                         help="YYYY-MM-DD (day), YYYY-Wnn (week) or YYYY-MM (month) — supports natural language")
-    rrev_p.add_argument("--inject", action="store_true", help="Inject review into the period note (🍅 Valoración)")
-    rrev_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md")
     rrev_p.add_argument("--output", default=None, help="Save output to file")
     rrev_p.add_argument("--open", action="store_true", help="Save to mision-log/review.md and open in editor")
     rrev_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")

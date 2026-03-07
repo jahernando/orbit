@@ -69,7 +69,7 @@ orbit report month  [--date D] [--inject] [--apply] [--output FILE] [--open] [--
 orbit report stats  [--date D] [--from D] [--to D]
                     [--project P] [--type T] [--priority P]
                     [--output FILE] [--open] [--editor E]
-orbit report review [--date D] [--inject] [--apply] [--output FILE] [--open] [--editor E]
+orbit report review [--date D] [--output FILE] [--open] [--editor E]
 ```
 
 `--date` acepta lenguaje natural: `today` · `yesterday` · `this week` · `last month` · `next friday` · `in 5 days` · `last friday of march` · y sus equivalentes en español.
