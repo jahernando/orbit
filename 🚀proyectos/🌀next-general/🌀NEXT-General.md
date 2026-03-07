@@ -21,5 +21,8 @@ Descripción breve del objetivo.
 ## 📊 Últimos resultados
 -
 
+
+## 📌 Decisiones
+-
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-General.md)

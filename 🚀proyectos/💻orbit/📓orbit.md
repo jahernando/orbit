@@ -41,3 +41,7 @@
 2026-03-07 Notificaciones en terminal al crear el diario: tareas vencidas y eventos del día #idea
 
 2026-03-07 Exportar informe mensual a PDF o HTML para compartir #idea
+
+2026-03-07 search command donde #resultado
+
+2026-03-07 open with editor (Typora - love-) #resultado

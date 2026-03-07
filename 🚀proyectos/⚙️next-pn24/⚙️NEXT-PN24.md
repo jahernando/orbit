@@ -20,5 +20,8 @@ Descripción breve del objetivo.
 ## 📊 Últimos resultados
 -
 
+
+## 📌 Decisiones
+-
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-PN24.md)

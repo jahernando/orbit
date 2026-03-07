@@ -17,5 +17,8 @@ CLI en Python para gestionar proyectos científicos y personales en markdown.
 ## 📊 Últimos resultados
 - Comandos implementados: log, list, tasks, activity, monthly
 
+
+## 📌 Decisiones
+-
 ## 📓 Logbook
 [Ver logbook completo](./📓orbit.md)

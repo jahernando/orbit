@@ -30,5 +30,8 @@ Descripción breve del objetivo.
 ## 📊 Últimos resultados
 -
 
+
+## 📌 Decisiones
+-
 ## 📓 Logbook
 [Ver logbook completo](./📓HK-Ana-Es.md)

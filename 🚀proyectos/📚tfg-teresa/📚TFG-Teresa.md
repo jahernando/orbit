@@ -15,5 +15,8 @@ Descripción breve del objetivo.
 ## 📊 Últimos resultados
 -
 
+
+## 📌 Decisiones
+-
 ## 📓 Logbook
 [Ver logbook completo](./📓TFG-Teresa.md)
