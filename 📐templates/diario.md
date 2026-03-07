@@ -8,14 +8,12 @@
 <!-- orbit:events:start -->
 <!-- orbit:events:end -->
 
-## 📅 Tareas próximas (7 días)
+## 🗓️ Tareas próximas (7 días)
 
 <!-- orbit:upcoming:start -->
 <!-- orbit:upcoming:end -->
 
 ## ✅ Tareas del día
-- [ ] Tarea 1
-- [ ] Tarea 2
 
 ## 📝 Notas
 
