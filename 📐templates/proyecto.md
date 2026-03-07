@@ -1,19 +1,11 @@
 # [Nombre del proyecto]
 
-## 🏷️ Tipo
-🌀 Investigación / 📚 Docencia / ⚙️ Gestión / 📖 Formación / 💻 Software / 🌿 Personal
-
-## 🔄 Estado
-⬜ Inicial / ▶️ En marcha / ⏸️ Parado / ⏳ Esperando / 💤 Durmiendo / ✅ Completado
-
-## ⭐ Prioridad
-🟠 Alta / 🟡 Media / 🔵 Baja
+🌀 Investigación
+⬜ Inicial
+🟡 Media
 
 ## 🎯 Objetivo
 Descripción breve del objetivo.
-
-## 🌀 Pregunta clave
-¿Cuál es la pregunta que este proyecto intenta responder?
 
 ## ✅ Tareas
 

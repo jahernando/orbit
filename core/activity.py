@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file
 from core.tasks import (
     PRIORITY_MAP, STATUS_MAP, TYPE_MAP,
-    normalize, read_proyecto_field,
+    normalize, read_proyecto_field, update_proyecto_field, load_project_meta,
 )
 
 TYPE_EMOJI = {
@@ -144,15 +144,6 @@ def compute_real_priority(
     return PRIORITY_ORDER[idx + 1]
 
 
-def update_proyecto_field(proyecto_path: Path, field: str, new_value: str) -> None:
-    lines = proyecto_path.read_text().splitlines()
-    for i, line in enumerate(lines):
-        if line.strip().lower().startswith("## ") and field in normalize(line):
-            if i + 1 < len(lines):
-                lines[i + 1] = new_value
-                break
-    proyecto_path.write_text("\n".join(lines) + "\n")
-
 
 def run_activity(
     project: Optional[str],
@@ -184,11 +175,11 @@ def run_activity(
         if not proyecto_path or not proyecto_path.exists():
             continue
 
-        lines = proyecto_path.read_text().splitlines()
-        tipo_raw = normalize(read_proyecto_field(lines, "tipo") or "")
-        estado_raw = normalize(read_proyecto_field(lines, "estado") or "")
-        prioridad_raw = normalize(read_proyecto_field(lines, "prioridad") or "")
-        tipo_emoji = next((TYPE_MAP[k] for k in TYPE_MAP if k in tipo_raw), "")
+        meta = load_project_meta(proyecto_path)
+        tipo_raw      = meta["tipo_raw"]
+        estado_raw    = meta["estado_raw"]
+        prioridad_raw = meta["prioridad_raw"]
+        tipo_emoji    = meta["tipo"]
 
         if tipo and normalize(tipo) not in tipo_raw:
             continue

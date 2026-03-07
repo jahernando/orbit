@@ -42,12 +42,62 @@ TYPE_MAP = {
 
 
 def read_proyecto_field(lines: list, field: str) -> Optional[str]:
-    """Read the value on the line after a ## field heading."""
+    """Read the value on the line after a ## field heading (legacy format)."""
     for i, line in enumerate(lines):
-        if line.strip().lower().startswith(f"## ") and field in line.lower():
+        if line.strip().lower().startswith("## ") and field in line.lower():
             if i + 1 < len(lines):
                 return lines[i + 1].strip()
     return None
+
+
+_TYPE_EMOJIS     = ("🌀", "📚", "⚙️", "📖", "💻", "🌿")
+_STATUS_EMOJIS   = ("⬜", "▶️", "⏸️", "⏳", "💤", "✅")
+_PRIORITY_EMOJIS = ("🟠", "🟡", "🔵")
+
+
+def update_proyecto_field(proyecto_path: Path, field: str, new_value: str) -> None:
+    """Update a field in proyecto.md — supports both old (## heading) and new (emoji line) formats."""
+    lines = proyecto_path.read_text().splitlines()
+
+    # Old format: ## heading + next line
+    for i, line in enumerate(lines):
+        if line.strip().lower().startswith("## ") and field in normalize(line):
+            if i + 1 < len(lines):
+                lines[i + 1] = new_value
+                proyecto_path.write_text("\n".join(lines) + "\n")
+                return
+
+    # New format: find line starting with known emoji for this field
+    emojis = {"estado": _STATUS_EMOJIS, "prioridad": _PRIORITY_EMOJIS, "tipo": _TYPE_EMOJIS}.get(field)
+    if not emojis:
+        return
+    for i, line in enumerate(lines):
+        if any(line.strip().startswith(e) for e in emojis):
+            lines[i] = new_value
+            proyecto_path.write_text("\n".join(lines) + "\n")
+            return
+
+
+def _read_compact_meta(lines: list) -> tuple:
+    """Read tipo/estado/prioridad from compact emoji lines (new format)."""
+    tipo = estado = prioridad = None
+    scanned = 0
+    for line in lines:
+        s = line.strip()
+        if not s or s.startswith("# "):
+            continue
+        if s.startswith("## "):
+            break
+        scanned += 1
+        if scanned > 15:
+            break
+        if any(s.startswith(e) for e in _TYPE_EMOJIS):
+            tipo = s
+        elif any(s.startswith(e) for e in _STATUS_EMOJIS):
+            estado = s
+        elif any(s.startswith(e) for e in _PRIORITY_EMOJIS):
+            prioridad = s
+    return tipo, estado, prioridad
 
 
 def _extract_date_from_parens(content: str):
@@ -91,9 +141,16 @@ def matches_fecha(due: Optional[str], fecha: Optional[str]) -> bool:
 
 def load_project_meta(proyecto_path: Path) -> dict:
     lines = proyecto_path.read_text().splitlines()
-    tipo_raw = normalize(read_proyecto_field(lines, "tipo") or "")
-    estado_raw = normalize(read_proyecto_field(lines, "estado") or "")
+    tipo_raw     = normalize(read_proyecto_field(lines, "tipo") or "")
+    estado_raw   = normalize(read_proyecto_field(lines, "estado") or "")
     prioridad_raw = normalize(read_proyecto_field(lines, "prioridad") or "")
+
+    # Fallback: compact emoji format (new projects)
+    if not tipo_raw and not estado_raw and not prioridad_raw:
+        t, e, p = _read_compact_meta(lines)
+        tipo_raw      = normalize(t or "")
+        estado_raw    = normalize(e or "")
+        prioridad_raw = normalize(p or "")
 
     # Match against known values (line may contain multiple options separated by /)
     tipo = next((TYPE_MAP[k] for k in TYPE_MAP if k in tipo_raw), "")

@@ -1,10 +1,9 @@
 """orbit update — set status and/or priority of a project."""
 
-import re
 from typing import Optional
 
 from core.log import find_project, find_proyecto_file
-from core.tasks import STATUS_MAP, PRIORITY_MAP, normalize
+from core.tasks import STATUS_MAP, PRIORITY_MAP, normalize, update_proyecto_field
 
 STATUS_LABEL = {
     "inicial":    "Inicial",
@@ -36,8 +35,6 @@ def run_update(project: str, status: Optional[str], priority: Optional[str]) -> 
         print(f"Error: no se encontró el archivo de proyecto en {project_dir.name}")
         return 1
 
-    md = proyecto_path.read_text()
-
     if status:
         key = normalize(status)
         if key not in STATUS_MAP:
@@ -46,11 +43,7 @@ def run_update(project: str, status: Optional[str], priority: Optional[str]) -> 
             return 1
         emoji = STATUS_MAP[key]
         label = STATUS_LABEL[key]
-        md = re.sub(
-            r"(## 🔄 Estado\n).*",
-            rf"\1{emoji} {label}",
-            md,
-        )
+        update_proyecto_field(proyecto_path, "estado", f"{emoji} {label}")
         print(f"✓ Estado → {emoji} {label}")
 
     if priority:
@@ -61,13 +54,8 @@ def run_update(project: str, status: Optional[str], priority: Optional[str]) -> 
             return 1
         emoji = PRIORITY_MAP[key]
         label = PRIORITY_LABEL[key]
-        md = re.sub(
-            r"(## ⭐ Prioridad\n).*",
-            rf"\1{emoji} {label}",
-            md,
-        )
+        update_proyecto_field(proyecto_path, "prioridad", f"{emoji} {label}")
         print(f"✓ Prioridad → {emoji} {label}")
 
-    proyecto_path.write_text(md)
     print(f"  [{project_dir.name}] {proyecto_path.name}")
     return 0

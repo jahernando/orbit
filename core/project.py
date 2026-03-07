@@ -58,18 +58,8 @@ def run_project(name: str, tipo: str, prioridad: str) -> int:
     proyecto_content = (
         tpl_proyecto.read_text()
         .replace("# [Nombre del proyecto]", f"# {dir_name}")
-        .replace(
-            "🌀 Investigación / 📚 Docencia / ⚙️ Gestión / 📖 Formación / 💻 Software / 🌿 Personal",
-            f"{tipo_emoji} {tipo_label}"
-        )
-        .replace(
-            "⬜ Inicial / ▶️ En marcha / ⏸️ Parado / ⏳ Esperando / 💤 Durmiendo / ✅ Completado",
-            "⬜ Inicial"
-        )
-        .replace(
-            "🟠 Alta / 🟡 Media / 🔵 Baja",
-            f"{prio_emoji} {prio_label}"
-        )
+        .replace("🌀 Investigación", f"{tipo_emoji} {tipo_label}")
+        .replace("🟡 Media", f"{prio_emoji} {prio_label}")
         .replace("./logbook.md", f"./{logbook_filename}")
     )
     proyecto_file = project_dir / f"{tipo_emoji}{name}.md"
