@@ -376,6 +376,7 @@ def _collect_upcoming_tasks(horizon_days: int) -> list:
                 results.append({
                     "due_date": due_date,
                     "project": project_dir.name,
+                    "proyecto_path": proyecto_path,
                     "tipo": meta["tipo"],
                     "description": task["description"],
                     "overdue": due_date < today,
@@ -391,7 +392,10 @@ def _format_upcoming_tasks(tasks: list) -> str:
     lines = []
     for t in tasks:
         marker = "⚠️" if t["overdue"] else "[ ]"
-        lines.append(f"- {marker} {t['due_date'].isoformat()}  {t['project']} — {t['description']}")
+        path = t.get("proyecto_path")
+        project_label = (f"[{t['project']}](file://{path.resolve()}#tareas)" if path
+                         else t["project"])
+        lines.append(f"- {marker} {t['due_date'].isoformat()}  {project_label} — {t['description']}")
     return "\n".join(lines) + "\n"
 
 
