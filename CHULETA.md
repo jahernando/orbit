@@ -81,10 +81,12 @@ En la descripción del evento en Google: `proyecto: nombre-proyecto`
 ## Proyectos
 
 ```bash
-orbit project     --name NOMBRE --type TIPO [--priority PRIORIDAD]
-orbit update      <proyecto> [--status ESTADO] [--priority PRIORIDAD]
-orbit setpriority --priority PRIORIDAD --projects P1 P2 ...
-orbit import      --file FICHERO.enex --project PROYECTO
+orbit project  --name NOMBRE --type TIPO [--priority P]
+orbit import   --file FICHERO.enex --project PROYECTO
+
+# Cambiar estado/prioridad — un proyecto, varios, o por filtro
+orbit update [<proyecto>...] [--status NUEVO] [--priority NUEVO]
+             [--type T] [--from-status S] [--from-priority P]
 ```
 
 Tipos de proyecto: `investigacion` `docencia` `gestion` `formacion` `software` `personal`

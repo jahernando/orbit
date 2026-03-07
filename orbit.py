@@ -81,7 +81,14 @@ def cmd_project(args):
 
 
 def cmd_update(args):
-    return run_update(project=args.project, status=args.status, priority=args.priority)
+    return run_update(
+        projects=args.project or [],
+        status=args.status,
+        priority=args.priority,
+        tipo=args.type,
+        from_status=args.from_status,
+        from_priority=args.from_priority,
+    )
 
 
 def cmd_open(args):
@@ -120,13 +127,6 @@ def cmd_calendar(args):
     return run_calendar_sync(date_str=args.date, dry_run=args.dry_run)
 
 
-def cmd_setpriority(args):
-    errors = 0
-    for project in args.projects:
-        result = run_update(project=project, status=None, priority=args.priority)
-        if result != 0:
-            errors += 1
-    return 1 if errors else 0
 
 
 def cmd_report(args):
@@ -263,10 +263,13 @@ def main():
     task_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- update ---
-    upd_p = subparsers.add_parser("update", help="Set status and/or priority of a project")
-    upd_p.add_argument("project", help="Project name (partial match)")
+    upd_p = subparsers.add_parser("update", help="Set status and/or priority on one or more projects")
+    upd_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
     upd_p.add_argument("--status", default=None, help="New status: inicial, en marcha, parado, esperando, durmiendo, completado")
     upd_p.add_argument("--priority", default=None, help="New priority: alta, media, baja")
+    upd_p.add_argument("--type", default=None, help="Filter: project type (investigacion, docencia, ...)")
+    upd_p.add_argument("--from-status", default=None, dest="from_status", help="Filter: only projects with this current status")
+    upd_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this current priority")
 
     # --- project ---
     proj_p = subparsers.add_parser("project", help="Create a new project from template")
@@ -320,11 +323,6 @@ def main():
     month_p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
     month_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # --- setpriority ---
-    sp_p = subparsers.add_parser("setpriority", help="Set priority for one or more projects at once")
-    sp_p.add_argument("--priority", required=True, help="Priority: alta, media, baja")
-    sp_p.add_argument("--projects", nargs="+", required=True, metavar="PROJECT", help="Project names (partial match supported)")
-
     # --- activity ---
     act_p = subparsers.add_parser("activity", help="Project activity report with real status/priority")
     act_p.add_argument("--project", default=None, help="Filter by project name (partial match)")
@@ -367,8 +365,6 @@ def main():
         sys.exit(cmd_search(args))
     elif args.command == "tasks":
         sys.exit(cmd_tasks(args))
-    elif args.command == "setpriority":
-        sys.exit(cmd_setpriority(args))
     elif args.command == "activity":
         sys.exit(cmd_activity(args))
     else:
