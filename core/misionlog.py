@@ -578,7 +578,9 @@ def _type_summary(activity: list) -> str:
     return "  ".join(parts) if parts else "Sin entradas"
 
 
-def run_dayreport(date_str: Optional[str], inject: bool) -> int:
+def run_dayreport(date_str: Optional[str], inject: bool,
+                  output: Optional[str] = None, open_after: bool = False,
+                  editor: str = "typora") -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()
     dest = DIARIO_DIR / f"{target.isoformat()}.md"
 
@@ -605,30 +607,37 @@ def run_dayreport(date_str: Optional[str], inject: bool) -> int:
         done_lines.append("")
         block += "\n" + "\n".join(done_lines)
 
-    if tomato_block:
-        print(tomato_block)
-    print(block)
+    text = (tomato_block + "\n" if tomato_block else "") + block
 
-    if not inject:
-        return 0
+    if output:
+        Path(output).write_text(text + "\n")
+        print(f"✓ Guardado en {output}")
+    elif not inject:
+        print(text)
 
-    if not dest.exists():
-        tpl = TEMPLATES_DIR / "diario.md"
-        if not tpl.exists():
-            print(f"Error: plantilla no encontrada en {tpl}")
-            return 1
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(tpl.read_text().replace("YYYY-MM-DD", target.isoformat()))
-        print(f"✓ Creado {dest}")
+    if inject or open_after:
+        if not dest.exists():
+            tpl = TEMPLATES_DIR / "diario.md"
+            if not tpl.exists():
+                print(f"Error: plantilla no encontrada en {tpl}")
+                return 1
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(tpl.read_text().replace("YYYY-MM-DD", target.isoformat()))
+            print(f"✓ Creado {dest}")
+        if inject:
+            _inject_block(dest, block, _DR_START, _DR_END)
+            if tomato_block:
+                _inject_block(dest, tomato_block, _TOMATO_START, _TOMATO_END)
+            print(f"✓ Inyectado en {dest}")
+        if open_after:
+            open_file(dest, editor)
 
-    _inject_block(dest, block, _DR_START, _DR_END)
-    if tomato_block:
-        _inject_block(dest, tomato_block, _TOMATO_START, _TOMATO_END)
-    print(f"✓ Inyectado en {dest}")
     return 0
 
 
-def run_weekreport(date_str: Optional[str], inject: bool) -> int:
+def run_weekreport(date_str: Optional[str], inject: bool,
+                   output: Optional[str] = None, open_after: bool = False,
+                   editor: str = "typora") -> int:
     d = date.fromisoformat(date_str) if date_str else date.today()
     wkey = _week_key(d)
     mon, sun = _week_bounds(d)
@@ -660,19 +669,24 @@ def run_weekreport(date_str: Optional[str], inject: bool) -> int:
         done_lines.append("")
         block += "\n" + "\n".join(done_lines)
 
-    if tomato_block:
-        print(tomato_block)
-    print(block)
+    text = (tomato_block + "\n" if tomato_block else "") + block
 
-    if not inject:
-        return 0
+    if output:
+        Path(output).write_text(text + "\n")
+        print(f"✓ Guardado en {output}")
+    elif not inject:
+        print(text)
 
-    if not dest.exists():
-        print(f"Error: no existe {dest}. Crea el fichero semanal primero con 'orbit week'.")
-        return 1
+    if inject or open_after:
+        if not dest.exists():
+            print(f"Error: no existe {dest}. Crea el fichero semanal primero con 'orbit week'.")
+            return 1
+        if inject:
+            _inject_block(dest, block, _WR_START, _WR_END)
+            if tomato_block:
+                _inject_block(dest, tomato_block, _TOMATO_START, _TOMATO_END)
+            print(f"✓ Inyectado en {dest}")
+        if open_after:
+            open_file(dest, editor)
 
-    _inject_block(dest, block, _WR_START, _WR_END)
-    if tomato_block:
-        _inject_block(dest, tomato_block, _TOMATO_START, _TOMATO_END)
-    print(f"✓ Inyectado en {dest}")
     return 0

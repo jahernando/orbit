@@ -7,7 +7,6 @@ import sys
 from core.log import VALID_TYPES, add_entry, find_project, find_logbook_file, find_proyecto_file
 from core.search import run_search
 from core.tasks import list_tasks
-from core.activity import run_activity
 from core.monthly import run_monthly
 from core.stats import run_stats
 from core.review import run_review
@@ -136,15 +135,19 @@ def cmd_calendar(args):
 
 def cmd_report(args):
     if args.period == "day":
-        return run_dayreport(date_str=args.date, inject=args.inject)
+        return run_dayreport(date_str=args.date, inject=args.inject,
+                             output=args.output, open_after=args.open, editor=args.editor)
     elif args.period == "week":
-        return run_weekreport(date_str=args.date, inject=args.inject)
+        return run_weekreport(date_str=args.date, inject=args.inject,
+                              output=args.output, open_after=args.open, editor=args.editor)
     elif args.period == "month":
-        return run_monthly(month=args.date, apply=args.apply, output=args.output)
+        return run_monthly(month=args.date, apply=args.apply, output=args.output,
+                           open_after=args.open, editor=args.editor)
     elif args.period == "stats":
         return run_stats(date_str=args.date, date_from=args.date_from,
-                         date_to=args.date_to, output=args.output,
-                         open_after=args.open, editor=args.editor)
+                         date_to=args.date_to, project=args.project,
+                         tipo=args.type, prioridad=args.priority,
+                         output=args.output, open_after=args.open, editor=args.editor)
     elif args.period == "review":
         return run_review(date_str=args.date, inject=args.inject, apply=args.apply,
                           output=args.output, open_after=args.open, editor=args.editor)
@@ -170,23 +173,6 @@ def cmd_month(args):
     return run_month(date_str=args.date, force=args.force, focus=args.focus,
                      open_after=not args.no_open, editor=args.editor)
 
-
-def cmd_activity(args):
-    period = args.period or []
-    if len(period) > 2:
-        print("Error: --period accepts at most 2 values (from to)")
-        return 1
-    desde = period[0] if len(period) >= 1 else None
-    hasta = period[1] if len(period) == 2 else None
-    return run_activity(
-        project=args.project,
-        tipo=args.type,
-        prioridad=args.priority,
-        desde=desde,
-        hasta=hasta,
-        apply=args.apply,
-        output=args.output,
-    )
 
 
 def main():
@@ -312,10 +298,13 @@ def main():
                        help="Stats: period start date (inclusive)")
     rep_p.add_argument("--to", dest="date_to", default=None, metavar="YYYY-MM-DD",
                        help="Stats: period end date (inclusive)")
-    rep_p.add_argument("--inject", action="store_true", help="Inject report into the log file (day/week)")
-    rep_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md (month)")
+    rep_p.add_argument("--inject", action="store_true", help="Inject report into the log file (day/week/month)")
+    rep_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md (month/review)")
+    rep_p.add_argument("--project", default=None, help="Filter by project name (stats)")
+    rep_p.add_argument("--type", default=None, help="Filter by project type (stats)")
+    rep_p.add_argument("--priority", default=None, help="Filter by priority (stats)")
     rep_p.add_argument("--output", default=None, help="Save output to file")
-    rep_p.add_argument("--open", action="store_true", help="Open result in editor (stats)")
+    rep_p.add_argument("--open", action="store_true", help="Open result in editor after generating")
     rep_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- logday ---
@@ -356,15 +345,6 @@ def main():
     month_p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
     month_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # --- activity ---
-    act_p = subparsers.add_parser("activity", help="Project activity report with real status/priority")
-    act_p.add_argument("--project", default=None, help="Filter by project name (partial match)")
-    act_p.add_argument("--type", default=None, help="Filter by project type")
-    act_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
-    act_p.add_argument("--period", nargs="+", metavar="DATE", default=None,
-                       help="Period: one value (YYYY-MM or YYYY-MM-DD) or two values (from to)")
-    act_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md")
-    act_p.add_argument("--output", default=None, help="Save output to file instead of terminal")
 
     args = parser.parse_args()
 
@@ -397,8 +377,6 @@ def main():
         sys.exit(cmd_search(args))
     elif args.command == "tasks":
         sys.exit(cmd_tasks(args))
-    elif args.command == "activity":
-        sys.exit(cmd_activity(args))
     else:
         parser.print_help()
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.log import PROJECTS_DIR, VALID_TYPES, find_logbook_file, find_proyecto_file
-from core.tasks import load_project_meta, normalize
+from core.tasks import load_project_meta, normalize, TYPE_MAP, PRIORITY_MAP
 from core.open import open_file
 
 MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
@@ -117,6 +117,9 @@ def run_stats(
     date_str: Optional[str],
     date_from: Optional[str],
     date_to: Optional[str],
+    project: Optional[str],
+    tipo: Optional[str],
+    prioridad: Optional[str],
     output: Optional[str],
     open_after: bool,
     editor: str,
@@ -135,12 +138,18 @@ def run_stats(
     for project_dir in sorted(PROJECTS_DIR.iterdir()):
         if not project_dir.is_dir():
             continue
+        if project and project.lower() not in project_dir.name.lower():
+            continue
         proyecto_path = find_proyecto_file(project_dir)
         if not proyecto_path or not proyecto_path.exists():
             continue
 
         meta = load_project_meta(proyecto_path)
         if "completado" in meta["estado_raw"]:
+            continue
+        if tipo and normalize(tipo) not in meta["tipo_raw"]:
+            continue
+        if prioridad and normalize(prioridad) not in meta["prioridad_raw"]:
             continue
 
         logbook_path = find_logbook_file(project_dir)

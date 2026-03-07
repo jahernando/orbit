@@ -117,7 +117,8 @@ def inject_table(monthly_path: Path, table_lines: list) -> None:
     monthly_path.write_text(new_content)
 
 
-def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int:
+def run_monthly(month: Optional[str], apply: bool, output: Optional[str],
+                open_after: bool = False, editor: str = "typora") -> int:
     if not PROJECTS_DIR.exists():
         print(f"Error: projects directory not found at {PROJECTS_DIR}")
         return 1
@@ -240,5 +241,9 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int
         print(f"✓ Saved to {output}")
     else:
         print(text)
+
+    if open_after:
+        from core.open import open_file
+        open_file(monthly_path, editor)
 
     return 0

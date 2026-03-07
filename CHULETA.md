@@ -63,24 +63,19 @@ orbit month [--date YYYY-MM]    [--force] [--focus P...] [--no-open] [--editor E
 ## Reports
 
 ```bash
-orbit report day   [--date YYYY-MM-DD] [--inject]
-orbit report week  [--date YYYY-MM-DD] [--inject]
-orbit report month [--date YYYY-MM]    [--output FILE]
+orbit report day    [--date YYYY-MM-DD] [--inject] [--output FILE] [--open] [--editor E]
+orbit report week   [--date YYYY-MM-DD] [--inject] [--output FILE] [--open] [--editor E]
+orbit report month  [--date YYYY-MM]    [--apply]  [--output FILE] [--open] [--editor E]
 orbit report stats  [--date YYYY-MM] [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+                    [--project P] [--type T] [--priority P]
                     [--output FILE] [--open] [--editor E]
 orbit report review [--date YYYY-MM-DD | YYYY-Wnn | YYYY-MM]
                     [--inject] [--apply] [--output FILE] [--open] [--editor E]
 ```
 
-- `review --inject` → inyecta en la sección 🍅 Valoración de la nota del período
-- `review --apply`  → aplica cambios de estado/prioridad a los proyectos
-
-## Actividad y revisión mensual
-
-```bash
-orbit activity    [--project P] [--type T] [--priority P] [--period D [D]] [--apply] [--output FILE]
-orbit report month [--date YYYY-MM] [--apply] [--output FILE]
-```
+- `--inject` → inyecta el reporte en la nota del período (día/semana/mes)
+- `--apply`  → aplica cambios de estado/prioridad a los proyectos (month/review)
+- `--open`   → abre la nota del período en editor tras generar el reporte
 
 ## Google Calendar
 
