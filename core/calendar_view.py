@@ -119,12 +119,17 @@ def _collect_tasks(start: date, end: date) -> dict:
             except ValueError:
                 continue
             if start <= d <= end:
-                tasks.setdefault(d, []).append({"desc": task["description"], "project": pname})
+                tasks.setdefault(d, []).append({
+                    "desc": task["description"],
+                    "project": pname,
+                    "path": proyecto_path,
+                })
     return tasks
 
 
 def _fmt_task(t: dict) -> str:
-    return f"- ✅  {t['desc']}  _(→ {t['project']})_"
+    link = f"[{t['project']}](file://{t['path'].resolve()}#tareas)"
+    return f"- ✅  {t['desc']}  _(→ {link})_"
 
 
 def _week_key(d: date) -> str:
