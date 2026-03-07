@@ -167,16 +167,16 @@ def run_calendar_month(date_str: Optional[str], open_after: bool, editor: str) -
     lines = [f"# {MESES_ES[m]} {y}", ""]
     lines += ["| L | M | X | J | V | S | D |", "|---|---|---|---|---|---|---|"]
 
-    row = ["   "] * first.weekday()
+    row = ["  "] * first.weekday()
     for day_n in range(1, last.day + 1):
         d   = date(y, m, day_n)
-        tag = f"**{day_n:2d}**" if d in tasks else f"{day_n:2d} "
+        tag = f'<span style="color:red">**{day_n}**</span>' if d in tasks else str(day_n)
         row.append(tag)
         if len(row) == 7:
             lines.append("| " + " | ".join(row) + " |")
             row = []
     if row:
-        row += ["   "] * (7 - len(row))
+        row += ["  "] * (7 - len(row))
         lines.append("| " + " | ".join(row) + " |")
     lines.append("")
 
