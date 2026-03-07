@@ -275,7 +275,35 @@ orbit open next-kr --terminal --log --entry resultado   # filtrar entradas
 
 ---
 
-## 13. Automatización diaria con cron
+## 13. Calendario visual
+
+Genera una vista de calendario con tus tareas y recordatorios y la abre en Typora:
+
+```bash
+orbit calendar week              # semana actual
+orbit calendar month             # mes actual
+orbit calendar year              # año actual
+
+orbit calendar week --date "next week"
+orbit calendar month --date 2026-04
+```
+
+Los días con eventos aparecen en **negrita** en la rejilla mensual. Los ficheros se guardan en `☀️mision-log/`.
+
+---
+
+## 14. Documentación integrada
+
+```bash
+orbit info terminal   # imprime la chuleta de comandos en el terminal
+orbit info about      # abre el README en Typora
+orbit info tutorial   # abre este tutorial en Typora
+orbit info help       # muestra el help completo de orbit
+```
+
+---
+
+## 15. Automatización diaria con cron
 
 Para que la nota del día se cree sola cada mañana a las 8:00 (lunes a viernes):
 
@@ -293,7 +321,7 @@ Si la nota ya existe (porque la has creado antes), el cron no hace nada.
 
 ---
 
-## 14. Flujo de trabajo completo — ejemplo típico
+## 16. Flujo de trabajo completo — ejemplo típico
 
 ```
 Lunes por la mañana

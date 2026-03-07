@@ -174,6 +174,27 @@ orbit open next-kr --terminal       # imprime en terminal
 orbit open next-kr --terminal --log --entry resultado  # filtra entradas
 ```
 
+### calendar
+
+```bash
+orbit calendar week                 # semana actual en Typora
+orbit calendar month                # mes actual en Typora
+orbit calendar year                 # año actual en Typora
+orbit calendar week --date "next week"
+orbit calendar month --date 2026-04
+```
+
+Genera un fichero markdown con tareas (✅) y recordatorios (⏰) del período y lo abre en Typora.
+
+### info
+
+```bash
+orbit info terminal   # imprime CHULETA.md en el terminal
+orbit info about      # abre README.md en Typora
+orbit info tutorial   # abre TUTORIAL.md en Typora
+orbit info help       # muestra el help completo de orbit
+```
+
 ---
 
 ## Recordatorios recurrentes

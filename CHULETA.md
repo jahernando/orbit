@@ -108,14 +108,36 @@ orbit search [query] [--project P...] [--entry TIPO] [--date D] [--from D] [--to
 
 ---
 
-## open y calendar
+## open
 
 ```bash
 orbit open [target] [--log] [--editor E]
 orbit open [target] --terminal [--section S] [--entry TIPO] [--log] [--output F]
 # target: nombre-proyecto · YYYY-MM-DD · YYYY-Wnn · YYYY-MM  (defecto: hoy)
+```
 
-orbit calendar [--date D] [--dry-run]
+---
+
+## calendar — calendario visual
+
+```bash
+orbit calendar week  [--date D] [--no-open] [--editor E]
+orbit calendar month [--date D] [--no-open] [--editor E]
+orbit calendar year  [--date D] [--no-open] [--editor E]
+```
+
+Genera un fichero markdown con tareas (✅) y recordatorios (⏰) del período y lo abre en Typora.
+Guardado en `☀️mision-log/calendar-{week,month,year}.md`.
+
+---
+
+## info — documentación
+
+```bash
+orbit info terminal   # imprime CHULETA.md en el terminal
+orbit info about      # abre README.md en Typora
+orbit info tutorial   # abre TUTORIAL.md en Typora
+orbit info help       # muestra el help completo de orbit
 ```
 
 ---
