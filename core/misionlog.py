@@ -101,6 +101,24 @@ def _schedule_day_reminders(target: date, dest: Path) -> None:
 
 # ── day ──────────────────────────────────────────────────────────────────────
 
+def _ensure_cascade(target: date, editor: str) -> str:
+    """Create month and week notes if they don't exist. Returns the week key."""
+    month_str    = target.strftime("%Y-%m")
+    mensual_path = MENSUAL_DIR / f"{month_str}.md"
+    if not mensual_path.exists():
+        print(f"  → creando nota mensual {month_str}…")
+        run_month(date_str=month_str, force=False, focus=None,
+                  open_after=False, editor=editor)
+
+    wkey         = _week_key(target)
+    semanal_path = SEMANAL_DIR / f"{wkey}.md"
+    if not semanal_path.exists():
+        print(f"  → creando nota semanal {wkey}…")
+        run_week(date_str=target.isoformat(), force=False, focus=None,
+                 open_after=False, editor=editor)
+    return wkey
+
+
 def run_day(date_str: Optional[str], force: bool, focus: list = None,
             open_after: bool = True, editor: str = "typora") -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()
@@ -108,6 +126,7 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
 
     # ── Note already exists ───────────────────────────────────────────────────
     if dest.exists() and not force:
+        _ensure_cascade(target, editor)  # always ensure week/month exist
         if sys.stdin.isatty():
             print(f"La nota del día ya existe: {dest.name}")
             resp = input("¿Abrir nota existente o crear nueva? [abrir/nueva] (intro = abrir): ").strip().lower()
@@ -129,19 +148,8 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
     content = tpl.read_text().replace("YYYY-MM-DD", target.isoformat())
 
     # ── Cascade: ensure month and week notes exist ────────────────────────────
-    month_str    = target.strftime("%Y-%m")
-    mensual_path = MENSUAL_DIR / f"{month_str}.md"
-    if not mensual_path.exists():
-        print(f"  → creando nota mensual {month_str}…")
-        run_month(date_str=month_str, force=False, focus=None,
-                  open_after=False, editor=editor)
-
-    wkey         = _week_key(target)
+    wkey         = _ensure_cascade(target, editor)
     semanal_path = SEMANAL_DIR / f"{wkey}.md"
-    if not semanal_path.exists():
-        print(f"  → creando nota semanal {wkey}…")
-        run_week(date_str=target.isoformat(), force=False, focus=None,
-                 open_after=False, editor=editor)
 
     # ── Focus: prompt interactively or auto-inherit from semanal (non-TTY) ───
     if not focus:
