@@ -45,10 +45,23 @@ def find_project(name: str) -> Optional[Path]:
     return matches[0]
 
 
+TAG_EMOJI = {
+    "idea":       "💡",
+    "referencia": "📎",
+    "tarea":      "✅",
+    "problema":   "⚠️",
+    "resultado":  "📊",
+    "apunte":     "📝",
+    "decision":   "🔀",
+    "evento":     "📅",
+}
+
+
 def format_entry(message: str, tipo: str, path: Optional[str], fecha: Optional[str]) -> str:
     date_str = fecha or date.today().isoformat()
-    content = f"[{message}]({path})" if path else message
-    return f"{date_str} {content} #{tipo}\n"
+    content  = f"[{message}]({path})" if path else message
+    emoji    = TAG_EMOJI.get(tipo, "")
+    return f"{date_str} {emoji} {content} #{tipo}\n"
 
 
 def _append_entry(logbook_path: Path, entry: str) -> None:
