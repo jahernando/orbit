@@ -220,8 +220,8 @@ ORBIT_DIR = Path(__file__).parent
 
 def cmd_info(args):
     editor = getattr(args, "editor", "typora")
-    if args.topic == "terminal":
-        print(ORBIT_DIR.joinpath("CHULETA.md").read_text())
+    if args.topic == "chuleta":
+        open_file(ORBIT_DIR / "CHULETA.md", editor)
     elif args.topic == "about":
         open_file(ORBIT_DIR / "README.md", editor)
     elif args.topic == "tutorial":
@@ -617,12 +617,12 @@ def main():
     # --- info ---
     info_p   = subparsers.add_parser("info", help="Show chuleta, README, tutorial or full help")
     info_sub = info_p.add_subparsers(dest="topic")
-    info_sub.add_parser("terminal", help="Print CHULETA.md to terminal")
-    _ab = info_sub.add_parser("about",    help="Open README.md in editor")
-    _ab.add_argument("--editor", default="typora")
-    _tu = info_sub.add_parser("tutorial", help="Open TUTORIAL.md in editor")
-    _tu.add_argument("--editor", default="typora")
-    info_sub.add_parser("help",     help="Show full orbit help")
+    for _name, _help in [("chuleta", "Open CHULETA.md in editor"),
+                          ("about",   "Open README.md in editor"),
+                          ("tutorial","Open TUTORIAL.md in editor"),
+                          ("help",    "Show full orbit help")]:
+        _p = info_sub.add_parser(_name, help=_help)
+        _p.add_argument("--editor", default="typora")
 
     args = parser.parse_args()
 

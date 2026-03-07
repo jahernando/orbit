@@ -295,7 +295,7 @@ Los días con eventos aparecen en **negrita** en la rejilla mensual. Los fichero
 ## 14. Documentación integrada
 
 ```bash
-orbit info terminal   # imprime la chuleta de comandos en el terminal
+orbit info chuleta    # abre la chuleta de comandos en Typora
 orbit info about      # abre el README en Typora
 orbit info tutorial   # abre este tutorial en Typora
 orbit info help       # muestra el help completo de orbit

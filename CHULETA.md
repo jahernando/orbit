@@ -134,7 +134,7 @@ Guardado en `☀️mision-log/calendar-{week,month,year}.md`.
 ## info — documentación
 
 ```bash
-orbit info terminal   # imprime CHULETA.md en el terminal
+orbit info chuleta    # abre CHULETA.md en Typora
 orbit info about      # abre README.md en Typora
 orbit info tutorial   # abre TUTORIAL.md en Typora
 orbit info help       # muestra el help completo de orbit
