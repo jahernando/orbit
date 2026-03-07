@@ -35,7 +35,7 @@ def _copy_ring_to_diary(ring_line: str) -> None:
 
     lines = dest.read_text().splitlines()
 
-    # Insert before the reminders end marker if present
+    # 1. Insert before the reminders end marker if present
     for i, line in enumerate(lines):
         if line.strip() == _REMINDERS_END:
             lines.insert(i, ring_line)
@@ -43,15 +43,41 @@ def _copy_ring_to_diary(ring_line: str) -> None:
             print(f"  → diario {today.isoformat()}: {ring_line}")
             return
 
-    # Fallback: insert after the ⏰ heading
+    # 2. Section heading exists but no markers — insert after heading
     for i, line in enumerate(lines):
-        if "## ⏰" in line and "recordatorios" in line.lower():
-            lines.insert(i + 1, ring_line)
+        if line.strip().startswith("## ⏰") and "recordatorio" in line.lower():
+            lines[i:i+1] = [
+                line,
+                _REMINDERS_START,
+                ring_line,
+                _REMINDERS_END,
+            ]
             dest.write_text("\n".join(lines) + "\n")
             print(f"  → diario {today.isoformat()}: {ring_line}")
             return
 
-    lines.append(ring_line)
+    # 3. No section at all — inject full block after ## 🎯 Proyecto en foco
+    section_block = [
+        "",
+        "## ⏰ Recordatorios",
+        "",
+        _REMINDERS_START,
+        ring_line,
+        _REMINDERS_END,
+    ]
+    for i, line in enumerate(lines):
+        if line.strip().startswith("## 🎯"):
+            # find end of this section
+            j = i + 1
+            while j < len(lines) and not lines[j].startswith("## "):
+                j += 1
+            lines[j:j] = section_block
+            dest.write_text("\n".join(lines) + "\n")
+            print(f"  → diario {today.isoformat()}: {ring_line}")
+            return
+
+    # 4. Last resort: append
+    lines += section_block
     dest.write_text("\n".join(lines) + "\n")
     print(f"  → diario {today.isoformat()}: {ring_line}")
 
