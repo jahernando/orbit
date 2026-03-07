@@ -10,7 +10,7 @@ from core.activity import (
 )
 from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file
 from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field, load_project_meta
-from core.misionlog import _collect_completed_tasks
+from core.misionlog import _collect_completed_tasks, _project_link
 from core.misionlog import _parse_focus_projects, _check_focus_activity, _format_tomato_block, _TOMATO_START, _TOMATO_END, _inject_block
 
 MISSION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log" / "mensual"
@@ -185,7 +185,7 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int
         meta = load_project_meta(proyecto_path)
         for task in meta["tasks"]:
             if task["due"] and task["due"].startswith(month_str):
-                tasks_due.append({"project": project_dir.name, "task": task})
+                tasks_due.append({"project": project_dir.name, "proyecto_path": proyecto_path, "task": task})
 
     # Collect decisions logged this month
     decisions = []
@@ -222,7 +222,7 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int
     if tasks_due:
         out += ["", "── TAREAS DEL MES ──────────────────────────────"]
         for item in tasks_due:
-            out.append(f"  [ ] {item['task']['due']}  {item['project']} — {item['task']['description']}")
+            out.append(f"  [ ] {item['task']['due']}  {_project_link(item['project'], item['proyecto_path'])} — {item['task']['description']}")
 
     if decisions:
         out += ["", "── DECISIONES ──────────────────────────────────"]
@@ -232,7 +232,7 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str]) -> int
     if completed:
         out += ["", "── COMPLETADAS ─────────────────────────────────"]
         for item in completed:
-            out.append(f"  🏁 {item['completed_date'].isoformat()}  {item['project']} — {item['description']}")
+            out.append(f"  🏁 {item['completed_date'].isoformat()}  {_project_link(item['project'], item['proyecto_path'])} — {item['description']}")
 
     text = "\n".join(out)
     if output:

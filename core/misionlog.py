@@ -349,6 +349,11 @@ def _inject_focus_projects(dest: Path, names: list, heading: str) -> None:
         print(f"  🎯 Foco: {dir_name}")
 
 
+def _project_link(name: str, path) -> str:
+    """Return a markdown link to the project's tasks section."""
+    return f"[{name}](file://{path.resolve()}#tareas)"
+
+
 def _collect_upcoming_tasks(horizon_days: int) -> list:
     """Return tasks due within horizon_days from today, including overdue, sorted by date."""
     today = date.today()
@@ -422,6 +427,7 @@ def _collect_completed_tasks(start: date, end: date) -> list:
                 results.append({
                     "completed_date": comp_date,
                     "project": project_dir.name,
+                    "proyecto_path": proyecto_path,
                     "description": task["description"],
                 })
     results.sort(key=lambda x: x["completed_date"])
@@ -447,7 +453,7 @@ def _collect_tasks_due(start: date, end: date) -> list:
                 except ValueError:
                     continue
                 if start <= due_date <= end:
-                    results.append({"project": project_dir.name, "task": task})
+                    results.append({"project": project_dir.name, "proyecto_path": proyecto_path, "task": task})
     return results
 
 
@@ -479,14 +485,14 @@ def run_dayreport(date_str: Optional[str], inject: bool) -> int:
     if tasks_due:
         task_lines = ["## ✅ Tareas vencidas hoy", ""]
         for item in tasks_due:
-            task_lines.append(f"- **{item['project']}** — {item['task']['description']}")
+            task_lines.append(f"- {_project_link(item['project'], item['proyecto_path'])} — {item['task']['description']}")
         task_lines.append("")
         block += "\n" + "\n".join(task_lines)
 
     if completed:
         done_lines = ["## 🏁 Completadas hoy", ""]
         for item in completed:
-            done_lines.append(f"- **{item['project']}** — {item['description']}")
+            done_lines.append(f"- {_project_link(item['project'], item['proyecto_path'])} — {item['description']}")
         done_lines.append("")
         block += "\n" + "\n".join(done_lines)
 
@@ -534,14 +540,14 @@ def run_weekreport(date_str: Optional[str], inject: bool) -> int:
     if tasks_due:
         task_lines = ["## ✅ Tareas con vencimiento esta semana", ""]
         for item in tasks_due:
-            task_lines.append(f"- **{item['project']}** — {item['task']['description']} ({item['task']['due']})")
+            task_lines.append(f"- {_project_link(item['project'], item['proyecto_path'])} — {item['task']['description']} ({item['task']['due']})")
         task_lines.append("")
         block += "\n" + "\n".join(task_lines)
 
     if completed:
         done_lines = ["## 🏁 Completadas esta semana", ""]
         for item in completed:
-            done_lines.append(f"- {item['completed_date'].isoformat()}  **{item['project']}** — {item['description']}")
+            done_lines.append(f"- {item['completed_date'].isoformat()}  {_project_link(item['project'], item['proyecto_path'])} — {item['description']}")
         done_lines.append("")
         block += "\n" + "\n".join(done_lines)
 
