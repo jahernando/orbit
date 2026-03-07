@@ -10,6 +10,16 @@ orbit logday "<mensaje>" [--type TYPE] [--date YYYY-MM-DD]
 
 Tipos: `apunte` `idea` `referencia` `tarea` `problema` `resultado` `decision` `evento`
 
+## Ver notas
+
+```bash
+orbit view <target> [--section NOMBRE] [--entrada TIPO] [--log] [--output FILE]
+```
+
+`<target>`: nombre de proyecto · `YYYY-MM-DD` · `YYYY-Wnn` · `YYYY-MM`
+
+`--log` muestra el logbook · `--section` filtra por sección · `--entrada` filtra por tipo de entrada
+
 ## Tareas
 
 ```bash

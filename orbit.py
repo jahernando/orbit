@@ -14,6 +14,7 @@ from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
 from core.tarea import run_tarea_open, run_tarea_schedule, run_tarea_close
+from core.view import run_view
 from core.calendar_sync import run_calendar_sync
 
 
@@ -65,6 +66,16 @@ def cmd_project(args):
 
 def cmd_update(args):
     return run_update(project=args.project, status=args.status, priority=args.priority)
+
+
+def cmd_view(args):
+    return run_view(
+        target=args.target,
+        section=args.section,
+        entrada=args.entrada,
+        log=args.log,
+        output=args.output,
+    )
 
 
 def cmd_tarea(args):
@@ -184,6 +195,14 @@ def main():
     cal_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (default: today)")
     cal_p.add_argument("--dry-run", action="store_true", help="Preview without writing to logbooks")
 
+    # --- view ---
+    view_p = subparsers.add_parser("view", help="Display a note, logbook or mision-log file")
+    view_p.add_argument("target", help="Project name, YYYY-MM-DD, YYYY-Wnn or YYYY-MM")
+    view_p.add_argument("--section", default=None, help="Show only the section whose heading contains this word")
+    view_p.add_argument("--entrada", default=None, metavar="TIPO", help=f"Filter logbook entries by type: {', '.join(VALID_TYPES)}")
+    view_p.add_argument("--log", action="store_true", help="Show logbook instead of project note")
+    view_p.add_argument("--output", default=None, help="Save output to file")
+
     # --- tarea ---
     tarea_p = subparsers.add_parser("tarea", help="Open, schedule or close a task")
     tarea_p.add_argument("action", choices=["open", "schedule", "close"], help="Action: open | schedule | close")
@@ -269,6 +288,8 @@ def main():
         sys.exit(cmd_report(args))
     elif args.command == "calendar":
         sys.exit(cmd_calendar(args))
+    elif args.command == "view":
+        sys.exit(cmd_view(args))
     elif args.command == "tarea":
         sys.exit(cmd_tarea(args))
     elif args.command == "update":
