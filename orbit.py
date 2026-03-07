@@ -13,7 +13,7 @@ from core.misionlog import run_day, run_week, run_month, run_logday, run_dayrepo
 from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
-from core.done import run_done
+from core.tarea import run_tarea_open, run_tarea_schedule, run_tarea_close
 from core.calendar_sync import run_calendar_sync
 
 
@@ -67,8 +67,14 @@ def cmd_update(args):
     return run_update(project=args.project, status=args.status, priority=args.priority)
 
 
-def cmd_done(args):
-    return run_done(project=args.project, task_desc=args.task, done_date=args.date)
+def cmd_tarea(args):
+    if args.action == "open":
+        return run_tarea_open(project=args.project, task_desc=args.task, fecha=args.date)
+    elif args.action == "schedule":
+        return run_tarea_schedule(project=args.project, task_desc=args.task, fecha=args.date)
+    elif args.action == "close":
+        return run_tarea_close(project=args.project, task_desc=args.task, fecha=args.date)
+    return 1
 
 
 def cmd_calendar(args):
@@ -178,11 +184,12 @@ def main():
     cal_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (default: today)")
     cal_p.add_argument("--dry-run", action="store_true", help="Preview without writing to logbooks")
 
-    # --- done ---
-    done_p = subparsers.add_parser("done", help="Mark a task as completed")
-    done_p.add_argument("project", help="Project name (partial match)")
-    done_p.add_argument("task", help="Task description (partial match)")
-    done_p.add_argument("--date", default=None, help="Completion date YYYY-MM-DD (default: today)")
+    # --- tarea ---
+    tarea_p = subparsers.add_parser("tarea", help="Open, schedule or close a task")
+    tarea_p.add_argument("action", choices=["open", "schedule", "close"], help="Action: open | schedule | close")
+    tarea_p.add_argument("project", nargs="?", default=None, help="Project name (partial match; omit to use daily note)")
+    tarea_p.add_argument("task", help="Task description")
+    tarea_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (due date for open/schedule, done date for close)")
 
     # --- update ---
     upd_p = subparsers.add_parser("update", help="Set status and/or priority of a project")
@@ -262,8 +269,8 @@ def main():
         sys.exit(cmd_report(args))
     elif args.command == "calendar":
         sys.exit(cmd_calendar(args))
-    elif args.command == "done":
-        sys.exit(cmd_done(args))
+    elif args.command == "tarea":
+        sys.exit(cmd_tarea(args))
     elif args.command == "update":
         sys.exit(cmd_update(args))
     elif args.command == "import":
