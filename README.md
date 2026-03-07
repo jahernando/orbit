@@ -165,17 +165,47 @@ Estados: `inicial` · `en marcha` · `parado` · `esperando` · `durmiendo` · `
 
 ---
 
-### `log` — añadir entrada al logbook
+### `log` — añadir entrada al logbook o al diario
+
+Si se omite el proyecto, la entrada se añade al diario de hoy con formato `YYYY-MM-DD mensaje #tipo`.
 
 ```bash
-python orbit.py log <proyecto> "<mensaje>" [--type TIPO] [--path RUTA] [--date YYYY-MM-DD]
+# Al diario de hoy
+python orbit.py log "<mensaje>" [--type TIPO] [--date YYYY-MM-DD] [--open] [--editor E]
+
+# A un logbook de proyecto
+python orbit.py log <proyecto> "<mensaje>" [--type TIPO] [--path RUTA] [--date YYYY-MM-DD] [--open] [--editor E]
 ```
 
 ```bash
-python orbit.py log detector-xenon "El fit no converge" --type problema
-python orbit.py log detector-xenon "Gonzalez 2024" --type referencia --path ./references/gonzalez2024.pdf
-python orbit.py log 💻-orbit "Comando monthreport implementado" --type resultado
+python orbit.py log "Reunión con el grupo muy productiva"            # → diario de hoy
+python orbit.py log "Llamar a Diego" --type tarea --open             # → diario + abre Typora
+python orbit.py log next-kr "El fit no converge" --type problema
+python orbit.py log next-kr "Gonzalez 2024" --type referencia --path ./references/gonzalez2024.pdf
+python orbit.py log orbit "Comando open implementado" --type resultado --open
 ```
+
+`--open` abre el fichero en el editor tras añadir la entrada. `--editor` acepta `typora` (defecto), `glow`, `code` o cualquier comando.
+
+### `open` — abrir una nota en el editor
+
+```bash
+python orbit.py open [<target>] [--log] [--editor EDITOR]
+```
+
+```bash
+python orbit.py open                          # abre el diario de hoy en Typora
+python orbit.py open 2026-03-05               # abre el diario de esa fecha
+python orbit.py open 2026-W10                 # abre el semanal
+python orbit.py open 2026-03                  # abre el mensual
+python orbit.py open next-kr                  # abre proyecto.md de next-kr
+python orbit.py open next-kr --log            # abre el logbook de next-kr
+python orbit.py open next-kr --editor glow    # renderiza en terminal con glow
+```
+
+Editores soportados: `typora` (defecto) · `glow` · `code` · cualquier comando del sistema.
+
+---
 
 ### `list` — listar entradas del logbook
 
@@ -232,21 +262,24 @@ La prioridad se degrada un nivel si no hay actividad en un período ≥ 30 días
 
 ### `day` / `week` / `month` — crear ficheros de planificación
 
+Al crear el fichero, lo abre automáticamente en Typora. Usa `--no-open` para suprimirlo.
+
 ```bash
-python orbit.py day   [--date YYYY-MM-DD] [--force] [--focus PROYECTO...]
-python orbit.py week  [--date YYYY-MM-DD] [--force] [--focus PROYECTO...]
-python orbit.py month [--date YYYY-MM]    [--force] [--focus PROYECTO...]
+python orbit.py day   [--date YYYY-MM-DD] [--force] [--focus PROYECTO...] [--no-open] [--editor E]
+python orbit.py week  [--date YYYY-MM-DD] [--force] [--focus PROYECTO...] [--no-open] [--editor E]
+python orbit.py month [--date YYYY-MM]    [--force] [--focus PROYECTO...] [--no-open] [--editor E]
 ```
 
 ```bash
-python orbit.py day                                    # crea el diario de hoy
-python orbit.py day --focus next-kr orbit              # crea el diario con proyectos en foco
-python orbit.py week --date 2026-03-04                 # crea semanal de la semana que contiene esa fecha
-python orbit.py month                                  # crea el mensual del mes actual
-python orbit.py week --focus next-kr hk-ana --force    # crea la semana con proyectos en foco
+python orbit.py day                                      # crea el diario de hoy y lo abre
+python orbit.py day --focus next-kr orbit                # crea con proyectos en foco
+python orbit.py day --no-open                            # crea sin abrir el editor
+python orbit.py week --date 2026-03-04                   # crea semanal de la semana dada
+python orbit.py month --editor glow                      # crea mensual y lo renderiza con glow
+python orbit.py week --focus next-kr hk-ana --force      # sobreescribe con proyectos en foco
 ```
 
-Crea los ficheros en `☀️mision-log/diario/`, `semanal/` o `mensual/` desde la plantilla. Usa `--force` para sobreescribir si ya existe. Con `--focus` inyecta los proyectos en foco y las tareas próximas.
+Crea los ficheros en `☀️mision-log/diario/`, `semanal/` o `mensual/` desde la plantilla. Con `--focus` inyecta los proyectos en foco y las tareas próximas.
 
 ---
 
@@ -268,18 +301,26 @@ Genera un resumen de actividad con evaluación 🍅 de proyectos en foco, tareas
 
 ---
 
-### `done` — marcar tarea como completada
+### `task` — gestionar tareas
 
 ```bash
-python orbit.py done <proyecto> "<tarea>" [--date YYYY-MM-DD]
+python orbit.py task open     [<proyecto>] "<tarea>" [--date YYYY-MM-DD] [--open] [--editor E]
+python orbit.py task schedule [<proyecto>] "<tarea>" --date YYYY-MM-DD  [--open] [--editor E]
+python orbit.py task close    [<proyecto>] "<tarea>" [--date YYYY-MM-DD] [--open] [--editor E]
 ```
 
 ```bash
-python orbit.py done next-kr "Reproducir figura 3"
-python orbit.py done orbit "Implementar calendar sync" --date 2026-03-07
+python orbit.py task open next-kr "Reproducir figura 3" --date 2026-03-15
+python orbit.py task open "Preparar charla" --date 2026-03-20   # sin proyecto → diario de hoy
+python orbit.py task close next-kr "Reproducir figura 3" --open # cierra + abre proyecto
+python orbit.py task schedule orbit "Revisar comandos" --date 2026-03-10
 ```
 
-Busca la tarea en `proyecto.md` por coincidencia parcial y la marca como `- [x] Descripción (YYYY-MM-DD)`.
+- `open` — añade `- [ ] tarea (fecha)` al proyecto o al diario de hoy
+- `schedule` — igual que open, con fecha obligatoria
+- `close` — marca la tarea como `- [x] tarea (fecha)` en `proyecto.md`
+
+`--open` abre el fichero modificado en el editor tras la acción.
 
 ---
 
