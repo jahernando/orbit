@@ -23,7 +23,8 @@ def _prompt_focus(candidates: list, max_count: int, label: str) -> list:
     for i, name in enumerate(candidates, 1):
         print(f"  {i}. {name}")
     plural = f"hasta {max_count}" if max_count > 1 else "uno"
-    print(f"Elige {plural} (intro = {'primero' if max_count == 1 else 'todos'}, números separados por coma, o nombre parcial):")
+    default_hint = "primero" if max_count == 1 else "todos"
+    print(f"Elige {plural} (intro = {default_hint}, número, nombre parcial, o combinación: '1, next-gala'):")
     try:
         resp = input("> ").strip()
     except (EOFError, KeyboardInterrupt):
@@ -31,13 +32,18 @@ def _prompt_focus(candidates: list, max_count: int, label: str) -> list:
         return []
     if not resp:
         return candidates[:max_count]
-    # Number selection
-    try:
-        indices = [int(x.strip()) - 1 for x in resp.split(",")]
-        selected = [candidates[i] for i in indices if 0 <= i < len(candidates)]
-        return selected[:max_count]
-    except ValueError:
-        return [resp][:max_count]
+    selected = []
+    for token in resp.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            idx = int(token) - 1
+            if 0 <= idx < len(candidates):
+                selected.append(candidates[idx])
+        except ValueError:
+            selected.append(token)  # partial name — resolved later by _inject_focus_projects
+    return selected[:max_count]
 
 
 def _active_projects_by_priority(max_count: int) -> list:
