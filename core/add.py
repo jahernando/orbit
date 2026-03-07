@@ -17,8 +17,12 @@ DIARIO_DIR     = MISION_LOG_DIR / "diario"
 TEMPLATES_DIR  = Path(__file__).parent.parent / "📐templates"
 
 
+_REMINDERS_END = "<!-- orbit:reminders:end -->"
+_REMINDERS_START = "<!-- orbit:reminders:start -->"
+
+
 def _copy_ring_to_diary(ring_line: str) -> None:
-    """Insert a ring line into today's diary ## ⏰ Recordatorios section."""
+    """Insert a ring line into today's diary ⏰ Recordatorios section (before end marker)."""
     today = date.today()
     dest  = DIARIO_DIR / f"{today.isoformat()}.md"
 
@@ -30,21 +34,32 @@ def _copy_ring_to_diary(ring_line: str) -> None:
         dest.write_text(tpl.read_text().replace("YYYY-MM-DD", today.isoformat()))
 
     lines = dest.read_text().splitlines()
+
+    # Insert before the reminders end marker if present
+    for i, line in enumerate(lines):
+        if line.strip() == _REMINDERS_END:
+            lines.insert(i, ring_line)
+            dest.write_text("\n".join(lines) + "\n")
+            print(f"  → diario {today.isoformat()}: {ring_line}")
+            return
+
+    # Fallback: insert after the ⏰ heading
     for i, line in enumerate(lines):
         if "## ⏰" in line and "recordatorios" in line.lower():
             lines.insert(i + 1, ring_line)
             dest.write_text("\n".join(lines) + "\n")
             print(f"  → diario {today.isoformat()}: {ring_line}")
             return
+
     lines.append(ring_line)
     dest.write_text("\n".join(lines) + "\n")
     print(f"  → diario {today.isoformat()}: {ring_line}")
 
 # Maps action → (section heading, logbook tag, files subdirectory)
 SECTION_MAP = {
-    "ref":      ("## 📎 Referencias clave", "referencia", "references"),
-    "result":   ("## 📊 Últimos resultados", "resultado",  "results"),
-    "decision": ("## 📌 Decisiones",         "decision",   "decisions"),
+    "ref":      ("## 📎 Referencias", "referencia", "references"),
+    "result":   ("## 📊 Resultados",  "resultado",  "results"),
+    "decision": ("## 📌 Decisiones",  "decision",   "decisions"),
 }
 
 
