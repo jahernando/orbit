@@ -48,13 +48,26 @@ def run_task_open(project: Optional[str], task_desc: str, fecha: Optional[str]) 
         return 1
 
     lines = proyecto_path.read_text().splitlines()
-    # Insert after the ## ✅ Tareas heading
+    # Find ## ✅ Tareas section and insert before the first non-task line after it
+    in_tasks = False
+    insert_at = None
     for i, line in enumerate(lines):
-        if line.strip().startswith("## ✅") or "tareas" in line.strip().lower():
-            lines.insert(i + 1, entry)
-            _write_lines(proyecto_path, lines)
-            print(f"✓ [{project_dir.name}] {entry}")
-            return 0
+        stripped = line.strip()
+        if stripped.startswith("## ") and "✅" in stripped and "tareas" in stripped.lower():
+            in_tasks = True
+            insert_at = i + 1
+            continue
+        if in_tasks:
+            if stripped.startswith("- ["):
+                insert_at = i + 1  # keep moving past existing tasks
+            elif stripped.startswith("## ") or (stripped and not stripped.startswith("-")):
+                break  # end of tasks section
+
+    if insert_at is not None:
+        lines.insert(insert_at, entry)
+        _write_lines(proyecto_path, lines)
+        print(f"✓ [{project_dir.name}] {entry}")
+        return 0
 
     # Fallback: append at end
     lines.append(entry)
