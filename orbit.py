@@ -47,9 +47,14 @@ def cmd_search(args):
         projects=args.project,
         tag=args.tag,
         date_filter=args.date,
+        date_from=args.date_from,
+        date_to=args.date_to,
         tipo=args.type,
         estado=args.status,
         prioridad=args.priority,
+        any_mode=args.any,
+        diario=args.diario,
+        limit=args.limit,
         output=args.output,
         open_after=args.open,
         editor=args.editor,
@@ -206,6 +211,16 @@ def main():
     search_p.add_argument("--tag", default=None, choices=VALID_TYPES, metavar="TAG",
                           help=f"Filter logbook entries by tag: {', '.join(VALID_TYPES)}")
     search_p.add_argument("--date", default=None, help="Filter by date: YYYY-MM-DD or YYYY-MM")
+    search_p.add_argument("--from", dest="date_from", default=None, metavar="YYYY-MM-DD",
+                          help="Filter entries from this date (inclusive)")
+    search_p.add_argument("--to", dest="date_to", default=None, metavar="YYYY-MM-DD",
+                          help="Filter entries up to this date (inclusive)")
+    search_p.add_argument("--any", action="store_true",
+                          help="OR logic: match any keyword (default: AND)")
+    search_p.add_argument("--diario", action="store_true",
+                          help="Also search in mision-log (diario, semanal, mensual)")
+    search_p.add_argument("--limit", type=int, default=0, metavar="N",
+                          help="Maximum number of results (default: unlimited)")
     search_p.add_argument("--type", default=None, help="Filter by project type (investigacion, docencia, ...)")
     search_p.add_argument("--status", default=None, help="Filter by project status (en marcha, parado, ...)")
     search_p.add_argument("--priority", default=None, help="Filter by project priority (alta, media, baja)")

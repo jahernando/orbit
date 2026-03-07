@@ -16,12 +16,18 @@ Tipos: `apunte` `idea` `referencia` `tarea` `problema` `resultado` `decision` `e
 
 ```bash
 orbit search ["keyword"] [--project P [P...]] [--tag TIPO] [--date YYYY-MM | YYYY-MM-DD]
+             [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--any] [--diario] [--limit N]
+             [--type T] [--status S] [--priority P]
              [--output FILE] [--open] [--editor E]
 ```
 
 - Sin `--tag` → busca en logbooks **y** notas de proyecto
 - Con `--tag` → busca solo en logbooks con ese tag
 - Sin `--project` → busca en todos los proyectos
+- `--any` → lógica OR entre palabras clave (por defecto: AND)
+- `--diario` → incluye también diario, semanal y mensual de mision-log
+- `--from`/`--to` → filtra por rango de fechas (YYYY-MM-DD)
+- `--limit N` → limita el número de resultados
 - `--open` → guarda en `☀️mision-log/search.md` y abre en editor
 
 ## Abrir notas
