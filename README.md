@@ -288,16 +288,17 @@ Crea los ficheros en `☀️mision-log/diario/`, `semanal/` o `mensual/` desde l
 ```bash
 python orbit.py report day   [--date YYYY-MM-DD] [--inject]
 python orbit.py report week  [--date YYYY-MM-DD] [--inject]
-python orbit.py report month [--date YYYY-MM]    [--output FICHERO]
+python orbit.py report month [--date YYYY-MM]    [--apply] [--output FICHERO]
 ```
 
 ```bash
-python orbit.py report day                    # informe del día de hoy
-python orbit.py report week --inject          # informe semanal e inyecta en el fichero
-python orbit.py report month --date 2026-02   # informe mensual de febrero
+python orbit.py report day                       # informe del día de hoy
+python orbit.py report week --inject             # informe semanal e inyecta en el fichero
+python orbit.py report month --date 2026-02      # informe mensual de febrero
+python orbit.py report month --apply             # informe + aplica cambios de estado/prioridad
 ```
 
-Genera un resumen de actividad con evaluación 🍅 de proyectos en foco, tareas completadas y próximas. `--inject` escribe el informe en el fichero `.md` correspondiente.
+Genera un resumen de actividad con evaluación 🍅 de proyectos en foco, tareas completadas y próximas. `--inject` escribe el informe en el fichero `.md` (day/week). `--apply` actualiza estado y prioridad en `proyecto.md` (month).
 
 ---
 
@@ -340,21 +341,6 @@ Lee los eventos de todos tus calendarios de Google y añade los que tengan `proy
 
 ---
 
-### `monthreport` — generar revisión mensual
-
-```bash
-python orbit.py monthreport [--month YYYY-MM] [--apply] [--output FICHERO]
-```
-
-```bash
-python orbit.py monthreport
-python orbit.py monthreport --month 2026-02
-python orbit.py monthreport --apply
-```
-
-Crea `☀️mision-log/mensual/YYYY-MM.md` desde la plantilla si no existe, e inyecta la tabla de actividad entre los marcadores `<!-- orbit:monthreport:start -->` y `<!-- orbit:monthreport:end -->`. El estado real se evalúa con la misma lógica que `activity` (ventanas de 30 y 60 días desde el fin del mes).
-
----
 
 ## Convenciones
 

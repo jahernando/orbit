@@ -61,12 +61,6 @@ def cmd_tasks(args):
     )
 
 
-def cmd_monthreport(args):
-    return run_monthly(
-        month=args.month,
-        apply=args.apply,
-        output=args.output,
-    )
 
 
 def cmd_import(args):
@@ -132,7 +126,7 @@ def cmd_report(args):
     elif args.period == "week":
         return run_weekreport(date_str=args.date, inject=args.inject)
     elif args.period == "month":
-        return run_monthly(month=args.date, apply=False, output=args.output)
+        return run_monthly(month=args.date, apply=args.apply, output=args.output)
     return 1
 
 
@@ -269,6 +263,7 @@ def main():
     rep_p.add_argument("period", choices=["day", "week", "month"], help="Report period")
     rep_p.add_argument("--date", default=None, help="Date: YYYY-MM-DD for day/week, YYYY-MM for month (default: today/current)")
     rep_p.add_argument("--inject", action="store_true", help="Inject report into the log file (day/week)")
+    rep_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md (month)")
     rep_p.add_argument("--output", default=None, help="Save output to file (month)")
 
     # --- logday ---
@@ -308,12 +303,6 @@ def main():
     month_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Up to 3 focus projects (partial name)")
     month_p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
     month_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
-
-    # --- monthreport ---
-    mon_p = subparsers.add_parser("monthreport", help="Generate monthly review table and inject into mensual/YYYY-MM.md")
-    mon_p.add_argument("--month", default=None, help="Month as YYYY-MM (default: current month)")
-    mon_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md")
-    mon_p.add_argument("--output", default=None, help="Also save output to file")
 
     # --- setpriority ---
     sp_p = subparsers.add_parser("setpriority", help="Set priority for one or more projects at once")
@@ -366,8 +355,6 @@ def main():
         sys.exit(cmd_setpriority(args))
     elif args.command == "activity":
         sys.exit(cmd_activity(args))
-    elif args.command == "monthreport":
-        sys.exit(cmd_monthreport(args))
     else:
         parser.print_help()
 

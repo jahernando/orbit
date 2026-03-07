@@ -57,7 +57,7 @@ orbit report month [--date YYYY-MM]    [--output FILE]
 
 ```bash
 orbit activity    [--project P] [--type T] [--priority P] [--period D [D]] [--apply] [--output FILE]
-orbit monthreport [--month YYYY-MM] [--apply] [--output FILE]
+orbit report month [--date YYYY-MM] [--apply] [--output FILE]
 ```
 
 ## Google Calendar
