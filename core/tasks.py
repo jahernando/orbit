@@ -38,6 +38,8 @@ TYPE_MAP = {
     "formacion":     "📖",
     "software":      "💻",
     "personal":      "🌿",
+    "mision":        "☀️",
+    "misión":        "☀️",
 }
 
 

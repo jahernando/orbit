@@ -1,119 +1,141 @@
 # Orbit — Chuleta de comandos
 
-## Logbook
+## Shell interactivo
 
 ```bash
+orbit              # entra al shell (sin prefijo orbit en cada comando)
+orbit shell        # equivalente explícito
+orbit claude       # abre Claude Code en el directorio Orbit
+```
+
+---
+
+## create — crear cosas nuevas
+
+```bash
+orbit create project  --name NOMBRE --type TIPO [--priority alta|media|baja]
+orbit create import   --file FICHERO.enex --project PROYECTO
+orbit create day      [--date D] [--force] [--focus P...] [--no-open] [--editor E]
+orbit create week     [--date D] [--force] [--focus P...] [--no-open] [--editor E]
+orbit create month    [--date D] [--force] [--focus P...] [--no-open] [--editor E]
+```
+
+`create day` crea la nota mensual y semanal en cascada si no existen, y hereda el foco automáticamente.
+
+---
+
+## add — añadir items a un proyecto
+
+```bash
+orbit add task     [project] <desc>   [--date D] [--time HH:MM] [--recur RULE] [--open]
+orbit add ring     [project] <desc>    --date D   --time HH:MM  [--recur RULE] [--open]
+orbit add ref      <project> <título> [--url URL] [--file PATH] [--sync] [--open]
+orbit add result   <project> <título> [--url URL] [--file PATH] [--sync] [--open]
+orbit add decision <project> <título> [--url URL] [--file PATH] [--sync] [--open]
+```
+
+- Sin proyecto → va a **mission** por defecto
+- `--date today` → también se copia al diario del día
+- `--date today` en `ring` → también se programa en Reminders.app
+- `--recur` acepta: `daily/diario` · `weekly/semanal` · `monthly/mensual` · `yearly/anual` · `weekdays/laborables` · `every:Nd` · `every:Nw`
+- `--sync` → `git add -f` sobre el fichero copiado
+
+---
+
+## change — modificar cosas existentes
+
+```bash
+# Proyectos
+orbit change status   <nuevo_estado>    [project...] [--from-status S] [--from-priority P] [--type T]
+orbit change priority <nueva_prioridad> [project...] [--from-status S] [--from-priority P] [--type T]
+orbit change type     <nuevo_tipo>      [project...] [--from-status S] [--from-priority P]
+
+# Tareas
+orbit change task schedule <project> <desc> --date D [--time HH:MM] [--recur RULE] [--open]
+orbit change task close    <project> <desc> [--date D] [--open]
+
+# Recordatorios
+orbit change ring schedule <project> <desc> --date D --time HH:MM [--recur RULE] [--open]
+orbit change ring close    <project> <desc> [--open]
+```
+
+`change task close` con `@recur` avanza la fecha en vez de cerrar.
+
+---
+
+## list — listar proyectos y secciones
+
+```bash
+orbit list projects  [--type T] [--status S] [--priority P] [--output F] [--open]
+orbit list tasks     [--project P] [--type T] [--status S] [--priority P] [--date D] [--keyword K]
+orbit list rings     [project] [--output F] [--open]
+orbit list refs      [project] [--output F] [--open]
+orbit list results   [project] [--output F] [--open]
+orbit list decisions [project] [--output F] [--open]
+```
+
+---
+
+## report — informes
+
+```bash
+orbit report day    [--date D] [--inject] [--output F] [--open] [--editor E]
+orbit report week   [--date D] [--inject] [--output F] [--open] [--editor E]
+orbit report month  [--date D] [--inject] [--apply]   [--output F] [--open] [--editor E]
+orbit report stats  [--date D] [--from D] [--to D] [--project P] [--type T] [--priority P] [--output F] [--open]
+orbit report status [--date D] [--apply] [--output F] [--open] [--editor E]
+```
+
+- `report week/month` guarda automáticamente una entrada en el logbook de **mission**
+- `--inject` → inyecta el reporte en la nota del período
+- `--apply`  → aplica cambios de estado/prioridad a los proyectos
+- `report status` → tabla proyecto · act-60 · act-30 · estado · prioridad → propuesta
+
+---
+
+## log y search
+
+```bash
+orbit log [project] <msg> [--entry TIPO] [--path RUTA] [--date D] [--open] [--editor E]
 # Sin proyecto → anota en el diario de hoy
-orbit log "<mensaje>" [--type TIPO] [--date YYYY-MM-DD] [--open] [--editor EDITOR]
 
-# Con proyecto → anota en el logbook del proyecto
-orbit log <proyecto> "<mensaje>" [--type TIPO] [--path RUTA] [--date YYYY-MM-DD] [--open] [--editor EDITOR]
+orbit search [query] [--project P...] [--entry TIPO] [--date D] [--from D] [--to D]
+             [--type T] [--status S] [--priority P] [--any] [--diario] [--limit N]
+             [--output F] [--open] [--editor E]
 ```
 
-Tipos: `apunte` `idea` `referencia` `tarea` `problema` `resultado` `decision` `evento`
+`--entry`: `idea` · `referencia` · `tarea` · `problema` · `resultado` · `apunte` · `decision` · `evento`
 
-## Búsqueda
+---
+
+## open y calendar
 
 ```bash
-orbit search ["keyword"] [--project P [P...]] [--tag TIPO] [--date YYYY-MM | YYYY-MM-DD]
-             [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--any] [--diario] [--limit N]
-             [--type T] [--status S] [--priority P]
-             [--output FILE] [--open] [--editor E]
+orbit open [target] [--log] [--editor E]
+orbit open [target] --terminal [--section S] [--entry TIPO] [--log] [--output F]
+# target: nombre-proyecto · YYYY-MM-DD · YYYY-Wnn · YYYY-MM  (defecto: hoy)
+
+orbit calendar [--date D] [--dry-run]
 ```
 
-- Sin `--tag` → busca en logbooks **y** notas de proyecto
-- Con `--tag` → busca solo en logbooks con ese tag
-- Sin `--project` → busca en todos los proyectos
-- `--any` → lógica OR entre palabras clave (por defecto: AND)
-- `--diario` → incluye también diario, semanal y mensual de mision-log
-- `--from`/`--to` → filtra por rango de fechas (YYYY-MM-DD)
-- `--limit N` → limita el número de resultados
-- `--open` → guarda en `☀️mision-log/search.md` y abre en editor
+---
 
-## Abrir notas
+## Tipos de proyecto
 
-```bash
-orbit open [<target>] [--log] [--editor EDITOR]   # por defecto: diario de hoy en Typora
-orbit view [<target>] [--section S] [--entrada TIPO] [--log] [--output FILE]
-```
+`investigacion` 🌀 · `docencia` 📚 · `gestion` ⚙️ · `formacion` 📖 · `software` 💻 · `personal` 🌿 · `mision` ☀️
 
-`<target>`: nombre de proyecto · `YYYY-MM-DD` · `YYYY-Wnn` · `YYYY-MM`
+## Estados
 
-Editores: `typora` (defecto) · `glow` · `code` · cualquier comando
+`inicial` ⬜ · `en marcha` ▶️ · `parado` ⏸️ · `esperando` ⏳ · `durmiendo` 💤 · `completado` ✅
 
-## Tareas
+## Prioridades
 
-```bash
-orbit tasks [--project P] [--type T] [--status S] [--priority P] [--date D] [--output FILE]
-orbit task open     [<proyecto>] "<tarea>" [--date YYYY-MM-DD] [--open] [--editor E]
-orbit task schedule [<proyecto>] "<tarea>" --date YYYY-MM-DD  [--open] [--editor E]
-orbit task close    [<proyecto>] "<tarea>" [--date YYYY-MM-DD] [--open] [--editor E]
-```
+`alta` 🟠 · `media` 🟡 · `baja` 🔵
 
-## Planificación
+---
 
-```bash
-orbit day   [--date YYYY-MM-DD] [--force] [--focus P...] [--no-open] [--editor E]
-orbit week  [--date YYYY-MM-DD] [--force] [--focus P...] [--no-open] [--editor E]
-orbit month [--date YYYY-MM]    [--force] [--focus P...] [--no-open] [--editor E]
-```
+## Fechas — lenguaje natural
 
-`day/week/month` abren la nota automáticamente al crearla. Usa `--no-open` para suprimirlo.
+Todos los `--date`, `--from`, `--to` aceptan:
 
-## Reports
-
-```bash
-orbit report day    [--date D] [--inject] [--output FILE] [--open] [--editor E]
-orbit report week   [--date D] [--inject] [--output FILE] [--open] [--editor E]
-orbit report month  [--date D] [--inject] [--apply] [--output FILE] [--open] [--editor E]
-orbit report stats  [--date D] [--from D] [--to D]
-                    [--project P] [--type T] [--priority P]
-                    [--output FILE] [--open] [--editor E]
-orbit report review [--date D] [--output FILE] [--open] [--editor E]
-```
-
-`--date` acepta lenguaje natural: `today` · `yesterday` · `this week` · `last month` · `next friday` · `in 5 days` · `last friday of march` · y sus equivalentes en español.
-
-- `--inject` → inyecta el reporte en la sección correspondiente de la nota del período
-- `--apply`  → aplica cambios de estado/prioridad a los proyectos (month/review)
-- `--open`   → abre la nota del período en editor tras generar el reporte
-
-## Google Calendar
-
-```bash
-orbit calendar [--date YYYY-MM-DD] [--dry-run]
-```
-
-Requiere `credentials.json` en el directorio Orbit.
-En la descripción del evento en Google: `proyecto: nombre-proyecto`
-
-## Proyectos
-
-```bash
-orbit project create --name NOMBRE --type TIPO [--priority P]
-orbit project import --file FICHERO.enex --project PROYECTO
-
-# Cambiar estado/prioridad — un proyecto, varios, o por filtro
-orbit project update [<proyecto>...] [--status NUEVO] [--priority NUEVO]
-                     [--type T] [--from-status S] [--from-priority P]
-```
-
-Tipos de proyecto: `investigacion` `docencia` `gestion` `formacion` `software` `personal`
-
-Estados: `inicial` `en marcha` `parado` `esperando` `durmiendo` `completado`
-
-Prioridades: `alta` `media` `baja`
-
-## Estructura de ficheros
-
-```
-🚀proyectos/
-└── {emoji}nombre/
-    ├── {emoji}Nombre.md     ← índice: objetivo, tareas, referencias
-    └── 📓Nombre.md          ← logbook cronológico
-
-☀️mision-log/
-├── diario/   YYYY-MM-DD.md
-├── semanal/  YYYY-Wnn.md
-└── mensual/  YYYY-MM.md
-```
+`today/hoy` · `yesterday/ayer` · `tomorrow/mañana` · `this week/esta semana` · `last month/mes pasado` · `next friday/próximo viernes` · `in 5 days/en 5 días` · `last friday of march` · `YYYY-MM-DD` · `YYYY-MM` · `YYYY-Wnn`

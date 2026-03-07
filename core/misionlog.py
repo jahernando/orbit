@@ -1,9 +1,10 @@
 import re
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from core.log import VALID_TYPES, find_logbook_file, find_proyecto_file
+from core.log import VALID_TYPES, find_logbook_file, find_proyecto_file, log_to_mission
 from core.open import open_file
 from core.tasks import TYPE_MAP, load_project_meta
 from core.activity import has_activity_in
@@ -105,19 +106,49 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
     target = date.fromisoformat(date_str) if date_str else date.today()
     dest   = DIARIO_DIR / f"{target.isoformat()}.md"
 
+    # ── Note already exists ───────────────────────────────────────────────────
+    if dest.exists() and not force:
+        print(f"La nota ya existe: {dest.name}")
+        if sys.stdin.isatty():
+            resp = input("¿Inyectar reporte del día? [s/N] ").strip().lower()
+            if resp in ("s", "si", "sí", "y", "yes"):
+                run_dayreport(date_str=target.isoformat(), inject=True,
+                              output=None, open_after=open_after, editor=editor)
+                return 0
+        if open_after:
+            open_file(dest, editor)
+        return 0
+
     tpl = TEMPLATES_DIR / "diario.md"
     if not tpl.exists():
         print(f"Error: plantilla no encontrada en {tpl}")
         return 1
     content = tpl.read_text().replace("YYYY-MM-DD", target.isoformat())
 
-    # If no focus given, suggest from current week's semanal
+    # ── Cascade: ensure month and week notes exist ────────────────────────────
+    month_str    = target.strftime("%Y-%m")
+    mensual_path = MENSUAL_DIR / f"{month_str}.md"
+    if not mensual_path.exists():
+        print(f"  → creando nota mensual {month_str}…")
+        run_month(date_str=month_str, force=False, focus=None,
+                  open_after=False, editor=editor)
+
+    wkey         = _week_key(target)
+    semanal_path = SEMANAL_DIR / f"{wkey}.md"
+    if not semanal_path.exists():
+        print(f"  → creando nota semanal {wkey}…")
+        run_week(date_str=target.isoformat(), force=False, focus=None,
+                 open_after=False, editor=editor)
+
+    # ── Focus: prompt interactively or auto-inherit from semanal (non-TTY) ───
     if not focus:
-        wkey = _week_key(target)
-        semanal_path = SEMANAL_DIR / f"{wkey}.md"
         candidates = _parse_focus_projects(semanal_path, "## 🎯 Proyectos en foco")
         if candidates:
-            focus = _prompt_focus(candidates, 1, f"Proyectos en foco de la semana {wkey}")
+            if sys.stdin.isatty():
+                focus = _prompt_focus(candidates, 1, f"Proyectos en foco de la semana {wkey}")
+            else:
+                focus = candidates[:1]
+                print(f"  → foco día heredado: {focus[0]}")
 
     rc = _write(dest, content, None, force)
     if rc == 0:
@@ -225,6 +256,19 @@ def run_week(date_str: Optional[str], force: bool, focus: list = None,
     mon, sun = _week_bounds(d)
     dest   = SEMANAL_DIR / f"{wkey}.md"
 
+    # ── Note already exists ───────────────────────────────────────────────────
+    if dest.exists() and not force:
+        print(f"La nota ya existe: {dest.name}")
+        if sys.stdin.isatty():
+            resp = input("¿Inyectar reporte semanal? [s/N] ").strip().lower()
+            if resp in ("s", "si", "sí", "y", "yes"):
+                run_weekreport(date_str=d.isoformat(), inject=True,
+                               output=None, open_after=open_after, editor=editor)
+                return 0
+        if open_after:
+            open_file(dest, editor)
+        return 0
+
     tpl = TEMPLATES_DIR / "semanal.md"
     if not tpl.exists():
         print(f"Error: plantilla no encontrada en {tpl}")
@@ -236,13 +280,17 @@ def run_week(date_str: Optional[str], force: bool, focus: list = None,
                 .replace("YYYY-MM-DD", sun.isoformat(), 1))
     content = "\n".join(lines)
 
-    # If no focus given, suggest from current month's mensual
+    # If no focus given: prompt interactively or auto-inherit from mensual (non-TTY)
     if not focus:
-        month_str = d.strftime("%Y-%m")
+        month_str    = d.strftime("%Y-%m")
         mensual_path = MENSUAL_DIR / f"{month_str}.md"
-        candidates = _parse_focus_projects(mensual_path, "## 🎯 Proyectos en foco")
+        candidates   = _parse_focus_projects(mensual_path, "## 🎯 Proyectos en foco")
         if candidates:
-            focus = _prompt_focus(candidates, 2, f"Proyectos en foco del mes {month_str}")
+            if sys.stdin.isatty():
+                focus = _prompt_focus(candidates, 2, f"Proyectos en foco del mes {month_str}")
+            else:
+                focus = candidates[:2]
+                print(f"  → foco semana heredado: {', '.join(focus)}")
 
     rc = _write(dest, content, None, force)
     if rc == 0:
@@ -267,6 +315,20 @@ def run_month(date_str: Optional[str], force: bool, focus: list = None,
     month_str = f"{y}-{m:02d}"
     dest = MENSUAL_DIR / f"{month_str}.md"
 
+    # ── Note already exists ───────────────────────────────────────────────────
+    if dest.exists() and not force:
+        print(f"La nota ya existe: {dest.name}")
+        if sys.stdin.isatty():
+            resp = input("¿Inyectar reporte mensual? [s/N] ").strip().lower()
+            if resp in ("s", "si", "sí", "y", "yes"):
+                from core.monthly import run_monthly
+                run_monthly(month_str=month_str, apply=False, output=None,
+                            open_after=open_after, editor=editor)
+                return 0
+        if open_after:
+            open_file(dest, editor)
+        return 0
+
     tpl = TEMPLATES_DIR / "mensual.md"
     if not tpl.exists():
         print(f"Error: plantilla no encontrada en {tpl}")
@@ -279,11 +341,15 @@ def run_month(date_str: Optional[str], force: bool, focus: list = None,
                         f"← [Mes anterior](./{prev_str}.md)")
                .replace("YYYY-MM", month_str))
 
-    # If no focus given, suggest active projects by priority
+    # If no focus given: prompt interactively or auto-pick top 3 (non-TTY)
     if not focus:
         candidates = _active_projects_by_priority(3)
         if candidates:
-            focus = _prompt_focus(candidates, 3, f"Proyectos activos para el mes {month_str}")
+            if sys.stdin.isatty():
+                focus = _prompt_focus(candidates, 3, f"Proyectos activos para el mes {month_str}")
+            else:
+                focus = candidates[:3]
+                print(f"  → foco mes heredado: {', '.join(focus)}")
 
     rc = _write(dest, content, None, force)
     if rc == 0:
@@ -703,4 +769,5 @@ def run_weekreport(date_str: Optional[str], inject: bool,
         if open_after:
             open_file(dest, editor)
 
+    log_to_mission(f"Reporte semanal {wkey}", "apunte")
     return 0

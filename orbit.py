@@ -3,6 +3,7 @@
 
 import argparse
 import sys
+from pathlib import Path
 
 from core.log import VALID_TYPES, add_entry, find_project, find_logbook_file, find_proyecto_file
 from core.search import run_search
@@ -10,11 +11,14 @@ from core.tasks import list_tasks
 from core.monthly import run_monthly
 from core.stats import run_stats
 from core.review import run_review
-from core.misionlog import run_day, run_week, run_month, run_logday, run_dayreport, run_weekreport, add_entry_to_day
+from core.misionlog import run_day, run_week, run_month, run_dayreport, run_weekreport, add_entry_to_day
 from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
 from core.task import run_task_open, run_task_schedule, run_task_close
+from core.reminders import run_ring_schedule, run_ring_close
+from core.list_cmd import run_list_projects, run_list_section
+from core.add import run_add
 from core.view import run_view
 from core.open import run_open, open_file
 from core.calendar_sync import run_calendar_sync
@@ -29,13 +33,13 @@ def _d(expr):
 def cmd_log(args):
     if not args.project:
         return add_entry_to_day(
-            message=args.message, tipo=args.type, path=args.path,
+            message=args.message, tipo=args.entry, path=args.path,
             date_str=_d(args.date), open_after=args.open, editor=args.editor,
         )
     rc = add_entry(
         project=args.project,
         message=args.message,
-        tipo=args.type,
+        tipo=args.entry,
         path=args.path,
         fecha=_d(args.date),
     )
@@ -52,7 +56,7 @@ def cmd_search(args):
     return run_search(
         query=args.query,
         projects=args.project,
-        tag=args.tag,
+        tag=args.entry,
         date_filter=_d(args.date),
         date_from=_d(args.date_from),
         date_to=_d(args.date_to),
@@ -70,38 +74,43 @@ def cmd_search(args):
 
 def cmd_tasks(args):
     return list_tasks(
-        project=args.project,
-        tipo=args.type,
-        estado=args.status,
-        prioridad=args.priority,
-        fecha=_d(args.date),
-        keyword=args.keyword,
-        output=args.output,
-        open_after=args.open,
-        editor=args.editor,
+        project=getattr(args, "project", None),
+        tipo=getattr(args, "type", None),
+        estado=getattr(args, "status", None),
+        prioridad=getattr(args, "priority", None),
+        fecha=_d(getattr(args, "date", None)),
+        keyword=getattr(args, "keyword", None),
+        output=getattr(args, "output", None),
+        open_after=getattr(args, "open", False),
+        editor=getattr(args, "editor", "typora"),
     )
 
 
 
 
-def cmd_project(args):
-    if args.action == "create":
+def cmd_create(args):
+    if args.what == "project":
         return run_project(name=args.name, tipo=args.type, prioridad=args.priority)
-    elif args.action == "update":
-        return run_update(
-            projects=args.project or [],
-            status=args.status,
-            priority=args.priority,
-            tipo=args.type,
-            from_status=args.from_status,
-            from_priority=args.from_priority,
-        )
-    elif args.action == "import":
+    elif args.what == "import":
         return run_import(enex_path=args.file, project=args.project)
+    elif args.what == "day":
+        return run_day(date_str=_d(args.date), force=args.force, focus=args.focus,
+                       open_after=not args.no_open, editor=args.editor)
+    elif args.what == "week":
+        return run_week(date_str=_d(args.date), force=args.force, focus=args.focus,
+                        open_after=not args.no_open, editor=args.editor)
+    elif args.what == "month":
+        return run_month(date_str=_d(args.date), force=args.force, focus=args.focus,
+                         open_after=not args.no_open, editor=args.editor)
     return 1
 
 
 def cmd_open(args):
+    if args.terminal:
+        return run_view(
+            target=args.target, section=args.section,
+            entrada=args.entry, log=args.log, output=args.output,
+        )
     return run_open(target=args.target, log=args.log, editor=args.editor)
 
 
@@ -115,15 +124,43 @@ def cmd_view(args):
     )
 
 
-def cmd_task(args):
-    if args.action == "open":
-        rc = run_task_open(project=args.project, task_desc=args.task, fecha=_d(args.date))
-    elif args.action == "schedule":
-        rc = run_task_schedule(project=args.project, task_desc=args.task, fecha=_d(args.date))
-    elif args.action == "close":
-        rc = run_task_close(project=args.project, task_desc=args.task, fecha=_d(args.date))
+def cmd_change(args):
+    target = args.target   # "task" or "ring"
+    action = args.action   # "schedule" or "close"
+
+    if target == "task":
+        if action == "schedule":
+            rc = run_task_schedule(
+                project=args.project, task_desc=args.desc,
+                fecha=_d(args.date), time_str=getattr(args, "time", None),
+                recur=getattr(args, "recur", None),
+            )
+        else:
+            rc = run_task_close(
+                project=args.project, task_desc=args.desc,
+                fecha=_d(getattr(args, "date", None)),
+            )
+    elif target in ("status", "priority", "type"):
+        return run_update(
+            projects=args.project or [],
+            status=args.value    if target == "status"   else None,
+            priority=args.value  if target == "priority" else None,
+            tipo=args.value      if target == "type"     else None,
+            from_status=getattr(args, "from_status", None),
+            from_priority=getattr(args, "from_priority", None),
+        )
+    elif target == "ring":
+        if action == "schedule":
+            rc = run_ring_schedule(
+                project=args.project, desc=args.desc,
+                date_str=_d(args.date), time_str=args.time,
+                recur=getattr(args, "recur", None),
+            )
+        else:
+            rc = run_ring_close(project=args.project, desc=args.desc)
     else:
         return 1
+
     if rc == 0 and args.open and args.project:
         project_dir = find_project(args.project)
         if project_dir:
@@ -131,6 +168,36 @@ def cmd_task(args):
             if proyecto:
                 open_file(proyecto, args.editor)
     return rc
+
+
+def cmd_add(args):
+    if args.action == "task":
+        rc = run_task_open(
+            project=args.project or "mission", task_desc=args.title,
+            fecha=_d(getattr(args, "date", None)),
+            time_str=getattr(args, "time", None),
+            recur=getattr(args, "recur", None),
+        )
+        if rc == 0 and args.open and args.project:
+            project_dir = find_project(args.project)
+            if project_dir:
+                proyecto = find_proyecto_file(project_dir)
+                if proyecto:
+                    open_file(proyecto, args.editor)
+        return rc
+    return run_add(
+        action=args.action,
+        project=args.project or "mission",
+        title=args.title,
+        url=getattr(args, "url", None),
+        file_str=getattr(args, "file", None),
+        sync=getattr(args, "sync", False),
+        date_str=_d(getattr(args, "date", None)),
+        time_str=getattr(args, "time", None),
+        recur=getattr(args, "recur", None),
+        open_after=args.open,
+        editor=args.editor,
+    )
 
 
 def cmd_calendar(args):
@@ -154,30 +221,22 @@ def cmd_report(args):
                          date_to=_d(args.date_to), project=args.project,
                          tipo=args.type, prioridad=args.priority,
                          output=args.output, open_after=args.open, editor=args.editor)
-    elif args.period == "review":
-        return run_review(date_str=_d(args.date), inject=False, apply=False,
+    elif args.period == "status":
+        return run_review(date_str=_d(args.date), apply=args.apply,
                           output=args.output, open_after=args.open, editor=args.editor)
     return 1
 
 
-def cmd_logday(args):
-    return run_logday(message=args.message, tipo=args.type, date_str=args.date,
-                      open_after=args.open, editor=args.editor)
-
-
-def cmd_day(args):
-    return run_day(date_str=_d(args.date), force=args.force, focus=args.focus,
-                   open_after=not args.no_open, editor=args.editor)
-
-
-def cmd_week(args):
-    return run_week(date_str=_d(args.date), force=args.force, focus=args.focus,
-                    open_after=not args.no_open, editor=args.editor)
-
-
-def cmd_month(args):
-    return run_month(date_str=_d(args.date), force=args.force, focus=args.focus,
-                     open_after=not args.no_open, editor=args.editor)
+def cmd_list(args):
+    if args.what == "projects":
+        return run_list_projects(
+            tipo=args.type, status=args.status, priority=args.priority,
+            output=args.output, open_after=args.open, editor=args.editor,
+        )
+    return run_list_section(
+        project=getattr(args, "project", None), section=args.what,
+        output=args.output, open_after=args.open, editor=args.editor,
+    )
 
 
 
@@ -191,10 +250,10 @@ def main():
                        help="Project name (partial match); omit to log to today's diary")
     log_p.add_argument("message", help="Entry message")
     log_p.add_argument(
-        "--type",
+        "--entry",
         default="apunte",
         choices=VALID_TYPES,
-        metavar="TYPE",
+        metavar="ENTRY",
         help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
     )
     log_p.add_argument("--path", default=None, help="Optional file path — formats entry as a markdown link")
@@ -207,8 +266,8 @@ def main():
     search_p.add_argument("query", nargs="?", default="", help="Keywords to search (all entries if omitted)")
     search_p.add_argument("--project", nargs="+", metavar="P", default=None,
                           help="Project(s) to search in (partial match; default: all)")
-    search_p.add_argument("--tag", default=None, choices=VALID_TYPES, metavar="TAG",
-                          help=f"Filter logbook entries by tag: {', '.join(VALID_TYPES)}")
+    search_p.add_argument("--entry", default=None, choices=VALID_TYPES, metavar="ENTRY",
+                          help=f"Filter logbook entries by type: {', '.join(VALID_TYPES)}")
     search_p.add_argument("--date", default=None, help="Filter by date: YYYY-MM-DD or YYYY-MM")
     search_p.add_argument("--from", dest="date_from", default=None, metavar="YYYY-MM-DD",
                           help="Filter entries from this date (inclusive)")
@@ -228,73 +287,235 @@ def main():
                           help="Open results in editor (saves to mision-log/search.md)")
     search_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # --- tasks ---
-    tasks_p = subparsers.add_parser("tasks", help="List pending tasks across projects")
-    tasks_p.add_argument("--project", default=None, help="Filter by project name (partial match)")
-    tasks_p.add_argument("--type", default=None, help="Filter by project type (investigacion, docencia, gestion, formacion)")
-    tasks_p.add_argument("--status", default=None, help="Filter by project status (en marcha, parado, ...)")
-    tasks_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
-    tasks_p.add_argument("--date", default=None, help="Filter tasks by due date: YYYY-MM-DD or YYYY-MM")
-    tasks_p.add_argument("--keyword", default=None, help="Filter tasks by keyword in description")
-    tasks_p.add_argument("--output", default=None, help="Save output to file instead of terminal")
-    tasks_p.add_argument("--open", action="store_true",
-                         help="Open results in editor (saves to mision-log/tasks.md)")
-    tasks_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+    # --- list ---
+    list_p   = subparsers.add_parser("list", help="List projects or project sections")
+    list_sub = list_p.add_subparsers(dest="what")
+
+    # list projects
+    lpr_p = list_sub.add_parser("projects", help="Table of all projects")
+    lpr_p.add_argument("--type",     default=None, help="Filter by type (investigacion, docencia, ...)")
+    lpr_p.add_argument("--status",   default=None, help="Filter by status (en marcha, parado, ...)")
+    lpr_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
+    lpr_p.add_argument("--output",   default=None, help="Save output to file")
+    lpr_p.add_argument("--open",     action="store_true", help="Save to mision-log/projects.md and open")
+    lpr_p.add_argument("--editor",   default="typora")
+
+    # list tasks
+    ltk_p = list_sub.add_parser("tasks", help="List pending tasks across projects")
+    ltk_p.add_argument("--project",  default=None, help="Filter by project name (partial match)")
+    ltk_p.add_argument("--type",     default=None, help="Filter by project type")
+    ltk_p.add_argument("--status",   default=None, help="Filter by project status")
+    ltk_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
+    ltk_p.add_argument("--date",     default=None, help="Filter by due date — supports natural language")
+    ltk_p.add_argument("--keyword",  default=None, help="Filter by keyword in description")
+    ltk_p.add_argument("--output",   default=None, help="Save output to file")
+    ltk_p.add_argument("--open",     action="store_true", help="Save to mision-log/tasks.md and open")
+    ltk_p.add_argument("--editor",   default="typora")
+
+    # list rings / refs / results / decisions  (shared args)
+    def _add_section_args(p, project_required=False):
+        if project_required:
+            p.add_argument("project", help="Project name (partial match)")
+        else:
+            p.add_argument("project", nargs="?", default=None,
+                           help="Project name (partial match); omit for all projects")
+        p.add_argument("--output", default=None, help="Save output to file")
+        p.add_argument("--open",   action="store_true", help="Save and open in editor")
+        p.add_argument("--editor", default="typora")
+
+    lri_p = list_sub.add_parser("rings",     help="List pending reminders")
+    _add_section_args(lri_p)
+    lrf_p = list_sub.add_parser("refs",      help="List key references")
+    _add_section_args(lrf_p)
+    lrs_p = list_sub.add_parser("results",   help="List results")
+    _add_section_args(lrs_p)
+    lrd_p = list_sub.add_parser("decisions", help="List decisions")
+    _add_section_args(lrd_p)
 
 
     # --- calendar ---
+    subparsers.add_parser("shell", help="Enter interactive Orbit shell")
+
     cal_p = subparsers.add_parser("calendar", help="Sync Google Calendar events to project logbooks")
     cal_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (default: today)")
     cal_p.add_argument("--dry-run", action="store_true", help="Preview without writing to logbooks")
 
     # --- open ---
-    open_p = subparsers.add_parser("open", help="Open a note in an external editor or renderer")
+    open_p = subparsers.add_parser("open", help="Open or display a note / logbook")
     open_p.add_argument("target", nargs="?", default=None,
                         help="Project name, YYYY-MM-DD, YYYY-Wnn or YYYY-MM (default: today)")
-    open_p.add_argument("--log", action="store_true", help="Open logbook instead of project note")
-    open_p.add_argument("--editor", default="typora",
+    open_p.add_argument("--log",      action="store_true", help="Open logbook instead of project note")
+    open_p.add_argument("--terminal", action="store_true", help="Print to terminal instead of opening editor")
+    open_p.add_argument("--section",  default=None, help="(--terminal) Show only the section containing this word")
+    open_p.add_argument("--entry",    default=None, metavar="ENTRY",
+                        help=f"(--terminal) Filter logbook entries by type: {', '.join(VALID_TYPES)}")
+    open_p.add_argument("--output",   default=None, help="(--terminal) Save output to file")
+    open_p.add_argument("--editor",   default="typora",
                         help="Editor to use: typora (default), glow, code, or any command")
 
-    # --- view ---
-    view_p = subparsers.add_parser("view", help="Display a note, logbook or mision-log file")
-    view_p.add_argument("target", nargs="?", default=None, help="Project name, YYYY-MM-DD, YYYY-Wnn or YYYY-MM (default: today)")
-    view_p.add_argument("--section", default=None, help="Show only the section whose heading contains this word")
-    view_p.add_argument("--entrada", default=None, metavar="TIPO", help=f"Filter logbook entries by type: {', '.join(VALID_TYPES)}")
-    view_p.add_argument("--log", action="store_true", help="Show logbook instead of project note")
-    view_p.add_argument("--output", default=None, help="Save output to file")
+    # --- change (task/ring × schedule/close) ---
+    chg_p   = subparsers.add_parser("change", help="Reschedule or close a task or reminder")
+    chg_sub = chg_p.add_subparsers(dest="target")
 
-    # --- task ---
-    task_p = subparsers.add_parser("task", help="Open, schedule or close a task")
-    task_p.add_argument("action", choices=["open", "schedule", "close"], help="Action: open | schedule | close")
-    task_p.add_argument("project", nargs="?", default=None, help="Project name (partial match; omit to use daily note)")
-    task_p.add_argument("task", help="Task description")
-    task_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (due date for open/schedule, done date for close)")
-    task_p.add_argument("--open", action="store_true", help="Open the project note in editor after action")
-    task_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+    def _chg_common(p, *, needs_time=False, time_required=False):
+        p.add_argument("project", help="Project name (partial match)")
+        p.add_argument("desc",    help="Description to match (partial)")
+        p.add_argument("--open",   action="store_true", help="Open proyecto.md in editor after change")
+        p.add_argument("--editor", default="typora",    help="Editor to use (default: typora)")
 
-    # --- project (create / update / import) ---
-    proj_p = subparsers.add_parser("project", help="Create, update or import projects")
-    proj_sub = proj_p.add_subparsers(dest="action")
+    # change task
+    ct_p   = chg_sub.add_parser("task", help="Reschedule or close a task")
+    ct_sub = ct_p.add_subparsers(dest="action")
 
-    # project create
-    pc_p = proj_sub.add_parser("create", help="Create a new project from template")
-    pc_p.add_argument("--name", required=True, help="Project name (e.g. NEXT-GALA)")
-    pc_p.add_argument("--type", required=True, help="Project type: investigacion, docencia, gestion, formacion, software, personal")
-    pc_p.add_argument("--priority", default="media", help="Initial priority: alta, media, baja (default: media)")
+    cts_p = ct_sub.add_parser("schedule", help="Set or update due date of a task")
+    cts_p.add_argument("project", help="Project name (partial match)")
+    cts_p.add_argument("desc",    help="Task description to match (partial)")
+    cts_p.add_argument("--date",  required=True, help="New due date — supports natural language")
+    cts_p.add_argument("--time",  default=None, metavar="HH:MM", help="Optional due time")
+    cts_p.add_argument("--recur", default=None, metavar="RULE",
+                       help="Set or update recurrence rule")
+    cts_p.add_argument("--open",   action="store_true")
+    cts_p.add_argument("--editor", default="typora")
 
-    # project update
-    pu_p = proj_sub.add_parser("update", help="Set status and/or priority on one or more projects")
-    pu_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
-    pu_p.add_argument("--status", default=None, help="New status: inicial, en marcha, parado, esperando, durmiendo, completado")
-    pu_p.add_argument("--priority", default=None, help="New priority: alta, media, baja")
-    pu_p.add_argument("--type", default=None, help="Filter: project type (investigacion, docencia, ...)")
-    pu_p.add_argument("--from-status", default=None, dest="from_status", help="Filter: only projects with this current status")
-    pu_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this current priority")
+    ctc_p = ct_sub.add_parser("close", help="Mark a task as done (or advance if recurring)")
+    ctc_p.add_argument("project", help="Project name (partial match)")
+    ctc_p.add_argument("desc",    help="Task description to match (partial)")
+    ctc_p.add_argument("--date",  default=None, help="Done date (default: today)")
+    ctc_p.add_argument("--open",   action="store_true")
+    ctc_p.add_argument("--editor", default="typora")
 
-    # project import
-    pi_p = proj_sub.add_parser("import", help="Import an Evernote .enex note into a project")
-    pi_p.add_argument("--file", required=True, help="Path to the .enex file")
-    pi_p.add_argument("--project", required=True, help="Target project (partial name match)")
+    # change status
+    cst_p = chg_sub.add_parser("status", help="Change status of one or more projects")
+    cst_p.add_argument("value",   help="New status: inicial, en marcha, parado, esperando, durmiendo, completado")
+    cst_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
+    cst_p.add_argument("--from-status",   default=None, dest="from_status",   help="Filter: only projects with this status")
+    cst_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this priority")
+    cst_p.add_argument("--type",          default=None, help="Filter: project type")
+
+    # change priority
+    cpr_p = chg_sub.add_parser("priority", help="Change priority of one or more projects")
+    cpr_p.add_argument("value",   help="New priority: alta, media, baja")
+    cpr_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
+    cpr_p.add_argument("--from-status",   default=None, dest="from_status",   help="Filter: only projects with this status")
+    cpr_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this priority")
+    cpr_p.add_argument("--type",          default=None, help="Filter: project type")
+
+    # change type
+    cty_p = chg_sub.add_parser("type", help="Change type of one or more projects")
+    cty_p.add_argument("value",   help="New type: investigacion, docencia, gestion, formacion, software, personal, mision")
+    cty_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
+    cty_p.add_argument("--from-status",   default=None, dest="from_status",   help="Filter: only projects with this status")
+    cty_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this priority")
+
+    # change ring
+    cr_p   = chg_sub.add_parser("ring", help="Reschedule or close a reminder")
+    cr_sub = cr_p.add_subparsers(dest="action")
+
+    crs_p = cr_sub.add_parser("schedule", help="Set or update date/time of a reminder")
+    crs_p.add_argument("project", help="Project name (partial match)")
+    crs_p.add_argument("desc",    help="Reminder description to match (partial)")
+    crs_p.add_argument("--date",  required=True, help="New date — supports natural language")
+    crs_p.add_argument("--time",  required=True, metavar="HH:MM", help="New time HH:MM")
+    crs_p.add_argument("--recur", default=None, metavar="RULE",
+                       help="Set or update recurrence rule")
+    crs_p.add_argument("--open",   action="store_true")
+    crs_p.add_argument("--editor", default="typora")
+
+    crc_p = cr_sub.add_parser("close", help="Manually mark a reminder as done")
+    crc_p.add_argument("project", help="Project name (partial match)")
+    crc_p.add_argument("desc",    help="Reminder description to match (partial)")
+    crc_p.add_argument("--open",   action="store_true")
+    crc_p.add_argument("--editor", default="typora")
+
+    # --- create ---
+    cre_p   = subparsers.add_parser("create", help="Create a project, note or import")
+    cre_sub = cre_p.add_subparsers(dest="what")
+
+    # create project
+    crp_p = cre_sub.add_parser("project", help="Create a new project from template")
+    crp_p.add_argument("--name",     required=True, help="Project name (e.g. NEXT-GALA)")
+    crp_p.add_argument("--type",     required=True,
+                       help="Project type: investigacion, docencia, gestion, formacion, software, personal, mision")
+    crp_p.add_argument("--priority", default="media", help="Initial priority: alta, media, baja (default: media)")
+
+    # create import
+    cri_p = cre_sub.add_parser("import", help="Import an Evernote .enex note into a project")
+    cri_p.add_argument("--file",    required=True, help="Path to the .enex file")
+    cri_p.add_argument("--project", required=True, help="Target project (partial name match)")
+
+    # create day / week / month  (shared helper)
+    def _add_note_args(p, date_help):
+        p.add_argument("--date",    default=None, help=date_help)
+        p.add_argument("--force",   action="store_true", help="Overwrite if file already exists")
+        p.add_argument("--focus",   nargs="+", metavar="PROJECT", default=None,
+                       help="Focus project(s) (partial name)")
+        p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
+        p.add_argument("--editor",  default="typora", help="Editor to use (default: typora)")
+
+    crd_p = cre_sub.add_parser("day",   help="Create today's daily note")
+    _add_note_args(crd_p, "Target date YYYY-MM-DD (default: today) — supports natural language")
+
+    crw_p = cre_sub.add_parser("week",  help="Create the weekly note")
+    _add_note_args(crw_p, "Any date in the target week (default: today) — supports natural language")
+
+    crm_p = cre_sub.add_parser("month", help="Create the monthly note")
+    _add_note_args(crm_p, "Target month YYYY-MM (default: current) — supports natural language")
+
+    # --- add ---
+    add_p   = subparsers.add_parser("add", help="Add a ref, result, decision or reminder to a project")
+    add_sub = add_p.add_subparsers(dest="action")
+
+    def _add_common(p, *, has_file=False):
+        p.add_argument("project", help="Project name (partial match)")
+        p.add_argument("title",   help="Title / description")
+        p.add_argument("--url",   default=None, help="URL to attach as a markdown link")
+        if has_file:
+            p.add_argument("--file", default=None, metavar="PATH",
+                           help="Local file to copy into the project directory")
+            p.add_argument("--sync", action="store_true",
+                           help="Run git add -f on the copied file")
+        p.add_argument("--open",   action="store_true", help="Open proyecto.md in editor after adding")
+        p.add_argument("--editor", default="typora",    help="Editor to use (default: typora)")
+
+    # add ref
+    ar_p = add_sub.add_parser("ref", help="Add a key reference to a project")
+    _add_common(ar_p, has_file=True)
+
+    # add result
+    ares_p = add_sub.add_parser("result", help="Add a result to a project")
+    _add_common(ares_p, has_file=True)
+
+    # add decision
+    ad_p = add_sub.add_parser("decision", help="Add a decision to a project")
+    _add_common(ad_p, has_file=True)
+
+    # add task
+    at_p = add_sub.add_parser("task", help="Add a task to a project")
+    at_p.add_argument("project", nargs="?", default=None,
+                      help="Project name (partial match; omit to add to today's daily note)")
+    at_p.add_argument("title",   help="Task description")
+    at_p.add_argument("--date",  default=None, metavar="DATE",
+                      help="Due date — supports natural language")
+    at_p.add_argument("--time",  default=None, metavar="HH:MM", help="Optional due time")
+    at_p.add_argument("--recur", default=None, metavar="RULE",
+                      help="Recurrence: daily/diario, weekly/semanal, monthly/mensual, "
+                           "yearly/anual, weekdays/laborables, every:Nd, every:Nw")
+    at_p.add_argument("--open",   action="store_true", help="Open the project note in editor after adding")
+    at_p.add_argument("--editor", default="typora",    help="Editor to use (default: typora)")
+
+    # add ring
+    aring_p = add_sub.add_parser("ring", help="Add a reminder to a project")
+    aring_p.add_argument("project", nargs="?", default=None,
+                         help="Project name (partial match); omit to use mission")
+    aring_p.add_argument("title",   help="Reminder description")
+    aring_p.add_argument("--date",  required=True, help="Date YYYY-MM-DD — supports natural language")
+    aring_p.add_argument("--time",  required=True, metavar="HH:MM", help="Time HH:MM")
+    aring_p.add_argument("--recur", default=None,
+                         metavar="RULE",
+                         help="Recurrence: daily/diario, weekly/semanal, monthly/mensual, "
+                              "yearly/anual, weekdays/laborables, every:Nd, every:Nw")
+    aring_p.add_argument("--open",   action="store_true", help="Open proyecto.md in editor after adding")
+    aring_p.add_argument("--editor", default="typora",    help="Editor to use (default: typora)")
 
     # --- report ---
     rep_p   = subparsers.add_parser("report", help="Generate reports: day, week, month, stats, review")
@@ -339,59 +560,36 @@ def main():
     rs_p.add_argument("--open", action="store_true", help="Save to mision-log/stats.md and open in editor")
     rs_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # report review
-    rrev_p = rep_sub.add_parser("review", help="Focus check + project health for a period")
-    rrev_p.add_argument("--date", default=None,
-                        help="YYYY-MM-DD (day), YYYY-Wnn (week) or YYYY-MM (month) — supports natural language")
-    rrev_p.add_argument("--output", default=None, help="Save output to file")
-    rrev_p.add_argument("--open", action="store_true", help="Save to mision-log/review.md and open in editor")
-    rrev_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+    # report status
+    rst_p = rep_sub.add_parser("status", help="Project activity and health table (60d / 30d)")
+    rst_p.add_argument("--date",   default=None, help="Reference date (default: today) — supports natural language")
+    rst_p.add_argument("--apply",  action="store_true", help="Apply proposed status/priority changes")
+    rst_p.add_argument("--output", default=None, help="Save output to file")
+    rst_p.add_argument("--open",   action="store_true", help="Save to mision-log/status.md and open in editor")
+    rst_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # --- logday ---
-    logday_p = subparsers.add_parser("logday", help="Add a note to today's daily log")
-    logday_p.add_argument("message", help="Note text")
-    logday_p.add_argument(
-        "--type",
-        default="apunte",
-        choices=VALID_TYPES,
-        metavar="TYPE",
-        help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
-    )
-    logday_p.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today)")
-    logday_p.add_argument("--open", action="store_true", help="Open the daily note in editor after logging")
-    logday_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # --- day ---
-    day_p = subparsers.add_parser("day", help="Create daily log file in ☀️mision-log/diario/")
-    day_p.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today)")
-    day_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
-    day_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Focus project (partial name)")
-    day_p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
-    day_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
-
-    # --- week ---
-    week_p = subparsers.add_parser("week", help="Create weekly log file in ☀️mision-log/semanal/")
-    week_p.add_argument("--date", default=None, help="Any date in the target week YYYY-MM-DD (default: today)")
-    week_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
-    week_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Up to 2 focus projects (partial name)")
-    week_p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
-    week_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
-
-    # --- month ---
-    month_p = subparsers.add_parser("month", help="Create monthly log file in ☀️mision-log/mensual/")
-    month_p.add_argument("--date", default=None, help="Target month YYYY-MM (default: current month)")
-    month_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
-    month_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Up to 3 focus projects (partial name)")
-    month_p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
-    month_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
 
     args = parser.parse_args()
 
-    if args.command == "open":
+    if args.command is None:
+        run_shell()
+        return
+    elif args.command == "add":
+        if not args.action:
+            add_p.print_help()
+        else:
+            sys.exit(cmd_add(args))
+    elif args.command == "open":
         sys.exit(cmd_open(args))
-    elif args.command == "logday":
-        sys.exit(cmd_logday(args))
+    elif args.command == "list":
+        if not args.what:
+            list_p.print_help()
+        elif args.what == "tasks":
+            sys.exit(cmd_tasks(args))
+        else:
+            sys.exit(cmd_list(args))
     elif args.command == "report":
         if not args.period:
             rep_p.print_help()
@@ -399,29 +597,87 @@ def main():
             sys.exit(cmd_report(args))
     elif args.command == "calendar":
         sys.exit(cmd_calendar(args))
-    elif args.command == "view":
-        sys.exit(cmd_view(args))
-    elif args.command == "task":
-        sys.exit(cmd_task(args))
-    elif args.command == "project":
-        if not args.action:
-            proj_p.print_help()
+    elif args.command == "change":
+        if not args.target:
+            chg_p.print_help()
+        elif args.target in ("status", "priority", "type"):
+            sys.exit(cmd_change(args))
+        elif not args.action:
+            (ct_p if args.target == "task" else cr_p).print_help()
         else:
-            sys.exit(cmd_project(args))
-    elif args.command == "day":
-        sys.exit(cmd_day(args))
-    elif args.command == "week":
-        sys.exit(cmd_week(args))
-    elif args.command == "month":
-        sys.exit(cmd_month(args))
+            sys.exit(cmd_change(args))
+    elif args.command == "create":
+        if not args.what:
+            cre_p.print_help()
+        else:
+            sys.exit(cmd_create(args))
     elif args.command == "log":
         sys.exit(cmd_log(args))
     elif args.command == "search":
         sys.exit(cmd_search(args))
-    elif args.command == "tasks":
-        sys.exit(cmd_tasks(args))
+    elif args.command == "shell":
+        run_shell()
     else:
         parser.print_help()
+
+
+def run_shell():
+    import readline
+    import shlex
+
+    # Enable persistent history
+    history_file = Path.home() / ".orbit_history"
+    try:
+        readline.read_history_file(history_file)
+    except FileNotFoundError:
+        pass
+    readline.set_history_length(500)
+
+    COMMANDS = ["create", "add", "change", "list", "log", "search",
+                "open", "report", "calendar", "claude", "exit", "quit"]
+
+    def completer(text, state):
+        options = [c for c in COMMANDS if c.startswith(text)]
+        return options[state] if state < len(options) else None
+
+    readline.set_completer(completer)
+    readline.parse_and_bind("tab: complete")
+
+    print("Orbit shell  —  Tab para completar, Ctrl+D o 'exit' para salir")
+    print()
+
+    while True:
+        try:
+            line = input("🚀 ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+
+        if not line or line.startswith("#"):
+            continue
+        if line in ("exit", "quit", "q"):
+            break
+        if line == "claude":
+            import subprocess
+            subprocess.run(["claude"], cwd=Path(__file__).parent)
+            continue
+
+        try:
+            tokens = shlex.split(line)
+        except ValueError as e:
+            print(f"Error al parsear: {e}")
+            continue
+
+        old_argv = sys.argv
+        sys.argv  = ["orbit"] + tokens
+        try:
+            main()
+        except SystemExit:
+            pass
+        finally:
+            sys.argv = old_argv
+
+    readline.write_history_file(history_file)
 
 
 if __name__ == "__main__":

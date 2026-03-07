@@ -8,7 +8,7 @@ from core.activity import (
     compute_real_priority, compute_real_status,
     get_logbook_activity, has_activity_in,
 )
-from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file
+from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file, log_to_mission
 from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field, load_project_meta
 from core.misionlog import _collect_completed_tasks, _project_link
 from core.misionlog import _parse_focus_projects, _check_focus_activity, _format_tomato_block, _TOMATO_START, _TOMATO_END, _inject_block
@@ -246,4 +246,5 @@ def run_monthly(month: Optional[str], apply: bool, inject: bool,
         from core.open import open_file
         open_file(monthly_path, editor)
 
+    log_to_mission(f"Reporte mensual {month_str}", "resultado")
     return 0

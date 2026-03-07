@@ -74,6 +74,22 @@ def _append_entry(logbook_path: Path, entry: str) -> None:
         f.write(entry)
 
 
+def log_to_mission(message: str, tipo: str) -> None:
+    """Append a logbook entry to the mission project (silently skips if not found)."""
+    mission_dir = next(
+        (d for d in PROJECTS_DIR.iterdir() if d.is_dir() and "mission" in d.name.lower()),
+        None,
+    )
+    if not mission_dir:
+        return
+    logbook = find_logbook_file(mission_dir)
+    if not logbook:
+        return
+    entry = format_entry(message, tipo, None, None)
+    _append_entry(logbook, entry)
+    print(f"  → mission: {entry.strip()}")
+
+
 def init_logbook(logbook_path: Path, project_name: str) -> None:
     logbook_path.write_text(
         f"# Logbook — {project_name}\n\n"

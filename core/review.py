@@ -1,119 +1,28 @@
-"""orbit report review — integrated workspace review: focus check + project health."""
+"""orbit report status — project activity and health table."""
 
-import calendar
-import re
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
 from core.log import PROJECTS_DIR, find_logbook_file, find_proyecto_file
 from core.tasks import STATUS_MAP, PRIORITY_MAP, load_project_meta, normalize, update_proyecto_field
-from core.activity import (
-    get_logbook_activity, has_activity_in,
-    compute_real_status, compute_real_priority, parse_date_range,
-    PRIORITY_ORDER,
-)
+from core.activity import get_logbook_activity, compute_real_status, compute_real_priority
 from core.open import open_file
 
 MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
-DIARIO_DIR     = MISION_LOG_DIR / "diario"
-SEMANAL_DIR    = MISION_LOG_DIR / "semanal"
-MENSUAL_DIR    = MISION_LOG_DIR / "mensual"
-REVIEW_OUTPUT  = MISION_LOG_DIR / "review.md"
-
-INJECT_START = "<!-- orbit:tomato:start -->"
-INJECT_END   = "<!-- orbit:tomato:end -->"
+STATUS_OUTPUT  = MISION_LOG_DIR / "status.md"
 
 
-# ── Period detection ──────────────────────────────────────────────────────────
+def _count_entries(lb_path: Optional[Path], date_from: date, date_to: date) -> int:
+    """Count logbook entries between two dates (inclusive)."""
+    if not lb_path or not lb_path.exists():
+        return 0
+    _, counts = get_logbook_activity(lb_path, date_from, date_to)
+    return sum(counts.values()) if counts else 0
 
-def _detect_period(date_str: Optional[str]):
-    """Return (kind, start, end, note_path) from a date string.
-
-    kind: 'day' | 'week' | 'month'
-    """
-    today = date.today()
-
-    if not date_str:
-        # Default: today (day)
-        return "day", today, today, DIARIO_DIR / f"{today.isoformat()}.md"
-
-    if len(date_str) == 10:
-        # YYYY-MM-DD → day
-        d = date.fromisoformat(date_str)
-        return "day", d, d, DIARIO_DIR / f"{d.isoformat()}.md"
-
-    if re.match(r'^\d{4}-W\d{2}$', date_str):
-        # YYYY-Wnn → week
-        y, w = int(date_str[:4]), int(date_str[6:])
-        monday = date.fromisocalendar(y, w, 1)
-        sunday = monday + timedelta(days=6)
-        return "week", monday, sunday, SEMANAL_DIR / f"{date_str}.md"
-
-    if len(date_str) == 7:
-        # YYYY-MM → month
-        y, m = int(date_str[:4]), int(date_str[5:7])
-        start = date(y, m, 1)
-        end   = date(y, m, calendar.monthrange(y, m)[1])
-        return "month", start, end, MENSUAL_DIR / f"{date_str}.md"
-
-    raise ValueError(f"Formato de fecha no reconocido: '{date_str}'. Usa YYYY-MM-DD, YYYY-Wnn o YYYY-MM.")
-
-
-# ── Focus project parsing ─────────────────────────────────────────────────────
-
-def _read_focus_projects(note_path: Path) -> list:
-    """Extract focus project names from '## 🎯 Proyecto(s) en foco' section."""
-    if not note_path.exists():
-        return []
-    focus = []
-    in_section = False
-    for line in note_path.read_text().splitlines():
-        if re.search(r"##.*foco", line, re.IGNORECASE):
-            in_section = True
-            continue
-        if in_section and line.startswith("## "):
-            break
-        if in_section:
-            m = re.search(r"\[([^\]]+)\]", line)
-            if m:
-                focus.append(m.group(1).strip())
-    return focus
-
-
-def _find_project_dir(name: str):
-    """Find a project directory by partial name match."""
-    for d in PROJECTS_DIR.iterdir():
-        if d.is_dir() and name.lower() in d.name.lower():
-            return d
-    return None
-
-
-# ── Output injection ──────────────────────────────────────────────────────────
-
-def _inject_into_note(note_path: Path, content: str) -> bool:
-    """Replace content between orbit:tomato markers in the note. Returns True on success."""
-    if not note_path.exists():
-        return False
-    text = note_path.read_text()
-    if INJECT_START not in text or INJECT_END not in text:
-        return False
-    block = f"{INJECT_START}\n{content}\n{INJECT_END}"
-    new_text = re.sub(
-        re.escape(INJECT_START) + r".*?" + re.escape(INJECT_END),
-        block,
-        text,
-        flags=re.DOTALL,
-    )
-    note_path.write_text(new_text)
-    return True
-
-
-# ── Main ──────────────────────────────────────────────────────────────────────
 
 def run_review(
     date_str: Optional[str],
-    inject: bool,
     apply: bool,
     output: Optional[str],
     open_after: bool,
@@ -123,58 +32,18 @@ def run_review(
         print(f"Error: directorio de proyectos no encontrado en {PROJECTS_DIR}")
         return 1
 
-    try:
-        kind, start, end, note_path = _detect_period(date_str)
-    except ValueError as e:
-        print(f"Error: {e}")
-        return 1
+    today = date.today()
+    if date_str:
+        try:
+            today = date.fromisoformat(date_str[:10])
+        except ValueError:
+            pass
 
-    period_days = (end - start).days + 1
-    kind_label  = {"day": "día", "week": "semana", "month": "mes"}[kind]
-    header_date = date_str or start.isoformat()
+    d30 = today - timedelta(days=30)
+    d60 = today - timedelta(days=60)
 
-    lines = [
-        f"REVISIÓN — {header_date}  ({kind_label})",
-        "═" * 56,
-        "",
-    ]
-
-    # ── Section 1: focus project check ───────────────────────────────────────
-    focus_names = _read_focus_projects(note_path)
-
-    if focus_names:
-        lines.append("🎯 Proyectos en foco")
-        for name in focus_names:
-            pdir = _find_project_dir(name)
-            if not pdir:
-                lines.append(f"  ❓ {name}  (proyecto no encontrado)")
-                continue
-            lb = find_logbook_file(pdir)
-            active = has_activity_in(lb, start, end)
-            _, counts = get_logbook_activity(lb, start, end) if lb else (None, {})
-            total = sum(counts.values()) if counts else 0
-            mark = "✅" if active else "❌"
-            if active:
-                tomatoes = "🍅" * min(total, 5) + ("+" if total > 5 else "")
-                detail = f"{tomatoes}  ({total})"
-            else:
-                detail = "— sin actividad"
-            lines.append(f"  {mark} {name:<30} {detail}")
-        lines.append("")
-    else:
-        if note_path.exists():
-            lines.append("🎯 Sin proyectos en foco definidos en la nota.\n")
-        else:
-            lines.append(f"🎯 Nota de período no encontrada: {note_path.name}\n")
-
-    # ── Section 2: project health ─────────────────────────────────────────────
-    lines.append("🏥 Salud de proyectos")
-    lines.append(f"  {'Proyecto':<28} {'Nominal':<7} {'Real':<7} {'Última':<12}")
-    lines.append("  " + "─" * 60)
-
-    changes  = []
-    archived = []
-
+    # ── Collect rows ──────────────────────────────────────────────────────────
+    rows = []
     for project_dir in sorted(PROJECTS_DIR.iterdir()):
         if not project_dir.is_dir():
             continue
@@ -186,70 +55,103 @@ def run_review(
         if "completado" in meta["estado_raw"]:
             continue
 
-        nominal_status_key   = next((k for k in STATUS_MAP   if normalize(k) in meta["estado_raw"]),    "")
-        nominal_priority_key = next((k for k in PRIORITY_MAP if normalize(k) in meta["prioridad_raw"]), "")
+        nominal_estado_key = next(
+            (k for k in STATUS_MAP   if normalize(k) in meta["estado_raw"]), "")
+        nominal_prio_key   = next(
+            (k for k in PRIORITY_MAP if normalize(k) in meta["prioridad_raw"]), "")
 
-        lb = find_logbook_file(project_dir)
-        last_entry, _ = get_logbook_activity(lb, start, end) if lb else (None, {})
-        has_30 = has_activity_in(lb, end - timedelta(days=30), end)
-        has_60 = has_activity_in(lb, end - timedelta(days=60), end)
+        lb     = find_logbook_file(project_dir)
+        act60  = _count_entries(lb, d60, today)
+        act30  = _count_entries(lb, d30, today)
 
-        real_status_key   = compute_real_status(nominal_status_key, has_30, has_60)
-        is_passive        = nominal_status_key in ("esperando", "inicial")
-        real_priority_key = compute_real_priority(nominal_priority_key, has_30, period_days, is_passive)
+        real_estado_key = compute_real_status(nominal_estado_key, act30 > 0, act60 > 0)
+        is_passive      = nominal_estado_key in ("esperando", "inicial")
+        real_prio_key   = compute_real_priority(nominal_prio_key, act30 > 0, 30, is_passive)
 
-        if real_priority_key is None:
-            archived.append(project_dir.name)
-            continue
+        if real_prio_key is None:
+            real_prio_key = nominal_prio_key  # skip archiving logic here
 
-        status_changed   = real_status_key != nominal_status_key
-        priority_changed = real_priority_key != nominal_priority_key
+        rows.append({
+            "name":         project_dir.name,
+            "proyecto_path": proyecto_path,
+            "tipo":         meta.get("tipo", ""),
+            "act60":        act60,
+            "act30":        act30,
+            "estado":       nominal_estado_key,
+            "prioridad":    nominal_prio_key,
+            "estado_new":   real_estado_key,
+            "prioridad_new": real_prio_key,
+            "changed":      (real_estado_key != nominal_estado_key or
+                             real_prio_key   != nominal_prio_key),
+        })
 
-        if status_changed or priority_changed:
-            changes.append({
-                "name":              project_dir.name,
-                "proyecto_path":     proyecto_path,
-                "real_status_key":   real_status_key,
-                "real_priority_key": real_priority_key,
-            })
+    if not rows:
+        print("No hay proyectos activos.")
+        return 0
 
-        nom  = f"{STATUS_MAP.get(nominal_status_key,'')}{PRIORITY_MAP.get(nominal_priority_key,'')}"
-        real = f"{STATUS_MAP.get(real_status_key,'')}{PRIORITY_MAP.get(real_priority_key,'')}"
-        flag = " ⚠️" if status_changed or priority_changed else ""
-        last = last_entry or "—"
-        lines.append(f"  {project_dir.name:<28} {nom:<7} {real:<7} {last:<12}{flag}")
+    # ── Build table ───────────────────────────────────────────────────────────
+    nw = max(len(r["name"])     for r in rows) + 1
+    tw = max(len(r["tipo"])     for r in rows) + 1
+    ew = max(len(r["estado"])   for r in rows) + 1
+    pw = max(len(r["prioridad"]) for r in rows) + 1
 
-    if changes:
-        lines += ["", "  CAMBIOS PROPUESTOS:"]
-        for c in changes:
-            s = f"{STATUS_MAP[c['real_status_key']]} {c['real_status_key']}"
-            p = f"{PRIORITY_MAP[c['real_priority_key']]} {c['real_priority_key']}"
-            lines.append(f"    {c['name']}: estado → {s}   prioridad → {p}")
-
-        if apply:
-            for c in changes:
-                sk, pk = c["real_status_key"], c["real_priority_key"]
-                update_proyecto_field(c["proyecto_path"], "estado",    f"{STATUS_MAP[sk]} {sk.capitalize()}")
-                update_proyecto_field(c["proyecto_path"], "prioridad", f"{PRIORITY_MAP[pk]} {pk.capitalize()}")
-            lines += ["", f"  ✓ {len(changes)} proyecto(s) actualizado(s)"]
+    def row_str(r):
+        if r["changed"]:
+            arrow   = " →"
+            e_new   = r["estado_new"]
+            p_new   = r["prioridad_new"]
+            e_flag  = " *" if r["estado_new"]   != r["estado"]   else "  "
+            p_flag  = " *" if r["prioridad_new"] != r["prioridad"] else "  "
         else:
-            lines += ["", "  Ejecuta con --apply para aplicar estos cambios."]
+            arrow  = "  "
+            e_new  = "="
+            p_new  = "="
+            e_flag = "  "
+            p_flag = "  "
+        return (
+            f"{r['name']:<{nw}}  {r['act60']:>6}  {r['act30']:>6}  "
+            f"{r['tipo']:<{tw}}  {r['estado']:<{ew}}  {r['prioridad']:<{pw}}"
+            f" {arrow}  {e_new:<{ew}}{e_flag}  {p_new:<{pw}}{p_flag}"
+        )
 
-    if archived:
-        lines += ["", f"  💤 Sin actividad prolongada ({len(archived)}): " + ", ".join(archived)]
+    header = (
+        f"{'proyecto':<{nw}}  {'act-60':>6}  {'act-30':>6}  "
+        f"{'tipo':<{tw}}  {'estado':<{ew}}  {'prioridad':<{pw}}"
+        f"      {'estado*':<{ew}}    {'prioridad*':<{pw}}"
+    )
+    sep = "─" * len(header)
+
+    n_changes = sum(1 for r in rows if r["changed"])
+    title     = f"ESTADO DE PROYECTOS — {today.isoformat()}"
+
+    lines = [title, "═" * len(header), "", header, sep]
+    for r in rows:
+        lines.append(row_str(r))
+    lines += [
+        sep,
+        f"  {len(rows)} proyectos activos · {n_changes} con cambios propuestos",
+    ]
+
+    if apply and n_changes:
+        for r in rows:
+            if not r["changed"]:
+                continue
+            sk, pk = r["estado_new"], r["prioridad_new"]
+            update_proyecto_field(
+                r["proyecto_path"], "estado",
+                f"{STATUS_MAP.get(sk, '')} {sk.capitalize()}")
+            update_proyecto_field(
+                r["proyecto_path"], "prioridad",
+                f"{PRIORITY_MAP.get(pk, '')} {pk.capitalize()}")
+        lines.append(f"  ✓ {n_changes} proyecto(s) actualizado(s)")
+    elif n_changes:
+        lines.append("  Ejecuta con --apply para aplicar los cambios.")
 
     text = "\n".join(lines)
 
-    # ── Inject into note ──────────────────────────────────────────────────────
-    if inject:
-        if _inject_into_note(note_path, text):
-            print(f"✓ Inyectado en {note_path.name}")
-        else:
-            print(f"⚠️  No se pudo inyectar: {note_path} (¿existe la nota y los marcadores?)")
-
-    # ── Output destination ────────────────────────────────────────────────────
+    # ── Output ────────────────────────────────────────────────────────────────
     if open_after and not output:
-        dest = REVIEW_OUTPUT
+        dest = STATUS_OUTPUT
     elif output:
         dest = Path(output)
     else:
@@ -261,7 +163,7 @@ def run_review(
         print(f"✓ Guardado en {dest}")
         if open_after:
             open_file(dest, editor)
-    elif not inject:
+    else:
         print(text)
 
     return 0
