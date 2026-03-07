@@ -78,12 +78,14 @@ def _resolve_target(target: str):
 
 
 def run_view(
-    target: str,
+    target: Optional[str],
     section: Optional[str],
     entrada: Optional[str],
     log: bool,
     output: Optional[str],
 ) -> int:
+    if not target:
+        target = date.today().isoformat()
     path, kind = _resolve_target(target)
 
     if kind == "project":

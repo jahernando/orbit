@@ -197,7 +197,7 @@ def main():
 
     # --- view ---
     view_p = subparsers.add_parser("view", help="Display a note, logbook or mision-log file")
-    view_p.add_argument("target", help="Project name, YYYY-MM-DD, YYYY-Wnn or YYYY-MM")
+    view_p.add_argument("target", nargs="?", default=None, help="Project name, YYYY-MM-DD, YYYY-Wnn or YYYY-MM (default: today)")
     view_p.add_argument("--section", default=None, help="Show only the section whose heading contains this word")
     view_p.add_argument("--entrada", default=None, metavar="TIPO", help=f"Filter logbook entries by type: {', '.join(VALID_TYPES)}")
     view_p.add_argument("--log", action="store_true", help="Show logbook instead of project note")
