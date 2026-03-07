@@ -246,17 +246,15 @@ def cmd_add(args):
 
 
 def cmd_calendar(args):
-    editor = getattr(args, "editor", "typora")
+    editor     = getattr(args, "editor", "typora")
     open_after = not getattr(args, "no_open", False)
+    date_str   = getattr(args, "date", None)
     if args.period == "week":
-        return run_calendar_week(date_str=_d(getattr(args, "date", None)),
-                                 open_after=open_after, editor=editor)
+        return run_calendar_week(date_str=date_str, open_after=open_after, editor=editor)
     elif args.period == "month":
-        return run_calendar_month(date_str=getattr(args, "date", None),
-                                  open_after=open_after, editor=editor)
+        return run_calendar_month(date_str=date_str, open_after=open_after, editor=editor)
     elif args.period == "year":
-        return run_calendar_year(date_str=getattr(args, "date", None),
-                                 open_after=open_after, editor=editor)
+        return run_calendar_year(date_str=date_str, open_after=open_after, editor=editor)
     return 1
 
 
@@ -647,16 +645,16 @@ def main():
     cal_sub = cal_p.add_subparsers(dest="period")
 
     def _cal_args(p, date_help):
-        p.add_argument("--date",    default=None, help=date_help)
+        p.add_argument("date",      nargs="?", default=None, help=date_help)
         p.add_argument("--no-open", action="store_true", help="Do not open in editor")
         p.add_argument("--editor",  default="typora")
 
-    _cal_args(cal_sub.add_parser("week",  help="Weekly calendar with tasks and reminders"),
-              "Any date in the target week (default: today) — supports natural language")
-    _cal_args(cal_sub.add_parser("month", help="Monthly calendar grid with tasks and reminders"),
-              "Target month YYYY-MM (default: current)")
-    _cal_args(cal_sub.add_parser("year",  help="Yearly overview with tasks and reminders"),
-              "Target year YYYY (default: current)")
+    _cal_args(cal_sub.add_parser("week",  help="Weekly calendar with tasks"),
+              "Week: 10, 2026-W10, or any date (default: current week)")
+    _cal_args(cal_sub.add_parser("month", help="Monthly calendar grid with tasks"),
+              "Month: enero, march, 3, 2026-03, or any date (default: current month)")
+    _cal_args(cal_sub.add_parser("year",  help="Yearly overview with tasks"),
+              "Year: 2026 or any date (default: current year)")
 
     # --- info ---
     info_p   = subparsers.add_parser("info", help="Show chuleta, README, tutorial or full help")
