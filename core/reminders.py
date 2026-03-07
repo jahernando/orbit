@@ -78,16 +78,20 @@ def _mark_scheduled(proyecto_path: Path, line_index: int) -> None:
     proyecto_path.write_text("".join(lines))
 
 
-def schedule_today_reminders(target: Optional[date] = None) -> int:
+INJECT_START = "<!-- orbit:reminders:start -->"
+INJECT_END   = "<!-- orbit:reminders:end -->"
+
+
+def schedule_today_reminders(target: Optional[date] = None) -> list:
     """Scan all projects and schedule reminders for target date via Reminders.app.
 
-    Returns number of reminders scheduled.
+    Returns list of scheduled reminder dicts.
     """
     target = target or date.today()
     if not PROJECTS_DIR.exists():
-        return 0
+        return []
 
-    total = 0
+    scheduled = []
     for project_dir in sorted(PROJECTS_DIR.iterdir()):
         if not project_dir.is_dir():
             continue
@@ -106,8 +110,26 @@ def schedule_today_reminders(target: Optional[date] = None) -> int:
             if ok:
                 _mark_scheduled(proyecto_path, r["line_index"])
                 print(f"  ⏰ [{r['project']}] {r['hour']:02d}:{r['minute']:02d} {r['title']}")
-                total += 1
+                scheduled.append(r)
             else:
                 print(f"  ⚠️  No se pudo programar: [{r['project']}] {r['title']}")
 
-    return total
+    return scheduled
+
+
+def inject_reminders_into_note(note_path: Path, reminders: list) -> None:
+    """Inject scheduled reminders into the diario note between markers."""
+    if not note_path.exists() or not reminders:
+        return
+    text = note_path.read_text()
+    if INJECT_START not in text or INJECT_END not in text:
+        return
+    lines = [f"- {r['hour']:02d}:{r['minute']:02d}  [{r['project']}] {r['title']}"
+             for r in sorted(reminders, key=lambda r: (r["hour"], r["minute"]))]
+    block = INJECT_START + "\n" + "\n".join(lines) + "\n" + INJECT_END
+    import re
+    new_text = re.sub(
+        re.escape(INJECT_START) + r".*?" + re.escape(INJECT_END),
+        block, text, flags=re.DOTALL,
+    )
+    note_path.write_text(new_text)

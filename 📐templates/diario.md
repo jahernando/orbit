@@ -3,6 +3,11 @@
 ## 🎯 Proyecto en foco
 - [nombre-proyecto](../../🚀proyectos/nombre-proyecto/proyecto.md)
 
+## ⏰ Recordatorios
+
+<!-- orbit:reminders:start -->
+<!-- orbit:reminders:end -->
+
 ## 📅 Eventos del día
 
 <!-- orbit:events:start -->

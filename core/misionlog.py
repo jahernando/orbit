@@ -87,12 +87,13 @@ def _write(dest: Path, content: str, copy: Optional[str], force: bool) -> int:
 
 # ── reminders ────────────────────────────────────────────────────────────────
 
-def _schedule_day_reminders(target: date) -> None:
+def _schedule_day_reminders(target: date, dest: Path) -> None:
     try:
-        from core.reminders import schedule_today_reminders
-        n = schedule_today_reminders(target)
-        if n:
-            print(f"⏰ {n} recordatorio(s) programado(s) en Reminders")
+        from core.reminders import schedule_today_reminders, inject_reminders_into_note
+        scheduled = schedule_today_reminders(target)
+        if scheduled:
+            inject_reminders_into_note(dest, scheduled)
+            print(f"⏰ {len(scheduled)} recordatorio(s) programado(s) en Reminders")
     except Exception:
         pass  # never block orbit day
 
@@ -125,7 +126,7 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
         upcoming = _collect_upcoming_tasks(7)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
         _sync_calendar_to_day(dest, target)
-        _schedule_day_reminders(target)
+        _schedule_day_reminders(target, dest)
         if open_after:
             open_file(dest, editor)
     return rc
