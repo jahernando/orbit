@@ -77,23 +77,21 @@ def cmd_tasks(args):
 
 
 
-def cmd_import(args):
-    return run_import(enex_path=args.file, project=args.project)
-
-
 def cmd_project(args):
-    return run_project(name=args.name, tipo=args.type, prioridad=args.priority)
-
-
-def cmd_update(args):
-    return run_update(
-        projects=args.project or [],
-        status=args.status,
-        priority=args.priority,
-        tipo=args.type,
-        from_status=args.from_status,
-        from_priority=args.from_priority,
-    )
+    if args.action == "create":
+        return run_project(name=args.name, tipo=args.type, prioridad=args.priority)
+    elif args.action == "update":
+        return run_update(
+            projects=args.project or [],
+            status=args.status,
+            priority=args.priority,
+            tipo=args.type,
+            from_status=args.from_status,
+            from_priority=args.from_priority,
+        )
+    elif args.action == "import":
+        return run_import(enex_path=args.file, project=args.project)
+    return 1
 
 
 def cmd_open(args):
@@ -242,10 +240,6 @@ def main():
                          help="Open results in editor (saves to mision-log/tasks.md)")
     tasks_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # --- import ---
-    imp_p = subparsers.add_parser("import", help="Import an Evernote .enex note into a project")
-    imp_p.add_argument("--file", required=True, help="Path to the .enex file")
-    imp_p.add_argument("--project", required=True, help="Target project (partial name match)")
 
     # --- calendar ---
     cal_p = subparsers.add_parser("calendar", help="Sync Google Calendar events to project logbooks")
@@ -277,20 +271,29 @@ def main():
     task_p.add_argument("--open", action="store_true", help="Open the project note in editor after action")
     task_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # --- update ---
-    upd_p = subparsers.add_parser("update", help="Set status and/or priority on one or more projects")
-    upd_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
-    upd_p.add_argument("--status", default=None, help="New status: inicial, en marcha, parado, esperando, durmiendo, completado")
-    upd_p.add_argument("--priority", default=None, help="New priority: alta, media, baja")
-    upd_p.add_argument("--type", default=None, help="Filter: project type (investigacion, docencia, ...)")
-    upd_p.add_argument("--from-status", default=None, dest="from_status", help="Filter: only projects with this current status")
-    upd_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this current priority")
+    # --- project (create / update / import) ---
+    proj_p = subparsers.add_parser("project", help="Create, update or import projects")
+    proj_sub = proj_p.add_subparsers(dest="action")
 
-    # --- project ---
-    proj_p = subparsers.add_parser("project", help="Create a new project from template")
-    proj_p.add_argument("--name", required=True, help="Project name (e.g. NEXT-GALA)")
-    proj_p.add_argument("--type", required=True, help="Project type: investigacion, docencia, gestion, formacion, software, personal")
-    proj_p.add_argument("--priority", default="media", help="Initial priority: alta, media, baja (default: media)")
+    # project create
+    pc_p = proj_sub.add_parser("create", help="Create a new project from template")
+    pc_p.add_argument("--name", required=True, help="Project name (e.g. NEXT-GALA)")
+    pc_p.add_argument("--type", required=True, help="Project type: investigacion, docencia, gestion, formacion, software, personal")
+    pc_p.add_argument("--priority", default="media", help="Initial priority: alta, media, baja (default: media)")
+
+    # project update
+    pu_p = proj_sub.add_parser("update", help="Set status and/or priority on one or more projects")
+    pu_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
+    pu_p.add_argument("--status", default=None, help="New status: inicial, en marcha, parado, esperando, durmiendo, completado")
+    pu_p.add_argument("--priority", default=None, help="New priority: alta, media, baja")
+    pu_p.add_argument("--type", default=None, help="Filter: project type (investigacion, docencia, ...)")
+    pu_p.add_argument("--from-status", default=None, dest="from_status", help="Filter: only projects with this current status")
+    pu_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this current priority")
+
+    # project import
+    pi_p = proj_sub.add_parser("import", help="Import an Evernote .enex note into a project")
+    pi_p.add_argument("--file", required=True, help="Path to the .enex file")
+    pi_p.add_argument("--project", required=True, help="Target project (partial name match)")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Generate activity report for a day, week or month")
@@ -362,12 +365,11 @@ def main():
         sys.exit(cmd_view(args))
     elif args.command == "task":
         sys.exit(cmd_task(args))
-    elif args.command == "update":
-        sys.exit(cmd_update(args))
-    elif args.command == "import":
-        sys.exit(cmd_import(args))
     elif args.command == "project":
-        sys.exit(cmd_project(args))
+        if not args.action:
+            proj_p.print_help()
+        else:
+            sys.exit(cmd_project(args))
     elif args.command == "day":
         sys.exit(cmd_day(args))
     elif args.command == "week":
