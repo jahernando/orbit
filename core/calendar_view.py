@@ -170,7 +170,7 @@ def run_calendar_month(date_str: Optional[str], open_after: bool, editor: str) -
     row = ["  "] * first.weekday()
     for day_n in range(1, last.day + 1):
         d   = date(y, m, day_n)
-        tag = f'<span style="color:red">**{day_n}**</span>' if d in tasks else str(day_n)
+        tag = f'<span style="color:red;font-weight:bold">{day_n}</span>' if d in tasks else str(day_n)
         row.append(tag)
         if len(row) == 7:
             lines.append("| " + " | ".join(row) + " |")
