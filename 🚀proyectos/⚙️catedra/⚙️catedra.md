@@ -1,20 +1,10 @@
 # ⚙️catedra
 
-## 🏷️ Tipo
 ⚙️ Gestión
-
-## 🔄 Estado
 ▶️ En marcha
-
-## ⭐ Prioridad
 🟠 Alta
-
 ## 🎯 Objetivo
 Descripción breve del objetivo.
-
-## 🌀 Pregunta clave
-¿Cuál es la pregunta que este proyecto intenta responder?
-
 ## ✅ Tareas
 - [ ] USC (servidios de xention del personal) - para los servicios prestados, listado de quinquenios y sexenios
 - [ ] USC (mailto:SPDOcente@usc.es) - para las tareas académica

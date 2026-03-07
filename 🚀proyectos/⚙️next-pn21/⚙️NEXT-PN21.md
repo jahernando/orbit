@@ -1,20 +1,10 @@
 # ⚙️next-pn21
 
-## 🏷️ Tipo
 ⚙️ Gestión
-
-## 🔄 Estado
 ▶️ En marcha
-
-## ⭐ Prioridad
 🟡 Media
-
 ## 🎯 Objetivo
 Descripción breve del objetivo.
-
-## 🌀 Pregunta clave
-¿Cuál es la pregunta que este proyecto intenta responder?
-
 ## ✅ Tareas
 - [ ] ⚙️ NEXT - Ges PN21 - Informe justificativo final [5Mar-15May] (2026-04-24)
 

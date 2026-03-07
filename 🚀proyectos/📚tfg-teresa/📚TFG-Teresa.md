@@ -1,20 +1,10 @@
 # 📚tfg-teresa
 
-## 🏷️ Tipo
 📚 Docencia
-
-## 🔄 Estado
 💤 Durmiendo
-
-## ⭐ Prioridad
 🔵 Baja
-
 ## 🎯 Objetivo
 Descripción breve del objetivo.
-
-## 🌀 Pregunta clave
-¿Cuál es la pregunta que este proyecto intenta responder?
-
 ## ✅ Tareas
 
 ## 📎 Referencias clave

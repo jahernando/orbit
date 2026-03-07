@@ -1,20 +1,10 @@
 # 📚fpii-neutrinos
 
-## 🏷️ Tipo
 📚 Docencia
-
-## 🔄 Estado
 ⏸️ Parado
-
-## ⭐ Prioridad
 🟠 Alta
-
 ## 🎯 Objetivo
 Descripción breve del objetivo.
-
-## 🌀 Pregunta clave
-¿Cuál es la pregunta que este proyecto intenta responder?
-
 ## ✅ Tareas
 
 ## 📎 Referencias clave

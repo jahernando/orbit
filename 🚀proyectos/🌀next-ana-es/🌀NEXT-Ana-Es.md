@@ -1,20 +1,10 @@
 # 🌀next-ana-es
 
-## 🏷️ Tipo
 🌀 Investigación
-
-## 🔄 Estado
 ▶️ En marcha
-
-## ⭐ Prioridad
 🟡 Media
-
 ## 🎯 Objetivo
 Descripción breve del objetivo.
-
-## 🌀 Pregunta clave
-¿Cuál es la pregunta que este proyecto intenta responder?
-
 ## ✅ Tareas
 - [ ] 🌀👥 NEXT - USC/IFIC/DIPC llamar Meeting (2026-03-09)
 

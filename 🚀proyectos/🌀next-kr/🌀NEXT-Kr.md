@@ -1,20 +1,10 @@
 # 🌀next-kr
 
-## 🏷️ Tipo
 🌀 Investigación
-
-## 🔄 Estado
 💤 Durmiendo
-
-## ⭐ Prioridad
-🔵 Baja
-
+🟠 Alta
 ## 🎯 Objetivo
 Descripción breve del objetivo.
-
-## 🌀 Pregunta clave
-¿Cuál es la pregunta que este proyecto intenta responder?
-
 ## ✅ Tareas
 
 ## 📎 Referencias clave

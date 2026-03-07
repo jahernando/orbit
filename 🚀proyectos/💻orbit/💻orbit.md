@@ -1,24 +1,15 @@
 # 💻orbit
 
-## 🏷️ Tipo
 💻 Software
-
-## 🔄 Estado
 ▶️ En marcha
-
-## ⭐ Prioridad
 🟠 Alta
-
 ## 🎯 Objetivo
 CLI en Python para gestionar proyectos científicos y personales en markdown.
-
-## 🌀 Pregunta clave
-¿Cómo automatizar la gestión de logbooks, tareas y revisiones mensuales desde la terminal?
-
 ## ✅ Tareas
 - [x] Comando monthly (2026-03-06)
 - [ ] revisar comandos de review(2026-03-07)
 - [ ] Revisar ideas del logbook y decidir próximas features (2026-04-01)
+- [ ] se pueden añadir reminders?
 
 ## 📎 Referencias clave
 -

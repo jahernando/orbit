@@ -1,20 +1,10 @@
 # 📚fpii-fanal
 
-## 🏷️ Tipo
 📚 Docencia
-
-## 🔄 Estado
 💤 Durmiendo
-
-## ⭐ Prioridad
 🟠 Alta
-
 ## 🎯 Objetivo
 Descripción breve del objetivo.
-
-## 🌀 Pregunta clave
-¿Cuál es la pregunta que este proyecto intenta responder?
-
 ## ✅ Tareas
 - [x] Set new directory
 - [x] Add general NB
