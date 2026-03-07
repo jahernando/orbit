@@ -17,6 +17,49 @@ SEMANAL_DIR = MISION_LOG_DIR / "semanal"
 MENSUAL_DIR = MISION_LOG_DIR / "mensual"
 
 
+def _prompt_focus(candidates: list, max_count: int, label: str) -> list:
+    """Show focus project candidates and let the user pick."""
+    print(f"\n{label}:")
+    for i, name in enumerate(candidates, 1):
+        print(f"  {i}. {name}")
+    plural = f"hasta {max_count}" if max_count > 1 else "uno"
+    print(f"Elige {plural} (intro = {'primero' if max_count == 1 else 'todos'}, números separados por coma, o nombre parcial):")
+    try:
+        resp = input("> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return []
+    if not resp:
+        return candidates[:max_count]
+    # Number selection
+    try:
+        indices = [int(x.strip()) - 1 for x in resp.split(",")]
+        selected = [candidates[i] for i in indices if 0 <= i < len(candidates)]
+        return selected[:max_count]
+    except ValueError:
+        return [resp][:max_count]
+
+
+def _active_projects_by_priority(max_count: int) -> list:
+    """Return up to max_count active project names sorted by priority."""
+    from core.tasks import load_project_meta, find_proyecto_file, normalize
+    PRIORITY_ORDER = {"alta": 0, "media": 1, "baja": 2}
+    results = []
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path or not proyecto_path.exists():
+            continue
+        meta = load_project_meta(proyecto_path)
+        if "completado" in meta["estado_raw"] or "durmiendo" in meta["estado_raw"]:
+            continue
+        prio = next((k for k in PRIORITY_ORDER if normalize(k) in meta["prioridad_raw"]), "baja")
+        results.append((PRIORITY_ORDER[prio], project_dir.name))
+    results.sort()
+    return [name for _, name in results[:max_count * 4]]  # offer more than max so user can pick
+
+
 def _week_key(d: date) -> str:
     return d.strftime("%G-W%V")
 
@@ -48,6 +91,14 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
         print(f"Error: plantilla no encontrada en {tpl}")
         return 1
     content = tpl.read_text().replace("YYYY-MM-DD", target.isoformat())
+
+    # If no focus given, suggest from current week's semanal
+    if not focus:
+        wkey = _week_key(target)
+        semanal_path = SEMANAL_DIR / f"{wkey}.md"
+        candidates = _parse_focus_projects(semanal_path, "## 🎯 Proyectos en foco")
+        if candidates:
+            focus = _prompt_focus(candidates, 1, f"Proyectos en foco de la semana {wkey}")
 
     rc = _write(dest, content, None, force)
     if rc == 0:
@@ -165,6 +216,14 @@ def run_week(date_str: Optional[str], force: bool, focus: list = None,
                 .replace("YYYY-MM-DD", sun.isoformat(), 1))
     content = "\n".join(lines)
 
+    # If no focus given, suggest from current month's mensual
+    if not focus:
+        month_str = d.strftime("%Y-%m")
+        mensual_path = MENSUAL_DIR / f"{month_str}.md"
+        candidates = _parse_focus_projects(mensual_path, "## 🎯 Proyectos en foco")
+        if candidates:
+            focus = _prompt_focus(candidates, 2, f"Proyectos en foco del mes {month_str}")
+
     rc = _write(dest, content, None, force)
     if rc == 0:
         if focus:
@@ -179,7 +238,7 @@ def run_week(date_str: Optional[str], force: bool, focus: list = None,
 # ── month ─────────────────────────────────────────────────────────────────────
 
 def run_month(date_str: Optional[str], force: bool, focus: list = None,
-              open_after: bool = True, editor: str = "typora") -> int:
+              open_after: bool = True, editor: str  = "typora") -> int:
     if date_str:
         y, m = int(date_str[:4]), int(date_str[5:7])
     else:
@@ -199,6 +258,12 @@ def run_month(date_str: Optional[str], force: bool, focus: list = None,
                .replace("← [Mes anterior](../mensual/YYYY-MM.md)",
                         f"← [Mes anterior](./{prev_str}.md)")
                .replace("YYYY-MM", month_str))
+
+    # If no focus given, suggest active projects by priority
+    if not focus:
+        candidates = _active_projects_by_priority(3)
+        if candidates:
+            focus = _prompt_focus(candidates, 3, f"Proyectos activos para el mes {month_str}")
 
     rc = _write(dest, content, None, force)
     if rc == 0:
