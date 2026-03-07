@@ -49,3 +49,5 @@
 2026-03-07 📊 comandos create, log, add, change, list, report revisited #resultado
 
 2026-03-07 📊 creados reminders y tarea automatica de creación de notas diaras #resultado
+
+2026-03-07 📊 añadido calendario  #resultado
