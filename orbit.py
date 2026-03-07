@@ -65,6 +65,8 @@ def cmd_tasks(args):
         fecha=args.date,
         keyword=args.keyword,
         output=args.output,
+        open_after=args.open,
+        editor=args.editor,
     )
 
 
@@ -221,6 +223,9 @@ def main():
     tasks_p.add_argument("--date", default=None, help="Filter tasks by due date: YYYY-MM-DD or YYYY-MM")
     tasks_p.add_argument("--keyword", default=None, help="Filter tasks by keyword in description")
     tasks_p.add_argument("--output", default=None, help="Save output to file instead of terminal")
+    tasks_p.add_argument("--open", action="store_true",
+                         help="Open results in editor (saves to mision-log/tasks.md)")
+    tasks_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- import ---
     imp_p = subparsers.add_parser("import", help="Import an Evernote .enex note into a project")

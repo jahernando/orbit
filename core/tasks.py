@@ -4,6 +4,10 @@ from pathlib import Path
 from typing import Optional
 
 from core.log import PROJECTS_DIR, find_proyecto_file
+from core.open import open_file
+
+MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
+TASKS_OUTPUT   = MISION_LOG_DIR / "tasks.md"
 
 
 def normalize(text: str) -> str:
@@ -128,6 +132,8 @@ def list_tasks(
     fecha: Optional[str],
     keyword: Optional[str],
     output: Optional[str],
+    open_after: bool = False,
+    editor: str = "typora",
 ) -> int:
     if not PROJECTS_DIR.exists():
         print(f"Error: projects directory not found at {PROJECTS_DIR}")
@@ -208,9 +214,19 @@ def list_tasks(
 
     text = "\n".join(lines_out)
 
-    if output:
-        Path(output).write_text(text + "\n")
-        print(f"✓ Saved to {output}")
+    if open_after and not output:
+        dest = TASKS_OUTPUT
+    elif output:
+        dest = Path(output)
+    else:
+        dest = None
+
+    if dest:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(text + "\n")
+        print(f"✓ Guardado en {dest}")
+        if open_after:
+            open_file(dest, editor)
     else:
         print(text)
 
