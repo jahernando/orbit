@@ -207,17 +207,27 @@ Editores soportados: `typora` (defecto) · `glow` · `code` · cualquier comando
 
 ---
 
-### `list` — listar entradas del logbook
+### `search` — buscar en logbooks y notas de proyecto
 
 ```bash
-python orbit.py list <proyecto> [--type TIPO...] [--date YYYY-MM o YYYY-MM-DD] [--output FICHERO]
+python orbit.py search ["keyword"] [--project P [P...]] [--tag TIPO] [--date FECHA]
+                       [--output FILE] [--open] [--editor E]
 ```
 
 ```bash
-python orbit.py list detector-xenon
-python orbit.py list detector-xenon --type tarea problema
-python orbit.py list detector-xenon --date 2026-03
+python orbit.py search "calibración"                        # todos los proyectos
+python orbit.py search "fit" --project next-kr next-gala    # proyectos específicos
+python orbit.py search "Diego" --tag tarea                  # solo logbooks, filtrado por tag
+python orbit.py search --project next-kr                    # lista todo de next-kr
+python orbit.py search "resolución" --open                  # abre resultado en Typora
+python orbit.py search "fit" --date 2026-03                 # filtra por mes
 ```
+
+- Sin `--tag` → busca en logbooks **y** en `proyecto.md` (tareas, notas, decisiones…)
+- Con `--tag` → busca solo en logbooks filtrando por ese hashtag
+- `--open` guarda el resultado en `☀️mision-log/search.md` y lo abre en el editor
+
+Tags: `apunte` `idea` `referencia` `tarea` `problema` `resultado` `decision` `evento`
 
 ### `tasks` — listar tareas pendientes
 

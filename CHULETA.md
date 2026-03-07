@@ -8,12 +8,21 @@ orbit log "<mensaje>" [--type TIPO] [--date YYYY-MM-DD] [--open] [--editor EDITO
 
 # Con proyecto → anota en el logbook del proyecto
 orbit log <proyecto> "<mensaje>" [--type TIPO] [--path RUTA] [--date YYYY-MM-DD] [--open] [--editor EDITOR]
-
-# Listar entradas
-orbit list <proyecto> [--type TIPO...] [--date YYYY-MM o YYYY-MM-DD] [--output FILE]
 ```
 
 Tipos: `apunte` `idea` `referencia` `tarea` `problema` `resultado` `decision` `evento`
+
+## Búsqueda
+
+```bash
+orbit search ["keyword"] [--project P [P...]] [--tag TIPO] [--date YYYY-MM | YYYY-MM-DD]
+             [--output FILE] [--open] [--editor E]
+```
+
+- Sin `--tag` → busca en logbooks **y** notas de proyecto
+- Con `--tag` → busca solo en logbooks con ese tag
+- Sin `--project` → busca en todos los proyectos
+- `--open` → guarda en `☀️mision-log/search.md` y abre en editor
 
 ## Abrir notas
 

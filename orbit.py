@@ -5,7 +5,7 @@ import argparse
 import sys
 
 from core.log import VALID_TYPES, add_entry, find_project, find_logbook_file, find_proyecto_file
-from core.list_entries import list_entries
+from core.search import run_search
 from core.tasks import list_tasks
 from core.activity import run_activity
 from core.monthly import run_monthly
@@ -41,12 +41,15 @@ def cmd_log(args):
     return rc
 
 
-def cmd_list(args):
-    return list_entries(
-        project=args.project,
-        tipos=args.type,
-        fecha=args.date,
+def cmd_search(args):
+    return run_search(
+        query=args.query,
+        projects=args.project,
+        tag=args.tag,
+        date_filter=args.date,
         output=args.output,
+        open_after=args.open,
+        editor=args.editor,
     )
 
 
@@ -189,18 +192,18 @@ def main():
     log_p.add_argument("--open", action="store_true", help="Open the logbook in editor after logging")
     log_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # --- list ---
-    list_p = subparsers.add_parser("list", help="List logbook entries with optional filters")
-    list_p.add_argument("project", help="Project name (partial match supported)")
-    list_p.add_argument(
-        "--type",
-        nargs="+",
-        choices=VALID_TYPES,
-        metavar="TYPE",
-        help=f"Filter by type (one or more): {', '.join(VALID_TYPES)}",
-    )
-    list_p.add_argument("--date", default=None, help="Filter by date: YYYY-MM-DD or YYYY-MM")
-    list_p.add_argument("--output", default=None, help="Save output to file instead of terminal")
+    # --- search ---
+    search_p = subparsers.add_parser("search", help="Search across project logbooks and notes")
+    search_p.add_argument("query", nargs="?", default="", help="Keywords to search (all entries if omitted)")
+    search_p.add_argument("--project", nargs="+", metavar="P", default=None,
+                          help="Project(s) to search in (partial match; default: all)")
+    search_p.add_argument("--tag", default=None, choices=VALID_TYPES, metavar="TAG",
+                          help=f"Filter logbook entries by tag: {', '.join(VALID_TYPES)}")
+    search_p.add_argument("--date", default=None, help="Filter by date: YYYY-MM-DD or YYYY-MM")
+    search_p.add_argument("--output", default=None, help="Save output to file")
+    search_p.add_argument("--open", action="store_true",
+                          help="Open results in editor (saves to mision-log/search.md)")
+    search_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- tasks ---
     tasks_p = subparsers.add_parser("tasks", help="List pending tasks across projects")
@@ -347,8 +350,8 @@ def main():
         sys.exit(cmd_month(args))
     elif args.command == "log":
         sys.exit(cmd_log(args))
-    elif args.command == "list":
-        sys.exit(cmd_list(args))
+    elif args.command == "search":
+        sys.exit(cmd_search(args))
     elif args.command == "tasks":
         sys.exit(cmd_tasks(args))
     elif args.command == "setpriority":
