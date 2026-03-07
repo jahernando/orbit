@@ -356,12 +356,7 @@ def main():
     _add_section_args(lrd_p)
 
 
-    # --- calendar ---
     subparsers.add_parser("shell", help="Enter interactive Orbit shell")
-
-    cal_p = subparsers.add_parser("calendar", help="Sync Google Calendar events to project logbooks")
-    cal_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (default: today)")
-    cal_p.add_argument("--dry-run", action="store_true", help="Preview without writing to logbooks")
 
     # --- open ---
     open_p = subparsers.add_parser("open", help="Open or display a note / logbook")
@@ -625,8 +620,6 @@ def main():
             rep_p.print_help()
         else:
             sys.exit(cmd_report(args))
-    elif args.command == "calendar":
-        sys.exit(cmd_calendar(args))
     elif args.command == "change":
         if not args.target:
             chg_p.print_help()
@@ -669,7 +662,7 @@ def run_shell():
     readline.set_history_length(500)
 
     COMMANDS = ["create", "add", "change", "list", "log", "search",
-                "open", "report", "calendar", "info", "claude", "exit", "quit"]
+                "open", "report", "info", "claude", "exit", "quit"]
 
     def completer(text, state):
         options = [c for c in COMMANDS if c.startswith(text)]
