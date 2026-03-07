@@ -26,10 +26,29 @@ TAG_EMOJI = {
 }
 
 
-def _parse_period(date_str: Optional[str]):
-    """Return (start, end) dates from a YYYY-MM or YYYY-MM-DD string.
-    Default: last 30 days."""
+def _parse_period(date_str: Optional[str],
+                  date_from: Optional[str] = None,
+                  date_to: Optional[str] = None):
+    """Return (start, end) dates. Priority: from/to > date > last 30 days."""
     today = date.today()
+
+    def _parse_start(s: str) -> date:
+        if len(s) == 7:
+            y, m = int(s[:4]), int(s[5:7])
+            return date(y, m, 1)
+        return date.fromisoformat(s)
+
+    def _parse_end(s: str) -> date:
+        if len(s) == 7:
+            y, m = int(s[:4]), int(s[5:7])
+            return date(y, m, calendar.monthrange(y, m)[1])
+        return date.fromisoformat(s)
+
+    if date_from or date_to:
+        start = _parse_start(date_from) if date_from else date(today.year, today.month, 1)
+        end   = min(_parse_end(date_to), today) if date_to else today
+        return start, end
+
     if not date_str:
         return today - timedelta(days=29), today
     if len(date_str) == 7:
@@ -96,6 +115,8 @@ def _scan_tasks(proyecto_path: Path, period_end: date):
 
 def run_stats(
     date_str: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
     output: Optional[str],
     open_after: bool,
     editor: str,
@@ -104,7 +125,7 @@ def run_stats(
         print(f"Error: directorio de proyectos no encontrado en {PROJECTS_DIR}")
         return 1
 
-    start, end = _parse_period(date_str)
+    start, end = _parse_period(date_str, date_from, date_to)
     period_days = (end - start).days + 1
 
     global_counts = {t: 0 for t in VALID_TYPES}

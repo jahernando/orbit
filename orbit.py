@@ -142,7 +142,8 @@ def cmd_report(args):
     elif args.period == "month":
         return run_monthly(month=args.date, apply=args.apply, output=args.output)
     elif args.period == "stats":
-        return run_stats(date_str=args.date, output=args.output,
+        return run_stats(date_str=args.date, date_from=args.date_from,
+                         date_to=args.date_to, output=args.output,
                          open_after=args.open, editor=args.editor)
     elif args.period == "review":
         return run_review(date_str=args.date, inject=args.inject, apply=args.apply,
@@ -307,6 +308,10 @@ def main():
     rep_p = subparsers.add_parser("report", help="Generate activity report for a day, week, month or stats")
     rep_p.add_argument("period", choices=["day", "week", "month", "stats", "review"], help="Report period")
     rep_p.add_argument("--date", default=None, help="Date: YYYY-MM-DD for day/week, YYYY-MM for month/stats (default: today/current)")
+    rep_p.add_argument("--from", dest="date_from", default=None, metavar="YYYY-MM-DD",
+                       help="Stats: period start date (inclusive)")
+    rep_p.add_argument("--to", dest="date_to", default=None, metavar="YYYY-MM-DD",
+                       help="Stats: period end date (inclusive)")
     rep_p.add_argument("--inject", action="store_true", help="Inject report into the log file (day/week)")
     rep_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md (month)")
     rep_p.add_argument("--output", default=None, help="Save output to file")

@@ -66,7 +66,8 @@ orbit month [--date YYYY-MM]    [--force] [--focus P...] [--no-open] [--editor E
 orbit report day   [--date YYYY-MM-DD] [--inject]
 orbit report week  [--date YYYY-MM-DD] [--inject]
 orbit report month [--date YYYY-MM]    [--output FILE]
-orbit report stats  [--date YYYY-MM]                   [--output FILE] [--open] [--editor E]
+orbit report stats  [--date YYYY-MM] [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+                    [--output FILE] [--open] [--editor E]
 orbit report review [--date YYYY-MM-DD | YYYY-Wnn | YYYY-MM]
                     [--inject] [--apply] [--output FILE] [--open] [--editor E]
 ```
