@@ -33,3 +33,11 @@
 2026-03-07 test entrada #apunte
 
 2026-03-07 testing using terminal #apunte
+
+2026-03-07 Comando 'search' para buscar texto en logbooks y proyectos con filtros de tipo y fecha #idea
+
+2026-03-07 Comando 'stats' con estadísticas de actividad: entradas por tipo, proyectos más activos, racha de días #idea
+
+2026-03-07 Notificaciones en terminal al crear el diario: tareas vencidas y eventos del día #idea
+
+2026-03-07 Exportar informe mensual a PDF o HTML para compartir #idea
