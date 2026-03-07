@@ -786,6 +786,12 @@ def run_shell():
 
     readline.write_history_file(history_file)
 
+    # Inject daily report on exit
+    from core.misionlog import run_dayreport
+    print()
+    print("Generando reporte del día…")
+    run_dayreport(date_str=None, inject=True, output=None, open_after=False)
+
 
 if __name__ == "__main__":
     main()
