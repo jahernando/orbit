@@ -50,6 +50,14 @@ def run_project(name: str, tipo: str, prioridad: str) -> int:
         print(f"Error: plantillas no encontradas en {TEMPLATES_DIR}")
         return 1
 
+    # Prompt for objective
+    print(f"\nObjetivo del proyecto (intro para dejarlo en blanco):")
+    try:
+        objetivo = input("> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        objetivo = ""
+
     project_dir.mkdir(parents=True)
 
     logbook_filename = f"📓{name}.md"
@@ -61,6 +69,7 @@ def run_project(name: str, tipo: str, prioridad: str) -> int:
         .replace("🌀 Investigación", f"{tipo_emoji} {tipo_label}")
         .replace("🟡 Media", f"{prio_emoji} {prio_label}")
         .replace("./logbook.md", f"./{logbook_filename}")
+        .replace("Descripción breve del objetivo.", objetivo or "Descripción breve del objetivo.")
     )
     proyecto_file = project_dir / f"{tipo_emoji}{name}.md"
     proyecto_file.write_text(proyecto_content)
