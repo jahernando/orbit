@@ -22,6 +22,7 @@ from core.add import run_add
 from core.view import run_view
 from core.open import run_open, open_file
 from core.calendar_sync import run_calendar_sync
+from core.calendar_view import run_calendar_week, run_calendar_month, run_calendar_year
 from core.dateparse import parse_date
 
 
@@ -201,7 +202,18 @@ def cmd_add(args):
 
 
 def cmd_calendar(args):
-    return run_calendar_sync(date_str=args.date, dry_run=args.dry_run)
+    editor = getattr(args, "editor", "typora")
+    open_after = not getattr(args, "no_open", False)
+    if args.period == "week":
+        return run_calendar_week(date_str=_d(getattr(args, "date", None)),
+                                 open_after=open_after, editor=editor)
+    elif args.period == "month":
+        return run_calendar_month(date_str=getattr(args, "date", None),
+                                  open_after=open_after, editor=editor)
+    elif args.period == "year":
+        return run_calendar_year(date_str=getattr(args, "date", None),
+                                 open_after=open_after, editor=editor)
+    return 1
 
 
 ORBIT_DIR = Path(__file__).parent
@@ -586,6 +598,22 @@ def main():
     rst_p.add_argument("--open",   action="store_true", help="Save to mision-log/status.md and open in editor")
     rst_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
+    # --- calendar ---
+    cal_p   = subparsers.add_parser("calendar", help="Show week / month / year calendar in Typora")
+    cal_sub = cal_p.add_subparsers(dest="period")
+
+    def _cal_args(p, date_help):
+        p.add_argument("--date",    default=None, help=date_help)
+        p.add_argument("--no-open", action="store_true", help="Do not open in editor")
+        p.add_argument("--editor",  default="typora")
+
+    _cal_args(cal_sub.add_parser("week",  help="Weekly calendar with tasks and reminders"),
+              "Any date in the target week (default: today) — supports natural language")
+    _cal_args(cal_sub.add_parser("month", help="Monthly calendar grid with tasks and reminders"),
+              "Target month YYYY-MM (default: current)")
+    _cal_args(cal_sub.add_parser("year",  help="Yearly overview with tasks and reminders"),
+              "Target year YYYY (default: current)")
+
     # --- info ---
     info_p   = subparsers.add_parser("info", help="Show chuleta, README, tutorial or full help")
     info_sub = info_p.add_subparsers(dest="topic")
@@ -640,6 +668,11 @@ def main():
         sys.exit(cmd_search(args))
     elif args.command == "shell":
         run_shell()
+    elif args.command == "calendar":
+        if not args.period:
+            cal_p.print_help()
+        else:
+            sys.exit(cmd_calendar(args))
     elif args.command == "info":
         if not args.topic:
             info_p.print_help()
@@ -662,7 +695,7 @@ def run_shell():
     readline.set_history_length(500)
 
     COMMANDS = ["create", "add", "change", "list", "log", "search",
-                "open", "report", "info", "claude", "exit", "quit"]
+                "open", "report", "calendar", "info", "claude", "exit", "quit"]
 
     def completer(text, state):
         options = [c for c in COMMANDS if c.startswith(text)]
