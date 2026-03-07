@@ -125,7 +125,8 @@ def list_tasks(
     tipo: Optional[str],
     estado: Optional[str],
     prioridad: Optional[str],
-    fecha: Optional[str],  # kept as internal name for date filtering
+    fecha: Optional[str],
+    keyword: Optional[str],
     output: Optional[str],
 ) -> int:
     if not PROJECTS_DIR.exists():
@@ -166,6 +167,9 @@ def list_tasks(
         tasks = [t for t in meta["tasks"] if not t.get("done")]
         if fecha:
             tasks = [t for t in tasks if matches_fecha(t["due"], fecha)]
+        if keyword:
+            kws = keyword.lower().split()
+            tasks = [t for t in tasks if all(kw in t["description"].lower() for kw in kws)]
 
         if not tasks:
             continue

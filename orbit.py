@@ -60,6 +60,7 @@ def cmd_tasks(args):
         estado=args.status,
         prioridad=args.priority,
         fecha=args.date,
+        keyword=args.keyword,
         output=args.output,
     )
 
@@ -212,6 +213,7 @@ def main():
     tasks_p.add_argument("--status", default=None, help="Filter by project status (en marcha, parado, ...)")
     tasks_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
     tasks_p.add_argument("--date", default=None, help="Filter tasks by due date: YYYY-MM-DD or YYYY-MM")
+    tasks_p.add_argument("--keyword", default=None, help="Filter tasks by keyword in description")
     tasks_p.add_argument("--output", default=None, help="Save output to file instead of terminal")
 
     # --- import ---
