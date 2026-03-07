@@ -16,7 +16,7 @@ TYPE_EMOJI = {
     "problema":   "⚠️",
     "resultado":  "📊",
     "apunte":     "📝",
-    "decision":   "🔀",
+    "decision":   "📌",
     "evento":     "📅",
 }
 
