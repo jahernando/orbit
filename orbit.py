@@ -646,6 +646,10 @@ def run_shell():
     print("Orbit shell  —  Tab para completar, Ctrl+D o 'exit' para salir")
     print()
 
+    # Open (or create) today's daily note on startup
+    from core.misionlog import run_day
+    run_day(date_str=None, force=False, focus=None, open_after=True)
+
     while True:
         try:
             line = input("🚀 ").strip()
