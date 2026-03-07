@@ -154,7 +154,11 @@ def run_review(
             _, counts = get_logbook_activity(lb, start, end) if lb else (None, {})
             total = sum(counts.values()) if counts else 0
             mark = "✅" if active else "❌"
-            detail = f"— {total} entrada{'s' if total != 1 else ''}" if active else "— sin actividad"
+            if active:
+                tomatoes = "🍅" * min(total, 5) + ("+" if total > 5 else "")
+                detail = f"{tomatoes}  ({total})"
+            else:
+                detail = "— sin actividad"
             lines.append(f"  {mark} {name:<30} {detail}")
         lines.append("")
     else:
