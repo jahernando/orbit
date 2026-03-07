@@ -31,3 +31,5 @@
 2026-03-07 Prueba #evento
 
 2026-03-07 test entrada #apunte
+
+2026-03-07 testing using terminal #apunte

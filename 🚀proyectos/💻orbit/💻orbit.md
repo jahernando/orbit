@@ -17,8 +17,7 @@ CLI en Python para gestionar proyectos científicos y personales en markdown.
 
 ## ✅ Tareas
 - [x] Comando monthly (2026-03-06)
-- [ ] Crear proyectos reales desde plantilla
-- [ ] Inicializar repositorio git
+- [ ] revisar comandos de review(2026-03-07)
 
 ## 📎 Referencias clave
 -
