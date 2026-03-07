@@ -77,8 +77,10 @@ def run_list_projects(tipo: Optional[str], status: Optional[str],
             continue
         if priority and normalize(priority) not in normalize(meta.get("prioridad_raw", "")):
             continue
+        rel_path = f"../../🚀proyectos/{project_dir.name}/{proyecto_path.name}"
         rows.append({
             "name":      project_dir.name,
+            "link":      f"[{project_dir.name}]({rel_path})",
             "tipo":      meta.get("tipo", ""),
             "estado":    meta.get("estado", ""),
             "prioridad": meta.get("prioridad", ""),
@@ -88,7 +90,10 @@ def run_list_projects(tipo: Optional[str], status: Optional[str],
         print("No hay proyectos que coincidan.")
         return 0
 
-    nw = max(len(r["name"])      for r in rows) + 1
+    PRIORITY_ORDER = {"alta": 0, "media": 1, "baja": 2}
+    rows.sort(key=lambda r: PRIORITY_ORDER.get(normalize(r["prioridad"]), 9))
+
+    nw = max(len(r["link"])      for r in rows) + 1
     tw = max(len(r["tipo"])      for r in rows) + 1
     ew = max(len(r["estado"])    for r in rows) + 1
     pw = max(len(r["prioridad"]) for r in rows) + 1
@@ -99,7 +104,7 @@ def run_list_projects(tipo: Optional[str], status: Optional[str],
     lines = [f"PROYECTOS ({len(rows)})", "═" * len(header), "", header, sep]
     for r in rows:
         lines.append(
-            f"{r['name']:<{nw}}  {r['tipo']:<{tw}}  {r['estado']:<{ew}}  {r['prioridad']:<{pw}}")
+            f"{r['link']:<{nw}}  {r['tipo']:<{tw}}  {r['estado']:<{ew}}  {r['prioridad']:<{pw}}")
     lines.append(sep)
 
     _write_output("\n".join(lines), output, open_after, editor,
@@ -135,7 +140,8 @@ def run_list_section(project: Optional[str], section: str,
         if not items:
             continue
         found = True
-        lines.append(f"### {project_dir.name}")
+        rel_path = f"../../🚀proyectos/{project_dir.name}/{proyecto_path.name}"
+        lines.append(f"### [{project_dir.name}]({rel_path})")
         lines.extend(f"  {item}" for item in items)
         lines.append("")
 
