@@ -18,20 +18,26 @@ from core.task import run_task_open, run_task_schedule, run_task_close
 from core.view import run_view
 from core.open import run_open, open_file
 from core.calendar_sync import run_calendar_sync
+from core.dateparse import parse_date
+
+
+def _d(expr):
+    """Parse a natural language date expression, or return None if not provided."""
+    return parse_date(expr) if expr else None
 
 
 def cmd_log(args):
     if not args.project:
         return add_entry_to_day(
             message=args.message, tipo=args.type, path=args.path,
-            date_str=args.date, open_after=args.open, editor=args.editor,
+            date_str=_d(args.date), open_after=args.open, editor=args.editor,
         )
     rc = add_entry(
         project=args.project,
         message=args.message,
         tipo=args.type,
         path=args.path,
-        fecha=args.date,
+        fecha=_d(args.date),
     )
     if rc == 0 and args.open:
         project_dir = find_project(args.project)
@@ -47,9 +53,9 @@ def cmd_search(args):
         query=args.query,
         projects=args.project,
         tag=args.tag,
-        date_filter=args.date,
-        date_from=args.date_from,
-        date_to=args.date_to,
+        date_filter=_d(args.date),
+        date_from=_d(args.date_from),
+        date_to=_d(args.date_to),
         tipo=args.type,
         estado=args.status,
         prioridad=args.priority,
@@ -68,7 +74,7 @@ def cmd_tasks(args):
         tipo=args.type,
         estado=args.status,
         prioridad=args.priority,
-        fecha=args.date,
+        fecha=_d(args.date),
         keyword=args.keyword,
         output=args.output,
         open_after=args.open,
@@ -111,11 +117,11 @@ def cmd_view(args):
 
 def cmd_task(args):
     if args.action == "open":
-        rc = run_task_open(project=args.project, task_desc=args.task, fecha=args.date)
+        rc = run_task_open(project=args.project, task_desc=args.task, fecha=_d(args.date))
     elif args.action == "schedule":
-        rc = run_task_schedule(project=args.project, task_desc=args.task, fecha=args.date)
+        rc = run_task_schedule(project=args.project, task_desc=args.task, fecha=_d(args.date))
     elif args.action == "close":
-        rc = run_task_close(project=args.project, task_desc=args.task, fecha=args.date)
+        rc = run_task_close(project=args.project, task_desc=args.task, fecha=_d(args.date))
     else:
         return 1
     if rc == 0 and args.open and args.project:
@@ -135,21 +141,21 @@ def cmd_calendar(args):
 
 def cmd_report(args):
     if args.period == "day":
-        return run_dayreport(date_str=args.date, inject=args.inject,
+        return run_dayreport(date_str=_d(args.date), inject=args.inject,
                              output=args.output, open_after=args.open, editor=args.editor)
     elif args.period == "week":
-        return run_weekreport(date_str=args.date, inject=args.inject,
+        return run_weekreport(date_str=_d(args.date), inject=args.inject,
                               output=args.output, open_after=args.open, editor=args.editor)
     elif args.period == "month":
-        return run_monthly(month=args.date, apply=args.apply, output=args.output,
+        return run_monthly(month=_d(args.date), apply=args.apply, output=args.output,
                            open_after=args.open, editor=args.editor)
     elif args.period == "stats":
-        return run_stats(date_str=args.date, date_from=args.date_from,
-                         date_to=args.date_to, project=args.project,
+        return run_stats(date_str=_d(args.date), date_from=_d(args.date_from),
+                         date_to=_d(args.date_to), project=args.project,
                          tipo=args.type, prioridad=args.priority,
                          output=args.output, open_after=args.open, editor=args.editor)
     elif args.period == "review":
-        return run_review(date_str=args.date, inject=args.inject, apply=args.apply,
+        return run_review(date_str=_d(args.date), inject=args.inject, apply=args.apply,
                           output=args.output, open_after=args.open, editor=args.editor)
     return 1
 
@@ -160,17 +166,17 @@ def cmd_logday(args):
 
 
 def cmd_day(args):
-    return run_day(date_str=args.date, force=args.force, focus=args.focus,
+    return run_day(date_str=_d(args.date), force=args.force, focus=args.focus,
                    open_after=not args.no_open, editor=args.editor)
 
 
 def cmd_week(args):
-    return run_week(date_str=args.date, force=args.force, focus=args.focus,
+    return run_week(date_str=_d(args.date), force=args.force, focus=args.focus,
                     open_after=not args.no_open, editor=args.editor)
 
 
 def cmd_month(args):
-    return run_month(date_str=args.date, force=args.force, focus=args.focus,
+    return run_month(date_str=_d(args.date), force=args.force, focus=args.focus,
                      open_after=not args.no_open, editor=args.editor)
 
 

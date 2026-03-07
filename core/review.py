@@ -43,7 +43,7 @@ def _detect_period(date_str: Optional[str]):
         d = date.fromisoformat(date_str)
         return "day", d, d, DIARIO_DIR / f"{d.isoformat()}.md"
 
-    if len(date_str) == 7 and "W" in date_str:
+    if re.match(r'^\d{4}-W\d{2}$', date_str):
         # YYYY-Wnn → week
         y, w = int(date_str[:4]), int(date_str[6:])
         monday = date.fromisocalendar(y, w, 1)
