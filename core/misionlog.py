@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.log import VALID_TYPES, find_logbook_file, find_proyecto_file
+from core.open import open_file
 from core.tasks import TYPE_MAP, load_project_meta
 from core.activity import has_activity_in
 
@@ -37,7 +38,8 @@ def _write(dest: Path, content: str, copy: Optional[str], force: bool) -> int:
 
 # ── day ──────────────────────────────────────────────────────────────────────
 
-def run_day(date_str: Optional[str], force: bool, focus: list = None) -> int:
+def run_day(date_str: Optional[str], force: bool, focus: list = None,
+            open_after: bool = True, editor: str = "typora") -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()
     dest   = DIARIO_DIR / f"{target.isoformat()}.md"
 
@@ -54,6 +56,8 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None) -> int:
         upcoming = _collect_upcoming_tasks(7)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
         _sync_calendar_to_day(dest, target)
+        if open_after:
+            open_file(dest, editor)
     return rc
 
 
@@ -90,7 +94,8 @@ def _sync_calendar_to_day(dest: Path, target: date) -> None:
 
 # ── logday ────────────────────────────────────────────────────────────────────
 
-def run_logday(message: str, tipo: str, date_str: Optional[str]) -> int:
+def run_logday(message: str, tipo: str, date_str: Optional[str],
+               open_after: bool = False, editor: str = "typora") -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()
     dest = DIARIO_DIR / f"{target.isoformat()}.md"
 
@@ -110,12 +115,15 @@ def run_logday(message: str, tipo: str, date_str: Optional[str]) -> int:
     _append_entry(dest, entry)
 
     print(f"✓ [{target.isoformat()}] {entry.strip()}")
+    if open_after:
+        open_file(dest, editor)
     return 0
 
 
 # ── week ─────────────────────────────────────────────────────────────────────
 
-def run_week(date_str: Optional[str], force: bool, focus: list = None) -> int:
+def run_week(date_str: Optional[str], force: bool, focus: list = None,
+             open_after: bool = True, editor: str = "typora") -> int:
     d      = date.fromisoformat(date_str) if date_str else date.today()
     wkey   = _week_key(d)
     mon, sun = _week_bounds(d)
@@ -138,12 +146,15 @@ def run_week(date_str: Optional[str], force: bool, focus: list = None) -> int:
             _inject_focus_projects(dest, focus[:2], "## 🎯 Proyectos en foco")
         upcoming = _collect_upcoming_tasks(15)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
+        if open_after:
+            open_file(dest, editor)
     return rc
 
 
 # ── month ─────────────────────────────────────────────────────────────────────
 
-def run_month(date_str: Optional[str], force: bool, focus: list = None) -> int:
+def run_month(date_str: Optional[str], force: bool, focus: list = None,
+              open_after: bool = True, editor: str = "typora") -> int:
     if date_str:
         y, m = int(date_str[:4]), int(date_str[5:7])
     else:
@@ -170,6 +181,8 @@ def run_month(date_str: Optional[str], force: bool, focus: list = None) -> int:
             _inject_focus_projects(dest, focus[:3], "## 🎯 Proyectos en foco")
         upcoming = _collect_upcoming_tasks(30)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
+        if open_after:
+            open_file(dest, editor)
     return rc
 
 

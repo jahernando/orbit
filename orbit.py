@@ -4,7 +4,7 @@
 import argparse
 import sys
 
-from core.log import VALID_TYPES, add_entry
+from core.log import VALID_TYPES, add_entry, find_project, find_logbook_file, find_proyecto_file
 from core.list_entries import list_entries
 from core.tasks import list_tasks
 from core.activity import run_activity
@@ -15,18 +15,25 @@ from core.importer import run_import
 from core.update import run_update
 from core.task import run_task_open, run_task_schedule, run_task_close
 from core.view import run_view
-from core.open import run_open
+from core.open import run_open, open_file
 from core.calendar_sync import run_calendar_sync
 
 
 def cmd_log(args):
-    return add_entry(
+    rc = add_entry(
         project=args.project,
         message=args.message,
         tipo=args.type,
         path=args.path,
         fecha=args.date,
     )
+    if rc == 0 and args.open:
+        project_dir = find_project(args.project)
+        if project_dir:
+            logbook = find_logbook_file(project_dir)
+            if logbook:
+                open_file(logbook, args.editor)
+    return rc
 
 
 def cmd_list(args):
@@ -85,12 +92,20 @@ def cmd_view(args):
 
 def cmd_task(args):
     if args.action == "open":
-        return run_task_open(project=args.project, task_desc=args.task, fecha=args.date)
+        rc = run_task_open(project=args.project, task_desc=args.task, fecha=args.date)
     elif args.action == "schedule":
-        return run_task_schedule(project=args.project, task_desc=args.task, fecha=args.date)
+        rc = run_task_schedule(project=args.project, task_desc=args.task, fecha=args.date)
     elif args.action == "close":
-        return run_task_close(project=args.project, task_desc=args.task, fecha=args.date)
-    return 1
+        rc = run_task_close(project=args.project, task_desc=args.task, fecha=args.date)
+    else:
+        return 1
+    if rc == 0 and args.open and args.project:
+        project_dir = find_project(args.project)
+        if project_dir:
+            proyecto = find_proyecto_file(project_dir)
+            if proyecto:
+                open_file(proyecto, args.editor)
+    return rc
 
 
 def cmd_calendar(args):
@@ -117,19 +132,23 @@ def cmd_report(args):
 
 
 def cmd_logday(args):
-    return run_logday(message=args.message, tipo=args.type, date_str=args.date)
+    return run_logday(message=args.message, tipo=args.type, date_str=args.date,
+                      open_after=args.open, editor=args.editor)
 
 
 def cmd_day(args):
-    return run_day(date_str=args.date, force=args.force, focus=args.focus)
+    return run_day(date_str=args.date, force=args.force, focus=args.focus,
+                   open_after=not args.no_open, editor=args.editor)
 
 
 def cmd_week(args):
-    return run_week(date_str=args.date, force=args.force, focus=args.focus)
+    return run_week(date_str=args.date, force=args.force, focus=args.focus,
+                    open_after=not args.no_open, editor=args.editor)
 
 
 def cmd_month(args):
-    return run_month(date_str=args.date, force=args.force, focus=args.focus)
+    return run_month(date_str=args.date, force=args.force, focus=args.focus,
+                     open_after=not args.no_open, editor=args.editor)
 
 
 def cmd_activity(args):
@@ -167,6 +186,8 @@ def main():
     )
     log_p.add_argument("--path", default=None, help="Optional file path — formats entry as a markdown link")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
+    log_p.add_argument("--open", action="store_true", help="Open the logbook in editor after logging")
+    log_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- list ---
     list_p = subparsers.add_parser("list", help="List logbook entries with optional filters")
@@ -222,6 +243,8 @@ def main():
     task_p.add_argument("project", nargs="?", default=None, help="Project name (partial match; omit to use daily note)")
     task_p.add_argument("task", help="Task description")
     task_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (due date for open/schedule, done date for close)")
+    task_p.add_argument("--open", action="store_true", help="Open the project note in editor after action")
+    task_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- update ---
     upd_p = subparsers.add_parser("update", help="Set status and/or priority of a project")
@@ -253,24 +276,32 @@ def main():
         help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
     )
     logday_p.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today)")
+    logday_p.add_argument("--open", action="store_true", help="Open the daily note in editor after logging")
+    logday_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- day ---
     day_p = subparsers.add_parser("day", help="Create daily log file in ☀️mision-log/diario/")
     day_p.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today)")
     day_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
     day_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Focus project (partial name)")
+    day_p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
+    day_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- week ---
     week_p = subparsers.add_parser("week", help="Create weekly log file in ☀️mision-log/semanal/")
     week_p.add_argument("--date", default=None, help="Any date in the target week YYYY-MM-DD (default: today)")
     week_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
     week_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Up to 2 focus projects (partial name)")
+    week_p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
+    week_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- month ---
     month_p = subparsers.add_parser("month", help="Create monthly log file in ☀️mision-log/mensual/")
     month_p.add_argument("--date", default=None, help="Target month YYYY-MM (default: current month)")
     month_p.add_argument("--force", action="store_true", help="Overwrite if file already exists")
     month_p.add_argument("--focus", nargs="+", metavar="PROJECT", default=None, help="Up to 3 focus projects (partial name)")
+    month_p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
+    month_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- monthreport ---
     mon_p = subparsers.add_parser("monthreport", help="Generate monthly review table and inject into mensual/YYYY-MM.md")

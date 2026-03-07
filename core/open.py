@@ -41,7 +41,8 @@ def _resolve_path(target: str, log: bool) -> Optional[Path]:
     return find_proyecto_file(project_dir)
 
 
-def _open_with(path: Path, editor: str) -> int:
+def open_file(path: Path, editor: str) -> int:
+    """Open a file in the given editor. Returns 0 on success."""
     cmd_base = EDITORS.get(editor)
     if cmd_base:
         cmd = cmd_base + [str(path)]
@@ -78,4 +79,4 @@ def run_open(target: Optional[str], log: bool, editor: str) -> int:
         return 1
 
     print(f"Abriendo {path.name} con {editor}...")
-    return _open_with(path, editor)
+    return open_file(path, editor)
