@@ -108,16 +108,19 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
 
     # ── Note already exists ───────────────────────────────────────────────────
     if dest.exists() and not force:
-        print(f"La nota ya existe: {dest.name}")
         if sys.stdin.isatty():
-            resp = input("¿Inyectar reporte del día? [s/N] ").strip().lower()
-            if resp in ("s", "si", "sí", "y", "yes"):
-                run_dayreport(date_str=target.isoformat(), inject=True,
-                              output=None, open_after=open_after, editor=editor)
+            print(f"La nota del día ya existe: {dest.name}")
+            resp = input("¿Abrir nota existente o crear nueva? [abrir/nueva] (intro = abrir): ").strip().lower()
+            if resp in ("nueva", "n", "new"):
+                pass  # fall through to create a new note
+            else:
+                if open_after:
+                    open_file(dest, editor)
                 return 0
-        if open_after:
-            open_file(dest, editor)
-        return 0
+        else:
+            if open_after:
+                open_file(dest, editor)
+            return 0
 
     tpl = TEMPLATES_DIR / "diario.md"
     if not tpl.exists():
@@ -150,7 +153,7 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
                 focus = candidates[:1]
                 print(f"  → foco día heredado: {focus[0]}")
 
-    rc = _write(dest, content, None, force)
+    rc = _write(dest, content, None, True)  # always overwrite here (guard is above)
     if rc == 0:
         if focus:
             _inject_focus_projects(dest, focus[:1], "## 🎯 Proyecto en foco")
