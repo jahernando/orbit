@@ -191,25 +191,49 @@ def cmd_change(args):
     return rc
 
 
+def _project_exists(name: str) -> bool:
+    """Silent check: return True if any project dir matches name."""
+    from core.log import PROJECTS_DIR
+    if not PROJECTS_DIR.exists():
+        return False
+    return any(name.lower() in d.name.lower() for d in PROJECTS_DIR.iterdir() if d.is_dir())
+
+
+def _resolve_add_project_title(args):
+    """If project doesn't match any real project but title does, swap them."""
+    project = args.project
+    title   = args.title
+    if project and not _project_exists(project):
+        if _project_exists(title):
+            project, title = title, project
+        else:
+            # Neither matches — treat project as part of title, use mission
+            title   = f"{project} {title}"
+            project = None
+    return project, title
+
+
 def cmd_add(args):
     if args.action == "task":
+        project, title = _resolve_add_project_title(args)
         rc = run_task_open(
-            project=args.project or "mission", task_desc=args.title,
+            project=project or "mission", task_desc=title,
             fecha=_d(getattr(args, "date", None)),
             time_str=getattr(args, "time", None),
             recur=getattr(args, "recur", None),
         )
-        if rc == 0 and args.open and args.project:
-            project_dir = find_project(args.project)
+        if rc == 0 and args.open and project:
+            project_dir = find_project(project)
             if project_dir:
                 proyecto = find_proyecto_file(project_dir)
                 if proyecto:
                     open_file(proyecto, args.editor)
         return rc
+    project, title = _resolve_add_project_title(args)
     return run_add(
         action=args.action,
-        project=args.project or "mission",
-        title=args.title,
+        project=project or "mission",
+        title=title,
         url=getattr(args, "url", None),
         file_str=getattr(args, "file", None),
         sync=getattr(args, "sync", False),
