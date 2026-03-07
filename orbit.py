@@ -31,6 +31,26 @@ def _d(expr):
     return parse_date(expr) if expr else None
 
 
+# Long options that users often type with a single dash (e.g. -date instead of --date)
+_SINGLE_DASH_FIX = {
+    "-date", "-time", "-recur", "-entry", "-project", "-type", "-status",
+    "-priority", "-output", "-editor", "-focus", "-from", "-to", "-limit",
+    "-section", "-log", "-open", "-inject", "-apply", "-force", "-no-open",
+    "-sync", "-url", "-file", "-keyword", "-dry-run", "-name", "-date-from",
+    "-date-to", "-from-status", "-from-priority",
+}
+
+def _fix_argv(argv: list) -> list:
+    """Convert single-dash long options to double-dash so argparse accepts them."""
+    fixed = []
+    for token in argv:
+        if token in _SINGLE_DASH_FIX:
+            fixed.append("-" + token)   # -date → --date
+        else:
+            fixed.append(token)
+    return fixed
+
+
 def cmd_log(args):
     if not args.project:
         return add_entry_to_day(
@@ -624,7 +644,7 @@ def main():
         _p = info_sub.add_parser(_name, help=_help)
         _p.add_argument("--editor", default="typora")
 
-    args = parser.parse_args()
+    args = parser.parse_args(_fix_argv(sys.argv[1:]))
 
     if args.command is None:
         run_shell()
