@@ -10,6 +10,7 @@ from core.tasks import list_tasks
 from core.activity import run_activity
 from core.monthly import run_monthly
 from core.stats import run_stats
+from core.review import run_review
 from core.misionlog import run_day, run_week, run_month, run_logday, run_dayreport, run_weekreport, add_entry_to_day
 from core.project import run_project
 from core.importer import run_import
@@ -143,6 +144,9 @@ def cmd_report(args):
     elif args.period == "stats":
         return run_stats(date_str=args.date, output=args.output,
                          open_after=args.open, editor=args.editor)
+    elif args.period == "review":
+        return run_review(date_str=args.date, inject=args.inject, apply=args.apply,
+                          output=args.output, open_after=args.open, editor=args.editor)
     return 1
 
 
@@ -301,7 +305,7 @@ def main():
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Generate activity report for a day, week, month or stats")
-    rep_p.add_argument("period", choices=["day", "week", "month", "stats"], help="Report period")
+    rep_p.add_argument("period", choices=["day", "week", "month", "stats", "review"], help="Report period")
     rep_p.add_argument("--date", default=None, help="Date: YYYY-MM-DD for day/week, YYYY-MM for month/stats (default: today/current)")
     rep_p.add_argument("--inject", action="store_true", help="Inject report into the log file (day/week)")
     rep_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md (month)")
