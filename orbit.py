@@ -13,7 +13,7 @@ from core.misionlog import run_day, run_week, run_month, run_logday, run_dayrepo
 from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
-from core.tarea import run_tarea_open, run_tarea_schedule, run_tarea_close
+from core.task import run_task_open, run_task_schedule, run_task_close
 from core.view import run_view
 from core.calendar_sync import run_calendar_sync
 
@@ -78,13 +78,13 @@ def cmd_view(args):
     )
 
 
-def cmd_tarea(args):
+def cmd_task(args):
     if args.action == "open":
-        return run_tarea_open(project=args.project, task_desc=args.task, fecha=args.date)
+        return run_task_open(project=args.project, task_desc=args.task, fecha=args.date)
     elif args.action == "schedule":
-        return run_tarea_schedule(project=args.project, task_desc=args.task, fecha=args.date)
+        return run_task_schedule(project=args.project, task_desc=args.task, fecha=args.date)
     elif args.action == "close":
-        return run_tarea_close(project=args.project, task_desc=args.task, fecha=args.date)
+        return run_task_close(project=args.project, task_desc=args.task, fecha=args.date)
     return 1
 
 
@@ -203,12 +203,12 @@ def main():
     view_p.add_argument("--log", action="store_true", help="Show logbook instead of project note")
     view_p.add_argument("--output", default=None, help="Save output to file")
 
-    # --- tarea ---
-    tarea_p = subparsers.add_parser("tarea", help="Open, schedule or close a task")
-    tarea_p.add_argument("action", choices=["open", "schedule", "close"], help="Action: open | schedule | close")
-    tarea_p.add_argument("project", nargs="?", default=None, help="Project name (partial match; omit to use daily note)")
-    tarea_p.add_argument("task", help="Task description")
-    tarea_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (due date for open/schedule, done date for close)")
+    # --- task ---
+    task_p = subparsers.add_parser("task", help="Open, schedule or close a task")
+    task_p.add_argument("action", choices=["open", "schedule", "close"], help="Action: open | schedule | close")
+    task_p.add_argument("project", nargs="?", default=None, help="Project name (partial match; omit to use daily note)")
+    task_p.add_argument("task", help="Task description")
+    task_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (due date for open/schedule, done date for close)")
 
     # --- update ---
     upd_p = subparsers.add_parser("update", help="Set status and/or priority of a project")
@@ -290,8 +290,8 @@ def main():
         sys.exit(cmd_calendar(args))
     elif args.command == "view":
         sys.exit(cmd_view(args))
-    elif args.command == "tarea":
-        sys.exit(cmd_tarea(args))
+    elif args.command == "task":
+        sys.exit(cmd_task(args))
     elif args.command == "update":
         sys.exit(cmd_update(args))
     elif args.command == "import":

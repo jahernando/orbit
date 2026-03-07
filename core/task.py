@@ -32,7 +32,7 @@ def _write_lines(path: Path, lines: list) -> None:
 
 # ── open ──────────────────────────────────────────────────────────────────────
 
-def run_tarea_open(project: Optional[str], task_desc: str, fecha: Optional[str]) -> int:
+def run_task_open(project: Optional[str], task_desc: str, fecha: Optional[str]) -> int:
     date_str = f" ({fecha})" if fecha else ""
     entry = f"- [ ] {task_desc}{date_str}"
 
@@ -92,7 +92,7 @@ def _open_in_daily(entry: str, task_desc: str, fecha: Optional[str]) -> int:
 
 # ── schedule ──────────────────────────────────────────────────────────────────
 
-def run_tarea_schedule(project: Optional[str], task_desc: str, fecha: Optional[str]) -> int:
+def run_task_schedule(project: Optional[str], task_desc: str, fecha: Optional[str]) -> int:
     if not fecha:
         print("Error: --date es obligatorio para schedule")
         return 1
@@ -121,7 +121,7 @@ def run_tarea_schedule(project: Optional[str], task_desc: str, fecha: Optional[s
 
 # ── close ─────────────────────────────────────────────────────────────────────
 
-def run_tarea_close(project: Optional[str], task_desc: str, fecha: Optional[str]) -> int:
+def run_task_close(project: Optional[str], task_desc: str, fecha: Optional[str]) -> int:
     done_str = fecha or date.today().isoformat()
 
     project_dirs = _resolve_projects(project)
