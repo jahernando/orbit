@@ -35,11 +35,12 @@ def _parse_reminders(proyecto_path: Path, target: date) -> list:
         if reminder_date != target:
             continue
         results.append({
-            "line_index": i,
-            "hour":  int(m.group(2)),
-            "minute": int(m.group(3)),
-            "title": m.group(4).strip(),
-            "project": proyecto_path.parent.name,
+            "line_index":    i,
+            "hour":          int(m.group(2)),
+            "minute":        int(m.group(3)),
+            "title":         m.group(4).strip(),
+            "project":       proyecto_path.parent.name,
+            "proyecto_path": proyecto_path,
         })
     return results
 
@@ -124,7 +125,12 @@ def inject_reminders_into_note(note_path: Path, reminders: list) -> None:
     text = note_path.read_text()
     if INJECT_START not in text or INJECT_END not in text:
         return
-    lines = [f"- {r['hour']:02d}:{r['minute']:02d}  [{r['project']}] {r['title']}"
+    def _link(r):
+        anchor = "recordatorios"
+        path   = r["proyecto_path"].resolve()
+        return f"[{r['project']}](file://{path}#{anchor})"
+
+    lines = [f"- {r['hour']:02d}:{r['minute']:02d}  {_link(r)} — {r['title']}"
              for r in sorted(reminders, key=lambda r: (r["hour"], r["minute"]))]
     block = INJECT_START + "\n" + "\n".join(lines) + "\n" + INJECT_END
     import re
