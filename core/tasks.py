@@ -172,8 +172,9 @@ def list_tasks(
 
         found_any = True
 
-        # Project header
-        header = f"{project_dir.name}  {meta['tipo']} {meta['estado']}  {meta['prioridad']}"
+        # Project header — project name as a link to proyecto.md#tareas
+        project_link = f"[{project_dir.name}](file://{proyecto_path.resolve()}#tareas)"
+        header = f"{project_link}  {meta['tipo']} {meta['estado']}  {meta['prioridad']}"
         lines_out.append(header)
 
         # Sort: overdue first, then by date, then no date

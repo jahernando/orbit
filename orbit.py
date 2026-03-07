@@ -15,6 +15,7 @@ from core.importer import run_import
 from core.update import run_update
 from core.task import run_task_open, run_task_schedule, run_task_close
 from core.view import run_view
+from core.open import run_open
 from core.calendar_sync import run_calendar_sync
 
 
@@ -66,6 +67,10 @@ def cmd_project(args):
 
 def cmd_update(args):
     return run_update(project=args.project, status=args.status, priority=args.priority)
+
+
+def cmd_open(args):
+    return run_open(target=args.target, log=args.log, editor=args.editor)
 
 
 def cmd_view(args):
@@ -195,6 +200,14 @@ def main():
     cal_p.add_argument("--date", default=None, help="Date YYYY-MM-DD (default: today)")
     cal_p.add_argument("--dry-run", action="store_true", help="Preview without writing to logbooks")
 
+    # --- open ---
+    open_p = subparsers.add_parser("open", help="Open a note in an external editor or renderer")
+    open_p.add_argument("target", nargs="?", default=None,
+                        help="Project name, YYYY-MM-DD, YYYY-Wnn or YYYY-MM (default: today)")
+    open_p.add_argument("--log", action="store_true", help="Open logbook instead of project note")
+    open_p.add_argument("--editor", default="typora",
+                        help="Editor to use: typora (default), glow, code, or any command")
+
     # --- view ---
     view_p = subparsers.add_parser("view", help="Display a note, logbook or mision-log file")
     view_p.add_argument("target", nargs="?", default=None, help="Project name, YYYY-MM-DD, YYYY-Wnn or YYYY-MM (default: today)")
@@ -282,7 +295,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "logday":
+    if args.command == "open":
+        sys.exit(cmd_open(args))
+    elif args.command == "logday":
         sys.exit(cmd_logday(args))
     elif args.command == "report":
         sys.exit(cmd_report(args))
