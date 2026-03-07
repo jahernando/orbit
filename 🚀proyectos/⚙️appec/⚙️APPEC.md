@@ -7,7 +7,7 @@
 Descripción breve del objetivo.
 ## ✅ Tareas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Información Evernote](./references/informacion-evernote.md)
 - [APPEC](https://www.appec.org/consortium/the-general-assembly/)
 - [NuPECC](https://www.nupecc.org/)
@@ -21,7 +21,7 @@ Descripción breve del objetivo.
 - [EOSC](https://eosc.eu/)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

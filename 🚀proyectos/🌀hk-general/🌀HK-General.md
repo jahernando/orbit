@@ -7,7 +7,7 @@
 Descripción breve del objetivo.
 ## ✅ Tareas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Información Evernote](./references/informacion-evernote.md)
 - [WathMal](https://www.watchmal.org)
 - [HK web](https://hyperkdbweb.in2p3.fr)
@@ -23,7 +23,7 @@ Descripción breve del objetivo.
 - [arxiv.2505.15019](https://arxiv.org/pdf/2505.15019)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

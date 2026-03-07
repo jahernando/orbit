@@ -7,7 +7,7 @@
 Descripción breve del objetivo.
 ## ✅ Tareas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Información Evernote](./references/informacion-evernote.md)
 - [https://zoom.us/j/2434108713?pwd=L3Y0cCtvZGNDRTkxME0xekRxKzRTUT09](https://zoom.us/j/2434108713?pwd=L3Y0cCtvZGNDRTkxME0xekRxKzRTUT09)
 - [Ander's diffusion paper](https://arxiv.org/abs/1804.01680)
@@ -17,7 +17,7 @@ Descripción breve del objetivo.
 - [CNNS-10 LAr paper](https://www.ornl.gov/publication/development-83-mkr-source-calibration-cenns-10-liquid-argon-detect)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

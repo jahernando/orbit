@@ -7,10 +7,10 @@
 Descripción breve del objetivo.
 ## ✅ Tareas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

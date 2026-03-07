@@ -7,7 +7,7 @@
 Descripción breve del objetivo.
 ## ✅ Tareas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Información Evernote](./references/informacion-evernote.md)
 - [Secretaría Virtual](https://login.usc.es/cas/login?service=https%3A%2F%2Fsec%2Dvirtual%2Eusc%2Ees%2Fdocentes%2Fj%5Facegi%5Fcas%5Fsecurity%5Fcheck%2Easp)
 - [USC pagina oficial del curso (25-26)](https://www.usc.gal/es/estudios/masteres/ciencias/master-universitario-fisica/20252026/fisica-particulas-ii-15908-15338-3-91642)
@@ -20,7 +20,7 @@ Descripción breve del objetivo.
 - [Nova results](https://novaexperiment.fnal.gov/publications/#:~:text=The%20NOvA%20experiment%20has%20made,%CE%BC%E2%86%92%CE%BD%CE%BC%20candidates.)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

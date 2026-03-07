@@ -11,10 +11,10 @@ CLI en Python para gestionar proyectos científicos y personales en markdown.
 - [ ] Revisar ideas del logbook y decidir próximas features (2026-04-01)
 - [ ] se pueden añadir reminders?
 
-## 📎 Referencias clave
+## 📎 Referencias
 -
 
-## 📊 Últimos resultados
+## 📊 Resultados
 - Comandos implementados: log, list, tasks, activity, monthly
 
 

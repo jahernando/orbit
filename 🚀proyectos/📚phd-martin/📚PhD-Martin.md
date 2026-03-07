@@ -7,7 +7,7 @@
 Descripción breve del objetivo.
 ## ✅ Tareas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Información Evernote](./references/informacion-evernote.md)
 - [list](https://next.ific.uv.es/cgi-bin/DocDB/private/Search)
 - [google-doc](https://docs.google.com/document/d/19tp2SxGGmixGOoaNrHea0MsujMGPRP6EyiPyu1j-kOg/edit?tab=t.0)
@@ -15,7 +15,7 @@ Descripción breve del objetivo.
 - [GitHub](https://github.com/martinperezmaneiro/NEXT_SPARSECONVNET)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

@@ -8,7 +8,7 @@ Descripción breve del objetivo.
 ## ✅ Tareas
 - [ ] Añadir un trabajo voluntario de partículas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Información Evernote](./references/informacion-evernote.md)
 - [Info del curso en la USC](https://www.usc.gal/es/estudios/grados/ciencias/grado-fisica/20252026/fisica-nuclear-particulas-12706-12301-2-78467)
 - [Drive](https://nubeusc-my.sharepoint.com/:f:/g/personal/jose_hernando_usc_es/Es1fxcUEwL5PsIJKzExA468BdFzHR4pSXtZMBt6G6A5E7g?e=VGJZec)
@@ -29,7 +29,7 @@ Descripción breve del objetivo.
 - [Bernardo's lectures on EW](https://books.google.es/books?id=JmKWDwAAQBAJ&amp;printsec=frontcover&amp;hl=es&amp;source=gbs_ge_summary_r&amp;cad=0#v=onepage&amp;q&amp;f=false)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

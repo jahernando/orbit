@@ -12,7 +12,7 @@ Descripción breve del objetivo.
 - [x] Memoria
 - [x] Certificado de entregar el material que se compre
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Información Evernote](./references/informacion-evernote.md)
 - [OIT Virtual](https://imaisd.usc.es/oitvirtual/)
 - [Portal de Investigacion](https://investigacion.usc.gal/grupos/197709/detalle)
@@ -23,7 +23,7 @@ Descripción breve del objetivo.
 - [borrador de la Xunta](https://sede.xunta.gal/presenta/borrador/19344292)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

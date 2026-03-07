@@ -11,7 +11,7 @@ Descripción breve del objetivo.
 - [ ] CERN ("CERN Service Desk" <service-desk@cern.ch>) - certificado fellow/staff periodo del CERN
 - [ ] AEI (mailto:dces@aei.gob.es) - certificado de adjunto - en trámite
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [USC recursos](https://rebusca.usc.gal/academia/criterios-xerais)
 - [correlación ANECA - CVA](https://www.aneca.es/documents/20123/53669/CVA-ANECA_desdeCVN.pdf/a6fb20c3-83c0-045b-d67e-8d3230bd18ba?t=1715670440528)
 - [Hernando](https://investigacion.usc.gal/investigadores/59291/detalle?lang=es)
@@ -34,7 +34,7 @@ Descripción breve del objetivo.
 - [Título](./references/paper.pdf)
 - [Información Evernote](./references/informacion-evernote.md)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

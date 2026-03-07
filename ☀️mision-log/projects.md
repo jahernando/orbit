@@ -1,0 +1,31 @@
+PROYECTOS (25)
+══════════════════════════════════════════
+
+proyecto           tipo  estado  prioridad
+──────────────────────────────────────────
+☀️mission               ▶️   🟠 
+⚙️appec            ⚙️   ▶️   🟡 
+⚙️catedra          ⚙️   ▶️   🟠 
+⚙️hk-gestion       ⚙️   ▶️   🟡 
+⚙️next-pn21        ⚙️   ▶️   🟡 
+⚙️next-pn24        ⚙️   ⏸️   🔵 
+⚙️smarthep         ⚙️   ▶️   🟡 
+🌀hk-ana-es         🌀    ▶️   🟠 
+🌀hk-general        🌀    💤    🔵 
+🌀hk-sources        🌀    ▶️   🟡 
+🌀next-ana-es       🌀    ▶️   🟡 
+🌀next-cernsprint   🌀    💤    🔵 
+🌀next-gala         🌀    ▶️   🟡 
+🌀next-general      🌀    ▶️   🟡 
+🌀next-kr           🌀    💤    🟠 
+🌀next-nn           🌀    💤    🔵 
+🌀next-topo         🌀    💤    🔵 
+💻orbit             💻    ▶️   🟠 
+📚fca               📚    💤    🔵 
+📚fnyp              📚    ⏸️   🔵 
+📚fpii-fanal        📚    💤    🟠 
+📚fpii-neutrinos    📚    ⏸️   🟠 
+📚phd-diego         📚    ▶️   🟡 
+📚phd-martin        📚    ▶️   🟡 
+📚tfg-teresa        📚    💤    🔵 
+──────────────────────────────────────────

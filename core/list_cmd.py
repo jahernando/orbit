@@ -11,8 +11,8 @@ MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
 
 SECTION_HEADINGS = {
     "rings":     "## ⏰ Recordatorios",
-    "refs":      "## 📎 Referencias clave",
-    "results":   "## 📊 Últimos resultados",
+    "refs":      "## 📎 Referencias",
+    "results":   "## 📊 Resultados",
     "decisions": "## 📌 Decisiones",
 }
 

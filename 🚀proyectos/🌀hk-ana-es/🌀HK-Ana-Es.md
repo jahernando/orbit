@@ -13,7 +13,7 @@ Descripción breve del objetivo.
 - [x] 🌀HK-sources Josh about the fast-simulation at HK for NiCf and AmBe #HK-sources (2026-01-09)
 - [x] Ask Susana to buy the AmBe
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Slack channel](https://watercherenko-afv1279.slack.com/archives/C07TH9MNXBR)
 - [Sources References](https://drive.google.com/drive/folders/1HJ0JqOH0wuFh66QBff0rGvSA6zpwfTc8?usp=sharing)
 - [Timeline sources](https://drive.google.com/drive/folders/1AvBcRpSTx2Q5xV9ouyLj6vh0wEtub6FT?usp=sharing)
@@ -27,7 +27,7 @@ Descripción breve del objetivo.
 - [https://fpmac116.usc.es/Flat/](https://fpmac116.usc.es/Flat/)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

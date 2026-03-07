@@ -7,7 +7,7 @@
 Descripción breve del objetivo.
 ## ✅ Tareas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [Información Evernote](./references/informacion-evernote.md)
 - [https://github.com/jerenner/dnntools](https://github.com/jerenner/dnntools)
 - [https://github.com/mmkekic/NEXT_torch](https://github.com/mmkekic/NEXT_torch)
@@ -16,7 +16,7 @@ Descripción breve del objetivo.
 - [#next-nn-topo](https://next-experiment.slack.com/archives/C09VAAK10BB)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

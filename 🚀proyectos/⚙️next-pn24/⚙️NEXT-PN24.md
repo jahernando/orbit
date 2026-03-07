@@ -7,7 +7,7 @@
 Descripción breve del objetivo.
 ## ✅ Tareas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [OIT](https://imaisd.usc.es/oitvirtual/)
 - [Presentación de solicitudes](https://ciencia.sede.gob.es/)
 - [Convocatoria AEI](https://www.aei.gob.es/convocatorias/buscador-convocatorias/proyectos-generacion-conocimiento-2024)
@@ -17,7 +17,7 @@ Descripción breve del objetivo.
 - [local folder](File:/Users/hernando/work/gestion/investigacion/proyectos/NEXTPN24)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 

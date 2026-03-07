@@ -45,3 +45,7 @@
 2026-03-07 search command donde #resultado
 
 2026-03-07 open with editor (Typora - love-) #resultado
+
+2026-03-07 📊 comandos create, log, add, change, list, report revisited #resultado
+
+2026-03-07 📊 creados reminders y tarea automatica de creación de notas diaras #resultado

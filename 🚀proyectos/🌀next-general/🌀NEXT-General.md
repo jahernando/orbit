@@ -7,7 +7,7 @@
 Descripción breve del objetivo.
 ## ✅ Tareas
 
-## 📎 Referencias clave
+## 📎 Referencias
 - [CM-Jan-2023](https://next.ific.uv.es/cgi-bin/DocDB/private/DisplayMeeting?conferenceid=300)
 - [DocDB](https://next.ific.uv.es/cgi-bin/DocDB/private/DocumentDatabase)
 - [Pictures TPC Summer 2023](https://next-experiment.org/gallery/)
@@ -18,7 +18,7 @@ Descripción breve del objetivo.
 - [JJ zoom](https://zoom.us/j/2434108713?pwd=L3Y0cCtvZGNDRTkxME0xekRxKzRTUT09)
 - [Título](./references/paper.pdf)
 
-## 📊 Últimos resultados
+## 📊 Resultados
 -
 
 
