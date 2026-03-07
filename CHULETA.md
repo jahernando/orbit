@@ -35,9 +35,9 @@ orbit monthreport [--month YYYY-MM] [--apply] [--output FILE]
 ## Planificación
 
 ```bash
-orbit day   [--date YYYY-MM-DD] [--copy YYYY-MM-DD] [--force]
-orbit week  [--date YYYY-MM-DD] [--copy YYYY-Wnn]   [--force]
-orbit month [--date YYYY-MM]    [--copy YYYY-MM]    [--force]
+orbit day   [--date YYYY-MM-DD] [--force] [--focus P1 P2...]
+orbit week  [--date YYYY-MM-DD] [--force] [--focus P1 P2...]
+orbit month [--date YYYY-MM]    [--force] [--focus P1 P2...]
 ```
 
 ## Reports

@@ -37,27 +37,17 @@ def _write(dest: Path, content: str, copy: Optional[str], force: bool) -> int:
 
 # ── day ──────────────────────────────────────────────────────────────────────
 
-def run_day(date_str: Optional[str], copy: Optional[str], force: bool, focus: list = None) -> int:
+def run_day(date_str: Optional[str], force: bool, focus: list = None) -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()
     dest   = DIARIO_DIR / f"{target.isoformat()}.md"
 
-    if copy:
-        src = DIARIO_DIR / f"{copy}.md"
-        if not src.exists():
-            print(f"Error: no existe {src}")
-            return 1
-        lines = src.read_text().splitlines(keepends=True)
-        if lines and lines[0].startswith("# Diario"):
-            lines[0] = f"# Diario — {target.isoformat()}\n"
-        content = "".join(lines)
-    else:
-        tpl = TEMPLATES_DIR / "diario.md"
-        if not tpl.exists():
-            print(f"Error: plantilla no encontrada en {tpl}")
-            return 1
-        content = tpl.read_text().replace("YYYY-MM-DD", target.isoformat())
+    tpl = TEMPLATES_DIR / "diario.md"
+    if not tpl.exists():
+        print(f"Error: plantilla no encontrada en {tpl}")
+        return 1
+    content = tpl.read_text().replace("YYYY-MM-DD", target.isoformat())
 
-    rc = _write(dest, content, copy, force)
+    rc = _write(dest, content, None, force)
     if rc == 0:
         if focus:
             _inject_focus_projects(dest, focus[:1], "## 🎯 Proyecto en foco")
@@ -125,34 +115,24 @@ def run_logday(message: str, tipo: str, date_str: Optional[str]) -> int:
 
 # ── week ─────────────────────────────────────────────────────────────────────
 
-def run_week(date_str: Optional[str], copy: Optional[str], force: bool, focus: list = None) -> int:
+def run_week(date_str: Optional[str], force: bool, focus: list = None) -> int:
     d      = date.fromisoformat(date_str) if date_str else date.today()
     wkey   = _week_key(d)
     mon, sun = _week_bounds(d)
     dest   = SEMANAL_DIR / f"{wkey}.md"
 
-    if copy:
-        src = SEMANAL_DIR / f"{copy}.md"
-        if not src.exists():
-            print(f"Error: no existe {src}")
-            return 1
-        lines = src.read_text().splitlines(keepends=True)
-        if lines and lines[0].startswith("# Semana"):
-            lines[0] = f"# Semana {wkey} ({mon.isoformat()} — {sun.isoformat()})\n"
-        content = "".join(lines)
-    else:
-        tpl = TEMPLATES_DIR / "semanal.md"
-        if not tpl.exists():
-            print(f"Error: plantilla no encontrada en {tpl}")
-            return 1
-        lines = tpl.read_text().split("\n")
-        lines[0] = (lines[0]
-                    .replace("YYYY-Wnn", wkey)
-                    .replace("YYYY-MM-DD", mon.isoformat(), 1)
-                    .replace("YYYY-MM-DD", sun.isoformat(), 1))
-        content = "\n".join(lines)
+    tpl = TEMPLATES_DIR / "semanal.md"
+    if not tpl.exists():
+        print(f"Error: plantilla no encontrada en {tpl}")
+        return 1
+    lines = tpl.read_text().split("\n")
+    lines[0] = (lines[0]
+                .replace("YYYY-Wnn", wkey)
+                .replace("YYYY-MM-DD", mon.isoformat(), 1)
+                .replace("YYYY-MM-DD", sun.isoformat(), 1))
+    content = "\n".join(lines)
 
-    rc = _write(dest, content, copy, force)
+    rc = _write(dest, content, None, force)
     if rc == 0:
         if focus:
             _inject_focus_projects(dest, focus[:2], "## 🎯 Proyectos en foco")
@@ -163,7 +143,7 @@ def run_week(date_str: Optional[str], copy: Optional[str], force: bool, focus: l
 
 # ── month ─────────────────────────────────────────────────────────────────────
 
-def run_month(date_str: Optional[str], copy: Optional[str], force: bool, focus: list = None) -> int:
+def run_month(date_str: Optional[str], force: bool, focus: list = None) -> int:
     if date_str:
         y, m = int(date_str[:4]), int(date_str[5:7])
     else:
@@ -172,29 +152,19 @@ def run_month(date_str: Optional[str], copy: Optional[str], force: bool, focus: 
     month_str = f"{y}-{m:02d}"
     dest = MENSUAL_DIR / f"{month_str}.md"
 
-    if copy:
-        src = MENSUAL_DIR / f"{copy}.md"
-        if not src.exists():
-            print(f"Error: no existe {src}")
-            return 1
-        lines = src.read_text().splitlines(keepends=True)
-        if lines and lines[0].startswith("# Mes"):
-            lines[0] = f"# Mes {month_str}\n"
-        content = "".join(lines)
-    else:
-        tpl = TEMPLATES_DIR / "mensual.md"
-        if not tpl.exists():
-            print(f"Error: plantilla no encontrada en {tpl}")
-            return 1
-        prev_m = m - 1 if m > 1 else 12
-        prev_y = y if m > 1 else y - 1
-        prev_str = f"{prev_y}-{prev_m:02d}"
-        content = (tpl.read_text()
-                   .replace("← [Mes anterior](../mensual/YYYY-MM.md)",
-                            f"← [Mes anterior](./{prev_str}.md)")
-                   .replace("YYYY-MM", month_str))
+    tpl = TEMPLATES_DIR / "mensual.md"
+    if not tpl.exists():
+        print(f"Error: plantilla no encontrada en {tpl}")
+        return 1
+    prev_m = m - 1 if m > 1 else 12
+    prev_y = y if m > 1 else y - 1
+    prev_str = f"{prev_y}-{prev_m:02d}"
+    content = (tpl.read_text()
+               .replace("← [Mes anterior](../mensual/YYYY-MM.md)",
+                        f"← [Mes anterior](./{prev_str}.md)")
+               .replace("YYYY-MM", month_str))
 
-    rc = _write(dest, content, copy, force)
+    rc = _write(dest, content, None, force)
     if rc == 0:
         if focus:
             _inject_focus_projects(dest, focus[:3], "## 🎯 Proyectos en foco")

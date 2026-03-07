@@ -233,9 +233,9 @@ La prioridad se degrada un nivel si no hay actividad en un período ≥ 30 días
 ### `day` / `week` / `month` — crear ficheros de planificación
 
 ```bash
-python orbit.py day   [--date YYYY-MM-DD] [--copy YYYY-MM-DD] [--force] [--focus PROYECTO...]
-python orbit.py week  [--date YYYY-MM-DD] [--copy YYYY-Wnn]   [--force] [--focus PROYECTO...]
-python orbit.py month [--date YYYY-MM]    [--copy YYYY-MM]    [--force] [--focus PROYECTO...]
+python orbit.py day   [--date YYYY-MM-DD] [--force] [--focus PROYECTO...]
+python orbit.py week  [--date YYYY-MM-DD] [--force] [--focus PROYECTO...]
+python orbit.py month [--date YYYY-MM]    [--force] [--focus PROYECTO...]
 ```
 
 ```bash
@@ -243,7 +243,7 @@ python orbit.py day                                    # crea el diario de hoy
 python orbit.py day --focus next-kr orbit              # crea el diario con proyectos en foco
 python orbit.py week --date 2026-03-04                 # crea semanal de la semana que contiene esa fecha
 python orbit.py month                                  # crea el mensual del mes actual
-python orbit.py week --copy 2026-W09 --force           # copia una semana existente como base
+python orbit.py week --focus next-kr hk-ana --force    # crea la semana con proyectos en foco
 ```
 
 Crea los ficheros en `☀️mision-log/diario/`, `semanal/` o `mensual/` desde la plantilla. Usa `--force` para sobreescribir si ya existe. Con `--focus` inyecta los proyectos en foco y las tareas próximas.
