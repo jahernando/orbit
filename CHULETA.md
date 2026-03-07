@@ -63,17 +63,18 @@ orbit month [--date YYYY-MM]    [--force] [--focus P...] [--no-open] [--editor E
 ## Reports
 
 ```bash
-orbit report day    [--date YYYY-MM-DD] [--inject] [--output FILE] [--open] [--editor E]
-orbit report week   [--date YYYY-MM-DD] [--inject] [--output FILE] [--open] [--editor E]
-orbit report month  [--date YYYY-MM]    [--apply]  [--output FILE] [--open] [--editor E]
-orbit report stats  [--date YYYY-MM] [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+orbit report day    [--date D] [--inject] [--output FILE] [--open] [--editor E]
+orbit report week   [--date D] [--inject] [--output FILE] [--open] [--editor E]
+orbit report month  [--date D] [--inject] [--apply] [--output FILE] [--open] [--editor E]
+orbit report stats  [--date D] [--from D] [--to D]
                     [--project P] [--type T] [--priority P]
                     [--output FILE] [--open] [--editor E]
-orbit report review [--date YYYY-MM-DD | YYYY-Wnn | YYYY-MM]
-                    [--inject] [--apply] [--output FILE] [--open] [--editor E]
+orbit report review [--date D] [--inject] [--apply] [--output FILE] [--open] [--editor E]
 ```
 
-- `--inject` → inyecta el reporte en la nota del período (día/semana/mes)
+`--date` acepta lenguaje natural: `today` · `yesterday` · `this week` · `last month` · `next friday` · `in 5 days` · `last friday of march` · y sus equivalentes en español.
+
+- `--inject` → inyecta el reporte en la sección correspondiente de la nota del período
 - `--apply`  → aplica cambios de estado/prioridad a los proyectos (month/review)
 - `--open`   → abre la nota del período en editor tras generar el reporte
 

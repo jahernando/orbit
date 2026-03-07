@@ -147,8 +147,8 @@ def cmd_report(args):
         return run_weekreport(date_str=_d(args.date), inject=args.inject,
                               output=args.output, open_after=args.open, editor=args.editor)
     elif args.period == "month":
-        return run_monthly(month=_d(args.date), apply=args.apply, output=args.output,
-                           open_after=args.open, editor=args.editor)
+        return run_monthly(month=_d(args.date), apply=args.apply, inject=args.inject,
+                           output=args.output, open_after=args.open, editor=args.editor)
     elif args.period == "stats":
         return run_stats(date_str=_d(args.date), date_from=_d(args.date_from),
                          date_to=_d(args.date_to), project=args.project,
@@ -297,21 +297,57 @@ def main():
     pi_p.add_argument("--project", required=True, help="Target project (partial name match)")
 
     # --- report ---
-    rep_p = subparsers.add_parser("report", help="Generate activity report for a day, week, month or stats")
-    rep_p.add_argument("period", choices=["day", "week", "month", "stats", "review"], help="Report period")
-    rep_p.add_argument("--date", default=None, help="Date: YYYY-MM-DD for day/week, YYYY-MM for month/stats (default: today/current)")
-    rep_p.add_argument("--from", dest="date_from", default=None, metavar="YYYY-MM-DD",
-                       help="Stats: period start date (inclusive)")
-    rep_p.add_argument("--to", dest="date_to", default=None, metavar="YYYY-MM-DD",
-                       help="Stats: period end date (inclusive)")
-    rep_p.add_argument("--inject", action="store_true", help="Inject report into the log file (day/week/month)")
-    rep_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md (month/review)")
-    rep_p.add_argument("--project", default=None, help="Filter by project name (stats)")
-    rep_p.add_argument("--type", default=None, help="Filter by project type (stats)")
-    rep_p.add_argument("--priority", default=None, help="Filter by priority (stats)")
-    rep_p.add_argument("--output", default=None, help="Save output to file")
-    rep_p.add_argument("--open", action="store_true", help="Open result in editor after generating")
-    rep_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+    rep_p   = subparsers.add_parser("report", help="Generate reports: day, week, month, stats, review")
+    rep_sub = rep_p.add_subparsers(dest="period")
+
+    # report day
+    rd_p = rep_sub.add_parser("day", help="Activity report for a day")
+    rd_p.add_argument("--date", default=None, help="Date (default: today) — supports natural language")
+    rd_p.add_argument("--inject", action="store_true", help="Inject report into the diario note")
+    rd_p.add_argument("--output", default=None, help="Save output to file")
+    rd_p.add_argument("--open", action="store_true", help="Open the diario note in editor")
+    rd_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+
+    # report week
+    rw_p = rep_sub.add_parser("week", help="Activity report for a week")
+    rw_p.add_argument("--date", default=None, help="Any date in the target week (default: today) — supports natural language")
+    rw_p.add_argument("--inject", action="store_true", help="Inject report into the semanal note")
+    rw_p.add_argument("--output", default=None, help="Save output to file")
+    rw_p.add_argument("--open", action="store_true", help="Open the semanal note in editor")
+    rw_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+
+    # report month
+    rm_p = rep_sub.add_parser("month", help="Activity report for a month")
+    rm_p.add_argument("--date", default=None, help="Month YYYY-MM (default: current) — supports natural language")
+    rm_p.add_argument("--inject", action="store_true", help="Inject report into the mensual note")
+    rm_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md")
+    rm_p.add_argument("--output", default=None, help="Save output to file")
+    rm_p.add_argument("--open", action="store_true", help="Open the mensual note in editor")
+    rm_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+
+    # report stats
+    rs_p = rep_sub.add_parser("stats", help="Quantitative analytics across projects")
+    rs_p.add_argument("--date", default=None, help="Month YYYY-MM (default: last 30 days) — supports natural language")
+    rs_p.add_argument("--from", dest="date_from", default=None, metavar="DATE",
+                      help="Period start — supports natural language")
+    rs_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
+                      help="Period end — supports natural language")
+    rs_p.add_argument("--project", default=None, help="Filter by project name (partial match)")
+    rs_p.add_argument("--type", default=None, help="Filter by project type (investigacion, docencia, ...)")
+    rs_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
+    rs_p.add_argument("--output", default=None, help="Save output to file")
+    rs_p.add_argument("--open", action="store_true", help="Save to mision-log/stats.md and open in editor")
+    rs_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+
+    # report review
+    rrev_p = rep_sub.add_parser("review", help="Focus check + project health for a period")
+    rrev_p.add_argument("--date", default=None,
+                        help="YYYY-MM-DD (day), YYYY-Wnn (week) or YYYY-MM (month) — supports natural language")
+    rrev_p.add_argument("--inject", action="store_true", help="Inject review into the period note (🍅 Valoración)")
+    rrev_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md")
+    rrev_p.add_argument("--output", default=None, help="Save output to file")
+    rrev_p.add_argument("--open", action="store_true", help="Save to mision-log/review.md and open in editor")
+    rrev_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- logday ---
     logday_p = subparsers.add_parser("logday", help="Add a note to today's daily log")
@@ -359,7 +395,10 @@ def main():
     elif args.command == "logday":
         sys.exit(cmd_logday(args))
     elif args.command == "report":
-        sys.exit(cmd_report(args))
+        if not args.period:
+            rep_p.print_help()
+        else:
+            sys.exit(cmd_report(args))
     elif args.command == "calendar":
         sys.exit(cmd_calendar(args))
     elif args.command == "view":

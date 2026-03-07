@@ -117,8 +117,9 @@ def inject_table(monthly_path: Path, table_lines: list) -> None:
     monthly_path.write_text(new_content)
 
 
-def run_monthly(month: Optional[str], apply: bool, output: Optional[str],
-                open_after: bool = False, editor: str = "typora") -> int:
+def run_monthly(month: Optional[str], apply: bool, inject: bool,
+                output: Optional[str], open_after: bool = False,
+                editor: str = "typora") -> int:
     if not PROJECTS_DIR.exists():
         print(f"Error: projects directory not found at {PROJECTS_DIR}")
         return 1
@@ -151,17 +152,16 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str],
         else:
             print(f"Warning: template not found at {TEMPLATE_PATH}")
 
-    # Inject table into monthly file
-    inject_table(monthly_path, table_lines)
-    print(f"✓ Table injected into {monthly_path}")
+    if inject:
+        inject_table(monthly_path, table_lines)
+        print(f"✓ Table injected into {monthly_path}")
 
-    # Inject tomato block
-    focus = _parse_focus_projects(monthly_path, "## 🎯 Proyectos en foco")
-    tomato = _check_focus_activity(focus, start, end)
-    tomato_block = _format_tomato_block(tomato, month_str)
-    if tomato_block:
-        _inject_block(monthly_path, tomato_block, _TOMATO_START, _TOMATO_END)
-        print(f"✓ Valoración 🍅 inyectada en {monthly_path}")
+        focus = _parse_focus_projects(monthly_path, "## 🎯 Proyectos en foco")
+        tomato = _check_focus_activity(focus, start, end)
+        tomato_block = _format_tomato_block(tomato, month_str)
+        if tomato_block:
+            _inject_block(monthly_path, tomato_block, _TOMATO_START, _TOMATO_END)
+            print(f"✓ Valoración 🍅 inyectada en {monthly_path}")
 
     # Apply status/priority changes if requested
     if apply and changes:
@@ -173,7 +173,7 @@ def run_monthly(month: Optional[str], apply: bool, output: Optional[str],
             update_proyecto_field(c["proyecto_path"], "prioridad", f"{PRIORITY_MAP[pk]} {pk.capitalize()}")
         print(f"✓ {len(changes)} proyecto(s) actualizado(s) en proyecto.md")
     elif changes:
-        print(f"  {len(changes)} cambio(s) propuesto(s) — ejecuta orbit activity --apply para aplicarlos")
+        print(f"  {len(changes)} cambio(s) propuesto(s) — ejecuta orbit report month --apply para aplicarlos")
 
     # Collect tasks due this month
     tasks_due = []
