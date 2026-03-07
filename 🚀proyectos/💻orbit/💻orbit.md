@@ -20,5 +20,8 @@ CLI en Python para gestionar proyectos científicos y personales en markdown.
 
 ## 📌 Decisiones
 -
+
+## ⏰ Recordatorios
+<!-- formato: - [ ] YYYY-MM-DD HH:MM descripción -->
 ## 📓 Logbook
 [Ver logbook completo](./📓orbit.md)

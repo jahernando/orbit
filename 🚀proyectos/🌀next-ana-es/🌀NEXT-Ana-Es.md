@@ -19,5 +19,8 @@ Descripción breve del objetivo.
 
 ## 📌 Decisiones
 -
+
+## ⏰ Recordatorios
+<!-- formato: - [ ] YYYY-MM-DD HH:MM descripción -->
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-Ana-Es.md)
