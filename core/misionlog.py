@@ -94,6 +94,31 @@ def _sync_calendar_to_day(dest: Path, target: date) -> None:
 
 # ── logday ────────────────────────────────────────────────────────────────────
 
+def add_entry_to_day(message: str, tipo: str, path: Optional[str],
+                     date_str: Optional[str], open_after: bool = False,
+                     editor: str = "typora") -> int:
+    """Append a dated logbook-style entry to today's (or given) diario."""
+    from core.log import format_entry, _append_entry
+    target = date.fromisoformat(date_str) if date_str else date.today()
+    dest = DIARIO_DIR / f"{target.isoformat()}.md"
+
+    if not dest.exists():
+        tpl = TEMPLATES_DIR / "diario.md"
+        if not tpl.exists():
+            print(f"Error: plantilla no encontrada en {tpl}")
+            return 1
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(tpl.read_text().replace("YYYY-MM-DD", target.isoformat()))
+        print(f"✓ Creado {dest}")
+
+    entry = format_entry(message, tipo, path, date_str or target.isoformat())
+    _append_entry(dest, entry)
+    print(f"✓ [diario/{target.isoformat()}] {entry.strip()}")
+    if open_after:
+        open_file(dest, editor)
+    return 0
+
+
 def run_logday(message: str, tipo: str, date_str: Optional[str],
                open_after: bool = False, editor: str = "typora") -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()

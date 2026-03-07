@@ -9,7 +9,7 @@ from core.list_entries import list_entries
 from core.tasks import list_tasks
 from core.activity import run_activity
 from core.monthly import run_monthly
-from core.misionlog import run_day, run_week, run_month, run_logday, run_dayreport, run_weekreport
+from core.misionlog import run_day, run_week, run_month, run_logday, run_dayreport, run_weekreport, add_entry_to_day
 from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
@@ -20,6 +20,11 @@ from core.calendar_sync import run_calendar_sync
 
 
 def cmd_log(args):
+    if not args.project:
+        return add_entry_to_day(
+            message=args.message, tipo=args.type, path=args.path,
+            date_str=args.date, open_after=args.open, editor=args.editor,
+        )
     rc = add_entry(
         project=args.project,
         message=args.message,
@@ -174,8 +179,9 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
 
     # --- log ---
-    log_p = subparsers.add_parser("log", help="Add an entry to a project logbook")
-    log_p.add_argument("project", help="Project name (partial match supported)")
+    log_p = subparsers.add_parser("log", help="Add an entry to a project logbook or today's diary")
+    log_p.add_argument("project", nargs="?", default=None,
+                       help="Project name (partial match); omit to log to today's diary")
     log_p.add_argument("message", help="Entry message")
     log_p.add_argument(
         "--type",
