@@ -204,6 +204,29 @@ def cmd_calendar(args):
     return run_calendar_sync(date_str=args.date, dry_run=args.dry_run)
 
 
+ORBIT_DIR = Path(__file__).parent
+
+def cmd_info(args):
+    editor = getattr(args, "editor", "typora")
+    if args.topic == "terminal":
+        print(ORBIT_DIR.joinpath("CHULETA.md").read_text())
+    elif args.topic == "about":
+        open_file(ORBIT_DIR / "README.md", editor)
+    elif args.topic == "tutorial":
+        open_file(ORBIT_DIR / "TUTORIAL.md", editor)
+    elif args.topic == "help":
+        # Re-invoke main with --help to print full help
+        old_argv = sys.argv
+        sys.argv = ["orbit", "--help"]
+        try:
+            main()
+        except SystemExit:
+            pass
+        finally:
+            sys.argv = old_argv
+    return 0
+
+
 
 
 def cmd_report(args):
@@ -568,8 +591,15 @@ def main():
     rst_p.add_argument("--open",   action="store_true", help="Save to mision-log/status.md and open in editor")
     rst_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-
-
+    # --- info ---
+    info_p   = subparsers.add_parser("info", help="Show chuleta, README, tutorial or full help")
+    info_sub = info_p.add_subparsers(dest="topic")
+    info_sub.add_parser("terminal", help="Print CHULETA.md to terminal")
+    _ab = info_sub.add_parser("about",    help="Open README.md in editor")
+    _ab.add_argument("--editor", default="typora")
+    _tu = info_sub.add_parser("tutorial", help="Open TUTORIAL.md in editor")
+    _tu.add_argument("--editor", default="typora")
+    info_sub.add_parser("help",     help="Show full orbit help")
 
     args = parser.parse_args()
 
@@ -617,6 +647,11 @@ def main():
         sys.exit(cmd_search(args))
     elif args.command == "shell":
         run_shell()
+    elif args.command == "info":
+        if not args.topic:
+            info_p.print_help()
+        else:
+            sys.exit(cmd_info(args))
     else:
         parser.print_help()
 
@@ -634,7 +669,7 @@ def run_shell():
     readline.set_history_length(500)
 
     COMMANDS = ["create", "add", "change", "list", "log", "search",
-                "open", "report", "calendar", "claude", "exit", "quit"]
+                "open", "report", "calendar", "info", "claude", "exit", "quit"]
 
     def completer(text, state):
         options = [c for c in COMMANDS if c.startswith(text)]
