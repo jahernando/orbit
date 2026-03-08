@@ -134,20 +134,10 @@ class TestParseReminders:
         _write_proyecto(p, "- [x] Completada (2026-03-08) @ring\n")
         assert _parse_reminders(p, TARGET) == []
 
-    def test_legacy_format(self, orbit_env):
+    def test_legacy_section_ignored(self, orbit_env):
+        """## ⏰ Recordatorios (legacy) is no longer parsed — section eliminated."""
         p = orbit_env["proyecto_path"]
         _write_legacy(p, "- [ ] 2026-03-08 10:00 Standup @weekly\n")
-        results = _parse_reminders(p, TARGET)
-        assert len(results) == 1
-        r = results[0]
-        assert r["title"] == "Standup"
-        assert r["hour"] == 10
-        assert r["minute"] == 0
-        assert r["recur"] == "@weekly"
-
-    def test_legacy_format_wrong_date_excluded(self, orbit_env):
-        p = orbit_env["proyecto_path"]
-        _write_legacy(p, "- [ ] 2026-03-09 10:00 Standup\n")
         assert _parse_reminders(p, TARGET) == []
 
     def test_multiple_tasks_same_day(self, orbit_env):

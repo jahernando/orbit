@@ -12,10 +12,6 @@ from core.tasks import parse_task
 
 REMINDERS_LIST = "Orbit"
 
-_RE_REMINDER = re.compile(
-    r"^- \[ \] (\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}) (.+?)(\s+@\S+)?\s*$"
-)
-
 _RECUR_ES = {
     "diario": "daily", "semanal": "weekly", "mensual": "monthly",
     "anual": "yearly", "laborables": "weekdays",
@@ -92,33 +88,6 @@ def _parse_reminders(proyecto_path: Path, target: date) -> list:
             "title":         task["description"],
             "recur":         task.get("recur"),
             "date":          date.fromisoformat(task["due"]),
-            "project":       proyecto_path.parent.name,
-            "proyecto_path": proyecto_path,
-        })
-
-    # ── Legacy format: ## ⏰ Recordatorios ────────────────────────────────────
-    in_section = False
-    for i, line in enumerate(lines):
-        if "## ⏰ Recordatorios" in line:
-            in_section = True
-            continue
-        if in_section and line.startswith("## "):
-            break
-        if not in_section:
-            continue
-        m = _RE_REMINDER.match(line)
-        if not m:
-            continue
-        reminder_date = date.fromisoformat(m.group(1))
-        if reminder_date != target:
-            continue
-        results.append({
-            "line_index":    i,
-            "hour":          int(m.group(2)),
-            "minute":        int(m.group(3)),
-            "title":         m.group(4).strip(),
-            "recur":         m.group(5).strip() if m.group(5) else None,
-            "date":          reminder_date,
             "project":       proyecto_path.parent.name,
             "proyecto_path": proyecto_path,
         })
