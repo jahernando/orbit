@@ -28,11 +28,24 @@ TEMPLATES_DIR  = Path(__file__).parent.parent / "📐templates"
 
 
 def _insert_into_section(proyecto_path: Path, heading: str, new_line: str) -> bool:
-    """Insert new_line into the section identified by heading in proyecto.md."""
+    """Insert new_line into the section identified by heading in proyecto.md.
+
+    If the section does not exist, it is created before the ## 📓 Logbook
+    section (or at the end of the file if that section is also absent).
+    """
     lines = proyecto_path.read_text().splitlines()
     section_idx = next((i for i, l in enumerate(lines) if l.strip() == heading), None)
+
     if section_idx is None:
-        return False
+        # Create the section before ## 📓 Logbook, or at end
+        logbook_idx = next(
+            (i for i, l in enumerate(lines) if l.strip().startswith("## 📓")), len(lines)
+        )
+        insert_block = ["", heading, new_line, ""]
+        lines = lines[:logbook_idx] + insert_block + lines[logbook_idx:]
+        proyecto_path.write_text("\n".join(lines) + "\n")
+        return True
+
     end_idx = len(lines)
     for i in range(section_idx + 1, len(lines)):
         if lines[i].startswith("## "):
