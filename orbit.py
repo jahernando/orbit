@@ -158,9 +158,14 @@ def cmd_task(args):
                     open_file(proyecto, getattr(args, "editor", "typora"))
         return rc
 
-    # Default action: add task
-    project  = getattr(args, "project", None)
-    title    = getattr(args, "desc", None)
+    # Default action: add task — orbit task [project] desc
+    # If only one positional given (desc=None), it may be the description without project
+    project = getattr(args, "project", None)
+    title   = getattr(args, "desc", None)
+    if title is None and project is not None:
+        # Single positional: treat as desc unless it matches a real project
+        if not _project_exists(project):
+            title, project = project, None
     ring     = getattr(args, "ring", False)
     time_str = getattr(args, "time", None)
     if ring and not time_str:
@@ -566,9 +571,9 @@ def main():
     tsk_p   = subparsers.add_parser("task", help="Add, list, close or reschedule tasks")
     tsk_sub = tsk_p.add_subparsers(dest="action")
 
-    # task list
+    # task list [project]
     tkl_p = tsk_sub.add_parser("list", help="List pending tasks across projects")
-    tkl_p.add_argument("--project",  default=None, help="Filter by project name (partial match)")
+    tkl_p.add_argument("project",    nargs="?", default=None, help="Project name (partial match; omit for all)")
     tkl_p.add_argument("--type",     default=None, help="Filter by project type")
     tkl_p.add_argument("--status",   default=None, help="Filter by project status")
     tkl_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
@@ -597,10 +602,10 @@ def main():
     tkm_p.add_argument("--open",   action="store_true")
     tkm_p.add_argument("--editor", default="typora")
 
-    # task <desc> (default: add)
+    # task [project] desc (default: add)
+    tsk_p.add_argument("project", nargs="?", default=None,
+                       help="Project name (optional; if omitted or not found, adds to mission)")
     tsk_p.add_argument("desc",    nargs="?", default=None, help="Task description")
-    tsk_p.add_argument("--project", default=None,
-                       help="Project name (partial match; omit to add to mission)")
     tsk_p.add_argument("--date",  default=None, metavar="DATE",
                        help="Due date — supports natural language")
     tsk_p.add_argument("--time",  default=None, metavar="HH:MM", help="Optional due time")
