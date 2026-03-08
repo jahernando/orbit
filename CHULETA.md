@@ -24,18 +24,22 @@ Las notas de día, semana y mes se crean automáticamente al entrar en el shell 
 ## add — añadir items a un proyecto
 
 ```bash
-orbit add task     [project] <desc>   [--date D] [--time HH:MM] [--ring] [--recur RULE] [--open]
-orbit add ref      <project> <título> [--url URL] [--file PATH] [--sync] [--open]
-orbit add result   <project> <título> [--url URL] [--file PATH] [--sync] [--open]
-orbit add decision <project> <título> [--url URL] [--file PATH] [--sync] [--open]
+orbit add task  [project] <desc>   [--date D] [--time HH:MM] [--ring] [--recur RULE] [--open]
+orbit add ref   <project> <título> [--entry TIPO] [--url URL] [--file PATH] [--sync] [--open]
+orbit add note  <project> <título> [--file FILE.md] [--entry TIPO] [--no-link] [--open]
 ```
 
-- Sin proyecto → va a **mission** por defecto
+- `add task` sin proyecto → va a **mission** por defecto
 - `--date today` → también se copia al diario del día
 - `--ring` → tarea con alarma; si omites `--time` se pide en el prompt (defecto 09:00)
 - `--date today` + `--ring` → también se programa en Reminders.app
 - `--recur` acepta: `daily/diario` · `weekly/semanal` · `monthly/mensual` · `yearly/anual` · `weekdays/laborables` · `every:Nd` · `every:Nw`
-- `--sync` → `git add -f` sobre el fichero copiado
+- `add ref --entry TIPO` → determina la sección del proyecto y el tag del logbook; si se omite se pide en el prompt
+- `--entry`: `referencia` 📎 · `resultado` 📊 · `decision` 📌 · `apunte` 📝 · `idea` 💡 · `problema` ⚠️
+- `--entry referencia/resultado` → sección Referencias/Resultados; el resto → Referencias
+- `--sync` → si se omite con `--file` (no .md) se pregunta en el prompt
+- `add note` sin `--file` → crea nota nueva desde plantilla y la abre en Typora
+- `add note --no-link` → no añade enlace en proyecto.md
 
 ---
 

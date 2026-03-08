@@ -15,7 +15,7 @@ from core.importer import run_import
 from core.update import run_update
 from core.task import run_task_open, run_task_schedule, run_task_close
 from core.list_cmd import run_list_projects, run_list_section
-from core.add import run_add
+from core.add import run_add, run_add_note, VALID_ENTRIES
 from core.view import run_view
 from core.open import run_open, open_file
 from core.calendar_sync import run_calendar_sync
@@ -186,10 +186,20 @@ def _resolve_add_project_title(args):
     return project, title
 
 
+def _prompt_entry(default="apunte") -> str:
+    """Ask the user to pick an entry type interactively."""
+    opts = " / ".join(VALID_ENTRIES)
+    try:
+        raw = input(f"Tipo de entrada [{opts}] ({default}): ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return default
+    return raw if raw in VALID_ENTRIES else default
+
+
 def cmd_add(args):
     if args.action == "task":
         project, title = _resolve_add_project_title(args)
-        ring = getattr(args, "ring", False)
+        ring     = getattr(args, "ring", False)
         time_str = getattr(args, "time", None)
         if ring and not time_str:
             try:
@@ -203,10 +213,8 @@ def cmd_add(args):
             fecha = _date.today().isoformat()
         rc = run_task_open(
             project=project or "mission", task_desc=title,
-            fecha=fecha,
-            time_str=time_str,
-            recur=getattr(args, "recur", None),
-            ring=ring,
+            fecha=fecha, time_str=time_str,
+            recur=getattr(args, "recur", None), ring=ring,
         )
         if rc == 0 and args.open and project:
             project_dir = find_project(project)
@@ -215,17 +223,44 @@ def cmd_add(args):
                 if proyecto:
                     open_file(proyecto, args.editor)
         return rc
+
+    if args.action == "note":
+        project = getattr(args, "project", None)
+        title   = getattr(args, "title", "")
+        entry   = getattr(args, "entry", None) or "apunte"
+        file_str = getattr(args, "file", None)
+        link    = getattr(args, "link", True)
+        return run_add_note(
+            project=project or "mission",
+            title=title,
+            entry=entry,
+            file_str=file_str,
+            link=link,
+            open_after=getattr(args, "open", False),
+            editor=getattr(args, "editor", "typora"),
+        )
+
+    # add ref — unified handler for ref/result/decision/apunte/idea/problema
     project, title = _resolve_add_project_title(args)
+    entry    = getattr(args, "entry", None) or _prompt_entry()
+    file_str = getattr(args, "file", None)
+    sync     = getattr(args, "sync", False)
+    # Prompt for --sync only for non-.md binary files
+    if file_str and not file_str.endswith(".md") and not sync:
+        try:
+            raw = input("¿Sincronizar con git (git add -f)? [s/N]: ").strip().lower()
+            sync = raw in ("s", "si", "sí", "y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            sync = False
     return run_add(
-        action=args.action,
         project=project or "mission",
         title=title,
+        entry=entry,
         url=getattr(args, "url", None),
-        file_str=getattr(args, "file", None),
-        sync=getattr(args, "sync", False),
-        date_str=_d(getattr(args, "date", None)),
-        open_after=args.open,
-        editor=args.editor,
+        file_str=file_str,
+        sync=sync,
+        open_after=getattr(args, "open", False),
+        editor=getattr(args, "editor", "typora"),
     )
 
 
@@ -441,29 +476,36 @@ def main():
     add_p   = subparsers.add_parser("add", help="Add a ref, result, decision or reminder to a project")
     add_sub = add_p.add_subparsers(dest="action")
 
-    def _add_common(p, *, has_file=False):
-        p.add_argument("project", help="Project name (partial match)")
-        p.add_argument("title",   help="Title / description")
-        p.add_argument("--url",   default=None, help="URL to attach as a markdown link")
-        if has_file:
-            p.add_argument("--file", default=None, metavar="PATH",
-                           help="Local file to copy into the project directory")
-            p.add_argument("--sync", action="store_true",
-                           help="Run git add -f on the copied file")
-        p.add_argument("--open",   action="store_true", help="Open proyecto.md in editor after adding")
-        p.add_argument("--editor", default="typora",    help="Editor to use (default: typora)")
+    # add ref  (unified: ref / resultado / decision / apunte / idea / problema)
+    ar_p = add_sub.add_parser("ref",
+        help="Add a reference, result, decision or annotation to a project")
+    ar_p.add_argument("project", help="Project name (partial match)")
+    ar_p.add_argument("title",   help="Title / description")
+    ar_p.add_argument("--entry", default=None, metavar="TIPO",
+                      help=f"Entry type: {', '.join(VALID_ENTRIES)} (prompted if omitted)")
+    ar_p.add_argument("--url",   default=None, help="URL to link")
+    ar_p.add_argument("--file",  default=None, metavar="PATH",
+                      help="Local file to copy into the project directory")
+    ar_p.add_argument("--sync",  action="store_true",
+                      help="Run git add -f on the copied file (prompted if omitted)")
+    ar_p.add_argument("--open",   action="store_true", help="Open proyecto.md after adding")
+    ar_p.add_argument("--editor", default="typora",    help="Editor (default: typora)")
 
-    # add ref
-    ar_p = add_sub.add_parser("ref", help="Add a key reference to a project")
-    _add_common(ar_p, has_file=True)
-
-    # add result
-    ares_p = add_sub.add_parser("result", help="Add a result to a project")
-    _add_common(ares_p, has_file=True)
-
-    # add decision
-    ad_p = add_sub.add_parser("decision", help="Add a decision to a project")
-    _add_common(ad_p, has_file=True)
+    # add note
+    an_p = add_sub.add_parser("note",
+        help="Create or import a markdown note into the project notes/ directory")
+    an_p.add_argument("project",  help="Project name (partial match)")
+    an_p.add_argument("title",    help="Note title (used as filename when creating)")
+    an_p.add_argument("--file",   default=None, metavar="FILE.md",
+                      help="Import an existing .md file (omit to create a new one)")
+    an_p.add_argument("--entry",  default="apunte", metavar="TIPO",
+                      help=f"Entry type for logbook/section: {', '.join(VALID_ENTRIES)} (default: apunte)")
+    an_p.add_argument("--link",   action="store_true", default=True,
+                      help="Add a link in proyecto.md (default: yes)")
+    an_p.add_argument("--no-link", dest="link", action="store_false",
+                      help="Do not add a link in proyecto.md")
+    an_p.add_argument("--open",   action="store_true", help="Open the note after importing")
+    an_p.add_argument("--editor", default="typora",    help="Editor (default: typora)")
 
     # add task
     at_p = add_sub.add_parser("task", help="Add a task to a project")
