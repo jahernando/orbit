@@ -1,28 +1,28 @@
 # Diario — YYYY-MM-DD
 
-## 🎯 Proyecto en foco
+## 📋 Planificación
+
+### 🎯 Proyecto en foco
 - [nombre-proyecto](../../🚀proyectos/nombre-proyecto/proyecto.md)
 
-## 📅 Eventos del día
+### 📅 Eventos y recordatorios
 
 <!-- orbit:events:start -->
 <!-- orbit:events:end -->
 
-## ⏰ Recordatorios
-
 <!-- orbit:reminders:start -->
 <!-- orbit:reminders:end -->
 
-## 🗓️ Tareas próximas (7 días)
+### 🗓️ Próximas tareas (7 días)
 
 <!-- orbit:upcoming:start -->
 <!-- orbit:upcoming:end -->
 
-## ✅ Tareas del día
+### ✅ Tareas del día
 
-## 📝 Notas
+## 📝 Anotaciones
 
-## 🍅 Valoración
+## 📊 Valoración
 
-<!-- orbit:tomato:start -->
-<!-- orbit:tomato:end -->
+<!-- orbit:valoracion-stats:start -->
+<!-- orbit:valoracion-stats:end -->

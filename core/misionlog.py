@@ -1,3 +1,4 @@
+import calendar as _cal
 import re
 import sys
 from datetime import date, datetime, timedelta
@@ -7,7 +8,8 @@ from typing import Optional
 from core.log import VALID_TYPES, find_logbook_file, find_proyecto_file, log_to_mission
 from core.open import open_file
 from core.tasks import TYPE_MAP, load_project_meta
-from core.activity import has_activity_in
+from core.activity import has_activity_in, TYPE_EMOJI
+from core.focus import _week_key
 
 PROJECTS_DIR   = Path(__file__).parent.parent / "🚀proyectos"
 MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
@@ -79,58 +81,29 @@ def _top_active_projects(max_count: int) -> list:
 
 
 def _prompt_focus_grouped(groups: dict, highlighted: list, max_count: int, label: str) -> list:
-    """Show projects grouped by type with optional highlighted suggestions. Return selected names."""
+    """Show projects grouped by type. User types names (partial), not numbers."""
     print(f"\n{label}:")
-    idx = 1
-    all_names: list = []
-
     if highlighted:
-        print("  🎯 Sugeridos:")
-        for name in highlighted:
-            print(f"    {idx}. {name}")
-            all_names.append(name)
-            idx += 1
-
+        print(f"  🎯 Sugeridos: {'  ·  '.join(highlighted)}")
     for tipo, names in groups.items():
         remaining = [n for n in names if n not in highlighted]
         if not remaining:
             continue
-        print(f"  {_TYPE_LABELS.get(tipo, tipo)}:")
-        for name in remaining:
-            print(f"    {idx}. {name}")
-            all_names.append(name)
-            idx += 1
-
+        print(f"  {_TYPE_LABELS.get(tipo, tipo)}: {'  ·  '.join(remaining)}")
     plural = f"hasta {max_count}" if max_count > 1 else "uno"
-    print(f"Elige {plural} separados por coma (intro = ninguno):")
+    print(f"Escribe {plural} (nombre parcial, coma para separar, intro = ninguno):")
     try:
         resp = input("> ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return []
-
     if not resp:
         return []
-
-    selected: list = []
-    for token in resp.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        try:
-            i = int(token) - 1
-            if 0 <= i < len(all_names):
-                name = all_names[i]
-                if name not in selected:
-                    selected.append(name)
-        except ValueError:
-            if token not in selected:
-                selected.append(token)  # partial name — resolved later by _inject_focus_projects
+    selected = []
+    for token in [t.strip() for t in resp.split(",") if t.strip()]:
+        if token not in selected:
+            selected.append(token)
     return selected[:max_count]
-
-
-def _week_key(d: date) -> str:
-    return d.strftime("%G-W%V")
 
 
 def _week_bounds(d: date) -> tuple:
@@ -176,6 +149,20 @@ def run_shell_startup(editor: str = "typora") -> None:
     semanal_path = SEMANAL_DIR / f"{wkey}.md"
     if not semanal_path.exists():
         run_week(date_str=today.isoformat(), force=False, focus=None, open_after=False, editor=editor)
+
+    # Detect missed session: yesterday's note exists but run_dayreport never ran
+    # (stats content is absent — the template has the markers but no injected data)
+    yesterday      = today - timedelta(days=1)
+    yesterday_note = DIARIO_DIR / f"{yesterday.isoformat()}.md"
+    if (yesterday_note.exists()
+            and "### 📊 Actividad" not in yesterday_note.read_text()
+            and sys.stdin.isatty()):
+        resp = input(
+            f"⚠️  La nota de ayer ({yesterday}) no tiene reporte. ¿Inyectar ahora? [s/N] "
+        ).strip().lower()
+        if resp in ("s", "si", "sí", "y", "yes"):
+            run_dayreport(date_str=yesterday.isoformat(), inject=True,
+                          output=None, open_after=False, editor=editor)
 
     run_day(date_str=None, force=False, focus=None, open_after=True, prompt=False)
 
@@ -237,11 +224,11 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
     # ── Focus: prompt interactively or auto-inherit from semanal (non-TTY) ───
     if not focus:
         if sys.stdin.isatty():
-            suggested = _parse_focus_projects(semanal_path, "## 🎯 Proyectos en foco")
+            suggested = _parse_focus_projects(semanal_path, "### 🎯 Proyectos en foco")
             groups = _active_projects_by_type()
             focus = _prompt_focus_grouped(groups, suggested, 1, f"Proyecto en foco — {target.isoformat()}")
         else:
-            candidates = _parse_focus_projects(semanal_path, "## 🎯 Proyectos en foco")
+            candidates = _parse_focus_projects(semanal_path, "### 🎯 Proyectos en foco")
             focus = candidates[:1]
             if focus:
                 print(f"  → foco día heredado: {focus[0]}")
@@ -249,7 +236,7 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
     rc = _write(dest, content, None, True)  # always overwrite here (guard is above)
     if rc == 0:
         if focus:
-            _inject_focus_projects(dest, focus[:1], "## 🎯 Proyecto en foco")
+            _inject_focus_projects(dest, focus[:1], "### 🎯 Proyecto en foco")
             _elevate_focus_priorities(focus[:1])
         upcoming = _collect_upcoming_tasks(7)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
@@ -383,11 +370,11 @@ def run_week(date_str: Optional[str], force: bool, focus: list = None,
         month_str    = d.strftime("%Y-%m")
         mensual_path = MENSUAL_DIR / f"{month_str}.md"
         if sys.stdin.isatty():
-            suggested = _parse_focus_projects(mensual_path, "## 🎯 Proyectos en foco")
+            suggested = _parse_focus_projects(mensual_path, "### 🎯 Proyectos en foco")
             groups = _active_projects_by_type()
             focus = _prompt_focus_grouped(groups, suggested, 2, f"Proyectos en foco — semana {wkey}")
         else:
-            candidates = _parse_focus_projects(mensual_path, "## 🎯 Proyectos en foco")
+            candidates = _parse_focus_projects(mensual_path, "### 🎯 Proyectos en foco")
             focus = candidates[:2]
             if focus:
                 print(f"  → foco semana heredado: {', '.join(focus)}")
@@ -395,7 +382,7 @@ def run_week(date_str: Optional[str], force: bool, focus: list = None,
     rc = _write(dest, content, None, force)
     if rc == 0:
         if focus:
-            _inject_focus_projects(dest, focus[:2], "## 🎯 Proyectos en foco")
+            _inject_focus_projects(dest, focus[:2], "### 🎯 Proyectos en foco")
             _elevate_focus_priorities(focus[:2])
         upcoming = _collect_upcoming_tasks(15)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
@@ -477,7 +464,6 @@ def run_month(date_str: Optional[str], force: bool, focus: list = None,
                .replace("YYYY-MM", month_str))
 
     # Apply status degradation based on previous month's activity (before focus prompt)
-    import calendar as _cal
     prev_start = date(prev_y, prev_m, 1)
     prev_end   = date(prev_y, prev_m, _cal.monthrange(prev_y, prev_m)[1])
     _apply_monthly_status_degradation(prev_start, prev_end)
@@ -495,12 +481,20 @@ def run_month(date_str: Optional[str], force: bool, focus: list = None,
     rc = _write(dest, content, None, force)
     if rc == 0:
         if focus:
-            _inject_focus_projects(dest, focus[:MAX_MONTH_FOCUS], "## 🎯 Proyectos en foco")
+            _inject_focus_projects(dest, focus[:MAX_MONTH_FOCUS], "### 🎯 Proyectos en foco")
             prev_mensual = MENSUAL_DIR / f"{prev_str}.md"
-            old_focus = _parse_focus_projects(prev_mensual, "## 🎯 Proyectos en foco")
+            old_focus = _parse_focus_projects(prev_mensual, "### 🎯 Proyectos en foco")
             _apply_monthly_focus_priorities(focus, old_focus)
         upcoming = _collect_upcoming_tasks(30)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
+        # Inyectar valoración inicial (focus check pendiente, reflexión vacía)
+        y_int, m_int = int(month_str[:4]), int(month_str[5:7])
+        month_start = date(y_int, m_int, 1)
+        month_end   = date(y_int, m_int, _cal.monthrange(y_int, m_int)[1])
+        focus_counts = _count_focus_entries(focus if focus else [], month_start, min(month_end, date.today()))
+        stats_block = _format_valoracion_stats_month(focus_counts)
+        if stats_block:
+            _inject_block(dest, stats_block, _VALORACION_STATS_START, _VALORACION_STATS_END)
         if open_after:
             open_file(dest, editor)
     return rc
@@ -508,8 +502,6 @@ def run_month(date_str: Optional[str], force: bool, focus: list = None,
 
 # ── dayreport / weekreport ────────────────────────────────────────────────────
 
-_DR_START = "<!-- orbit:dayreport:start -->"
-_DR_END   = "<!-- orbit:dayreport:end -->"
 _WR_START = "<!-- orbit:weekreport:start -->"
 _WR_END   = "<!-- orbit:weekreport:end -->"
 
@@ -584,12 +576,12 @@ def _inject_block(dest: Path, block: str, start_marker: str, end_marker: str) ->
     dest.write_text(text)
 
 
-_TOMATO_START    = "<!-- orbit:tomato:start -->"
-_TOMATO_END      = "<!-- orbit:tomato:end -->"
-_UPCOMING_START  = "<!-- orbit:upcoming:start -->"
-_UPCOMING_END    = "<!-- orbit:upcoming:end -->"
-_EVENTS_START    = "<!-- orbit:events:start -->"
-_EVENTS_END      = "<!-- orbit:events:end -->"
+_UPCOMING_START         = "<!-- orbit:upcoming:start -->"
+_UPCOMING_END           = "<!-- orbit:upcoming:end -->"
+_EVENTS_START           = "<!-- orbit:events:start -->"
+_EVENTS_END             = "<!-- orbit:events:end -->"
+_VALORACION_STATS_START = "<!-- orbit:valoracion-stats:start -->"
+_VALORACION_STATS_END   = "<!-- orbit:valoracion-stats:end -->"
 
 
 def _parse_focus_projects(file_path: Path, heading: str = "## 🎯") -> list:
@@ -597,43 +589,39 @@ def _parse_focus_projects(file_path: Path, heading: str = "## 🎯") -> list:
     if not file_path or not file_path.exists():
         return []
     text = file_path.read_text()
-    match = re.search(rf"{re.escape(heading)}.*?\n(.*?)(?=^##|\Z)", text, re.MULTILINE | re.DOTALL)
+    match = re.search(rf"{re.escape(heading)}[^\n]*\n(.*?)(?=^#|\Z)", text, re.MULTILINE | re.DOTALL)
     if not match:
         return []
     return re.findall(r'\[([^\]]+)\]', match.group(1))
 
 
-def _check_focus_activity(project_names: list, start: date, end: date) -> dict:
-    """Return {name: has_activity} for each focus project."""
-    results = {}
-    for name in project_names:
-        matched = None
-        for project_dir in sorted(PROJECTS_DIR.iterdir()):
-            if project_dir.is_dir() and name.lower() in project_dir.name.lower():
-                matched = project_dir
-                break
-        logbook = find_logbook_file(matched) if matched else None
-        results[name] = has_activity_in(logbook, start, end)
-    return results
+def _find_logbook(name: str):
+    """Return logbook Path for the first project whose dir name contains name (case-insensitive)."""
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if project_dir.is_dir() and name.lower() in project_dir.name.lower():
+            return find_logbook_file(project_dir)
+    return None
 
 
-def _format_tomato_block(results: dict, label: str) -> str:
-    """Format the 🍅 evaluation block for injection into the note."""
-    if not results:
-        return ""
-    active = sum(1 for v in results.values() if v)
-    total = len(results)
-    lines = []
-    for name, has_act in results.items():
-        lines.append(f"- {'🍅' if has_act else '⬜'} {name}")
-    if active == total:
-        verdict = "🍅 " * total + "Fructífero"
-    elif active > 0:
-        verdict = f"🍅 ×{active}/{total} Parcialmente fructífero"
-    else:
-        verdict = "⬜ Sin actividad en proyectos en foco"
-    lines.append(f"\n**{verdict.strip()}**")
-    return "\n".join(lines) + "\n"
+def _count_focus_entries(names: list, start: date, end: date) -> dict:
+    """Return {name: entry_count} for focus projects in [start, end]."""
+    counts = {}
+    for name in names:
+        logbook = _find_logbook(name)
+        count = 0
+        if logbook and logbook.exists():
+            for line in logbook.read_text().splitlines():
+                s = line.strip()
+                if len(s) < 10 or not s[:4].isdigit():
+                    continue
+                try:
+                    entry_date = date.fromisoformat(s[:10])
+                except ValueError:
+                    continue
+                if start <= entry_date <= end:
+                    count += 1
+        counts[name] = count
+    return counts
 
 
 def _print_tomato_verdict(results: dict) -> None:
@@ -646,6 +634,136 @@ def _print_tomato_verdict(results: dict) -> None:
         print(f"  🍅👏 ¡Enhorabuena! Trabajaste en {'todos tus' if total > 1 else 'tu'} proyecto{'s' if total > 1 else ''} en foco.")
     else:
         print(f"  😔 Lamento que no trabajases en {'todos los' if total > 1 else 'el'} proyecto{'s' if total > 1 else ''} relevante{'s' if total > 1 else ''}.")
+
+
+def _format_valoracion_day(focus_counts: dict, activity: list, completed: list) -> str:
+    """Valoración block for daily note: focus check + activity summary."""
+    lines = []
+
+    # Focus check
+    if focus_counts:
+        lines.append("### 🎯 Foco del día")
+        for name, count in focus_counts.items():
+            mark = "🍅" if count > 0 else "⬜"
+            suffix = f"{count} entrada{'s' if count != 1 else ''}" if count > 0 else "sin actividad"
+            lines.append(f"- {mark} {name} — {suffix}")
+        lines.append("")
+
+    # Activity summary
+    total = sum(len(p["entries"]) for p in activity)
+    counts = {}
+    for proj in activity:
+        for e in proj["entries"]:
+            if e["tipo"]:
+                counts[e["tipo"]] = counts.get(e["tipo"], 0) + 1
+    parts = [f"{TYPE_EMOJI[t]}×{counts[t]}" for t in VALID_TYPES if counts.get(t, 0) > 0]
+    lines.append("### 📊 Actividad")
+    lines.append(f"- Entradas: {total}{'  ' + '  '.join(parts) if parts else ''}")
+    if completed:
+        lines.append(f"- Tareas cerradas: {len(completed)}")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def _has_section(dest: Path, text: str) -> bool:
+    """Return True if text appears anywhere in the file (used to guard one-time injections)."""
+    if not dest.exists():
+        return False
+    return text in dest.read_text()
+
+
+def _format_valoracion_stats_week(focus_counts: dict, activity: list, completed: list) -> str:
+    """Stats-only valoración block for weekly note: focus check + activity table.
+    Updated on every shell exit — does NOT include the reflection scaffold.
+    """
+    lines = []
+
+    # Focus check
+    if focus_counts:
+        lines.append("### 🎯 Verificación de foco")
+        for name, count in focus_counts.items():
+            if count > 0:
+                lines.append(f"- ✅ {name} — {count} entrada{'s' if count != 1 else ''}")
+            else:
+                lines.append(f"- ❌ {name} — sin actividad")
+        lines.append("")
+
+    # Activity summary by project
+    if activity:
+        lines.append("### 📊 Actividad de la semana")
+        header = "| Proyecto | Entradas | " + " | ".join(TYPE_EMOJI[t] for t in VALID_TYPES) + " |"
+        sep    = "|----------|----------| " + " | ".join("----" for _ in VALID_TYPES) + " |"
+        lines.append(header)
+        lines.append(sep)
+        for proj in activity:
+            counts = {}
+            for e in proj["entries"]:
+                if e["tipo"]:
+                    counts[e["tipo"]] = counts.get(e["tipo"], 0) + 1
+            cols = " | ".join(str(counts.get(t, "")) for t in VALID_TYPES)
+            lines.append(f"| {proj['name']} | {len(proj['entries'])} | {cols} |")
+        lines.append("")
+
+    if completed:
+        lines.append(f"- 🏁 Tareas cerradas: {len(completed)}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_reflection_week() -> str:
+    """Empty reflection scaffold injected once at end of week."""
+    return "\n".join([
+        "### 🍅 Reflexión semanal",
+        "",
+        "#### ¿Qué salió bien?",
+        "",
+        "#### ¿Qué no salió bien?",
+        "",
+        "#### ¿Qué cambio para la próxima semana?",
+        "",
+    ])
+
+
+
+
+def _format_valoracion_stats_month(focus_counts: dict) -> str:
+    """Stats-only valoración block for monthly note: focus check.
+    Updated on every shell exit — does NOT include the reflection scaffold.
+    """
+    if not focus_counts:
+        return ""
+    lines = ["### 🎯 Verificación de foco"]
+    for name, count in focus_counts.items():
+        if count > 0:
+            lines.append(f"- ✅ {name} — {count} entrada{'s' if count != 1 else ''}")
+        else:
+            lines.append(f"- ❌ {name} — sin actividad")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _format_reflection_month() -> str:
+    """Empty reflection + decisions scaffold injected once at end of month."""
+    return "\n".join([
+        "### 🍅 Reflexión mensual",
+        "",
+        "#### Balance del mes",
+        "",
+        "#### ¿Qué proyectos han avanzado más?",
+        "",
+        "#### ¿Qué me ha bloqueado?",
+        "",
+        "### 🧭 Decisiones estratégicas",
+        "-",
+        "",
+        "### 🎯 Objetivos para el mes siguiente",
+        "-",
+        "",
+    ])
+
+
 
 
 def _find_project_dir(name: str):
@@ -745,7 +863,7 @@ def _inject_focus_projects(dest: Path, names: list, heading: str) -> None:
             wrote_items = False
             out.append(line)
             continue
-        if in_section and line.startswith("## "):
+        if in_section and re.match(r'^#{1,6}\s', line):
             in_section = False
             if out and out[-1] != "":
                 out.append("")
@@ -780,7 +898,7 @@ def _inject_focus_projects(dest: Path, names: list, heading: str) -> None:
         print(f"  🎯 Foco: {dir_name}")
 
 
-def _project_link(name: str, path) -> str:
+def _project_link(name: str, path: Path) -> str:
     """Return a markdown link to the project's tasks section."""
     return f"[{name}](file://{path.resolve()}#tareas)"
 
@@ -898,7 +1016,6 @@ def _collect_tasks_due(start: date, end: date) -> list:
 
 def _type_summary(activity: list) -> str:
     """Return a one-line summary of entry counts by type."""
-    from core.activity import TYPE_EMOJI
     counts = {t: 0 for t in VALID_TYPES}
     for proj in activity:
         for e in proj["entries"]:
@@ -939,10 +1056,9 @@ def run_dayreport(date_str: Optional[str], inject: bool,
     _activate_projects_with_activity(activity)
     tasks_due = _collect_tasks_due(target, target)
     completed = _collect_completed_tasks(target, target)
-    focus = _parse_focus_projects(dest, "## 🎯 Proyecto en foco")
-    tomato = _check_focus_activity(focus, target, target)
-    tomato_block = _format_tomato_block(tomato, target.isoformat())
-    _print_tomato_verdict(tomato)
+    focus = _parse_focus_projects(dest, "### 🎯 Proyecto en foco")
+    focus_counts = _count_focus_entries(focus, target, target)
+    _print_tomato_verdict({name: count > 0 for name, count in focus_counts.items()})
 
     block = _format_report(activity, f"Actividad — {target.isoformat()}")
 
@@ -961,27 +1077,23 @@ def run_dayreport(date_str: Optional[str], inject: bool,
         done_lines.append("")
         block += "\n" + "\n".join(done_lines)
 
-    text = (tomato_block + "\n" if tomato_block else "") + block
+    val_block = _format_valoracion_day(focus_counts, activity, completed)
 
     if output:
-        Path(output).write_text(text + "\n")
+        # Full report to file: stats + detailed activity
+        Path(output).write_text((val_block + "\n" if val_block else "") + block + "\n")
         print(f"✓ Guardado en {output}")
     elif not inject:
-        print(text)
+        # Terminal: readable activity report only (no markdown table)
+        print(block)
 
     if inject or open_after:
         if not dest.exists():
-            tpl = TEMPLATES_DIR / "diario.md"
-            if not tpl.exists():
-                print(f"Error: plantilla no encontrada en {tpl}")
-                return 1
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(tpl.read_text().replace("YYYY-MM-DD", target.isoformat()))
-            print(f"✓ Creado {dest}")
+            print(f"Aviso: nota del día no existe ({dest.name}). Crea primero con 'orbit day'.")
+            return 1
         if inject:
-            _inject_block(dest, block, _DR_START, _DR_END)
-            if tomato_block:
-                _inject_block(dest, tomato_block, _TOMATO_START, _TOMATO_END)
+            # Only inject compact stats into the note; detailed report stays in terminal/output
+            _inject_block(dest, val_block, _VALORACION_STATS_START, _VALORACION_STATS_END)
             print(f"✓ Inyectado en {dest}")
         if open_after:
             open_file(dest, editor)
@@ -1001,10 +1113,9 @@ def run_weekreport(date_str: Optional[str], inject: bool,
     activity = _collect_activity(mon, end)
     tasks_due = _collect_tasks_due(mon, sun)
     completed = _collect_completed_tasks(mon, end)
-    focus = _parse_focus_projects(dest, "## 🎯 Proyectos en foco")
-    tomato = _check_focus_activity(focus, mon, end)
-    tomato_block = _format_tomato_block(tomato, f"semana {wkey}")
-    _print_tomato_verdict(tomato)
+    focus = _parse_focus_projects(dest, "### 🎯 Proyectos en foco")
+    focus_counts = _count_focus_entries(focus, mon, end)
+    _print_tomato_verdict({name: count > 0 for name, count in focus_counts.items()})
 
     summary = _type_summary(activity)
     block = _format_report(activity, f"Actividad semana {wkey}  ({mon.isoformat()} — {sun.isoformat()})")
@@ -1026,25 +1137,36 @@ def run_weekreport(date_str: Optional[str], inject: bool,
         done_lines.append("")
         block += "\n" + "\n".join(done_lines)
 
-    text = (tomato_block + "\n" if tomato_block else "") + block
+    stats_block = _format_valoracion_stats_week(focus_counts, activity, completed)
 
     if output:
-        Path(output).write_text(text + "\n")
+        # Full report to file: stats table + activity detail
+        full = (stats_block + "\n" if stats_block else "") + block
+        Path(output).write_text(full + "\n")
         print(f"✓ Guardado en {output}")
     elif not inject:
-        print(text)
+        # Terminal: readable activity report only (no markdown table)
+        print(block)
 
     if inject or open_after:
         if not dest.exists():
             print(f"Error: no existe {dest}. Crea el fichero semanal primero con 'orbit week'.")
             return 1
         if inject:
+            _inject_block(dest, stats_block, _VALORACION_STATS_START, _VALORACION_STATS_END)
+            file_text = dest.read_text()                          # single read after stats update
+            if "### 🍅 Reflexión semanal" not in file_text:
+                file_text = re.sub(
+                    re.escape(_VALORACION_STATS_END),
+                    _VALORACION_STATS_END + "\n" + _format_reflection_week(),
+                    file_text, count=1,
+                )
+                dest.write_text(file_text)
+                print("  → Reflexión semanal añadida")
             _inject_block(dest, block, _WR_START, _WR_END)
-            if tomato_block:
-                _inject_block(dest, tomato_block, _TOMATO_START, _TOMATO_END)
             print(f"✓ Inyectado en {dest}")
+            log_to_mission(f"Reporte semanal {wkey}", "apunte")
         if open_after:
             open_file(dest, editor)
 
-    log_to_mission(f"Reporte semanal {wkey}", "apunte")
     return 0

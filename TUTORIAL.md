@@ -44,7 +44,7 @@ Orbit incluye un proyecto especial llamado **mission** (`☀️`). Es el proyect
 
 - Las tareas generales que no pertenecen a ningún proyecto concreto.
 - Los recordatorios generales.
-- Un resumen automático de los reportes semanal y mensual.
+- Las **notas de evaluación** generadas por `orbit end` y `orbit eval`.
 
 No necesitas crearlo — ya existe. Cuando añades una tarea sin especificar proyecto, va a mission.
 
@@ -62,7 +62,7 @@ Prioridades: `alta` · `media` · `baja`
 
 Esto crea la carpeta `🚀proyectos/🌀next-kr/` con dos ficheros:
 
-- `🌀next-kr.md` — índice del proyecto (objetivo, tareas, referencias, resultados, decisiones, recordatorios)
+- `🌀next-kr.md` — índice del proyecto (objetivo, tareas, referencias, resultados, decisiones)
 - `📓next-kr.md` — logbook cronológico
 
 Abre el proyecto en Typora y rellena el **objetivo**:
@@ -73,102 +73,155 @@ orbit open next-kr
 
 ---
 
-## 4. La nota diaria
+## 4. Rutina de sesión — start y end
 
-### Notas de día, semana y mes
+La forma recomendada de trabajar con Orbit es arrancar con `orbit start` y terminar con `orbit end`.
 
-Al entrar en el shell de Orbit (`orbit`), las notas se crean automáticamente en cascada si no existen: primero el mes, luego la semana, luego el día. En cada paso se puede seleccionar el foco interactivamente.
-
-La nota del día incluye:
-- El proyecto en foco seleccionado al entrar.
-- Las tareas próximas con fecha.
-- Los eventos del calendario (si está configurado).
-
-### Rutina diaria recomendada
+### orbit start
 
 ```bash
-# Al empezar el día:
-orbit                          # entra al shell y abre la nota del día
+orbit start
+```
 
-# Durante el día — anotar cosas:
-orbit log next-kr "El fit converge con N=500" --entry resultado
-orbit log "Llamar a la secretaría"             # sin proyecto → va al diario
+Al ejecutarlo, Orbit:
 
-# Añadir una tarea:
-orbit add task next-kr "Reproducir figura 3" --date "next friday"
+1. Muestra un **resumen del estado de los proyectos** (cuántos activos, parados, durmiendo).
+2. Muestra el **foco actual** para el mes, la semana y el día.
+3. Si algún período no tiene foco establecido, **pregunta si quieres definirlo ahora**.
+4. Si ayer hubo actividad en el logbook pero no se generó evaluación, **ofrece crearla**.
 
-# Añadir una tarea para hoy (también aparece en el diario):
-orbit add task "Revisar email de Diego" --date today
+### orbit end
 
-# Al salir del shell, el reporte del día se inyecta automáticamente
+```bash
+orbit end
+```
+
+Al ejecutarlo, Orbit:
+
+1. Muestra la **actividad de hoy** en los proyectos en foco.
+2. Crea o actualiza la **nota de evaluación** del día en `☀️mission/diario/`.
+3. Si es fin de semana (vie/sáb/dom), genera también la evaluación **semanal**.
+4. Si es fin de mes (últimos 3 días), genera también la evaluación **mensual**.
+5. Abre la nota de evaluación de mayor prioridad en Typora.
+
+### Flujo completo de un día de trabajo
+
+```
+08:30  orbit start         → estado + foco + agenda
+         orbit agenda      → ver tareas del día
+
+       ... trabajar, anotar ...
+
+17:00  orbit end           → resumen + nota de evaluación
+         → Typora se abre con la nota de evaluación para reflexionar
 ```
 
 ---
 
-## 5. Gestión de tareas
+## 5. Foco de proyectos
 
-### Añadir tareas
+El foco determina qué proyectos son prioritarios en cada período. Se guarda en `.orbit/focus.json` y es la fuente de verdad que usan `agenda`, `eval`, `status --focus` y `end`.
+
+### Ver el foco actual
 
 ```bash
-orbit add task next-kr "Reproducir figura 3" --date "2026-03-15"
-orbit add task "Llamar al banco"               # sin fecha → solo en el proyecto
-orbit add task "Reunión de grupo" --date today # → proyecto + diario de hoy
+orbit focus
 ```
 
-### Modificar y cerrar tareas
+Muestra el foco establecido para el mes, la semana y el día actual.
+
+### Establecer el foco
 
 ```bash
-# Reprogramar:
-orbit change task schedule next-kr "Reproducir figura" --date "next monday"
-
-# Marcar como completada:
-orbit change task close next-kr "Reproducir figura"
+orbit focus month --set orbit mission    # proyectos en foco este mes
+orbit focus week  --set orbit            # foco de esta semana
+orbit focus day   --set orbit            # foco de hoy
 ```
 
-### Ver tareas pendientes
+Los nombres de proyecto se resuelven por coincidencia parcial (igual que todos los demás comandos).
+
+### Selección interactiva
 
 ```bash
-orbit list tasks                         # todas
-orbit list tasks --project next-kr       # de un proyecto
-orbit list tasks --priority alta         # filtrar por prioridad
+orbit focus month --interactive
+```
+
+Muestra la lista de proyectos disponibles y permite seleccionarlos por número o nombre parcial.
+
+### Ver o limpiar un período
+
+```bash
+orbit focus week           # solo el foco semanal
+orbit focus day --clear    # elimina el foco del día
 ```
 
 ---
 
-## 6. Tareas con alarma (rings)
-
-Las tareas con alarma son tareas normales con la flag `--ring`. Cuando son para hoy, se programan automáticamente en **Reminders.app** de macOS.
+## 6. Estado de salud de proyectos
 
 ```bash
-# Añadir una tarea con alarma:
-orbit add task next-kr "Reunión semanal del grupo" --date "next monday" --ring
-# Si omites --time, Orbit te pide la hora en el prompt (defecto 09:00)
-
-# Con hora explícita:
-orbit add task next-kr "Reunión semanal" --date "next monday" --time 09:00 --ring
-
-# Con recurrencia:
-orbit add task "Standup diario" --date today --ring --recur daily
-orbit add task next-kr "Revisión mensual" --date "2026-04-01" --time 10:00 --ring --recur monthly
-
-# Reprogramar / cerrar (igual que tareas normales):
-orbit change task schedule next-kr "Reunión semanal" --date "next monday" --time 09:00
-orbit change task close next-kr "Reunión semanal"
+orbit status
 ```
 
-Al reprogramar o cerrar una tarea recurrente, Orbit pregunta si quieres mantener, cambiar o eliminar la recurrencia.
+Muestra todos los proyectos agrupados por actividad real (basada en el logbook):
 
-Las tareas con alarma aparecen marcadas con ⏰ en los listados. Para ver solo las alarmas:
+- 🟢 **Activo** — actividad en los últimos 30 días.
+- 🟡 **Parado** — sin actividad en 30 días, pero sí en 60.
+- 🔴 **Durmiendo** — sin actividad en 60 días.
 
 ```bash
-orbit list tasks --ring
+orbit status --focus           # solo proyectos en foco
+orbit status --project next-kr # un proyecto concreto
 ```
 
-Reglas de recurrencia: `daily` · `weekly` · `monthly` · `yearly` · `weekdays` · `every:3d` · `every:2w`
+Útil para revisar el estado real del portfolio antes de decidir el foco.
 
 ---
 
-## 7. Anotar en el logbook
+## 7. Agenda de planificación
+
+```bash
+orbit agenda
+```
+
+Muestra la agenda del día: tareas de hoy, vencidas y próximas 7 días. Los proyectos en foco aparecen marcados con 🎯.
+
+```bash
+orbit agenda day               # equivalente al anterior
+orbit agenda week              # semana actual, agrupada por día
+orbit agenda month             # mes actual, agrupado por semana
+orbit agenda --date 2026-03-15 # una fecha concreta
+orbit agenda day --ring        # hoy + programa @ring en Reminders.app
+```
+
+La agenda es siempre dinámica — nunca escribe en tus notas.
+
+---
+
+## 8. Notas de evaluación
+
+Las evaluaciones son notas generadas en `☀️mission/diario/`, `semanal/` y `mensual/`. Tienen dos partes:
+
+- **Estadísticas** (auto-actualizadas): actividad en los proyectos en foco.
+- **Reflexión** (solo se crea una vez): secciones en blanco para que el usuario las complete.
+
+El usuario escribe en la sección de reflexión. Orbit nunca sobreescribe ese texto.
+
+### Generar evaluaciones manualmente
+
+```bash
+orbit eval day                  # evaluación del día
+orbit eval week                 # evaluación de la semana
+orbit eval month                # evaluación del mes
+orbit eval                      # las tres a la vez
+orbit eval day --date 2026-03-07 --no-open   # día concreto, sin abrir
+```
+
+`orbit end` llama a `orbit eval` automáticamente con el período correcto.
+
+---
+
+## 9. Anotar en el logbook
 
 El logbook es el historial cronológico de cada proyecto. Cada entrada tiene un tipo:
 
@@ -194,7 +247,46 @@ orbit log "Reunión productiva con Diego"
 
 ---
 
-## 8. Buscar en los logbooks
+## 10. Gestión de tareas
+
+### Añadir tareas
+
+```bash
+orbit add task next-kr "Reproducir figura 3" --date "2026-03-15"
+orbit add task "Llamar al banco"               # sin fecha → solo en el proyecto
+orbit add task "Reunión de grupo" --date today # → proyecto + diario de hoy
+```
+
+### Modificar y cerrar tareas
+
+```bash
+orbit change task schedule next-kr "Reproducir figura" --date "next monday"
+orbit change task close next-kr "Reproducir figura"
+```
+
+### Ver tareas pendientes
+
+```bash
+orbit list tasks                         # todas
+orbit list tasks --project next-kr       # de un proyecto
+orbit list tasks --priority alta         # filtrar por prioridad
+```
+
+---
+
+## 11. Tareas con alarma (rings)
+
+Las tareas con alarma son tareas normales con la flag `--ring`. Cuando son para hoy, se programan automáticamente en **Reminders.app** de macOS.
+
+```bash
+orbit add task next-kr "Reunión semanal del grupo" --date "next monday" --ring
+orbit add task next-kr "Revisión mensual" --date "2026-04-01" --time 10:00 --ring --recur monthly
+orbit list tasks --ring                   # ver solo alarmas
+```
+
+---
+
+## 12. Buscar en los logbooks
 
 ```bash
 orbit search "calibración"                          # busca en todos los proyectos
@@ -206,38 +298,20 @@ orbit search "sigma" --type investigacion           # por tipo de proyecto
 
 ---
 
-## 9. Notas semanal y mensual
-
-### Nota mensual
-
-Crea `☀️mision-log/mensual/YYYY-MM.md` con los 3 proyectos más activos como foco del mes.
-
-El reporte semanal y mensual quedan registrados automáticamente en el logbook de **mission**.
-
----
-
-## 10. Listar proyectos y secciones
+## 13. Listar proyectos y secciones
 
 ```bash
 orbit list projects                          # todos los proyectos ordenados por prioridad
 orbit list projects --type investigacion     # filtrar por tipo
 orbit list projects --status "en marcha"     # filtrar por estado
 orbit list tasks                             # todas las tareas pendientes
-orbit list tasks --ring                      # solo tareas con alarma (⏰)
+orbit list refs next-kr                      # referencias de un proyecto
+orbit list decisions                         # decisiones de todos los proyectos
 ```
 
 ---
 
-## 11. Cambiar estado y prioridad de proyectos
-
-```bash
-```
-
-Estados: `inicial` · `en marcha` · `parado` · `durmiendo` · `completado`
-
----
-
-## 12. Abrir ficheros
+## 14. Abrir ficheros
 
 ```bash
 orbit open                        # diario de hoy en Typora
@@ -253,7 +327,7 @@ orbit open next-kr --terminal --log --entry resultado   # filtrar entradas
 
 ---
 
-## 13. Calendario visual
+## 15. Calendario visual
 
 Genera una vista de calendario con tus tareas y recordatorios y la abre en Typora:
 
@@ -261,7 +335,6 @@ Genera una vista de calendario con tus tareas y recordatorios y la abre en Typor
 orbit calendar week              # semana actual
 orbit calendar month             # mes actual
 orbit calendar year              # año actual
-
 orbit calendar week --date "next week"
 orbit calendar month --date 2026-04
 ```
@@ -270,7 +343,7 @@ Los días con eventos aparecen en **negrita** en la rejilla mensual. Los fichero
 
 ---
 
-## 14. Documentación integrada
+## 16. Documentación integrada
 
 ```bash
 orbit info chuleta    # abre la chuleta de comandos en Typora
@@ -281,42 +354,36 @@ orbit info help       # muestra el help completo de orbit
 
 ---
 
-## 15. Automatización diaria con cron
-
-Para que la nota del día se cree sola cada mañana a las 8:00 (lunes a viernes):
-
-```bash
-crontab -e
-```
-
-Añade:
-
-Orbit gestiona automáticamente la creación de notas al entrar en el shell. No es necesario configurar un cron.
-
----
-
-## 16. Flujo de trabajo completo — ejemplo típico
+## 17. Flujo de trabajo completo — ejemplo típico
 
 ```
 Lunes por la mañana
 ───────────────────
-orbit                              # abre shell + nota del día
+orbit start                        # estado + foco + alerta sesión perdida
+orbit focus month --set orbit mission next-kr   # si no estaba definido
+orbit agenda                       # tareas del día (🎯 marca los proyectos en foco)
 
-# Revisar tareas pendientes:
-list tasks --priority alta
+# Revisar estado del portfolio:
+orbit status
 
-# Anotar resultados del experimento:
+# Anotar trabajo durante el día:
 log next-kr "Resolución del detector: 2.1% @ 511 keV" --entry resultado
+log next-kr "Probar con diferentes regiones de interés" --entry idea
+add task next-kr "Preparar presentación para el grupo" --date "next thursday"
 
 # Reprogramar una reunión:
 change task schedule next-kr "Reunión grupo" --date "next thursday" --time 10:00
 
-# Añadir una idea nueva:
-log next-kr "Probar con diferentes regiones de interés para mejorar S/N" --entry idea
+Lunes por la tarde
+──────────────────
+orbit end                          # resumen de actividad + nota de evaluación
+# → Typora abre ☀️mission/diario/2026-03-09.md
+# → Completar la sección de reflexión manualmente
 
 Viernes por la tarde
 ────────────────────
-open 2026-W10                      # revisar la semana en Typora
+orbit end                          # genera también la evaluación SEMANAL
+# → Typora abre ☀️mission/semanal/2026-W11.md
 ```
 
 ---

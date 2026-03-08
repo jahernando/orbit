@@ -17,13 +17,5 @@ Descripción breve del objetivo.
 - [Heidelberg](https://www.overleaf.com/project/6820c1fe1e079b1005f2a4a9)
 - [JJ zoom](https://zoom.us/j/2434108713?pwd=L3Y0cCtvZGNDRTkxME0xekRxKzRTUT09)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-General.md)

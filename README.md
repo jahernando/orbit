@@ -16,10 +16,17 @@ Orbit/
 │       ├── references/                 ← PDFs (no en git)
 │       ├── results/                    ← resultados numéricos (no en git)
 │       └── decisions/                  ← documentos de decisión (no en git)
+├── 🚀proyectos/☀️mission/
+│   ├── diario/YYYY-MM-DD.md            ← notas de evaluación diaria
+│   ├── semanal/YYYY-Wnn.md             ← notas de evaluación semanal
+│   └── mensual/YYYY-MM.md             ← notas de evaluación mensual
 ├── ☀️mision-log/
-│   ├── diario/YYYY-MM-DD.md
-│   ├── semanal/YYYY-Wnn.md
-│   └── mensual/YYYY-MM.md
+│   ├── diario/YYYY-MM-DD.md            ← diario del día
+│   ├── semanal/YYYY-Wnn.md             ← nota semanal
+│   └── mensual/YYYY-MM.md             ← nota mensual
+├── .orbit/
+│   ├── focus.json                      ← foco activo por período (fuente de verdad)
+│   └── session.json                    ← timestamps de última sesión start/end
 ├── 📐templates/
 ├── orbit.py                            ← CLI
 ├── CHULETA.md                          ← referencia rápida
@@ -28,11 +35,36 @@ Orbit/
 
 ---
 
+## Arquitectura — foco y evaluación
+
+### Foco (`focus.json`)
+
+El foco es la lista de proyectos en los que el usuario trabaja activamente en un período. Se gestiona con `orbit focus` y se guarda en `.orbit/focus.json` — la única fuente de verdad para el foco. Todos los demás comandos (`agenda`, `eval`, `end`, `status --focus`) leen de aquí.
+
+```json
+{
+  "month": { "2026-03": ["💻orbit", "☀️mission"] },
+  "week":  { "2026-W10": ["💻orbit"] },
+  "day":   { "2026-03-08": ["💻orbit"] }
+}
+```
+
+### Evaluación (`☀️mission/`)
+
+Las notas de evaluación son generadas por `orbit eval` / `orbit end` y se guardan dentro del proyecto `☀️mission`. Tienen dos partes:
+
+- **Estadísticas** (`orbit:eval-stats`) — actualizadas automáticamente en cada llamada.
+- **Reflexión** — secciones en blanco creadas una sola vez; el usuario las completa a mano y nunca se sobreescriben.
+
+Separar las notas de evaluación de las notas de trabajo evita que el sistema sobreescriba texto del usuario.
+
+---
+
 ## Tipos de proyecto
 
 | Emoji | Tipo | Uso |
 |-------|------|-----|
-| ☀️ | Misión | Proyecto raíz — tareas y recordatorios generales |
+| ☀️ | Misión | Proyecto raíz — tareas, recordatorios y evaluaciones |
 | 🌀 | Investigación | Proyectos de investigación científica |
 | 📚 | Docencia | Asignaturas, TFGs, tesis |
 | ⚙️ | Gestión | Gestión, propuestas, comités |
@@ -57,159 +89,130 @@ Orbit/
 
 ---
 
-## Proyecto Mission ☀️
-
-`mission` es el proyecto raíz del workspace:
-- `orbit add task "desc"` sin proyecto → va a mission
-- `orbit add task "desc" --ring` → tarea con alarma en Reminders.app
-- `--date today` → también se copia al diario del día
-- `--date today --ring` → también se programa en Reminders.app
-- Los reportes de día, semana y mes se generan automáticamente al salir del shell
-
----
-
-## Flujo de trabajo diario
+## Flujo de trabajo recomendado
 
 ```bash
-orbit log next-kr "El fit converge con N=500" --entry resultado
-orbit add task "Revisar paper de Gonzalez" --date "next friday"
-orbit add ring "Reunión grupo NEXT" --date today --time 10:00
+# Al empezar el día:
+orbit start                            # estado + foco + alerta sesión perdida
 
-orbit report stats --from "last month" --to today
+# Durante el día:
+orbit agenda                           # ver tareas del día (con foco marcado)
+orbit log next-kr "El fit converge" --entry resultado
+orbit add task next-kr "Revisar paper" --date "next friday"
+
+# Al terminar:
+orbit end                              # resumen de actividad + nota de evaluación
 ```
 
 ---
 
 ## CLI — referencia de comandos
 
-Ver `CHULETA.md` para referencia rápida.
+Ver `CHULETA.md` para referencia rápida completa.
 
-### Shell interactivo
-
-```bash
-orbit          # entra al shell — escribe comandos sin prefijo "orbit"
-orbit claude   # abre Claude Code en el directorio Orbit
-```
-
-### create
+### Sesión
 
 ```bash
-orbit create project --name NEXT-GALA --type investigacion --priority alta
-orbit create project --name mission --type mision --priority alta
-orbit create import  --file ~/Downloads/NEXT-Kr.enex --project next-kr
+orbit start                             # inicio de sesión
+orbit end                               # fin de sesión + evaluación
 ```
 
-### add
+### Foco
 
 ```bash
-orbit add task next-kr "Reproducir figura 3" --date "next friday"
-orbit add task "Llamar al banco" --date today              # → mission + diario
-orbit add task "Reunión CERN" --date today --ring          # → alarma + Reminders.app
-orbit add task next-kr "Reunión semanal" --date "next monday" --ring --recur weekly
-orbit add ref  next-kr "Gonzalez 2024" --file ~/Downloads/gonzalez2024.pdf --sync
-orbit add result next-kr "σ/E = 2.3% @ 1 MeV" --url https://...
-orbit add decision next-kr "Usaremos calibración relativa"
+orbit focus                             # ver foco de todos los períodos
+orbit focus month --set orbit mission   # establecer foco mensual
+orbit focus week  --set orbit           # foco semanal
+orbit focus day   --clear               # limpiar foco del día
+orbit focus week  --interactive         # selección interactiva
 ```
 
-### change
+### Estado de proyectos
+
+```bash
+orbit status                            # todos los proyectos
+orbit status --focus                    # solo proyectos en foco
+orbit status --project next-kr          # un proyecto concreto
+```
+
+### Agenda
+
+```bash
+orbit agenda                            # agenda del día
+orbit agenda week                       # semana agrupada por día
+orbit agenda month                      # mes agrupado por semana
+orbit agenda day --ring                 # hoy + Reminders.app
+```
+
+### Evaluación
+
+```bash
+orbit eval day                          # nota de evaluación del día
+orbit eval week                         # nota de evaluación de la semana
+orbit eval month                        # nota de evaluación del mes
+```
+
+### Anotación
+
+```bash
+orbit log next-kr "El fit converge" --entry resultado
+orbit log "Llamada a la secretaría"     # sin proyecto → diario de hoy
+
+orbit add task next-kr "Reproducir figura" --date "next friday"
+orbit add task "Reunión CERN" --date today --ring
+orbit add ref  next-kr "Gonzalez 2024" --file ~/Downloads/gonzalez2024.pdf
+```
+
+### Búsqueda y listados
+
+```bash
+orbit search "calibración" --entry resultado
+orbit search --project next-kr --from "last month"
+orbit list projects --type investigacion
+orbit list tasks --priority alta
+orbit list tasks --ring
+```
+
+### Apertura de ficheros
+
+```bash
+orbit open                              # diario de hoy en Typora
+orbit open next-kr                      # proyecto en Typora
+orbit open next-kr --log                # logbook del proyecto
+orbit open 2026-W10                     # nota semanal
+```
+
+### Calendario visual
+
+```bash
+orbit calendar week                     # semana actual en Typora
+orbit calendar month                    # mes actual en Typora
+orbit calendar year                     # año actual en Typora
+```
+
+### Modificar tareas
 
 ```bash
 orbit change task schedule next-kr "Reproducir figura" --date "next monday"
 orbit change task close next-kr "Reproducir figura"
 ```
 
-### list
+### Documentación
 
 ```bash
-orbit list projects
-orbit list projects --type investigacion --status "en marcha"
-orbit list tasks --priority alta
-orbit list tasks --project next-kr
-orbit list tasks --ring                    # solo tareas con alarma (⏰)
+orbit info chuleta    # chuleta de comandos
+orbit info about      # README
+orbit info tutorial   # tutorial
+orbit info help       # help completo
 ```
-
-### report
-
-```bash
-orbit report stats --from "last month" --to today
-```
-
-### log y search
-
-```bash
-orbit log next-kr "El fit no converge" --entry problema
-orbit log "Reunión productiva con Diego"     # → diario de hoy
-
-orbit search "calibración" --entry resultado
-orbit search --project next-kr --from "last month"
-orbit search "fit" --entry problema --type investigacion
-```
-
-### open
-
-```bash
-orbit open                          # diario de hoy en Typora
-orbit open next-kr                  # proyecto en Typora
-orbit open next-kr --log            # logbook en Typora
-orbit open 2026-W10                 # nota semanal
-orbit open next-kr --terminal       # imprime en terminal
-orbit open next-kr --terminal --log --entry resultado  # filtra entradas
-```
-
-### calendar
-
-```bash
-orbit calendar week                 # semana actual en Typora
-orbit calendar month                # mes actual en Typora
-orbit calendar year                 # año actual en Typora
-orbit calendar week --date "next week"
-orbit calendar month --date 2026-04
-```
-
-Genera un fichero markdown con tareas (✅) y recordatorios (⏰) del período y lo abre en Typora.
-
-### info
-
-```bash
-orbit info chuleta    # abre CHULETA.md en Typora
-orbit info about      # abre README.md en Typora
-orbit info tutorial   # abre TUTORIAL.md en Typora
-orbit info help       # muestra el help completo de orbit
-```
-
----
-
-## Tareas con alarma (rings)
-
-Las tareas con `@ring` en `proyecto.md` se programan automáticamente en Reminders.app al entrar en el shell. Se marcan `[~]` una vez programadas. Las recurrentes avanzan la fecha a la siguiente ocurrencia.
-
-```markdown
-## ✅ Tareas
-- [ ] Reunión semanal del grupo (2026-03-10 09:00) @ring @weekly
-- [ ] Standup (2026-03-07 08:30) @ring @daily
-- [ ] Revisión mensual (2026-03-01 10:00) @ring @monthly
-```
-
-Para añadir tareas con alarma:
-
-```bash
-orbit add task "Reunión grupo" --date "next monday" --time 09:00 --ring
-orbit add task "Standup" --date today --ring --recur daily
-```
-
----
-
-## Automatización diaria (cron)
-
-
-Si la nota ya existe (creada manualmente antes), el cron no hace nada.
 
 ---
 
 ## Convenciones
 
-- `--date` acepta lenguaje natural: `today/hoy` · `next friday/próximo viernes` · `in 5 days/en 5 días` · `last week` · `YYYY-MM-DD`
-- **Fuente de verdad** de tareas y recordatorios: `proyecto.md` de cada proyecto
-- **Fuente de verdad** del historial: `logbook.md` de cada proyecto
-- **mission** es la fuente de verdad de tareas y recordatorios generales
-- `references/`, `results/`, `decisions/` no se suben a git (binarios)
+- `.orbit/focus.json` — fuente de verdad del foco activo por período.
+- `proyecto.md` de cada proyecto — fuente de verdad de tareas y metadatos.
+- `logbook.md` de cada proyecto — fuente de verdad del historial de trabajo.
+- `☀️mission/diario|semanal|mensual/` — evaluaciones generadas por Orbit (no editar manualmente).
+- `references/`, `results/`, `decisions/` no se suben a git (binarios).
+- `--date` acepta lenguaje natural: `today/hoy` · `next friday` · `in 5 days` · `last week` · `YYYY-MM-DD`.

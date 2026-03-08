@@ -282,7 +282,7 @@ def _parse_tasks(html: str) -> List[dict]:
         text = re.sub(r"\s+", " ", _strip_tags(m.group(2))).strip()
         # strip leading dash or status emoji left by Evernote
         text = re.sub(r"^[-–]\s*", "", text).strip()
-        text = re.sub(r"^[⏳⬜▶️✅⏸️💤]\s*", "", text).strip()
+        text = re.sub(r"^[⬜▶️✅⏸️💤]\s*", "", text).strip()
         if text:
             tasks.append({"done": done, "text": text})
     return tasks

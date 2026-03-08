@@ -28,13 +28,5 @@ Descripción breve del objetivo.
 - [https://www2.ph.ed.ac.uk/~playfer/PPlect13.pdf](https://www2.ph.ed.ac.uk/~playfer/PPlect13.pdf)
 - [Bernardo's lectures on EW](https://books.google.es/books?id=JmKWDwAAQBAJ&amp;printsec=frontcover&amp;hl=es&amp;source=gbs_ge_summary_r&amp;cad=0#v=onepage&amp;q&amp;f=false)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓FNyP.md)

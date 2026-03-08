@@ -1,27 +1,25 @@
 # Semana YYYY-Wnn (YYYY-MM-DD — YYYY-MM-DD)
 
-## 🎯 Proyectos en foco
+## 📋 Planificación
+
+### 🎯 Proyectos en foco
 1. [proyecto-1](../../🚀proyectos/proyecto-1/proyecto.md)
 2. [proyecto-2](../../🚀proyectos/proyecto-2/proyecto.md)
 
-## 📅 Tareas próximas (15 días)
+### 🗓️ Próximas tareas (15 días)
 
 <!-- orbit:upcoming:start -->
 <!-- orbit:upcoming:end -->
 
-## ✅ Otras tareas
+### ✅ Otras tareas
 - [ ]
 
-## 🍅 Revisión
+## 📝 Notas de la semana
 
-<!-- orbit:tomato:start -->
-<!-- orbit:tomato:end -->
+## 📊 Valoración
 
-### ¿Qué salió bien?
+<!-- orbit:valoracion-stats:start -->
+<!-- orbit:valoracion-stats:end -->
 
-### ¿Qué no salió bien?
-
-### ¿Qué cambio para la próxima semana?
-
-## ⏩ Tareas arrastradas
--
+<!-- orbit:weekreport:start -->
+<!-- orbit:weekreport:end -->

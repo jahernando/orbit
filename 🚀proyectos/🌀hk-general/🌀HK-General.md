@@ -22,13 +22,5 @@ Descripción breve del objetivo.
 - [https://github.com/WCSim/WCSim/releases/tag/v1.12.6](https://github.com/WCSim/WCSim/releases/tag/v1.12.6)
 - [arxiv.2505.15019](https://arxiv.org/pdf/2505.15019)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓HK-General.md)

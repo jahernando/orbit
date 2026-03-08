@@ -11,13 +11,5 @@ Descripción breve del objetivo.
 ## 📎 Referencias
 - [Información Evernote](./references/informacion-evernote.md)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-PN21.md)

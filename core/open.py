@@ -64,15 +64,50 @@ def open_file(path: Path, editor: str) -> int:
         return 1
 
 
-def run_open(target: Optional[str], log: bool, editor: str) -> int:
+def find_note(project_dir: Path, note_partial: str) -> Optional[Path]:
+    """Return the first note in notes/ whose name contains note_partial (case-insensitive).
+    If not found, prints available notes as suggestions.
+    """
+    notes_dir = project_dir / "notes"
+    if not notes_dir.exists():
+        print(f"Error: el proyecto '{project_dir.name}' no tiene directorio notes/")
+        return None
+    low = note_partial.lower()
+    all_notes = sorted(notes_dir.glob("*.md"))
+    matches = [f for f in all_notes if low in f.name.lower()]
+    if matches:
+        return matches[0]
+    print(f"Error: nota '{note_partial}' no encontrada en {project_dir.name}/notes/")
+    if all_notes:
+        print("  Notas disponibles:")
+        for n in all_notes:
+            print(f"    📝 {n.name}")
+    else:
+        print("  (no hay notas en este proyecto)")
+    return None
+
+
+def run_open(target: Optional[str], log: bool, note: Optional[str], editor: str) -> int:
     if not target:
         target = date.today().isoformat()
 
-    path = _resolve_path(target, log)
-
-    if path is None:
-        print(f"Error: no se encontró ningún fichero para '{target}'")
-        return 1
+    # --note: open a specific note inside a project
+    if note:
+        if not target or target == date.today().isoformat():
+            print("Error: --note requiere especificar un proyecto (ej: orbit open mi-proyecto --note titulo)")
+            return 1
+        project_dir = find_project(target)
+        if not project_dir:
+            print(f"Error: proyecto '{target}' no encontrado")
+            return 1
+        path = find_note(project_dir, note)
+        if not path:
+            return 1
+    else:
+        path = _resolve_path(target, log)
+        if path is None:
+            print(f"Error: no se encontró ningún fichero para '{target}'")
+            return 1
 
     if not path.exists():
         print(f"Error: el fichero no existe: {path}")

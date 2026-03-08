@@ -9,13 +9,5 @@ Descripción breve del objetivo.
 
 ## 📎 Referencias
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-GALA.md)

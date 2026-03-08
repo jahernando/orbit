@@ -20,13 +20,5 @@ Descripción breve del objetivo.
 - [P5](https://www.usparticlephysics.org/2023-p5-report/preface.html)
 - [EOSC](https://eosc.eu/)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓APPEC.md)

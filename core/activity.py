@@ -110,13 +110,13 @@ def has_activity_in(logbook_path: Optional[Path], start: date, end: date) -> boo
 def compute_real_status(nominal_key: str, has_activity_30: bool, has_activity_60: bool) -> str:
     """Compute real status based on activity in last 30 and 60 days.
 
-    - completado / esperando → always unchanged
+    - completado → always unchanged
     - inicial → en marcha if activity in 30d, else stays inicial (not started ≠ sleeping)
     - No activity in 60d → durmiendo
     - No activity in 30d → parado
     - Activity in 30d → en marcha
     """
-    if nominal_key in ("completado", "esperando"):
+    if nominal_key == "completado":
         return nominal_key
     if nominal_key == "inicial":
         return "en marcha" if has_activity_30 else "inicial"
@@ -132,7 +132,7 @@ def compute_real_priority(
 ) -> Optional[str]:
     """Return new priority key, or None if project should be archived.
 
-    is_passive: if True (esperando, inicial), skip degradation.
+    is_passive: if True (inicial), skip degradation.
     """
     if is_passive or has_activity or period_days < 30:
         return priority_key
@@ -197,7 +197,7 @@ def run_activity(
         has_activity_30 = has_activity_in(logbook_path, end - timedelta(days=30), end)
 
         real_status_key = compute_real_status(nominal_status_key, has_activity_30, has_activity_60)
-        is_passive = nominal_status_key in ("esperando", "inicial")
+        is_passive = nominal_status_key == "inicial"
         real_priority_key = compute_real_priority(nominal_priority_key, has_activity_30, period_days, is_passive)
 
         if real_priority_key is None:
@@ -279,4 +279,112 @@ def run_activity(
     else:
         print(text)
 
+    return 0
+
+
+# ── orbit status ───────────────────────────────────────────────────────────────
+
+_STATUS_ICON = {
+    "activo":     "🟢",
+    "parado":     "🟡",
+    "durmiendo":  "🔴",
+    "completado": "✅",
+}
+
+
+def run_status(
+    project: Optional[str] = None,
+    focus_only: bool = False,
+) -> int:
+    """Show project health based on recent logbook activity.
+
+    🟢 Activo    — activity in last 30 days
+    🟡 Parado    — no activity in 30d, but within 60d
+    🔴 Durmiendo — no activity in 60 days
+    """
+    if not PROJECTS_DIR.exists():
+        print(f"Error: projects directory not found at {PROJECTS_DIR}")
+        return 1
+
+    today = date.today()
+    d30   = today - timedelta(days=30)
+    d60   = today - timedelta(days=60)
+
+    focus_names: set = set()
+    if focus_only:
+        from core.focus import get_current_focus
+        current = get_current_focus()
+        for projs in current.values():
+            focus_names.update(p.lower() for p in projs)
+
+    rows = []
+    for proj_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not proj_dir.is_dir():
+            continue
+        if project and project.lower() not in proj_dir.name.lower():
+            continue
+        if focus_only and not any(f in proj_dir.name.lower() for f in focus_names):
+            continue
+
+        proyecto_path = find_proyecto_file(proj_dir)
+        if not proyecto_path:
+            continue
+
+        meta = load_project_meta(proyecto_path)
+        estado_raw = meta["estado_raw"]
+
+        if "completado" in estado_raw:
+            continue
+
+        logbook = find_logbook_file(proj_dir)
+        active_30 = has_activity_in(logbook, d30, today)
+        active_60 = has_activity_in(logbook, d60, today)
+        last, _   = get_logbook_activity(logbook, d60, today) if logbook else (None, {})
+
+        if active_30:
+            status_key = "activo"
+        elif active_60:
+            status_key = "parado"
+        else:
+            status_key = "durmiendo"
+
+        rows.append({
+            "name":   proj_dir.name,
+            "tipo":   meta["tipo"],
+            "status": status_key,
+            "last":   last or "—",
+        })
+
+    if not rows:
+        print("No se encontraron proyectos.")
+        return 0
+
+    # Group by status for summary counts
+    counts = {"activo": 0, "parado": 0, "durmiendo": 0}
+    for r in rows:
+        counts[r["status"]] += 1
+
+    title = "ESTADO DE PROYECTOS"
+    if focus_only:
+        title += " (en foco)"
+    print(f"\n── {title} ({today.isoformat()}) ──\n")
+
+    for status_key in ("activo", "parado", "durmiendo"):
+        group = [r for r in rows if r["status"] == status_key]
+        if not group:
+            continue
+        icon = _STATUS_ICON[status_key]
+        print(f"{icon} {status_key.upper()} ({len(group)})")
+        for r in group:
+            print(f"   {r['tipo']}  {r['name']:<35}  última: {r['last']}")
+        print()
+
+    total = len(rows)
+    print(
+        f"  Total: {total}  ·  "
+        f"🟢 {counts['activo']}  "
+        f"🟡 {counts['parado']}  "
+        f"🔴 {counts['durmiendo']}"
+    )
+    print()
     return 0

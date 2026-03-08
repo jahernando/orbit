@@ -107,6 +107,31 @@ def _search_misionlog(keywords: list, tag: Optional[str], date_filter: Optional[
     return results
 
 
+def _search_notes(project_dir: Path, keywords: list, any_mode: bool, limit: int) -> list:
+    """Search all .md files in project notes/ dir. Returns list of (filename, hits)."""
+    notes_dir = project_dir / "notes"
+    if not notes_dir.exists():
+        return []
+    results = []
+    for md_file in sorted(notes_dir.glob("*.md")):
+        hits = []
+        for line in md_file.read_text().splitlines():
+            if limit and len(hits) >= limit:
+                break
+            s = line.strip()
+            if not s or s.startswith("<!--"):
+                continue
+            # Include H1 titles; skip deeper headings (## and beyond) as structural noise
+            if s.startswith("## ") or s.startswith("### "):
+                continue
+            if keywords and not _matches(s, keywords, any_mode):
+                continue
+            hits.append(s)
+        if hits:
+            results.append((md_file, hits))
+    return results
+
+
 def run_search(
     query: Optional[str],
     projects: Optional[list],
@@ -119,6 +144,7 @@ def run_search(
     prioridad: Optional[str],
     any_mode: bool,
     diario: bool,
+    notes: bool,
     limit: int,
     output: Optional[str],
     open_after: bool,
@@ -207,6 +233,15 @@ def run_search(
                     link = f"[{label}](file://{proyecto_path.resolve()}#{anchor})"
                     project_hits.append((link, hits))
                     total += len(hits)
+
+        # Search notes/ directory if requested
+        if notes and not logbooks_only:
+            note_matches = _search_notes(project_dir, keywords, any_mode,
+                                         (limit - total) if limit else 0)
+            for note_file, hits in note_matches:
+                link = f"[notes/{note_file.name}](file://{note_file.resolve()})"
+                project_hits.append((link, hits))
+                total += len(hits)
 
         if project_hits:
             header = f"{project_dir.name}  {meta['tipo']} {meta['estado']}  {meta['prioridad']}"

@@ -16,13 +16,5 @@ Descripción breve del objetivo.
 - [NEXT100](https://www.overleaf.com/4213141135zncswxwkmgkh#d6dec1)
 - [CNNS-10 LAr paper](https://www.ornl.gov/publication/development-83-mkr-source-calibration-cenns-10-liquid-argon-detect)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-Kr.md)

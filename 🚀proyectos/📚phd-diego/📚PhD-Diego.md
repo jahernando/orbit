@@ -15,13 +15,5 @@ Descripción breve del objetivo.
 - [canvas](https://watercherenko-afv1279.slack.com/docs/T01EP6WCML1/F0AE8LKLM8D)
 - [messages](https://watercherenko-afv1279.slack.com/archives/D02U28VK4GG)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓PhD-Diego.md)

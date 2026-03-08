@@ -1,7 +1,9 @@
 """core/add.py — add refs, results, decisions and notes to projects."""
 
+import re
 import shutil
 import subprocess
+import unicodedata
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -22,9 +24,37 @@ ENTRY_SECTION_MAP = {
     "problema":   ("## 📎 Referencias", "references"),
 }
 
-VALID_ENTRIES = list(ENTRY_SECTION_MAP.keys())
+VALID_ENTRIES  = list(ENTRY_SECTION_MAP.keys())
 NOTES_DIR_NAME = "notes"
 TEMPLATES_DIR  = Path(__file__).parent.parent / "📐templates"
+
+
+def _slugify(text: str) -> str:
+    """Convert text to a safe ASCII filename slug (lowercase, hyphens, no accents)."""
+    text = unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode()
+    text = text.lower()
+    text = re.sub(r"[^\w\s-]", "", text)
+    return re.sub(r"[\s_]+", "-", text).strip("-")
+
+
+def extract_section(proyecto_path: Path, heading: str) -> list:
+    """Return stripped, non-empty, non-placeholder lines from a section.
+
+    Skips placeholder '-' lines and HTML comments.
+    Used for both display (list_cmd) and duplicate detection (add).
+    """
+    lines      = proyecto_path.read_text().splitlines()
+    section_idx = next((i for i, l in enumerate(lines) if l.strip() == heading), None)
+    if section_idx is None:
+        return []
+    result = []
+    for line in lines[section_idx + 1:]:
+        if line.startswith("## "):
+            break
+        stripped = line.strip()
+        if stripped and stripped != "-" and not stripped.startswith("<!--"):
+            result.append(stripped)
+    return result
 
 
 def _insert_into_section(proyecto_path: Path, heading: str, new_line: str) -> bool:
@@ -123,6 +153,13 @@ def run_add(
     else:
         content = f"{emoji} {title}"
 
+    # Duplicate warning: word-boundary match, only for titles long enough to be meaningful
+    if len(title) >= 5:
+        pattern = re.compile(r'\b' + re.escape(title.lower()) + r'\b')
+        existing = extract_section(proyecto_path, heading)
+        if any(pattern.search(line.lower()) for line in existing):
+            print(f"⚠️  '{title}' ya parece estar en {heading.lstrip('# ').strip()} de {project_dir.name}")
+
     if not _insert_into_section(proyecto_path, heading, f"- {content}"):
         print(f"Error: sección '{heading}' no encontrada en {proyecto_path.name}")
         return 1
@@ -176,10 +213,12 @@ def run_add_note(
         print(f"✓ [{project_dir.name}] Nota importada: {dest_file.name}")
     else:
         # Create new note from template
-        slug      = title.lower().replace(" ", "-")[:40]
+        slug      = _slugify(title)[:40]
         prefix    = date.today().strftime("%Y%m%d") + "_" if date_prefix else ""
         note_name = f"{prefix}{slug}.md"
         dest_file = notes_dir / note_name
+        if dest_file.exists():
+            print(f"⚠️  La nota ya existe: {dest_file.name} (se sobreescribirá)")
         note_title = title
         tpl = TEMPLATES_DIR / "note.md"
         if tpl.exists():

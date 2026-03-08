@@ -65,7 +65,7 @@ def run_review(
         act30  = _count_entries(lb, d30, today)
 
         real_estado_key = compute_real_status(nominal_estado_key, act30 > 0, act60 > 0)
-        is_passive      = nominal_estado_key in ("esperando", "inicial")
+        is_passive      = nominal_estado_key == "inicial"
         real_prio_key   = compute_real_priority(nominal_prio_key, act30 > 0, 30, is_passive)
 
         if real_prio_key is None:

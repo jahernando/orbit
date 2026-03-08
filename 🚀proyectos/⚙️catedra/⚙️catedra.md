@@ -33,13 +33,5 @@ Descripción breve del objetivo.
 - [acreditación](https://rebusca.usc.gal/academia)
 - [Título](./references/paper.pdf)
 - [Información Evernote](./references/informacion-evernote.md)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓catedral.md)

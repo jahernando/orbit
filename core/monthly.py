@@ -10,8 +10,13 @@ from core.activity import (
 )
 from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file, log_to_mission
 from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field, load_project_meta
-from core.misionlog import _collect_completed_tasks, _project_link
-from core.misionlog import _parse_focus_projects, _check_focus_activity, _format_tomato_block, _TOMATO_START, _TOMATO_END, _inject_block
+from core.misionlog import (
+    _collect_completed_tasks, _project_link,
+    _parse_focus_projects, _count_focus_entries, _print_tomato_verdict,
+    _format_valoracion_stats_month, _format_reflection_month,
+    _has_section, _inject_block,
+    _VALORACION_STATS_START, _VALORACION_STATS_END,
+)
 
 MISSION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log" / "mensual"
 TEMPLATE_PATH = Path(__file__).parent.parent / "📐templates" / "mensual.md"
@@ -63,7 +68,7 @@ def build_table(start: date, end: date, apply: bool) -> tuple:
         has_activity_30 = has_activity_in(logbook_path, end - timedelta(days=30), end)
 
         real_status_key = compute_real_status(nominal_status_key, has_activity_30, has_activity_60)
-        is_passive = nominal_status_key in ("esperando", "inicial")
+        is_passive = nominal_status_key == "inicial"
         real_priority_key = compute_real_priority(nominal_priority_key, has_activity_30, period_days, is_passive)
 
         if real_priority_key is None:
@@ -156,12 +161,22 @@ def run_monthly(month: Optional[str], apply: bool, inject: bool,
         inject_table(monthly_path, table_lines)
         print(f"✓ Table injected into {monthly_path}")
 
-        focus = _parse_focus_projects(monthly_path, "## 🎯 Proyectos en foco")
-        tomato = _check_focus_activity(focus, start, end)
-        tomato_block = _format_tomato_block(tomato, month_str)
-        if tomato_block:
-            _inject_block(monthly_path, tomato_block, _TOMATO_START, _TOMATO_END)
-            print(f"✓ Valoración 🍅 inyectada en {monthly_path}")
+        focus_names = _parse_focus_projects(monthly_path, "### 🎯 Proyectos en foco")
+        focus_counts = _count_focus_entries(focus_names, start, min(end, date.today()))
+        _print_tomato_verdict({name: count > 0 for name, count in focus_counts.items()})
+        stats_block = _format_valoracion_stats_month(focus_counts)
+        if stats_block:
+            _inject_block(monthly_path, stats_block, _VALORACION_STATS_START, _VALORACION_STATS_END)
+            print(f"✓ Valoración stats inyectada en {monthly_path}")
+        if not _has_section(monthly_path, "### 🍅 Reflexión mensual"):
+            reflection = _format_reflection_month()
+            file_text = monthly_path.read_text()
+            file_text = file_text.replace(
+                _VALORACION_STATS_END,
+                _VALORACION_STATS_END + "\n" + reflection
+            )
+            monthly_path.write_text(file_text)
+            print(f"  → Reflexión mensual añadida")
 
     # Apply status/priority changes if requested
     if apply and changes:

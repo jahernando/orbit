@@ -11,12 +11,5 @@ Gestión de proyectos, tareas, recordatorios, y seguimiento de los mismos de for
 
 ## 📎 Referencias
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓mission.md)

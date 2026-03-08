@@ -19,13 +19,5 @@ Descripción breve del objetivo.
 - [T2K results](https://t2k-experiment.org/publication_category/oscillations/)
 - [Nova results](https://novaexperiment.fnal.gov/publications/#:~:text=The%20NOvA%20experiment%20has%20made,%CE%BC%E2%86%92%CE%BD%CE%BC%20candidates.)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓FPII-Neutrinos.md)

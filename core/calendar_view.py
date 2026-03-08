@@ -10,6 +10,7 @@ from typing import Optional, Tuple
 from core.log import find_proyecto_file, PROJECTS_DIR
 from core.tasks import load_project_meta
 from core.open import open_file
+from core.focus import _week_key
 
 MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
 
@@ -131,9 +132,6 @@ def _fmt_task(t: dict) -> str:
     link = f"[{t['project']}](file://{t['path'].resolve()}#tareas)"
     return f"- ✅  {t['desc']}  _(→ {link})_"
 
-
-def _week_key(d: date) -> str:
-    return d.strftime("%G-W%V")
 
 
 # ── week ──────────────────────────────────────────────────────────────────────

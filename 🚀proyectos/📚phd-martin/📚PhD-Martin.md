@@ -14,13 +14,5 @@ Descripción breve del objetivo.
 - [overleaf](https://www.overleaf.com/project/690b3e8fece2d0558b92f22b)
 - [GitHub](https://github.com/martinperezmaneiro/NEXT_SPARSECONVNET)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓PhD-Martin.md)

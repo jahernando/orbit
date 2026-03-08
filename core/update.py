@@ -10,7 +10,6 @@ STATUS_LABEL = {
     "inicial":    "Inicial",
     "en marcha":  "En marcha",
     "parado":     "Parado",
-    "esperando":  "Esperando",
     "durmiendo":  "Durmiendo",
     "completado": "Completado",
 }

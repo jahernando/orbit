@@ -14,13 +14,5 @@ Descripción breve del objetivo.
 - [messages](https://watercherenko-afv1279.slack.com/archives/D02U28VK4GG)
 - [NiCf_analysis](https://github.com/jahernando/NiCf_analysis/tree/main)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓HK-Sources.md)

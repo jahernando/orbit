@@ -16,13 +16,5 @@ Descripción breve del objetivo.
 - [Pagina nueva de la AEI](https://www.aei.gob.es/aplicaciones-interes)
 - [local folder](File:/Users/hernando/work/gestion/investigacion/proyectos/NEXTPN24)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-PN24.md)

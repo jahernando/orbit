@@ -26,13 +26,5 @@ Descripción breve del objetivo.
 - [Martin's GNN repository](https://github.com/martinperezmaneiro/NEXT_graphs/tree/main)
 - [https://fpmac116.usc.es/Flat/](https://fpmac116.usc.es/Flat/)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓HK-Ana-Es.md)

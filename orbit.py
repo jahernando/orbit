@@ -14,13 +14,18 @@ from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
 from core.task import run_task_open, run_task_schedule, run_task_close
-from core.list_cmd import run_list_projects, run_list_section
+from core.list_cmd import run_list_projects, run_list_section, run_list_files, run_list_notes
 from core.add import run_add, run_add_note, VALID_ENTRIES
 from core.view import run_view
 from core.open import run_open, open_file
 from core.calendar_sync import run_calendar_sync
 from core.calendar_view import run_calendar_week, run_calendar_month, run_calendar_year
 from core.dateparse import parse_date
+from core.focus import run_focus
+from core.activity import run_status
+from core.evaluation import run_eval
+from core.routines import run_start, run_end
+from core.agenda import run_agenda
 
 
 def _d(expr):
@@ -34,7 +39,7 @@ _SINGLE_DASH_FIX = {
     "-priority", "-output", "-editor", "-focus", "-from", "-to", "-limit",
     "-section", "-log", "-open", "-inject", "-apply", "-force", "-no-open",
     "-sync", "-url", "-file", "-keyword", "-dry-run", "-name", "-date-from",
-    "-date-to", "-from-status", "-from-priority",
+    "-date-to", "-from-status", "-from-priority", "-note", "-notes",
 }
 
 def _fix_argv(argv: list) -> list:
@@ -83,6 +88,7 @@ def cmd_search(args):
         prioridad=args.priority,
         any_mode=args.any,
         diario=args.diario,
+        notes=getattr(args, "notes", False),
         limit=args.limit,
         output=args.output,
         open_after=args.open,
@@ -121,7 +127,8 @@ def cmd_open(args):
             target=args.target, section=args.section,
             entrada=args.entry, log=args.log, output=args.output,
         )
-    return run_open(target=args.target, log=args.log, editor=args.editor)
+    return run_open(target=args.target, log=args.log,
+                    note=getattr(args, "note", None), editor=args.editor)
 
 
 def cmd_view(args):
@@ -187,7 +194,10 @@ def _resolve_add_project_title(args):
 
 
 def _prompt_entry(default="apunte") -> str:
-    """Ask the user to pick an entry type interactively."""
+    """Ask the user to pick an entry type interactively; silently use default if no TTY."""
+    import sys
+    if not sys.stdin.isatty():
+        return default
     opts = " / ".join(VALID_ENTRIES)
     try:
         raw = input(f"Tipo de entrada [{opts}] ({default}): ").strip().lower()
@@ -202,10 +212,13 @@ def cmd_add(args):
         ring     = getattr(args, "ring", False)
         time_str = getattr(args, "time", None)
         if ring and not time_str:
-            try:
-                raw = input("Hora del recordatorio (HH:MM) [09:00]: ").strip()
-                time_str = raw if raw else "09:00"
-            except (EOFError, KeyboardInterrupt):
+            if sys.stdin.isatty():
+                try:
+                    raw = input("Hora del recordatorio (HH:MM) [09:00]: ").strip()
+                    time_str = raw if raw else "09:00"
+                except (EOFError, KeyboardInterrupt):
+                    time_str = "09:00"
+            else:
                 time_str = "09:00"
         fecha = _d(getattr(args, "date", None))
         if not fecha:
@@ -248,11 +261,12 @@ def cmd_add(args):
     sync     = getattr(args, "sync", False)
     # Prompt for --sync only for non-.md binary files
     if file_str and not file_str.endswith(".md") and not sync:
-        try:
-            raw = input("¿Sincronizar con git (git add -f)? [s/N]: ").strip().lower()
-            sync = raw in ("s", "si", "sí", "y", "yes")
-        except (EOFError, KeyboardInterrupt):
-            sync = False
+        if sys.stdin.isatty():
+            try:
+                raw = input("¿Sincronizar con git (git add -f)? [s/N]: ").strip().lower()
+                sync = raw in ("s", "si", "sí", "y", "yes")
+            except (EOFError, KeyboardInterrupt):
+                sync = False
     return run_add(
         project=project or "mission",
         title=title,
@@ -263,6 +277,48 @@ def cmd_add(args):
         open_after=getattr(args, "open", False),
         editor=getattr(args, "editor", "typora"),
     )
+
+
+def cmd_focus(args):
+    return run_focus(
+        period=getattr(args, "period", None),
+        set_projects=getattr(args, "set_projects", None),
+        clear=getattr(args, "clear", False),
+        interactive=getattr(args, "interactive", False),
+    )
+
+
+def cmd_status(args):
+    return run_status(
+        project=getattr(args, "project", None),
+        focus_only=getattr(args, "focus_only", False),
+    )
+
+
+def cmd_eval(args):
+    return run_eval(
+        period=getattr(args, "period", None),
+        date_str=getattr(args, "date", None),
+        open_after=not getattr(args, "no_open", False),
+        editor=getattr(args, "editor", "typora"),
+    )
+
+
+def cmd_agenda(args):
+    return run_agenda(
+        period=getattr(args, "period", None),
+        date_str=getattr(args, "date", None),
+        ring=getattr(args, "ring", False),
+        output=getattr(args, "output", None),
+    )
+
+
+def cmd_start(args):
+    return run_start(editor=getattr(args, "editor", "typora"))
+
+
+def cmd_end(args):
+    return run_end(editor=getattr(args, "editor", "typora"))
 
 
 def cmd_calendar(args):
@@ -318,8 +374,19 @@ def cmd_list(args):
             tipo=args.type, status=args.status, priority=args.priority,
             output=args.output, open_after=args.open, editor=args.editor,
         )
+    if args.what == "files":
+        return run_list_files(
+            project=getattr(args, "project", None),
+            output=args.output, open_after=args.open, editor=args.editor,
+        )
+    if args.what == "notes":
+        return run_list_notes(
+            project=getattr(args, "project", None),
+            output=args.output, open_after=args.open, editor=args.editor,
+        )
     return run_list_section(
         project=getattr(args, "project", None), section=args.what,
+        entry=getattr(args, "entry", None),
         output=args.output, open_after=args.open, editor=args.editor,
     )
 
@@ -362,6 +429,8 @@ def main():
                           help="OR logic: match any keyword (default: AND)")
     search_p.add_argument("--diario", action="store_true",
                           help="Also search in mision-log (diario, semanal, mensual)")
+    search_p.add_argument("--notes", action="store_true",
+                          help="Also search inside notes/ files of each project")
     search_p.add_argument("--limit", type=int, default=0, metavar="N",
                           help="Maximum number of results (default: unlimited)")
     search_p.add_argument("--type", default=None, help="Filter by project type (investigacion, docencia, ...)")
@@ -398,25 +467,41 @@ def main():
     ltk_p.add_argument("--open",     action="store_true", help="Save to mision-log/tasks.md and open")
     ltk_p.add_argument("--editor",   default="typora")
 
-    # list refs / results / decisions  (shared args)
-    def _add_section_args(p, project_required=False):
-        if project_required:
-            p.add_argument("project", help="Project name (partial match)")
-        else:
-            p.add_argument("project", nargs="?", default=None,
-                           help="Project name (partial match); omit for all projects")
+    # list refs / results / decisions / files  (shared args)
+    def _add_section_args(p):
+        p.add_argument("project", nargs="?", default=None,
+                       help="Project name (partial match); omit for all projects")
         p.add_argument("--output", default=None, help="Save output to file")
         p.add_argument("--open",   action="store_true", help="Save and open in editor")
         p.add_argument("--editor", default="typora")
 
+    lrf_p = list_sub.add_parser("refs",      help="List references across projects")
+    _add_section_args(lrf_p)
+    lrf_p.add_argument("--entry", default=None, metavar="TIPO",
+                       help="Filter by entry type: referencia, apunte, idea, problema")
 
-    subparsers.add_parser("shell", help="Enter interactive Orbit shell")
+    lrs_p = list_sub.add_parser("results",   help="List results across projects")
+    _add_section_args(lrs_p)
+
+    lrd_p = list_sub.add_parser("decisions", help="List decisions across projects")
+    _add_section_args(lrd_p)
+
+    lfi_p = list_sub.add_parser("files",     help="List artifact files inside projects")
+    _add_section_args(lfi_p)
+
+    lno_p = list_sub.add_parser("notes",     help="List markdown notes inside projects")
+    _add_section_args(lno_p)
+
+    shell_p = subparsers.add_parser("shell", help="Enter interactive Orbit shell")
+    shell_p.add_argument("--editor", default="typora", help="Editor for opening notes (default: typora)")
 
     # --- open ---
     open_p = subparsers.add_parser("open", help="Open or display a note / logbook")
     open_p.add_argument("target", nargs="?", default=None,
                         help="Project name, YYYY-MM-DD, YYYY-Wnn or YYYY-MM (default: today)")
     open_p.add_argument("--log",      action="store_true", help="Open logbook instead of project note")
+    open_p.add_argument("--note",     default=None, metavar="NAME",
+                        help="Open a specific note from the project's notes/ directory (partial match)")
     open_p.add_argument("--terminal", action="store_true", help="Print to terminal instead of opening editor")
     open_p.add_argument("--section",  default=None, help="(--terminal) Show only the section containing this word")
     open_p.add_argument("--entry",    default=None, metavar="ENTRY",
@@ -560,6 +645,80 @@ def main():
     _cal_args(cal_sub.add_parser("year",  help="Yearly overview with tasks"),
               "Year: 2026 or any date (default: current year)")
 
+    # --- agenda ---
+    agd_p = subparsers.add_parser(
+        "agenda",
+        help="Terminal planning view: tasks + focus for a period",
+        description=(
+            "Show a planning view for day (default), week, or month.\n\n"
+            "Examples:\n"
+            "  orbit agenda              # today's agenda\n"
+            "  orbit agenda week         # this week grouped by day\n"
+            "  orbit agenda month        # this month grouped by week\n"
+            "  orbit agenda day --ring   # today + schedule Reminders.app\n"
+            "  orbit agenda --date 2026-03-15  # specific day\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    agd_p.add_argument("period", nargs="?", choices=["day", "week", "month"], default=None,
+                       help="Period: day (default), week, month")
+    agd_p.add_argument("--date", default=None, metavar="YYYY-MM-DD",
+                       help="Reference date (default: today)")
+    agd_p.add_argument("--ring", action="store_true",
+                       help="Also schedule @ring tasks in Reminders.app (day only)")
+    agd_p.add_argument("--output", default=None, metavar="FILE",
+                       help="Save output to file instead of printing")
+
+    # --- start ---
+    sta_p = subparsers.add_parser("start", help="Begin a work session: status + focus + missed eval check")
+    sta_p.add_argument("--editor", default="typora", help="Editor for opening notes (default: typora)")
+
+    # --- end ---
+    end_p = subparsers.add_parser("end", help="End a work session: activity summary + evaluation notes")
+    end_p.add_argument("--editor", default="typora", help="Editor for opening evaluation note (default: typora)")
+
+    # --- eval ---
+    eva_p = subparsers.add_parser("eval", help="Create or update an evaluation note for a period")
+    eva_p.add_argument("period", nargs="?", choices=["day", "week", "month"], default=None,
+                       help="Period: day, week, month (omit to create all three)")
+    eva_p.add_argument("--date", default=None, metavar="YYYY-MM-DD",
+                       help="Date for the evaluation (default: today)")
+    eva_p.add_argument("--no-open", action="store_true", help="Do not open in editor")
+    eva_p.add_argument("--editor", default="typora")
+
+    # --- focus ---
+    foc_p = subparsers.add_parser(
+        "focus",
+        help="View or set focus projects for a period",
+        description=(
+            "Without arguments: show focus for all periods.\n"
+            "With a period: show focus for that period.\n"
+            "With --set: set focus for the period (default: day).\n\n"
+            "Examples:\n"
+            "  orbit focus                        # show all periods\n"
+            "  orbit focus month                  # show month focus\n"
+            "  orbit focus month --set orbit mission  # set month focus\n"
+            "  orbit focus month --clear          # clear month focus\n"
+            "  orbit focus week --interactive     # interactive selection\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    foc_p.add_argument("period", nargs="?", choices=["day", "week", "month"], default=None,
+                       help="Period: day, week, month (omit to show all)")
+    foc_p.add_argument("--set", nargs="+", metavar="PROJECT", dest="set_projects",
+                       help="Set focus projects (partial name match)")
+    foc_p.add_argument("--clear", action="store_true",
+                       help="Clear focus for the period")
+    foc_p.add_argument("--interactive", action="store_true",
+                       help="Interactively select focus projects")
+
+    # --- status ---
+    sta_p = subparsers.add_parser("status", help="Show project health based on logbook activity")
+    sta_p.add_argument("--project", default=None,
+                       help="Filter by project name (partial match)")
+    sta_p.add_argument("--focus", action="store_true", dest="focus_only",
+                       help="Show only projects currently in focus")
+
     # --- info ---
     info_p   = subparsers.add_parser("info", help="Show chuleta, README, tutorial or full help")
     info_sub = info_p.add_subparsers(dest="topic")
@@ -611,7 +770,19 @@ def main():
     elif args.command == "search":
         sys.exit(cmd_search(args))
     elif args.command == "shell":
-        run_shell()
+        run_shell(editor=getattr(args, "editor", "typora"))
+    elif args.command == "agenda":
+        sys.exit(cmd_agenda(args))
+    elif args.command == "start":
+        sys.exit(cmd_start(args))
+    elif args.command == "end":
+        sys.exit(cmd_end(args))
+    elif args.command == "eval":
+        sys.exit(cmd_eval(args))
+    elif args.command == "focus":
+        sys.exit(cmd_focus(args))
+    elif args.command == "status":
+        sys.exit(cmd_status(args))
     elif args.command == "calendar":
         if not args.period:
             cal_p.print_help()
@@ -626,7 +797,7 @@ def main():
         parser.print_help()
 
 
-def run_shell():
+def run_shell(editor: str = "typora"):
     import readline
     import shlex
 
@@ -639,7 +810,9 @@ def run_shell():
     readline.set_history_length(500)
 
     COMMANDS = ["create", "add", "change", "list", "log", "search",
-                "open", "report", "calendar", "info", "claude", "exit", "quit"]
+                "open", "report", "calendar", "agenda",
+                "focus", "status", "start", "end", "eval",
+                "info", "claude", "exit", "quit"]
 
     def completer(text, state):
         options = [c for c in COMMANDS if c.startswith(text)]
@@ -652,7 +825,7 @@ def run_shell():
     print()
 
     from core.misionlog import run_shell_startup
-    run_shell_startup()
+    run_shell_startup(editor=editor)
 
     while True:
         try:
@@ -687,22 +860,33 @@ def run_shell():
 
     readline.write_history_file(history_file)
 
+    import calendar as _cal
     from datetime import date as _date
-    from core.misionlog import run_dayreport, run_weekreport
+    from core.misionlog import run_dayreport, run_weekreport, _week_key, DIARIO_DIR, SEMANAL_DIR, MENSUAL_DIR
     from core.monthly import run_monthly
+    from core.open import open_file
 
     today = _date.today()
+    last_day_of_month = _cal.monthrange(today.year, today.month)[1]
     print()
+
+    # Run all reports without opening files; track which note to open (highest priority wins)
     print("Generando reporte del día…")
-    run_dayreport(date_str=None, inject=True, output=None, open_after=True)
+    run_dayreport(date_str=None, inject=True, output=None, open_after=False)
+    open_path = DIARIO_DIR / f"{today.isoformat()}.md"
 
     if today.weekday() in (4, 5, 6):  # viernes, sábado, domingo
         print("Generando reporte de la semana…")
-        run_weekreport(date_str=None, inject=True, output=None, open_after=True)
+        run_weekreport(date_str=None, inject=True, output=None, open_after=False)
+        open_path = SEMANAL_DIR / f"{_week_key(today)}.md"
 
-    if today.day >= 28:
+    if today.day >= last_day_of_month - 2:  # últimos 3 días del mes (correcto para todos los meses)
         print("Generando reporte del mes…")
-        run_monthly(month=None, apply=False, inject=True, output=None, open_after=True)
+        run_monthly(month=None, apply=False, inject=True, output=None, open_after=False)
+        open_path = MENSUAL_DIR / f"{today.strftime('%Y-%m')}.md"
+
+    if open_path and open_path.exists():
+        open_file(open_path, editor)
 
     print()
     print("Aquí tienes el resumen de tu trabajo. ¡Hasta Pronto!")

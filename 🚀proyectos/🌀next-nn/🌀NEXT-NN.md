@@ -15,13 +15,5 @@ Descripción breve del objetivo.
 - [Josh paper](https://www.overleaf.com/project/6790c85939b84889a40ec1ec)
 - [#next-nn-topo](https://next-experiment.slack.com/archives/C09VAAK10BB)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-NN.md)

@@ -22,13 +22,5 @@ Descripción breve del objetivo.
 - [xunta](https://sede.xunta.gal/portada)
 - [borrador de la Xunta](https://sede.xunta.gal/presenta/borrador/19344292)
 - [Título](./references/paper.pdf)
-
-## 📊 Resultados
--
-
-
-## 📌 Decisiones
--
-
 ## 📓 Logbook
 [Ver logbook completo](./📓SmartHEP.md)

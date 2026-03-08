@@ -121,6 +121,14 @@ def add_entry(project: str, message: str, tipo: str, path: Optional[str], fecha:
 
     entry = format_entry(message, tipo, path, fecha)
     _append_entry(logbook_path, entry)
-
     print(f"✓ [{project_dir.name}] {entry.strip()}")
+
+    proyecto_path = find_proyecto_file(project_dir)
+    if proyecto_path:
+        from core.tasks import load_project_meta, update_proyecto_field
+        meta = load_project_meta(proyecto_path)
+        if "en marcha" not in meta["estado_raw"] and "completado" not in meta["estado_raw"]:
+            update_proyecto_field(proyecto_path, "estado", "en marcha")
+            print(f"  → estado: en marcha")
+
     return 0
