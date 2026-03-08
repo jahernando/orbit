@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from core.tasks import parse_task, list_tasks
-from core.task  import run_task_open, run_task_schedule, run_task_close
+from core.tarea import run_task_open, run_task_schedule, run_task_close
 
 
 TODAY = date.today().isoformat()

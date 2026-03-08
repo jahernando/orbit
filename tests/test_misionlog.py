@@ -17,16 +17,16 @@ from pathlib import Path
 
 import pytest
 
-from core.misionlog import (
+from core.misionlog import _week_key, _week_bounds, run_shell_startup
+from core.reports import (
     _has_section, _inject_block, _parse_focus_projects,
     _find_logbook, _count_focus_entries,
-    _week_key, _week_bounds,
     _format_valoracion_day, _format_valoracion_stats_week,
     _format_reflection_week, _format_valoracion_stats_month,
     _format_reflection_month,
     _VALORACION_STATS_START, _VALORACION_STATS_END,
     _WR_START, _WR_END,
-    run_dayreport, run_weekreport, run_shell_startup,
+    run_dayreport, run_weekreport,
 )
 
 TODAY     = date.today()
@@ -456,7 +456,7 @@ class TestRunWeekreport:
 
     def test_log_to_mission_called_only_with_inject(self, mision_env, monkeypatch):
         calls = []
-        monkeypatch.setattr("core.misionlog.log_to_mission",
+        monkeypatch.setattr("core.reports.log_to_mission",
                             lambda msg, tipo: calls.append(msg))
         run_weekreport(date_str=TODAY_ISO, inject=False)
         assert calls == []

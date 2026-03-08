@@ -10,7 +10,7 @@ from core.activity import (
 )
 from core.log import PROJECTS_DIR, VALID_TYPES, find_proyecto_file, find_logbook_file, log_to_mission
 from core.tasks import PRIORITY_MAP, STATUS_MAP, TYPE_MAP, normalize, read_proyecto_field, load_project_meta
-from core.misionlog import (
+from core.reports import (
     _collect_completed_tasks, _project_link,
     _parse_focus_projects, _count_focus_entries, _print_tomato_verdict,
     _format_valoracion_stats_month, _format_reflection_month,

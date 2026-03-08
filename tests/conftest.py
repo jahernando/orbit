@@ -88,9 +88,9 @@ def orbit_env(tmp_path, monkeypatch):
     # Patch all module-level path constants
     monkeypatch.setattr("core.log.PROJECTS_DIR",       projects_dir)
     monkeypatch.setattr("core.tasks.PROJECTS_DIR",     projects_dir)
-    monkeypatch.setattr("core.task.PROJECTS_DIR",      projects_dir)
-    monkeypatch.setattr("core.task.DIARIO_DIR",        diario_dir)
-    monkeypatch.setattr("core.task.TEMPLATES_DIR",     templates_dir)
+    monkeypatch.setattr("core.tarea.PROJECTS_DIR",      projects_dir)
+    monkeypatch.setattr("core.tarea.DIARIO_DIR",        diario_dir)
+    monkeypatch.setattr("core.tarea.TEMPLATES_DIR",     templates_dir)
     monkeypatch.setattr("core.list_cmd.PROJECTS_DIR",  projects_dir)
     monkeypatch.setattr("core.add.TEMPLATES_DIR",      templates_dir)
 
@@ -250,9 +250,16 @@ def mision_env(orbit_env, monkeypatch):
     monkeypatch.setattr("core.misionlog.MENSUAL_DIR",   mensual_dir)
     monkeypatch.setattr("core.misionlog.TEMPLATES_DIR", templates_dir)
 
+    # Patch reports module paths (run_dayreport / run_weekreport moved here)
+    monkeypatch.setattr("core.reports.PROJECTS_DIR",    orbit_env["projects_dir"])
+    monkeypatch.setattr("core.reports.DIARIO_DIR",      orbit_env["diario_dir"])
+    monkeypatch.setattr("core.reports.SEMANAL_DIR",     semanal_dir)
+
     # Silence external side-effects
     monkeypatch.setattr("core.misionlog.log_to_mission", lambda *a, **k: None)
     monkeypatch.setattr("core.misionlog.open_file",      lambda p, e: 0)
+    monkeypatch.setattr("core.reports.log_to_mission",   lambda *a, **k: None)
+    monkeypatch.setattr("core.reports.open_file",        lambda p, e: 0)
 
     return {
         **orbit_env,

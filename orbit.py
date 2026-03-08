@@ -13,7 +13,7 @@ from core.misionlog import add_entry_to_day, run_shell_startup
 from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
-from core.task import run_task_open, run_task_schedule, run_task_close
+from core.tarea import run_task_open, run_task_schedule, run_task_close
 from core.list_cmd import run_list_projects, run_list_section, run_list_files, run_list_notes
 from core.add import run_add, run_add_note, VALID_ENTRIES
 from core.view import run_view
@@ -862,7 +862,8 @@ def run_shell(editor: str = "typora"):
 
     import calendar as _cal
     from datetime import date as _date
-    from core.misionlog import run_dayreport, run_weekreport, _week_key, DIARIO_DIR, SEMANAL_DIR, MENSUAL_DIR
+    from core.reports import run_dayreport, run_weekreport
+    from core.misionlog import _week_key, DIARIO_DIR, SEMANAL_DIR, MENSUAL_DIR
     from core.monthly import run_monthly
     from core.open import open_file
 
