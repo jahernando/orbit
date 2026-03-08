@@ -132,6 +132,7 @@ def run_add_note(
     entry: str,
     file_str: Optional[str],
     link: bool,
+    date_prefix: bool,
     open_after: bool,
     editor: str,
 ) -> int:
@@ -163,7 +164,8 @@ def run_add_note(
     else:
         # Create new note from template
         slug      = title.lower().replace(" ", "-")[:40]
-        note_name = f"{today}-{slug}.md"
+        prefix    = date.today().strftime("%Y%m%d") + "_" if date_prefix else ""
+        note_name = f"{prefix}{slug}.md"
         dest_file = notes_dir / note_name
         note_title = title
         tpl = TEMPLATES_DIR / "note.md"

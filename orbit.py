@@ -236,6 +236,7 @@ def cmd_add(args):
             entry=entry,
             file_str=file_str,
             link=link,
+            date_prefix=getattr(args, "date_prefix", True),
             open_after=getattr(args, "open", False),
             editor=getattr(args, "editor", "typora"),
         )
@@ -504,6 +505,8 @@ def main():
                       help="Add a link in proyecto.md (default: yes)")
     an_p.add_argument("--no-link", dest="link", action="store_false",
                       help="Do not add a link in proyecto.md")
+    an_p.add_argument("--no-date", dest="date_prefix", action="store_false", default=True,
+                      help="Do not prefix the filename with YYYYMMDD_")
     an_p.add_argument("--open",   action="store_true", help="Open the note after importing")
     an_p.add_argument("--editor", default="typora",    help="Editor (default: typora)")
 

@@ -26,7 +26,7 @@ Las notas de día, semana y mes se crean automáticamente al entrar en el shell 
 ```bash
 orbit add task  [project] <desc>   [--date D] [--time HH:MM] [--ring] [--recur RULE] [--open]
 orbit add ref   <project> <título> [--entry TIPO] [--url URL] [--file PATH] [--sync] [--open]
-orbit add note  <project> <título> [--file FILE.md] [--entry TIPO] [--no-link] [--open]
+orbit add note  <project> <título> [--file FILE.md] [--entry TIPO] [--no-link] [--no-date] [--open]
 ```
 
 - `add task` sin proyecto → va a **mission** por defecto
@@ -38,7 +38,8 @@ orbit add note  <project> <título> [--file FILE.md] [--entry TIPO] [--no-link] 
 - `--entry`: `referencia` 📎 · `resultado` 📊 · `decision` 📌 · `apunte` 📝 · `idea` 💡 · `problema` ⚠️
 - `--entry referencia/resultado` → sección Referencias/Resultados; el resto → Referencias
 - `--sync` → si se omite con `--file` (no .md) se pregunta en el prompt
-- `add note` sin `--file` → crea nota nueva desde plantilla y la abre en Typora
+- `add note` sin `--file` → crea `YYYYMMDD_título.md` desde plantilla y la abre en Typora
+- `add note --no-date` → nombre sin prefijo de fecha (`título.md`)
 - `add note --no-link` → no añade enlace en proyecto.md
 
 ---
