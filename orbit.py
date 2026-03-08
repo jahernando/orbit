@@ -111,6 +111,83 @@ def cmd_tasks(args):
     )
 
 
+def cmd_task(args):
+    """Consolidated task management: add (default), list, done, move."""
+    action = getattr(args, "action", None)
+
+    if action == "list":
+        return list_tasks(
+            project=getattr(args, "project", None),
+            tipo=getattr(args, "type", None),
+            estado=getattr(args, "status", None),
+            prioridad=getattr(args, "priority", None),
+            fecha=_d(getattr(args, "date", None)),
+            keyword=getattr(args, "keyword", None),
+            output=getattr(args, "output", None),
+            ring_only=getattr(args, "ring", False),
+            open_after=getattr(args, "open", False),
+            editor=getattr(args, "editor", "typora"),
+        )
+
+    if action == "done":
+        rc = run_task_close(
+            project=args.project, task_desc=args.desc,
+            fecha=_d(getattr(args, "date", None)),
+            interactive=True,
+        )
+        if rc == 0 and getattr(args, "open", False) and args.project:
+            project_dir = find_project(args.project)
+            if project_dir:
+                proyecto = find_proyecto_file(project_dir)
+                if proyecto:
+                    open_file(proyecto, getattr(args, "editor", "typora"))
+        return rc
+
+    if action == "move":
+        rc = run_task_schedule(
+            project=args.project, task_desc=args.desc,
+            fecha=_d(args.date), time_str=getattr(args, "time", None),
+            recur=getattr(args, "recur", None),
+            interactive=True,
+        )
+        if rc == 0 and getattr(args, "open", False) and args.project:
+            project_dir = find_project(args.project)
+            if project_dir:
+                proyecto = find_proyecto_file(project_dir)
+                if proyecto:
+                    open_file(proyecto, getattr(args, "editor", "typora"))
+        return rc
+
+    # Default action: add task
+    project  = getattr(args, "project", None)
+    title    = getattr(args, "desc", None)
+    ring     = getattr(args, "ring", False)
+    time_str = getattr(args, "time", None)
+    if ring and not time_str:
+        if sys.stdin.isatty():
+            try:
+                raw = input("Hora del recordatorio (HH:MM) [09:00]: ").strip()
+                time_str = raw if raw else "09:00"
+            except (EOFError, KeyboardInterrupt):
+                time_str = "09:00"
+        else:
+            time_str = "09:00"
+    fecha = _d(getattr(args, "date", None))
+    if not fecha:
+        from datetime import date as _date
+        fecha = _date.today().isoformat()
+    rc = run_task_open(
+        project=project or "mission", task_desc=title,
+        fecha=fecha, time_str=time_str,
+        recur=getattr(args, "recur", None), ring=ring,
+    )
+    if rc == 0 and getattr(args, "open", False) and project:
+        project_dir = find_project(project)
+        if project_dir:
+            proyecto = find_proyecto_file(project_dir)
+            if proyecto:
+                open_file(proyecto, getattr(args, "editor", "typora"))
+    return rc
 
 
 def cmd_create(args):
@@ -360,12 +437,15 @@ def cmd_info(args):
 
 
 def cmd_report(args):
-    if args.period == "stats":
-        return run_stats(date_str=_d(args.date), date_from=_d(args.date_from),
-                         date_to=_d(args.date_to), project=args.project,
-                         tipo=args.type, prioridad=args.priority,
-                         output=args.output, open_after=args.open, editor=args.editor)
-    return 1
+    return run_stats(date_str=_d(getattr(args, "date", None)),
+                     date_from=_d(getattr(args, "date_from", None)),
+                     date_to=_d(getattr(args, "date_to", None)),
+                     project=getattr(args, "project", None),
+                     tipo=getattr(args, "type", None),
+                     prioridad=getattr(args, "priority", None),
+                     output=getattr(args, "output", None),
+                     open_after=getattr(args, "open", False),
+                     editor=getattr(args, "editor", "typora"))
 
 
 def cmd_list(args):
@@ -384,11 +464,7 @@ def cmd_list(args):
             project=getattr(args, "project", None),
             output=args.output, open_after=args.open, editor=args.editor,
         )
-    return run_list_section(
-        project=getattr(args, "project", None), section=args.what,
-        entry=getattr(args, "entry", None),
-        output=args.output, open_after=args.open, editor=args.editor,
-    )
+    return 1
 
 
 
@@ -454,37 +530,13 @@ def main():
     lpr_p.add_argument("--open",     action="store_true", help="Save to mision-log/projects.md and open")
     lpr_p.add_argument("--editor",   default="typora")
 
-    # list tasks
-    ltk_p = list_sub.add_parser("tasks", help="List pending tasks across projects")
-    ltk_p.add_argument("--project",  default=None, help="Filter by project name (partial match)")
-    ltk_p.add_argument("--type",     default=None, help="Filter by project type")
-    ltk_p.add_argument("--status",   default=None, help="Filter by project status")
-    ltk_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
-    ltk_p.add_argument("--date",     default=None, help="Filter by due date — supports natural language")
-    ltk_p.add_argument("--ring",     action="store_true", help="Show only tasks with @ring (reminders)")
-    ltk_p.add_argument("--keyword",  default=None, help="Filter by keyword in description")
-    ltk_p.add_argument("--output",   default=None, help="Save output to file")
-    ltk_p.add_argument("--open",     action="store_true", help="Save to mision-log/tasks.md and open")
-    ltk_p.add_argument("--editor",   default="typora")
-
-    # list refs / results / decisions / files  (shared args)
+    # list files / notes  (shared args)
     def _add_section_args(p):
         p.add_argument("project", nargs="?", default=None,
                        help="Project name (partial match); omit for all projects")
         p.add_argument("--output", default=None, help="Save output to file")
         p.add_argument("--open",   action="store_true", help="Save and open in editor")
         p.add_argument("--editor", default="typora")
-
-    lrf_p = list_sub.add_parser("refs",      help="List references across projects")
-    _add_section_args(lrf_p)
-    lrf_p.add_argument("--entry", default=None, metavar="TIPO",
-                       help="Filter by entry type: referencia, apunte, idea, problema")
-
-    lrs_p = list_sub.add_parser("results",   help="List results across projects")
-    _add_section_args(lrs_p)
-
-    lrd_p = list_sub.add_parser("decisions", help="List decisions across projects")
-    _add_section_args(lrd_p)
 
     lfi_p = list_sub.add_parser("files",     help="List artifact files inside projects")
     _add_section_args(lfi_p)
@@ -510,36 +562,54 @@ def main():
     open_p.add_argument("--editor",   default="typora",
                         help="Editor to use: typora (default), glow, code, or any command")
 
-    # --- change (task/ring × schedule/close) ---
-    chg_p   = subparsers.add_parser("change", help="Reschedule or close a task or reminder")
-    chg_sub = chg_p.add_subparsers(dest="target")
+    # --- task (consolidated: add / list / done / move) ---
+    tsk_p   = subparsers.add_parser("task", help="Add, list, close or reschedule tasks")
+    tsk_sub = tsk_p.add_subparsers(dest="action")
 
-    def _chg_common(p, *, needs_time=False, time_required=False):
-        p.add_argument("project", help="Project name (partial match)")
-        p.add_argument("desc",    help="Description to match (partial)")
-        p.add_argument("--open",   action="store_true", help="Open proyecto.md in editor after change")
-        p.add_argument("--editor", default="typora",    help="Editor to use (default: typora)")
+    # task list
+    tkl_p = tsk_sub.add_parser("list", help="List pending tasks across projects")
+    tkl_p.add_argument("--project",  default=None, help="Filter by project name (partial match)")
+    tkl_p.add_argument("--type",     default=None, help="Filter by project type")
+    tkl_p.add_argument("--status",   default=None, help="Filter by project status")
+    tkl_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
+    tkl_p.add_argument("--date",     default=None, help="Filter by due date — supports natural language")
+    tkl_p.add_argument("--ring",     action="store_true", help="Show only tasks with @ring (reminders)")
+    tkl_p.add_argument("--keyword",  default=None, help="Filter by keyword in description")
+    tkl_p.add_argument("--output",   default=None, help="Save output to file")
+    tkl_p.add_argument("--open",     action="store_true", help="Save to mision-log/tasks.md and open")
+    tkl_p.add_argument("--editor",   default="typora")
 
-    # change task
-    ct_p   = chg_sub.add_parser("task", help="Reschedule or close a task")
-    ct_sub = ct_p.add_subparsers(dest="action")
+    # task done
+    tkd_p = tsk_sub.add_parser("done", help="Mark a task as done (or advance if recurring)")
+    tkd_p.add_argument("project", help="Project name (partial match)")
+    tkd_p.add_argument("desc",    help="Task description to match (partial)")
+    tkd_p.add_argument("--date",   default=None, help="Done date (default: today)")
+    tkd_p.add_argument("--open",   action="store_true")
+    tkd_p.add_argument("--editor", default="typora")
 
-    cts_p = ct_sub.add_parser("schedule", help="Set or update due date of a task")
-    cts_p.add_argument("project", help="Project name (partial match)")
-    cts_p.add_argument("desc",    help="Task description to match (partial)")
-    cts_p.add_argument("--date",  required=True, help="New due date — supports natural language")
-    cts_p.add_argument("--time",  default=None, metavar="HH:MM", help="Optional due time")
-    cts_p.add_argument("--recur", default=None, metavar="RULE",
-                       help="Set or update recurrence rule")
-    cts_p.add_argument("--open",   action="store_true")
-    cts_p.add_argument("--editor", default="typora")
+    # task move
+    tkm_p = tsk_sub.add_parser("move", help="Set or update due date of a task")
+    tkm_p.add_argument("project", help="Project name (partial match)")
+    tkm_p.add_argument("desc",    help="Task description to match (partial)")
+    tkm_p.add_argument("--date",  required=True, help="New due date — supports natural language")
+    tkm_p.add_argument("--time",  default=None, metavar="HH:MM", help="Optional due time")
+    tkm_p.add_argument("--recur", default=None, metavar="RULE", help="Set or update recurrence rule")
+    tkm_p.add_argument("--open",   action="store_true")
+    tkm_p.add_argument("--editor", default="typora")
 
-    ctc_p = ct_sub.add_parser("close", help="Mark a task as done (or advance if recurring)")
-    ctc_p.add_argument("project", help="Project name (partial match)")
-    ctc_p.add_argument("desc",    help="Task description to match (partial)")
-    ctc_p.add_argument("--date",  default=None, help="Done date (default: today)")
-    ctc_p.add_argument("--open",   action="store_true")
-    ctc_p.add_argument("--editor", default="typora")
+    # task <desc> (default: add)
+    tsk_p.add_argument("desc",    nargs="?", default=None, help="Task description")
+    tsk_p.add_argument("--project", default=None,
+                       help="Project name (partial match; omit to add to mission)")
+    tsk_p.add_argument("--date",  default=None, metavar="DATE",
+                       help="Due date — supports natural language")
+    tsk_p.add_argument("--time",  default=None, metavar="HH:MM", help="Optional due time")
+    tsk_p.add_argument("--ring",  action="store_true",
+                       help="Add as a reminder (schedules in Reminders.app)")
+    tsk_p.add_argument("--recur", default=None, metavar="RULE",
+                       help="Recurrence: daily, weekly, monthly, yearly, weekdays, every:Nd, every:Nw")
+    tsk_p.add_argument("--open",   action="store_true", help="Open project note in editor after adding")
+    tsk_p.add_argument("--editor", default="typora")
 
     # --- create ---
     cre_p   = subparsers.add_parser("create", help="Create a project, note or import")
@@ -595,42 +665,22 @@ def main():
     an_p.add_argument("--open",   action="store_true", help="Open the note after importing")
     an_p.add_argument("--editor", default="typora",    help="Editor (default: typora)")
 
-    # add task
-    at_p = add_sub.add_parser("task", help="Add a task to a project")
-    at_p.add_argument("project", nargs="?", default=None,
-                      help="Project name (partial match; omit to add to today's daily note)")
-    at_p.add_argument("title",   help="Task description")
-    at_p.add_argument("--date",  default=None, metavar="DATE",
-                      help="Due date — supports natural language")
-    at_p.add_argument("--time",  default=None, metavar="HH:MM", help="Optional due time")
-    at_p.add_argument("--ring",  action="store_true",
-                      help="Add as a reminder (schedules in Reminders.app); prompts for time if omitted")
-    at_p.add_argument("--recur", default=None, metavar="RULE",
-                      help="Recurrence: daily/diario, weekly/semanal, monthly/mensual, "
-                           "yearly/anual, weekdays/laborables, every:Nd, every:Nw")
-    at_p.add_argument("--open",   action="store_true", help="Open the project note in editor after adding")
-    at_p.add_argument("--editor", default="typora",    help="Editor to use (default: typora)")
-
     # --- report ---
-    rep_p   = subparsers.add_parser("report", help="Generate reports: stats")
-    rep_sub = rep_p.add_subparsers(dest="period")
+    rep_p = subparsers.add_parser("report", help="Quantitative activity report across projects")
+    rep_p.add_argument("--date", default=None, help="Month YYYY-MM (default: last 30 days) — supports natural language")
+    rep_p.add_argument("--from", dest="date_from", default=None, metavar="DATE",
+                       help="Period start — supports natural language")
+    rep_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
+                       help="Period end — supports natural language")
+    rep_p.add_argument("--project", default=None, help="Filter by project name (partial match)")
+    rep_p.add_argument("--type", default=None, help="Filter by project type (investigacion, docencia, ...)")
+    rep_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
+    rep_p.add_argument("--output", default=None, help="Save output to file")
+    rep_p.add_argument("--open", action="store_true", help="Save to mision-log/stats.md and open in editor")
+    rep_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
-    # report stats
-    rs_p = rep_sub.add_parser("stats", help="Quantitative analytics across projects")
-    rs_p.add_argument("--date", default=None, help="Month YYYY-MM (default: last 30 days) — supports natural language")
-    rs_p.add_argument("--from", dest="date_from", default=None, metavar="DATE",
-                      help="Period start — supports natural language")
-    rs_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
-                      help="Period end — supports natural language")
-    rs_p.add_argument("--project", default=None, help="Filter by project name (partial match)")
-    rs_p.add_argument("--type", default=None, help="Filter by project type (investigacion, docencia, ...)")
-    rs_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
-    rs_p.add_argument("--output", default=None, help="Save output to file")
-    rs_p.add_argument("--open", action="store_true", help="Save to mision-log/stats.md and open in editor")
-    rs_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
-
-    # --- calendar ---
-    cal_p   = subparsers.add_parser("calendar", help="Show week / month / year calendar in Typora")
+    # --- view (calendar: week / month / year rendered in Typora) ---
+    cal_p   = subparsers.add_parser("view", help="Show week / month / year calendar in Typora")
     cal_sub = cal_p.add_subparsers(dest="period")
 
     def _cal_args(p, date_help):
@@ -734,6 +784,8 @@ def main():
     if args.command is None:
         run_shell()
         return
+    elif args.command == "task":
+        sys.exit(cmd_task(args))
     elif args.command == "add":
         if not args.action:
             add_p.print_help()
@@ -744,22 +796,10 @@ def main():
     elif args.command == "list":
         if not args.what:
             list_p.print_help()
-        elif args.what == "tasks":
-            sys.exit(cmd_tasks(args))
         else:
             sys.exit(cmd_list(args))
     elif args.command == "report":
-        if not args.period:
-            rep_p.print_help()
-        else:
-            sys.exit(cmd_report(args))
-    elif args.command == "change":
-        if not args.target:
-            chg_p.print_help()
-        elif not getattr(args, "action", None):
-            ct_p.print_help()
-        else:
-            sys.exit(cmd_change(args))
+        sys.exit(cmd_report(args))
     elif args.command == "create":
         if not args.what:
             cre_p.print_help()
@@ -783,7 +823,7 @@ def main():
         sys.exit(cmd_focus(args))
     elif args.command == "status":
         sys.exit(cmd_status(args))
-    elif args.command == "calendar":
+    elif args.command == "view":
         if not args.period:
             cal_p.print_help()
         else:
@@ -809,8 +849,8 @@ def run_shell(editor: str = "typora"):
         pass
     readline.set_history_length(500)
 
-    COMMANDS = ["create", "add", "change", "list", "log", "search",
-                "open", "report", "calendar", "agenda",
+    COMMANDS = ["task", "create", "add", "list", "log", "search",
+                "open", "report", "view", "agenda",
                 "focus", "status", "start", "end", "eval",
                 "info", "claude", "exit", "quit"]
 
