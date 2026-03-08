@@ -105,11 +105,13 @@ def _read_compact_meta(lines: list) -> tuple:
 _RE_TRAILING_TAGS = re.compile(r'(\s+@\S+)+\s*$')
 
 
-def _strip_tags(content: str):
-    """Strip trailing @tags from content. Returns (clean_content, [tags])."""
+def parse_tags(content: str):
+    """Strip trailing @tags. Returns (clean_content, has_ring, recur_or_None)."""
     all_tags = re.findall(r'@\S+', content)
     clean = _RE_TRAILING_TAGS.sub('', content).strip() if all_tags else content
-    return clean, all_tags
+    ring  = '@ring' in all_tags
+    recur = next((t for t in all_tags if t != '@ring'), None)
+    return clean, ring, recur
 
 
 def _split_due(due_full):
@@ -142,18 +144,17 @@ def parse_task(line: str) -> Optional[dict]:
 
     if stripped.startswith("- [x]") or stripped.startswith("- [X]"):
         content = stripped[5:].strip()
-        content, tags = _strip_tags(content)
+        content, ring, _ = parse_tags(content)
         content, completed = _extract_date_from_parens(content)
         return {"description": content, "due": None, "time": None, "done": True,
-                "completed": completed, "ring": '@ring' in tags, "recur": None}
+                "completed": completed, "ring": ring, "recur": None}
 
     # [~] = ring already scheduled in Reminders.app — treat as pending
     if stripped.startswith("- [~]"):
         content = stripped[5:].strip()
-        content, tags = _strip_tags(content)
+        content, _, recur = parse_tags(content)
         content, due_full = _extract_date_from_parens(content)
         due, time = _split_due(due_full)
-        recur = next((t for t in tags if t != '@ring'), None)
         return {"description": content, "due": due, "time": time, "done": False,
                 "completed": None, "ring": True, "recur": recur, "scheduled": True}
 
@@ -161,11 +162,9 @@ def parse_task(line: str) -> Optional[dict]:
         return None
 
     content = stripped[5:].strip()
-    content, tags = _strip_tags(content)
+    content, ring, recur = parse_tags(content)
     content, due_full = _extract_date_from_parens(content)
     due, time = _split_due(due_full)
-    ring = '@ring' in tags
-    recur = next((t for t in tags if t != '@ring'), None)
     return {"description": content, "due": due, "time": time, "done": False,
             "completed": None, "ring": ring, "recur": recur}
 

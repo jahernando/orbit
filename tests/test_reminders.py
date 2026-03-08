@@ -9,6 +9,7 @@ from core.reminders import (
     _parse_reminders,
     _mark_scheduled,
     _advance_recurring,
+    _process_reminder,
     inject_reminders_into_note,
     schedule_today_reminders,
     INJECT_START,
@@ -85,7 +86,7 @@ class TestParseReminders:
     def test_new_format_with_time(self, orbit_env):
         p = orbit_env["proyecto_path"]
         _write_proyecto(p, "- [ ] Reunión de grupo (2026-03-08 09:30) @ring\n")
-        results = _parse_reminders(p, TARGET)
+        results = _parse_reminders(p.read_text().splitlines(), p, TARGET)
         assert len(results) == 1
         r = results[0]
         assert r["title"] == "Reunión de grupo"
@@ -97,14 +98,14 @@ class TestParseReminders:
     def test_new_format_with_recur(self, orbit_env):
         p = orbit_env["proyecto_path"]
         _write_proyecto(p, "- [ ] Standup (2026-03-08 08:30) @ring @weekly\n")
-        results = _parse_reminders(p, TARGET)
+        results = _parse_reminders(p.read_text().splitlines(), p, TARGET)
         assert len(results) == 1
         assert results[0]["recur"] == "@weekly"
 
     def test_new_format_no_time_defaults_to_0900(self, orbit_env, capsys):
         p = orbit_env["proyecto_path"]
         _write_proyecto(p, "- [ ] Sin hora (2026-03-08) @ring\n")
-        results = _parse_reminders(p, TARGET)
+        results = _parse_reminders(p.read_text().splitlines(), p, TARGET)
         assert len(results) == 1
         assert results[0]["hour"] == 9
         assert results[0]["minute"] == 0
@@ -114,31 +115,29 @@ class TestParseReminders:
     def test_new_format_wrong_date_excluded(self, orbit_env):
         p = orbit_env["proyecto_path"]
         _write_proyecto(p, "- [ ] Otra reunión (2026-03-09 10:00) @ring\n")
-        assert _parse_reminders(p, TARGET) == []
+        assert _parse_reminders(p.read_text().splitlines(), p, TARGET) == []
 
     def test_new_format_no_ring_excluded(self, orbit_env):
         p = orbit_env["proyecto_path"]
         _write_proyecto(p, "- [ ] Tarea normal (2026-03-08)\n")
-        assert _parse_reminders(p, TARGET) == []
+        assert _parse_reminders(p.read_text().splitlines(), p, TARGET) == []
 
-    def test_new_format_already_scheduled_included(self, orbit_env):
-        """[~] tasks (already scheduled) must still be returned."""
+    def test_new_format_already_scheduled_excluded(self, orbit_env):
+        """[~] tasks must be skipped — already in Reminders.app, avoid duplicate alarms."""
         p = orbit_env["proyecto_path"]
         _write_proyecto(p, "- [~] Reunión (2026-03-08 10:00) @ring\n")
-        results = _parse_reminders(p, TARGET)
-        assert len(results) == 1
-        assert results[0]["title"] == "Reunión"
+        assert _parse_reminders(p.read_text().splitlines(), p, TARGET) == []
 
     def test_new_format_done_excluded(self, orbit_env):
         p = orbit_env["proyecto_path"]
         _write_proyecto(p, "- [x] Completada (2026-03-08) @ring\n")
-        assert _parse_reminders(p, TARGET) == []
+        assert _parse_reminders(p.read_text().splitlines(), p, TARGET) == []
 
     def test_legacy_section_ignored(self, orbit_env):
         """## ⏰ Recordatorios (legacy) is no longer parsed — section eliminated."""
         p = orbit_env["proyecto_path"]
         _write_legacy(p, "- [ ] 2026-03-08 10:00 Standup @weekly\n")
-        assert _parse_reminders(p, TARGET) == []
+        assert _parse_reminders(p.read_text().splitlines(), p, TARGET) == []
 
     def test_multiple_tasks_same_day(self, orbit_env):
         p = orbit_env["proyecto_path"]
@@ -146,13 +145,13 @@ class TestParseReminders:
             "- [ ] Reunión (2026-03-08 09:00) @ring\n"
             "- [ ] Standup (2026-03-08 10:00) @ring\n"
         )
-        results = _parse_reminders(p, TARGET)
+        results = _parse_reminders(p.read_text().splitlines(), p, TARGET)
         assert len(results) == 2
 
     def test_project_name_set(self, orbit_env):
         p = orbit_env["proyecto_path"]
         _write_proyecto(p, "- [ ] Reunión (2026-03-08 09:00) @ring\n")
-        results = _parse_reminders(p, TARGET)
+        results = _parse_reminders(p.read_text().splitlines(), p, TARGET)
         assert results[0]["project"] == orbit_env["proj_dir"].name
 
 
@@ -225,6 +224,49 @@ class TestAdvanceRecurring:
         next_d = _advance_recurring(p, idx, "@every:3d", date(2026, 3, 8))
         assert next_d == date(2026, 3, 11)
         assert "2026-03-11" in p.read_text()
+
+    def test_advance_without_tilde_warns(self, orbit_env, capsys):
+        """If line has [ ] instead of [~], advance still works but emits warning."""
+        p = orbit_env["proyecto_path"]
+        _write_proyecto(p, "- [ ] Tarea (2026-03-08 09:00) @ring @weekly\n")
+        lines = p.read_text().splitlines()
+        idx = next(i for i, l in enumerate(lines) if "Tarea" in l)
+        next_d = _advance_recurring(p, idx, "@weekly", date(2026, 3, 8))
+        assert next_d == date(2026, 3, 15)
+        out = capsys.readouterr().out
+        assert "⚠️" in out
+
+
+# ── _process_reminder ─────────────────────────────────────────────────────────
+
+class TestProcessReminder:
+
+    def _reminder(self, proyecto_path, line_index=3, recur=None):
+        return {
+            "line_index": line_index, "hour": 9, "minute": 0,
+            "title": "Reunión", "recur": recur,
+            "project": "testproj", "proyecto_path": proyecto_path,
+        }
+
+    def test_non_recurring_marks_scheduled(self, orbit_env):
+        p = orbit_env["proyecto_path"]
+        _write_proyecto(p, "- [ ] Reunión (2026-03-08 09:00) @ring\n")
+        lines = p.read_text().splitlines()
+        idx = next(i for i, l in enumerate(lines) if "Reunión" in l)
+        r = self._reminder(p, line_index=idx)
+        _process_reminder(r, p, TARGET)
+        assert "- [~]" in p.read_text()
+
+    def test_recurring_advances_date(self, orbit_env):
+        p = orbit_env["proyecto_path"]
+        _write_proyecto(p, "- [~] Standup (2026-03-08 08:30) @ring @weekly\n")
+        lines = p.read_text().splitlines()
+        idx = next(i for i, l in enumerate(lines) if "Standup" in l)
+        r = self._reminder(p, line_index=idx, recur="@weekly")
+        _process_reminder(r, p, TARGET)
+        content = p.read_text()
+        assert "2026-03-15" in content
+        assert "- [ ]" in content
 
 
 # ── inject_reminders_into_note ────────────────────────────────────────────────

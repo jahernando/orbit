@@ -55,13 +55,12 @@ def _next_date(d: date, recur: str) -> date:
     return d
 
 
-def _parse_reminders(proyecto_path: Path, target: date) -> list:
-    """Return reminder dicts for target date — scans ## ✅ Tareas (@ring)
-    and legacy ## ⏰ Recordatorios formats."""
-    results = []
-    lines = proyecto_path.read_text().splitlines()
+def _parse_reminders(lines: list, proyecto_path: Path, target: date) -> list:
+    """Return reminder dicts for target date from ## ✅ Tareas (@ring tasks).
 
-    # ── New format: ## ✅ Tareas with @ring ───────────────────────────────────
+    Skips [~] tasks (already scheduled) to avoid duplicate alarms.
+    """
+    results = []
     in_section = False
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -74,6 +73,8 @@ def _parse_reminders(proyecto_path: Path, target: date) -> list:
             continue
         task = parse_task(line)
         if not task or task["done"] or not task.get("ring"):
+            continue
+        if task.get("scheduled"):           # [~] already in Reminders.app — skip
             continue
         if not task["due"] or date.fromisoformat(task["due"]) != target:
             continue
@@ -91,7 +92,6 @@ def _parse_reminders(proyecto_path: Path, target: date) -> list:
             "project":       proyecto_path.parent.name,
             "proyecto_path": proyecto_path,
         })
-
     return results
 
 
@@ -139,9 +139,9 @@ def _advance_recurring(proyecto_path: Path, line_index: int,
     next_d = _next_date(current_date, recur)
     lines  = proyecto_path.read_text().splitlines(keepends=True)
     line   = lines[line_index]
-    # Replace date inside (YYYY-MM-DD) or (YYYY-MM-DD HH:MM) — the first ISO date found
+    if "- [~] " not in line:
+        print(f"  ⚠️  _advance_recurring: línea {line_index} no tiene [~], avanzando igualmente")
     line   = re.sub(r"\d{4}-\d{2}-\d{2}", next_d.isoformat(), line, count=1)
-    # Reset [~] → [ ] so the task is re-scheduled on the next day it falls due
     line   = line.replace("- [~] ", "- [ ] ", 1)
     lines[line_index] = line
     proyecto_path.write_text("".join(lines))
@@ -150,6 +150,17 @@ def _advance_recurring(proyecto_path: Path, line_index: int,
 
 INJECT_START = "<!-- orbit:reminders:start -->"
 INJECT_END   = "<!-- orbit:reminders:end -->"
+
+
+def _process_reminder(r: dict, proyecto_path: Path, target: date) -> None:
+    """After successful AppleScript call: advance recurring task or mark as scheduled."""
+    if r.get("recur"):
+        next_d = _advance_recurring(proyecto_path, r["line_index"], r["recur"], target)
+        print(f"  ⏰ [{r['project']}] {r['hour']:02d}:{r['minute']:02d} {r['title']} "
+              f"{r['recur']} → próximo: {next_d}")
+    else:
+        _mark_scheduled(proyecto_path, r["line_index"])
+        print(f"  ⏰ [{r['project']}] {r['hour']:02d}:{r['minute']:02d} {r['title']}")
 
 
 def schedule_today_reminders(target: Optional[date] = None) -> list:
@@ -169,24 +180,16 @@ def schedule_today_reminders(target: Optional[date] = None) -> list:
         if not proyecto_path or not proyecto_path.exists():
             continue
 
-        reminders = _parse_reminders(proyecto_path, target)
+        lines     = proyecto_path.read_text().splitlines()
+        reminders = _parse_reminders(lines, proyecto_path, target)
         for r in reminders:
             ok = _schedule_via_applescript(
-                title=r["title"],
-                project=r["project"],
+                title=r["title"], project=r["project"],
                 year=target.year, month=target.month, day=target.day,
                 hour=r["hour"], minute=r["minute"],
             )
             if ok:
-                if r.get("recur"):
-                    next_d = _advance_recurring(
-                        proyecto_path, r["line_index"], r["recur"], target,
-                    )
-                    print(f"  ⏰ [{r['project']}] {r['hour']:02d}:{r['minute']:02d} {r['title']} "
-                          f"{r['recur']} → próximo: {next_d}")
-                else:
-                    _mark_scheduled(proyecto_path, r["line_index"])
-                    print(f"  ⏰ [{r['project']}] {r['hour']:02d}:{r['minute']:02d} {r['title']}")
+                _process_reminder(r, proyecto_path, target)
                 scheduled.append(r)
             else:
                 print(f"  ⚠️  No se pudo programar: [{r['project']}] {r['title']}")

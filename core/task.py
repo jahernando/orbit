@@ -1,23 +1,11 @@
 """orbit tarea — open, schedule or close tasks in projects or daily note."""
 
-import re
 from datetime import date
 from pathlib import Path
 from typing import Optional
 
 from core.log import PROJECTS_DIR, find_project, find_proyecto_file
-from core.tasks import _extract_date_from_parens
-
-_RE_TRAILING_TAGS = re.compile(r'(\s+@\S+)+\s*$')
-
-
-def _parse_tags(content: str):
-    """Strip trailing @tags. Returns (clean_content, has_ring, recur_or_None)."""
-    all_tags = re.findall(r'@\S+', content)
-    clean = _RE_TRAILING_TAGS.sub('', content).strip() if all_tags else content
-    ring = '@ring' in all_tags
-    recur = next((t for t in all_tags if t != '@ring'), None)
-    return clean, ring, recur
+from core.tasks import _extract_date_from_parens, parse_tags
 
 
 def _build_tags(ring: bool, recur: Optional[str]) -> str:
@@ -42,7 +30,7 @@ def _find_task_line(lines: list, task_desc: str, done: bool = False) -> int:
         if not any(stripped.startswith(m) for m in markers):
             continue
         content = stripped[5:].strip()
-        content_clean, _, _ = _parse_tags(content)
+        content_clean, _, _ = parse_tags(content)
         desc_only, _ = _extract_date_from_parens(content_clean)
         if task_desc.lower() in desc_only.lower():
             return i
@@ -217,7 +205,7 @@ def run_task_schedule(project: Optional[str], task_desc: str,
             continue
         stripped = lines[idx].strip()
         content  = stripped[5:].strip()
-        content_clean, old_ring, old_recur = _parse_tags(content)
+        content_clean, old_ring, old_recur = parse_tags(content)
         desc_only, old_date = _extract_date_from_parens(content_clean)
         if recur is not None:
             new_recur = recur or None          # explicit: use as-is (empty str → remove)
@@ -255,7 +243,7 @@ def run_task_close(project: Optional[str], task_desc: str, fecha: Optional[str],
             continue
         stripped = lines[idx].strip()
         content  = stripped[5:].strip()
-        content_clean, old_ring, recur_tag = _parse_tags(content)
+        content_clean, old_ring, recur_tag = parse_tags(content)
         # If recurring and interactive, ask whether to keep recurrence
         keep = True
         if recur_tag and interactive:
