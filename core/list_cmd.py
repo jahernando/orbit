@@ -16,45 +16,6 @@ SECTION_HEADINGS = {
 }
 
 
-def _extract_rings(proyecto_path: Path) -> list:
-    """Extract pending rings from ## ✅ Tareas (@ring) and legacy ## ⏰ Recordatorios."""
-    import re
-    lines = proyecto_path.read_text().splitlines()
-    items = []
-
-    # New format: @ring in ## ✅ Tareas
-    in_section = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("## ") and "✅" in stripped and "tareas" in stripped.lower():
-            in_section = True
-            continue
-        if in_section and stripped.startswith("## "):
-            break
-        if not in_section:
-            continue
-        if not (stripped.startswith("- [ ]") or stripped.startswith("- [~]")):
-            continue
-        if "@ring" in stripped:
-            items.append(stripped)
-
-    # Legacy format: ## ⏰ Recordatorios
-    in_section = False
-    for line in lines:
-        stripped = line.strip()
-        if "## ⏰ Recordatorios" in stripped:
-            in_section = True
-            continue
-        if in_section and stripped.startswith("## "):
-            break
-        if not in_section:
-            continue
-        if stripped and stripped != "-" and not stripped.startswith("<!--"):
-            items.append(stripped)
-
-    return items
-
-
 def _extract_section(proyecto_path: Path, heading: str) -> list:
     """Return non-empty, non-placeholder lines from a section."""
     lines      = proyecto_path.read_text().splitlines()
@@ -157,34 +118,6 @@ def run_list_section(project: Optional[str], section: str,
     if not PROJECTS_DIR.exists():
         print("Error: directorio de proyectos no encontrado")
         return 1
-
-    # rings has special handling: unified tasks + legacy section
-    if section == "rings":
-        title = "⏰ Recordatorios"
-        lines = [title, "═" * len(title), ""]
-        found = False
-        for project_dir in sorted(PROJECTS_DIR.iterdir()):
-            if not project_dir.is_dir():
-                continue
-            if project and project.lower() not in project_dir.name.lower():
-                continue
-            proyecto_path = find_proyecto_file(project_dir)
-            if not proyecto_path or not proyecto_path.exists():
-                continue
-            items = _extract_rings(proyecto_path)
-            if not items:
-                continue
-            found = True
-            rel_path = f"../../🚀proyectos/{project_dir.name}/{proyecto_path.name}"
-            lines.append(f"### [{project_dir.name}]({rel_path})")
-            lines.extend(f"  {item}" for item in items)
-            lines.append("")
-        if not found:
-            print("No hay recordatorios pendientes.")
-            return 0
-        _write_output("\n".join(lines), output, open_after, editor,
-                      MISION_LOG_DIR / "rings.md")
-        return 0
 
     heading = SECTION_HEADINGS.get(section)
     if not heading:

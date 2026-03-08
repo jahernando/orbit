@@ -61,25 +61,21 @@ Orbit/
 
 `mission` es el proyecto raíz del workspace:
 - `orbit add task "desc"` sin proyecto → va a mission
-- `orbit add ring "desc" --date ... --time ...` sin proyecto → va a mission
-- `--date today` en `add task/ring` → también se copia al diario del día
-- `--date today` en `add ring` → también se programa en Reminders.app
-- `orbit report week/month` guarda una entrada en el logbook de mission
+- `orbit add task "desc" --ring` → tarea con alarma en Reminders.app
+- `--date today` → también se copia al diario del día
+- `--date today --ring` → también se programa en Reminders.app
+- Los reportes de día, semana y mes se generan automáticamente al salir del shell
 
 ---
 
 ## Flujo de trabajo diario
 
 ```bash
-orbit create day          # crea diario (y semanal/mensual en cascada si no existen)
-                          # hereda foco de la nota semanal automáticamente
-                          # programa los recordatorios del día en Reminders.app
-
 orbit log next-kr "El fit converge con N=500" --entry resultado
 orbit add task "Revisar paper de Gonzalez" --date "next friday"
 orbit add ring "Reunión grupo NEXT" --date today --time 10:00
 
-orbit report day --inject # al final del día
+orbit report stats --from "last month" --to today
 ```
 
 ---
@@ -101,18 +97,15 @@ orbit claude   # abre Claude Code en el directorio Orbit
 orbit create project --name NEXT-GALA --type investigacion --priority alta
 orbit create project --name mission --type mision --priority alta
 orbit create import  --file ~/Downloads/NEXT-Kr.enex --project next-kr
-orbit create day     --focus next-kr orbit
-orbit create week
-orbit create month
 ```
 
 ### add
 
 ```bash
 orbit add task next-kr "Reproducir figura 3" --date "next friday"
-orbit add task "Llamar al banco" --date today          # → mission + diario
-orbit add ring "Reunión CERN" --date today --time 10:00 # → mission + diario + Reminders.app
-orbit add ring next-kr "Reunión semanal" --date "next monday" --time 09:00 --recur weekly
+orbit add task "Llamar al banco" --date today              # → mission + diario
+orbit add task "Reunión CERN" --date today --ring          # → alarma + Reminders.app
+orbit add task next-kr "Reunión semanal" --date "next monday" --ring --recur weekly
 orbit add ref  next-kr "Gonzalez 2024" --file ~/Downloads/gonzalez2024.pdf --sync
 orbit add result next-kr "σ/E = 2.3% @ 1 MeV" --url https://...
 orbit add decision next-kr "Usaremos calibración relativa"
@@ -121,12 +114,8 @@ orbit add decision next-kr "Usaremos calibración relativa"
 ### change
 
 ```bash
-orbit change status "en marcha" next-kr next-gala
-orbit change status parado --from-status esperando
-orbit change priority alta --type investigacion
 orbit change task schedule next-kr "Reproducir figura" --date "next monday"
 orbit change task close next-kr "Reproducir figura"
-orbit change ring schedule next-kr "Reunión semanal" --date "next monday" --time 09:00
 ```
 
 ### list
@@ -136,20 +125,13 @@ orbit list projects
 orbit list projects --type investigacion --status "en marcha"
 orbit list tasks --priority alta
 orbit list tasks --project next-kr
-orbit list rings
-orbit list refs next-kr
-orbit list decisions
+orbit list tasks --ring                    # solo tareas con alarma (⏰)
 ```
 
 ### report
 
 ```bash
-orbit report day
-orbit report week --inject
-orbit report month --inject --apply
 orbit report stats --from "last month" --to today
-orbit report status
-orbit report status --apply
 ```
 
 ### log y search
@@ -197,27 +179,28 @@ orbit info help       # muestra el help completo de orbit
 
 ---
 
-## Recordatorios recurrentes
+## Tareas con alarma (rings)
 
-En `proyecto.md`, sección `## ⏰ Recordatorios`:
+Las tareas con `@ring` en `proyecto.md` se programan automáticamente en Reminders.app al entrar en el shell. Se marcan `[~]` una vez programadas. Las recurrentes avanzan la fecha a la siguiente ocurrencia.
 
 ```markdown
-- [ ] 2026-03-10 09:00 Reunión semanal del grupo @weekly
-- [ ] 2026-03-07 08:30 Standup @daily
-- [ ] 2026-03-01 10:00 Revisión mensual @monthly
-- [ ] 2026-03-07 09:00 Backup datos @every:3d
+## ✅ Tareas
+- [ ] Reunión semanal del grupo (2026-03-10 09:00) @ring @weekly
+- [ ] Standup (2026-03-07 08:30) @ring @daily
+- [ ] Revisión mensual (2026-03-01 10:00) @ring @monthly
 ```
 
-Al ejecutar `orbit create day`, los recordatorios de hoy se programan automáticamente en Reminders.app y se marcan `[~]`. Los recurrentes avanzan la fecha a la siguiente ocurrencia.
+Para añadir tareas con alarma:
+
+```bash
+orbit add task "Reunión grupo" --date "next monday" --time 09:00 --ring
+orbit add task "Standup" --date today --ring --recur daily
+```
 
 ---
 
 ## Automatización diaria (cron)
 
-```bash
-# Crear la nota del día automáticamente a las 8:00 (lunes-viernes)
-0 8 * * 1-5 cd /Users/hernando/Orbit && python3 orbit.py create day --no-open
-```
 
 Si la nota ya existe (creada manualmente antes), el cron no hace nada.
 

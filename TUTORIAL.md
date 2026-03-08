@@ -75,16 +75,12 @@ orbit open next-kr
 
 ## 4. La nota diaria
 
-### Crear la nota del día
+### Notas de día, semana y mes
 
-```bash
-orbit create day
-```
+Al entrar en el shell de Orbit (`orbit`), las notas se crean automáticamente en cascada si no existen: primero el mes, luego la semana, luego el día. En cada paso se puede seleccionar el foco interactivamente.
 
-Orbit crea la nota diaria en `☀️mision-log/diario/YYYY-MM-DD.md`. Si no existe la nota semanal o mensual, las crea en cascada automáticamente.
-
-La nota incluye:
-- El proyecto en foco heredado de la nota semanal.
+La nota del día incluye:
+- El proyecto en foco seleccionado al entrar.
 - Las tareas próximas con fecha.
 - Los eventos del calendario (si está configurado).
 
@@ -104,8 +100,7 @@ orbit add task next-kr "Reproducir figura 3" --date "next friday"
 # Añadir una tarea para hoy (también aparece en el diario):
 orbit add task "Revisar email de Diego" --date today
 
-# Al final del día — inyectar resumen:
-orbit report day --inject
+# Al salir del shell, el reporte del día se inyecta automáticamente
 ```
 
 ---
@@ -140,21 +135,33 @@ orbit list tasks --priority alta         # filtrar por prioridad
 
 ---
 
-## 6. Recordatorios (rings)
+## 6. Tareas con alarma (rings)
 
-Los recordatorios son como tareas pero con hora, y se programan automáticamente en **Reminders.app** de macOS cuando son para hoy.
+Las tareas con alarma son tareas normales con la flag `--ring`. Cuando son para hoy, se programan automáticamente en **Reminders.app** de macOS.
 
 ```bash
-# Añadir un recordatorio:
-orbit add ring next-kr "Reunión semanal del grupo" --date "next monday" --time 09:00
+# Añadir una tarea con alarma:
+orbit add task next-kr "Reunión semanal del grupo" --date "next monday" --ring
+# Si omites --time, Orbit te pide la hora en el prompt (defecto 09:00)
+
+# Con hora explícita:
+orbit add task next-kr "Reunión semanal" --date "next monday" --time 09:00 --ring
 
 # Con recurrencia:
-orbit add ring "Standup diario" --date today --time 08:30 --recur daily
-orbit add ring next-kr "Revisión mensual" --date "2026-04-01" --time 10:00 --recur monthly
+orbit add task "Standup diario" --date today --ring --recur daily
+orbit add task next-kr "Revisión mensual" --date "2026-04-01" --time 10:00 --ring --recur monthly
 
-# Reprogramar / cerrar:
-orbit change ring schedule next-kr "Reunión semanal" --date "next monday" --time 09:00
-orbit change ring close next-kr "Reunión semanal"
+# Reprogramar / cerrar (igual que tareas normales):
+orbit change task schedule next-kr "Reunión semanal" --date "next monday" --time 09:00
+orbit change task close next-kr "Reunión semanal"
+```
+
+Al reprogramar o cerrar una tarea recurrente, Orbit pregunta si quieres mantener, cambiar o eliminar la recurrencia.
+
+Las tareas con alarma aparecen marcadas con ⏰ en los listados. Para ver solo las alarmas:
+
+```bash
+orbit list tasks --ring
 ```
 
 Reglas de recurrencia: `daily` · `weekly` · `monthly` · `yearly` · `weekdays` · `every:3d` · `every:2w`
@@ -201,31 +208,9 @@ orbit search "sigma" --type investigacion           # por tipo de proyecto
 
 ## 9. Notas semanal y mensual
 
-### Nota semanal
-
-```bash
-orbit create week
-```
-
-Crea `☀️mision-log/semanal/YYYY-Wnn.md` con los proyectos en foco (heredados del mensual o elegidos interactivamente) y las tareas próximas de las siguientes 2 semanas.
-
 ### Nota mensual
 
-```bash
-orbit create month
-```
-
 Crea `☀️mision-log/mensual/YYYY-MM.md` con los 3 proyectos más activos como foco del mes.
-
-### Reportes
-
-```bash
-orbit report day    --inject   # inyecta actividad del día en la nota diaria
-orbit report week   --inject   # inyecta actividad de la semana en la nota semanal
-orbit report month  --inject   # inyecta actividad del mes en la nota mensual
-orbit report status            # tabla de todos los proyectos con actividad reciente
-orbit report status --apply    # aplica las propuestas de cambio de estado/prioridad
-```
 
 El reporte semanal y mensual quedan registrados automáticamente en el logbook de **mission**.
 
@@ -238,10 +223,7 @@ orbit list projects                          # todos los proyectos ordenados por
 orbit list projects --type investigacion     # filtrar por tipo
 orbit list projects --status "en marcha"     # filtrar por estado
 orbit list tasks                             # todas las tareas pendientes
-orbit list rings                             # todos los recordatorios
-orbit list refs    next-kr                   # referencias de un proyecto
-orbit list results next-kr                   # resultados de un proyecto
-orbit list decisions                         # decisiones de todos los proyectos
+orbit list tasks --ring                      # solo tareas con alarma (⏰)
 ```
 
 ---
@@ -249,13 +231,9 @@ orbit list decisions                         # decisiones de todos los proyectos
 ## 11. Cambiar estado y prioridad de proyectos
 
 ```bash
-orbit change status "en marcha" next-kr next-gala
-orbit change status parado --from-status esperando   # cambia todos los que estén esperando
-orbit change priority alta next-kr
-orbit change type gestion appec
 ```
 
-Estados: `inicial` · `en marcha` · `parado` · `esperando` · `durmiendo` · `completado`
+Estados: `inicial` · `en marcha` · `parado` · `durmiendo` · `completado`
 
 ---
 
@@ -313,11 +291,7 @@ crontab -e
 
 Añade:
 
-```
-0 8 * * 1-5 cd /Users/TU_USUARIO/Orbit && python3 orbit.py create day --no-open
-```
-
-Si la nota ya existe (porque la has creado antes), el cron no hace nada.
+Orbit gestiona automáticamente la creación de notas al entrar en el shell. No es necesario configurar un cron.
 
 ---
 
@@ -335,14 +309,13 @@ list tasks --priority alta
 log next-kr "Resolución del detector: 2.1% @ 511 keV" --entry resultado
 
 # Reprogramar una reunión:
-change ring schedule next-kr "Reunión grupo" --date "next thursday" --time 10:00
+change task schedule next-kr "Reunión grupo" --date "next thursday" --time 10:00
 
 # Añadir una idea nueva:
 log next-kr "Probar con diferentes regiones de interés para mejorar S/N" --entry idea
 
 Viernes por la tarde
 ────────────────────
-report week --inject               # resumen semanal en la nota
 open 2026-W10                      # revisar la semana en Typora
 ```
 

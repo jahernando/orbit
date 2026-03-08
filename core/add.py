@@ -1,8 +1,7 @@
-"""core/add.py — add items to project sections (ref, result, decision, ring)."""
+"""core/add.py — add items to project sections (ref, result, decision)."""
 
 import shutil
 import subprocess
-from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -11,75 +10,6 @@ from core.log import (
     format_entry, _append_entry,
 )
 from core.open import open_file
-
-MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
-DIARIO_DIR     = MISION_LOG_DIR / "diario"
-TEMPLATES_DIR  = Path(__file__).parent.parent / "📐templates"
-
-
-_REMINDERS_END = "<!-- orbit:reminders:end -->"
-_REMINDERS_START = "<!-- orbit:reminders:start -->"
-
-
-def _copy_ring_to_diary(ring_line: str) -> None:
-    """Insert a ring line into today's diary ⏰ Recordatorios section (before end marker)."""
-    today = date.today()
-    dest  = DIARIO_DIR / f"{today.isoformat()}.md"
-
-    if not dest.exists():
-        tpl = TEMPLATES_DIR / "diario.md"
-        if not tpl.exists():
-            return
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(tpl.read_text().replace("YYYY-MM-DD", today.isoformat()))
-
-    lines = dest.read_text().splitlines()
-
-    # 1. Insert before the reminders end marker if present
-    for i, line in enumerate(lines):
-        if line.strip() == _REMINDERS_END:
-            lines.insert(i, ring_line)
-            dest.write_text("\n".join(lines) + "\n")
-            print(f"  → diario {today.isoformat()}: {ring_line}")
-            return
-
-    # 2. Section heading exists but no markers — insert after heading
-    for i, line in enumerate(lines):
-        if line.strip().startswith("## ⏰") and "recordatorio" in line.lower():
-            lines[i:i+1] = [
-                line,
-                _REMINDERS_START,
-                ring_line,
-                _REMINDERS_END,
-            ]
-            dest.write_text("\n".join(lines) + "\n")
-            print(f"  → diario {today.isoformat()}: {ring_line}")
-            return
-
-    # 3. No section at all — inject full block after ## 🎯 Proyecto en foco
-    section_block = [
-        "",
-        "## ⏰ Recordatorios",
-        "",
-        _REMINDERS_START,
-        ring_line,
-        _REMINDERS_END,
-    ]
-    for i, line in enumerate(lines):
-        if line.strip().startswith("## 🎯"):
-            # find end of this section
-            j = i + 1
-            while j < len(lines) and not lines[j].startswith("## "):
-                j += 1
-            lines[j:j] = section_block
-            dest.write_text("\n".join(lines) + "\n")
-            print(f"  → diario {today.isoformat()}: {ring_line}")
-            return
-
-    # 4. Last resort: append
-    lines += section_block
-    dest.write_text("\n".join(lines) + "\n")
-    print(f"  → diario {today.isoformat()}: {ring_line}")
 
 # Maps action → (section heading, logbook tag, files subdirectory)
 SECTION_MAP = {

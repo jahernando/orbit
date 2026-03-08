@@ -15,20 +15,16 @@ orbit claude       # abre Claude Code en el directorio Orbit
 ```bash
 orbit create project  --name NOMBRE --type TIPO [--priority alta|media|baja]
 orbit create import   --file FICHERO.enex --project PROYECTO
-orbit create day      [--date D] [--force] [--focus P...] [--no-open] [--editor E]
-orbit create week     [--date D] [--force] [--focus P...] [--no-open] [--editor E]
-orbit create month    [--date D] [--force] [--focus P...] [--no-open] [--editor E]
 ```
 
-`create day` crea la nota mensual y semanal en cascada si no existen, y hereda el foco automáticamente.
+Las notas de día, semana y mes se crean automáticamente al entrar en el shell de Orbit.
 
 ---
 
 ## add — añadir items a un proyecto
 
 ```bash
-orbit add task     [project] <desc>   [--date D] [--time HH:MM] [--recur RULE] [--open]
-orbit add ring     [project] <desc>    --date D   --time HH:MM  [--recur RULE] [--open]
+orbit add task     [project] <desc>   [--date D] [--time HH:MM] [--ring] [--recur RULE] [--open]
 orbit add ref      <project> <título> [--url URL] [--file PATH] [--sync] [--open]
 orbit add result   <project> <título> [--url URL] [--file PATH] [--sync] [--open]
 orbit add decision <project> <título> [--url URL] [--file PATH] [--sync] [--open]
@@ -36,7 +32,8 @@ orbit add decision <project> <título> [--url URL] [--file PATH] [--sync] [--ope
 
 - Sin proyecto → va a **mission** por defecto
 - `--date today` → también se copia al diario del día
-- `--date today` en `ring` → también se programa en Reminders.app
+- `--ring` → tarea con alarma; si omites `--time` se pide en el prompt (defecto 09:00)
+- `--date today` + `--ring` → también se programa en Reminders.app
 - `--recur` acepta: `daily/diario` · `weekly/semanal` · `monthly/mensual` · `yearly/anual` · `weekdays/laborables` · `every:Nd` · `every:Nw`
 - `--sync` → `git add -f` sobre el fichero copiado
 
@@ -45,21 +42,11 @@ orbit add decision <project> <título> [--url URL] [--file PATH] [--sync] [--ope
 ## change — modificar cosas existentes
 
 ```bash
-# Proyectos
-orbit change status   <nuevo_estado>    [project...] [--from-status S] [--from-priority P] [--type T]
-orbit change priority <nueva_prioridad> [project...] [--from-status S] [--from-priority P] [--type T]
-orbit change type     <nuevo_tipo>      [project...] [--from-status S] [--from-priority P]
-
-# Tareas
 orbit change task schedule <project> <desc> --date D [--time HH:MM] [--recur RULE] [--open]
 orbit change task close    <project> <desc> [--date D] [--open]
-
-# Recordatorios
-orbit change ring schedule <project> <desc> --date D --time HH:MM [--recur RULE] [--open]
-orbit change ring close    <project> <desc> [--open]
 ```
 
-`change task close` con `@recur` avanza la fecha en vez de cerrar.
+`change task close` con `@recur` avanza la fecha en vez de cerrar (se pide confirmación interactiva).
 
 ---
 
@@ -67,29 +54,20 @@ orbit change ring close    <project> <desc> [--open]
 
 ```bash
 orbit list projects  [--type T] [--status S] [--priority P] [--output F] [--open]
-orbit list tasks     [--project P] [--type T] [--status S] [--priority P] [--date D] [--keyword K]
-orbit list rings     [project] [--output F] [--open]
-orbit list refs      [project] [--output F] [--open]
-orbit list results   [project] [--output F] [--open]
-orbit list decisions [project] [--output F] [--open]
+orbit list tasks     [--project P] [--type T] [--status S] [--priority P] [--date D] [--keyword K] [--ring]
 ```
+
+- `--ring` → muestra solo tareas con alarma (⏰)
 
 ---
 
 ## report — informes
 
-```bash
-orbit report day    [--date D] [--inject] [--output F] [--open] [--editor E]
-orbit report week   [--date D] [--inject] [--output F] [--open] [--editor E]
-orbit report month  [--date D] [--inject] [--apply]   [--output F] [--open] [--editor E]
-orbit report stats  [--date D] [--from D] [--to D] [--project P] [--type T] [--priority P] [--output F] [--open]
-orbit report status [--date D] [--apply] [--output F] [--open] [--editor E]
-```
+Los reportes de día, semana y mes se generan automáticamente al salir del shell.
 
-- `report week/month` guarda automáticamente una entrada en el logbook de **mission**
-- `--inject` → inyecta el reporte en la nota del período
-- `--apply`  → aplica cambios de estado/prioridad a los proyectos
-- `report status` → tabla proyecto · act-60 · act-30 · estado · prioridad → propuesta
+```bash
+orbit report stats  [--date D] [--from D] [--to D] [--project P] [--type T] [--priority P] [--output F] [--open]
+```
 
 ---
 
@@ -148,7 +126,7 @@ orbit info help       # muestra el help completo de orbit
 
 ## Estados
 
-`inicial` ⬜ · `en marcha` ▶️ · `parado` ⏸️ · `esperando` ⏳ · `durmiendo` 💤 · `completado` ✅
+`inicial` ⬜ · `en marcha` ▶️ · `parado` ⏸️ · `durmiendo` 💤 · `completado` ✅
 
 ## Prioridades
 
