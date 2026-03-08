@@ -1,7 +1,7 @@
 # 🌀next-ana-es
 
 🌀 Investigación
-▶️ En marcha
+parado
 🟡 Media
 ## 🎯 Objetivo
 Descripción breve del objetivo.
@@ -20,7 +20,5 @@ Descripción breve del objetivo.
 ## 📌 Decisiones
 -
 
-## ⏰ Recordatorios
-<!-- formato: - [ ] YYYY-MM-DD HH:MM descripción -->
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-Ana-Es.md)

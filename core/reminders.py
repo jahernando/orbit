@@ -58,10 +58,54 @@ def _next_date(d: date, recur: str) -> date:
     return d
 
 
+import re as _re
+
+
 def _parse_reminders(proyecto_path: Path, target: date) -> list:
-    """Return list of (line_index, hour, minute, title) for target date."""
+    """Return reminder dicts for target date — scans both new (## ✅ Tareas @ring)
+    and legacy (## ⏰ Recordatorios) formats."""
     results = []
     lines = proyecto_path.read_text().splitlines()
+
+    # ── New format: ## ✅ Tareas with @ring ───────────────────────────────────
+    in_section = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("## ") and "✅" in stripped and "tareas" in stripped.lower():
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            break
+        if not in_section:
+            continue
+        if not (stripped.startswith("- [ ]") or stripped.startswith("- [~]")):
+            continue
+        content = stripped[5:].strip()
+        all_tags = _re.findall(r'@\S+', content)
+        if '@ring' not in all_tags:
+            continue
+        content_clean = _re.sub(r'(\s+@\S+)+\s*$', '', content).strip()
+        # Expect: Title (YYYY-MM-DD HH:MM)
+        m2 = _re.match(r'^(.+?)\s+\((\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\)\s*$', content_clean)
+        if not m2:
+            continue
+        task_date = date.fromisoformat(m2.group(2))
+        if task_date != target:
+            continue
+        h_str, mi_str = m2.group(3).split(':')
+        recur = next((t for t in all_tags if t != '@ring'), None)
+        results.append({
+            "line_index":    i,
+            "hour":          int(h_str),
+            "minute":        int(mi_str),
+            "title":         m2.group(1).strip(),
+            "recur":         recur,
+            "date":          task_date,
+            "project":       proyecto_path.parent.name,
+            "proyecto_path": proyecto_path,
+        })
+
+    # ── Legacy format: ## ⏰ Recordatorios ────────────────────────────────────
     in_section = False
     for i, line in enumerate(lines):
         if "## ⏰ Recordatorios" in line:
@@ -87,6 +131,7 @@ def _parse_reminders(proyecto_path: Path, target: date) -> list:
             "project":       proyecto_path.parent.name,
             "proyecto_path": proyecto_path,
         })
+
     return results
 
 
@@ -94,7 +139,7 @@ def _schedule_via_applescript(title: str, project: str,
                                year: int, month: int, day: int,
                                hour: int, minute: int) -> bool:
     """Create a reminder in Reminders.app. Returns True on success."""
-    full_title = f"[{project}] {title}"
+    full_title = f"🚀 [{project}] {title}"
     script = f"""
 tell application "Reminders"
     if not (exists list "{REMINDERS_LIST}") then
@@ -149,75 +194,18 @@ def _find_ring_line(lines: list, desc: str) -> int:
 
 def run_ring_schedule(project: str, desc: str, date_str: str,
                       time_str: str, recur: Optional[str] = None) -> int:
-    from core.log import find_project, find_proyecto_file
-    project_dir = find_project(project)
-    if not project_dir:
-        return 1
-    proyecto_path = find_proyecto_file(project_dir)
-    if not proyecto_path or not proyecto_path.exists():
-        print(f"Error: fichero de proyecto no encontrado en {project_dir}")
-        return 1
-
-    lines = proyecto_path.read_text().splitlines()
-    in_section = False
-    idx = -1
-    for i, line in enumerate(lines):
-        if "## ⏰ Recordatorios" in line:
-            in_section = True
-            continue
-        if in_section and line.startswith("## "):
-            break
-        if not in_section:
-            continue
-        m = _RE_REMINDER.match(line.strip())
-        if m and desc.lower() in m.group(4).lower():
-            idx = i
-            break
-
-    if idx == -1:
-        print(f"Error: no se encontró recordatorio que coincida con '{desc}'")
-        return 1
-
-    m      = _RE_REMINDER.match(lines[idx].strip())
-    old_recur = m.group(5).strip() if m and m.group(5) else None
-    new_recur = recur or old_recur
-    recur_sfx = f" {new_recur}" if new_recur else ""
-    old_date  = m.group(1) if m else "?"
-    lines[idx] = f"- [ ] {date_str} {time_str} {desc}{recur_sfx}"
-    proyecto_path.write_text("\n".join(lines) + "\n")
-    print(f"✓ [{project_dir.name}] Recordatorio reprogramado (antes: {old_date}) → {date_str} {time_str}: {desc}")
-    return 0
+    """Reschedule a ring — delegates to run_task_schedule (unified format)."""
+    from core.task import run_task_schedule
+    return run_task_schedule(
+        project=project, task_desc=desc,
+        fecha=date_str, time_str=time_str, recur=recur,
+    )
 
 
 def run_ring_close(project: str, desc: str) -> int:
-    from core.log import find_project, find_proyecto_file
-    project_dir = find_project(project)
-    if not project_dir:
-        return 1
-    proyecto_path = find_proyecto_file(project_dir)
-    if not proyecto_path or not proyecto_path.exists():
-        print(f"Error: fichero de proyecto no encontrado en {project_dir}")
-        return 1
-
-    lines = proyecto_path.read_text().splitlines(keepends=True)
-    in_section = False
-    for i, line in enumerate(lines):
-        if "## ⏰ Recordatorios" in line:
-            in_section = True
-            continue
-        if in_section and line.strip().startswith("## "):
-            break
-        if not in_section:
-            continue
-        m = _RE_REMINDER.match(line.strip())
-        if m and desc.lower() in m.group(4).lower():
-            lines[i] = lines[i].replace("- [ ] ", "- [~] ", 1)
-            proyecto_path.write_text("".join(lines))
-            print(f"✓ [{project_dir.name}] Recordatorio cerrado: {m.group(4).strip()}")
-            return 0
-
-    print(f"Error: no se encontró recordatorio que coincida con '{desc}'")
-    return 1
+    """Close/mark a ring as done — delegates to run_task_close (unified format)."""
+    from core.task import run_task_close
+    return run_task_close(project=project, task_desc=desc, fecha=None)
 
 
 INJECT_START = "<!-- orbit:reminders:start -->"
@@ -274,7 +262,7 @@ def inject_reminders_into_note(note_path: Path, reminders: list) -> None:
     if INJECT_START not in text or INJECT_END not in text:
         return
     def _link(r):
-        anchor = "recordatorios"
+        anchor = "tareas"
         path   = r["proyecto_path"].resolve()
         return f"[{r['project']}](file://{path}#{anchor})"
 

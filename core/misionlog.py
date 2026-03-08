@@ -18,38 +18,49 @@ SEMANAL_DIR = MISION_LOG_DIR / "semanal"
 MENSUAL_DIR = MISION_LOG_DIR / "mensual"
 
 
-def _prompt_focus(candidates: list, max_count: int, label: str) -> list:
-    """Show focus project candidates and let the user pick."""
-    print(f"\n{label}:")
-    for i, name in enumerate(candidates, 1):
-        print(f"  {i}. {name}")
-    plural = f"hasta {max_count}" if max_count > 1 else "uno"
-    default_hint = "primero" if max_count == 1 else "todos"
-    print(f"Elige {plural} (intro = {default_hint}, número, nombre parcial, o combinación: '1, next-gala'):")
-    try:
-        resp = input("> ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return []
-    if not resp:
-        return candidates[:max_count]
-    selected = []
-    for token in resp.split(","):
-        token = token.strip()
-        if not token:
+MAX_MONTH_FOCUS = 6
+
+_TYPE_ORDER = ["investigacion", "docencia", "gestion", "formacion", "software", "personal", "mision"]
+_TYPE_LABELS = {
+    "investigacion": "🌀 Investigación",
+    "docencia":      "📚 Docencia",
+    "gestion":       "⚙️ Gestión",
+    "formacion":     "📖 Formación",
+    "software":      "💻 Software",
+    "personal":      "🌿 Personal",
+    "mision":        "☀️ Misión",
+}
+
+
+def _active_projects_by_type() -> dict:
+    """Return active projects grouped by type, ordered by _TYPE_ORDER, sorted by priority within each group."""
+    from core.tasks import load_project_meta, find_proyecto_file
+    PRIORITY_ORDER = {"alta": 0, "media": 1, "baja": 2}
+    groups: dict = {t: [] for t in _TYPE_ORDER}
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
             continue
-        try:
-            idx = int(token) - 1
-            if 0 <= idx < len(candidates):
-                selected.append(candidates[idx])
-        except ValueError:
-            selected.append(token)  # partial name — resolved later by _inject_focus_projects
-    return selected[:max_count]
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path or not proyecto_path.exists():
+            continue
+        meta = load_project_meta(proyecto_path)
+        if "completado" in meta["estado_raw"] or "durmiendo" in meta["estado_raw"]:
+            continue
+        tipo_raw = meta["tipo_raw"]
+        prio = next((k for k in PRIORITY_ORDER if k in meta["prioridad_raw"]), "baja")
+        bucket = next((t for t in _TYPE_ORDER if t in tipo_raw), "personal")
+        groups[bucket].append((PRIORITY_ORDER[prio], project_dir.name))
+    result = {}
+    for t in _TYPE_ORDER:
+        if groups[t]:
+            groups[t].sort()
+            result[t] = [name for _, name in groups[t]]
+    return result
 
 
-def _active_projects_by_priority(max_count: int) -> list:
-    """Return up to max_count active project names sorted by priority."""
-    from core.tasks import load_project_meta, find_proyecto_file, normalize
+def _top_active_projects(max_count: int) -> list:
+    """Return up to max_count active project names sorted by priority (non-TTY fallback)."""
+    from core.tasks import load_project_meta, find_proyecto_file
     PRIORITY_ORDER = {"alta": 0, "media": 1, "baja": 2}
     results = []
     for project_dir in sorted(PROJECTS_DIR.iterdir()):
@@ -61,10 +72,61 @@ def _active_projects_by_priority(max_count: int) -> list:
         meta = load_project_meta(proyecto_path)
         if "completado" in meta["estado_raw"] or "durmiendo" in meta["estado_raw"]:
             continue
-        prio = next((k for k in PRIORITY_ORDER if normalize(k) in meta["prioridad_raw"]), "baja")
+        prio = next((k for k in PRIORITY_ORDER if k in meta["prioridad_raw"]), "baja")
         results.append((PRIORITY_ORDER[prio], project_dir.name))
     results.sort()
-    return [name for _, name in results[:max_count * 4]]  # offer more than max so user can pick
+    return [name for _, name in results[:max_count]]
+
+
+def _prompt_focus_grouped(groups: dict, highlighted: list, max_count: int, label: str) -> list:
+    """Show projects grouped by type with optional highlighted suggestions. Return selected names."""
+    print(f"\n{label}:")
+    idx = 1
+    all_names: list = []
+
+    if highlighted:
+        print("  🎯 Sugeridos:")
+        for name in highlighted:
+            print(f"    {idx}. {name}")
+            all_names.append(name)
+            idx += 1
+
+    for tipo, names in groups.items():
+        remaining = [n for n in names if n not in highlighted]
+        if not remaining:
+            continue
+        print(f"  {_TYPE_LABELS.get(tipo, tipo)}:")
+        for name in remaining:
+            print(f"    {idx}. {name}")
+            all_names.append(name)
+            idx += 1
+
+    plural = f"hasta {max_count}" if max_count > 1 else "uno"
+    print(f"Elige {plural} separados por coma (intro = ninguno):")
+    try:
+        resp = input("> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return []
+
+    if not resp:
+        return []
+
+    selected: list = []
+    for token in resp.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            i = int(token) - 1
+            if 0 <= i < len(all_names):
+                name = all_names[i]
+                if name not in selected:
+                    selected.append(name)
+        except ValueError:
+            if token not in selected:
+                selected.append(token)  # partial name — resolved later by _inject_focus_projects
+    return selected[:max_count]
 
 
 def _week_key(d: date) -> str:
@@ -99,45 +161,66 @@ def _schedule_day_reminders(target: date, dest: Path) -> None:
         pass  # never block orbit day
 
 
+# ── shell startup ─────────────────────────────────────────────────────────────
+
+def run_shell_startup(editor: str = "typora") -> None:
+    """Sequential cascade on shell entry: create month/week if missing, always open day."""
+    today = date.today()
+
+    month_str    = today.strftime("%Y-%m")
+    mensual_path = MENSUAL_DIR / f"{month_str}.md"
+    if not mensual_path.exists():
+        run_month(date_str=month_str, force=False, focus=None, open_after=False, editor=editor)
+
+    wkey         = _week_key(today)
+    semanal_path = SEMANAL_DIR / f"{wkey}.md"
+    if not semanal_path.exists():
+        run_week(date_str=today.isoformat(), force=False, focus=None, open_after=False, editor=editor)
+
+    run_day(date_str=None, force=False, focus=None, open_after=True, prompt=False)
+
+
 # ── day ──────────────────────────────────────────────────────────────────────
 
-def _ensure_cascade(target: date, editor: str) -> str:
+def _ensure_cascade(target: date, editor: str, open_after: bool = False) -> str:
     """Create month and week notes if they don't exist. Returns the week key."""
     month_str    = target.strftime("%Y-%m")
     mensual_path = MENSUAL_DIR / f"{month_str}.md"
     if not mensual_path.exists():
         print(f"  → creando nota mensual {month_str}…")
         run_month(date_str=month_str, force=False, focus=None,
-                  open_after=False, editor=editor)
+                  open_after=open_after, editor=editor)
 
     wkey         = _week_key(target)
     semanal_path = SEMANAL_DIR / f"{wkey}.md"
     if not semanal_path.exists():
         print(f"  → creando nota semanal {wkey}…")
         run_week(date_str=target.isoformat(), force=False, focus=None,
-                 open_after=False, editor=editor)
+                 open_after=open_after, editor=editor)
     return wkey
 
 
 def run_day(date_str: Optional[str], force: bool, focus: list = None,
-            open_after: bool = True, editor: str = "typora") -> int:
+            open_after: bool = True, editor: str = "typora", prompt: bool = True) -> int:
     target = date.fromisoformat(date_str) if date_str else date.today()
     dest   = DIARIO_DIR / f"{target.isoformat()}.md"
 
     # ── Note already exists ───────────────────────────────────────────────────
     if dest.exists() and not force:
-        _ensure_cascade(target, editor)  # always ensure week/month exist
-        if sys.stdin.isatty():
+        _ensure_cascade(target, editor, open_after=False)  # create week/month silently if missing
+        if prompt and sys.stdin.isatty():
             print(f"La nota del día ya existe: {dest.name}")
             resp = input("¿Abrir nota existente o crear nueva? [abrir/nueva] (intro = abrir): ").strip().lower()
             if resp in ("nueva", "n", "new"):
                 pass  # fall through to create a new note
             else:
                 if open_after:
+                    print("¡Aquí tienes tu nota del día!")
                     open_file(dest, editor)
                 return 0
         else:
             if open_after:
+                print("¡Aquí tienes tu nota del día!")
                 open_file(dest, editor)
             return 0
 
@@ -148,28 +231,32 @@ def run_day(date_str: Optional[str], force: bool, focus: list = None,
     content = tpl.read_text().replace("YYYY-MM-DD", target.isoformat())
 
     # ── Cascade: ensure month and week notes exist ────────────────────────────
-    wkey         = _ensure_cascade(target, editor)
+    wkey         = _ensure_cascade(target, editor, open_after=False)
     semanal_path = SEMANAL_DIR / f"{wkey}.md"
 
     # ── Focus: prompt interactively or auto-inherit from semanal (non-TTY) ───
     if not focus:
-        candidates = _parse_focus_projects(semanal_path, "## 🎯 Proyectos en foco")
-        if candidates:
-            if sys.stdin.isatty():
-                focus = _prompt_focus(candidates, 1, f"Proyectos en foco de la semana {wkey}")
-            else:
-                focus = candidates[:1]
+        if sys.stdin.isatty():
+            suggested = _parse_focus_projects(semanal_path, "## 🎯 Proyectos en foco")
+            groups = _active_projects_by_type()
+            focus = _prompt_focus_grouped(groups, suggested, 1, f"Proyecto en foco — {target.isoformat()}")
+        else:
+            candidates = _parse_focus_projects(semanal_path, "## 🎯 Proyectos en foco")
+            focus = candidates[:1]
+            if focus:
                 print(f"  → foco día heredado: {focus[0]}")
 
     rc = _write(dest, content, None, True)  # always overwrite here (guard is above)
     if rc == 0:
         if focus:
             _inject_focus_projects(dest, focus[:1], "## 🎯 Proyecto en foco")
+            _elevate_focus_priorities(focus[:1])
         upcoming = _collect_upcoming_tasks(7)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
         _sync_calendar_to_day(dest, target)
         _schedule_day_reminders(target, dest)
         if open_after:
+            print("¡Aquí tienes tu nota del día!")
             open_file(dest, editor)
     return rc
 
@@ -295,18 +382,21 @@ def run_week(date_str: Optional[str], force: bool, focus: list = None,
     if not focus:
         month_str    = d.strftime("%Y-%m")
         mensual_path = MENSUAL_DIR / f"{month_str}.md"
-        candidates   = _parse_focus_projects(mensual_path, "## 🎯 Proyectos en foco")
-        if candidates:
-            if sys.stdin.isatty():
-                focus = _prompt_focus(candidates, 2, f"Proyectos en foco del mes {month_str}")
-            else:
-                focus = candidates[:2]
+        if sys.stdin.isatty():
+            suggested = _parse_focus_projects(mensual_path, "## 🎯 Proyectos en foco")
+            groups = _active_projects_by_type()
+            focus = _prompt_focus_grouped(groups, suggested, 2, f"Proyectos en foco — semana {wkey}")
+        else:
+            candidates = _parse_focus_projects(mensual_path, "## 🎯 Proyectos en foco")
+            focus = candidates[:2]
+            if focus:
                 print(f"  → foco semana heredado: {', '.join(focus)}")
 
     rc = _write(dest, content, None, force)
     if rc == 0:
         if focus:
             _inject_focus_projects(dest, focus[:2], "## 🎯 Proyectos en foco")
+            _elevate_focus_priorities(focus[:2])
         upcoming = _collect_upcoming_tasks(15)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
         if open_after:
@@ -315,6 +405,40 @@ def run_week(date_str: Optional[str], force: bool, focus: list = None,
 
 
 # ── month ─────────────────────────────────────────────────────────────────────
+
+def _apply_monthly_status_degradation(prev_start: date, prev_end: date) -> None:
+    """Degrade en marcha→parado and parado→durmiendo for projects with no activity last month."""
+    from core.tasks import load_project_meta, update_proyecto_field, find_proyecto_file
+    from core.activity import has_activity_in
+    from core.log import find_logbook_file
+
+    changed = []
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path:
+            continue
+        meta = load_project_meta(proyecto_path)
+        nominal_key = next(
+            (k for k in ("en marcha", "parado", "durmiendo", "inicial", "completado")
+             if k in meta["estado_raw"]), ""
+        )
+        if nominal_key not in ("en marcha", "parado"):
+            continue
+        logbook_path = find_logbook_file(project_dir)
+        has_activity = has_activity_in(logbook_path, prev_start, prev_end)
+        if not has_activity:
+            new_key = "parado" if nominal_key == "en marcha" else "durmiendo"
+            update_proyecto_field(proyecto_path, "estado", new_key)
+            changed.append((project_dir.name, nominal_key, new_key))
+
+    if changed:
+        print("\n  📊 Estados actualizados (sin actividad el mes anterior):")
+        for name, old, new in changed:
+            arrow = "⏸️" if new == "parado" else "💤"
+            print(f"    {arrow} {name}: {old} → {new}")
+
 
 def run_month(date_str: Optional[str], force: bool, focus: list = None,
               open_after: bool = True, editor: str  = "typora") -> int:
@@ -352,20 +476,29 @@ def run_month(date_str: Optional[str], force: bool, focus: list = None,
                         f"← [Mes anterior](./{prev_str}.md)")
                .replace("YYYY-MM", month_str))
 
-    # If no focus given: prompt interactively or auto-pick top 3 (non-TTY)
+    # Apply status degradation based on previous month's activity (before focus prompt)
+    import calendar as _cal
+    prev_start = date(prev_y, prev_m, 1)
+    prev_end   = date(prev_y, prev_m, _cal.monthrange(prev_y, prev_m)[1])
+    _apply_monthly_status_degradation(prev_start, prev_end)
+
+    # If no focus given: prompt interactively or auto-pick top projects (non-TTY)
     if not focus:
-        candidates = _active_projects_by_priority(3)
-        if candidates:
-            if sys.stdin.isatty():
-                focus = _prompt_focus(candidates, 3, f"Proyectos activos para el mes {month_str}")
-            else:
-                focus = candidates[:3]
+        if sys.stdin.isatty():
+            groups = _active_projects_by_type()
+            focus = _prompt_focus_grouped(groups, [], MAX_MONTH_FOCUS, f"Proyectos en foco — {month_str}")
+        else:
+            focus = _top_active_projects(MAX_MONTH_FOCUS)
+            if focus:
                 print(f"  → foco mes heredado: {', '.join(focus)}")
 
     rc = _write(dest, content, None, force)
     if rc == 0:
         if focus:
-            _inject_focus_projects(dest, focus[:3], "## 🎯 Proyectos en foco")
+            _inject_focus_projects(dest, focus[:MAX_MONTH_FOCUS], "## 🎯 Proyectos en foco")
+            prev_mensual = MENSUAL_DIR / f"{prev_str}.md"
+            old_focus = _parse_focus_projects(prev_mensual, "## 🎯 Proyectos en foco")
+            _apply_monthly_focus_priorities(focus, old_focus)
         upcoming = _collect_upcoming_tasks(30)
         _inject_block(dest, _format_upcoming_tasks(upcoming), _UPCOMING_START, _UPCOMING_END)
         if open_after:
@@ -485,7 +618,7 @@ def _check_focus_activity(project_names: list, start: date, end: date) -> dict:
 
 
 def _format_tomato_block(results: dict, label: str) -> str:
-    """Format the 🍅 evaluation block."""
+    """Format the 🍅 evaluation block for injection into the note."""
     if not results:
         return ""
     active = sum(1 for v in results.values() if v)
@@ -494,13 +627,89 @@ def _format_tomato_block(results: dict, label: str) -> str:
     for name, has_act in results.items():
         lines.append(f"- {'🍅' if has_act else '⬜'} {name}")
     if active == total:
-        verdict = "🍅 " * total + f"Fructífero"
+        verdict = "🍅 " * total + "Fructífero"
     elif active > 0:
         verdict = f"🍅 ×{active}/{total} Parcialmente fructífero"
     else:
         verdict = "⬜ Sin actividad en proyectos en foco"
     lines.append(f"\n**{verdict.strip()}**")
     return "\n".join(lines) + "\n"
+
+
+def _print_tomato_verdict(results: dict) -> None:
+    """Print a human message to the terminal based on focus activity."""
+    if not results:
+        return
+    active = sum(1 for v in results.values() if v)
+    total = len(results)
+    if active == total:
+        print(f"  🍅👏 ¡Enhorabuena! Trabajaste en {'todos tus' if total > 1 else 'tu'} proyecto{'s' if total > 1 else ''} en foco.")
+    else:
+        print(f"  😔 Lamento que no trabajases en {'todos los' if total > 1 else 'el'} proyecto{'s' if total > 1 else ''} relevante{'s' if total > 1 else ''}.")
+
+
+def _find_project_dir(name: str):
+    """Return (project_dir, proyecto_path) for the first project matching name, or (None, None)."""
+    from core.tasks import find_proyecto_file
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if project_dir.is_dir() and name.lower() in project_dir.name.lower():
+            proyecto_path = find_proyecto_file(project_dir)
+            if proyecto_path:
+                return project_dir, proyecto_path
+    return None, None
+
+
+def _elevate_focus_priorities(focus: list) -> None:
+    """Ensure focus projects have at least media priority (baja → media)."""
+    from core.tasks import load_project_meta, update_proyecto_field
+    for name in focus:
+        project_dir, proyecto_path = _find_project_dir(name)
+        if not proyecto_path:
+            continue
+        meta = load_project_meta(proyecto_path)
+        if "baja" in meta["prioridad_raw"]:
+            update_proyecto_field(proyecto_path, "prioridad", "media")
+            print(f"  ↑ Prioridad media: {project_dir.name}")
+
+
+def _apply_monthly_focus_priorities(new_focus: list, old_focus: list) -> None:
+    """Elevate new focus projects to alta; drop one level for projects leaving focus."""
+    from core.tasks import load_project_meta, update_proyecto_field
+
+    def _drop(raw: str) -> str:
+        if "alta" in raw:
+            return "alta"   # alta stays alta while in focus (handled separately)
+        if "media" in raw:
+            return "baja"
+        return "baja"
+
+    def _matches(name_a: str, name_b: str) -> bool:
+        a, b = name_a.lower(), name_b.lower()
+        return a in b or b in a
+
+    # Elevate projects entering or staying in focus
+    for name in new_focus:
+        project_dir, proyecto_path = _find_project_dir(name)
+        if not proyecto_path:
+            continue
+        meta = load_project_meta(proyecto_path)
+        if "alta" not in meta["prioridad_raw"]:
+            update_proyecto_field(proyecto_path, "prioridad", "alta")
+            print(f"  ↑ Prioridad alta: {project_dir.name}")
+
+    # Drop projects leaving focus
+    exiting = [n for n in old_focus if not any(_matches(n, f) for f in new_focus)]
+    for name in exiting:
+        project_dir, proyecto_path = _find_project_dir(name)
+        if not proyecto_path:
+            continue
+        meta = load_project_meta(proyecto_path)
+        if "alta" in meta["prioridad_raw"]:
+            update_proyecto_field(proyecto_path, "prioridad", "media")
+            print(f"  ↓ Prioridad media: {project_dir.name}")
+        elif "media" in meta["prioridad_raw"]:
+            update_proyecto_field(proyecto_path, "prioridad", "baja")
+            print(f"  ↓ Prioridad baja: {project_dir.name}")
 
 
 def _resolve_focus_link(name: str):
@@ -514,7 +723,7 @@ def _resolve_focus_link(name: str):
 
 
 def _inject_focus_projects(dest: Path, names: list, heading: str) -> None:
-    """Replace placeholder focus links in a section with real project links."""
+    """Replace focus section links with real project links (dynamic count)."""
     resolved = []
     for name in names:
         result = _resolve_focus_link(name)
@@ -525,26 +734,48 @@ def _inject_focus_projects(dest: Path, names: list, heading: str) -> None:
     if not resolved:
         return
 
+    use_bullets = len(resolved) == 1
     lines = dest.read_text().splitlines()
+    out = []
     in_section = False
-    link_idx = 0
-    new_lines = []
+    wrote_items = False
     for line in lines:
         if line.strip().startswith(heading):
             in_section = True
-            new_lines.append(line)
+            wrote_items = False
+            out.append(line)
             continue
         if in_section and line.startswith("## "):
             in_section = False
-        if in_section and re.search(r'\[.*?\]\(', line) and link_idx < len(resolved):
-            dir_name, path = resolved[link_idx]
-            marker_match = re.match(r'^(\s*(?:-|\d+\.)\s*)', line)
-            marker = marker_match.group(1) if marker_match else "- "
-            new_lines.append(f"{marker}[{dir_name}]({path})")
-            link_idx += 1
+            if out and out[-1] != "":
+                out.append("")
+            out.append(line)
             continue
-        new_lines.append(line)
-    dest.write_text("\n".join(new_lines) + "\n")
+        if in_section:
+            is_link = line.startswith("- [") or bool(re.match(r'^\d+\.\s+\[', line))
+            if is_link and not wrote_items:
+                for i, (dir_name, path) in enumerate(resolved, 1):
+                    if use_bullets:
+                        out.append(f"- [{dir_name}]({path})")
+                    else:
+                        out.append(f"{i}. [{dir_name}]({path})")
+                wrote_items = True
+                continue  # skip placeholder line
+            elif is_link and wrote_items:
+                continue  # skip remaining placeholders
+            else:
+                out.append(line)
+        else:
+            out.append(line)
+
+    if in_section and not wrote_items:
+        for i, (dir_name, path) in enumerate(resolved, 1):
+            if use_bullets:
+                out.append(f"- [{dir_name}]({path})")
+            else:
+                out.append(f"{i}. [{dir_name}]({path})")
+
+    dest.write_text("\n".join(out) + "\n")
     for dir_name, _ in resolved:
         print(f"  🎯 Foco: {dir_name}")
 
@@ -585,6 +816,8 @@ def _collect_upcoming_tasks(horizon_days: int) -> list:
                     "tipo": meta["tipo"],
                     "description": task["description"],
                     "overdue": due_date < today,
+                    "ring": task.get("ring", False),
+                    "time": task.get("time"),
                 })
     results.sort(key=lambda x: x["due_date"])
     return results
@@ -596,11 +829,17 @@ def _format_upcoming_tasks(tasks: list) -> str:
         return "_Sin tareas con vencimiento próximo._\n"
     lines = []
     for t in tasks:
-        marker = "⚠️" if t["overdue"] else "[ ]"
+        if t["overdue"]:
+            marker = "⚠️"
+        elif t.get("ring"):
+            marker = "⏰"
+        else:
+            marker = "[ ]"
         path = t.get("proyecto_path")
         project_label = (f"[{t['project']}](file://{path.resolve()}#tareas)" if path
                          else t["project"])
-        lines.append(f"- {marker} {t['due_date'].isoformat()}  {project_label} — {t['description']}")
+        time_str = f" {t['time']}" if t.get("time") else ""
+        lines.append(f"- {marker} {t['due_date'].isoformat()}{time_str}  {project_label} — {t['description']}")
     return "\n".join(lines) + "\n"
 
 
@@ -669,6 +908,27 @@ def _type_summary(activity: list) -> str:
     return "  ".join(parts) if parts else "Sin entradas"
 
 
+def _activate_projects_with_activity(activity: list) -> None:
+    """Set status to 'en marcha' for any project with logbook activity, unless already there or completado."""
+    from core.tasks import load_project_meta, update_proyecto_field, find_proyecto_file
+    for proj in activity:
+        if not proj.get("entries"):
+            continue
+        project_dir = next(
+            (d for d in PROJECTS_DIR.iterdir()
+             if d.is_dir() and d.name == proj["name"]), None
+        )
+        if not project_dir:
+            continue
+        proyecto_path = find_proyecto_file(project_dir)
+        if not proyecto_path:
+            continue
+        meta = load_project_meta(proyecto_path)
+        if "en marcha" not in meta["estado_raw"] and "completado" not in meta["estado_raw"]:
+            update_proyecto_field(proyecto_path, "estado", "en marcha")
+            print(f"  → estado: en marcha ({project_dir.name})")
+
+
 def run_dayreport(date_str: Optional[str], inject: bool,
                   output: Optional[str] = None, open_after: bool = False,
                   editor: str = "typora") -> int:
@@ -676,18 +936,21 @@ def run_dayreport(date_str: Optional[str], inject: bool,
     dest = DIARIO_DIR / f"{target.isoformat()}.md"
 
     activity = _collect_activity(target, target)
+    _activate_projects_with_activity(activity)
     tasks_due = _collect_tasks_due(target, target)
     completed = _collect_completed_tasks(target, target)
     focus = _parse_focus_projects(dest, "## 🎯 Proyecto en foco")
     tomato = _check_focus_activity(focus, target, target)
     tomato_block = _format_tomato_block(tomato, target.isoformat())
+    _print_tomato_verdict(tomato)
 
     block = _format_report(activity, f"Actividad — {target.isoformat()}")
 
     if tasks_due:
         task_lines = ["## ✅ Tareas vencidas hoy", ""]
         for item in tasks_due:
-            task_lines.append(f"- {_project_link(item['project'], item['proyecto_path'])} — {item['task']['description']}")
+            ring_marker = " ⏰" if item['task'].get('ring') else ""
+            task_lines.append(f"- {_project_link(item['project'], item['proyecto_path'])}{ring_marker} — {item['task']['description']}")
         task_lines.append("")
         block += "\n" + "\n".join(task_lines)
 
@@ -741,6 +1004,7 @@ def run_weekreport(date_str: Optional[str], inject: bool,
     focus = _parse_focus_projects(dest, "## 🎯 Proyectos en foco")
     tomato = _check_focus_activity(focus, mon, end)
     tomato_block = _format_tomato_block(tomato, f"semana {wkey}")
+    _print_tomato_verdict(tomato)
 
     summary = _type_summary(activity)
     block = _format_report(activity, f"Actividad semana {wkey}  ({mon.isoformat()} — {sun.isoformat()})")
@@ -749,7 +1013,9 @@ def run_weekreport(date_str: Optional[str], inject: bool,
     if tasks_due:
         task_lines = ["## ✅ Tareas con vencimiento esta semana", ""]
         for item in tasks_due:
-            task_lines.append(f"- {_project_link(item['project'], item['proyecto_path'])} — {item['task']['description']} ({item['task']['due']})")
+            ring_marker = " ⏰" if item['task'].get('ring') else ""
+            time_str = f" {item['task']['time']}" if item['task'].get('time') else ""
+            task_lines.append(f"- {_project_link(item['project'], item['proyecto_path'])}{ring_marker} — {item['task']['description']} ({item['task']['due']}{time_str})")
         task_lines.append("")
         block += "\n" + "\n".join(task_lines)
 

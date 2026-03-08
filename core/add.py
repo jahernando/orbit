@@ -153,8 +153,6 @@ def run_add(
     file_str: Optional[str],
     sync: bool,
     date_str: Optional[str],
-    time_str: Optional[str],
-    recur: Optional[str],
     open_after: bool,
     editor: str,
 ) -> int:
@@ -166,50 +164,6 @@ def run_add(
     if not proyecto_path or not proyecto_path.exists():
         print(f"Error: fichero de proyecto no encontrado en {project_dir}")
         return 1
-
-    # ── ring ──────────────────────────────────────────────────────────────────
-    if action == "ring":
-        if not date_str or not time_str:
-            print("Error: ring requiere --date y --time")
-            return 1
-        if not _valid_time(time_str):
-            print(f"Error: formato de hora inválido '{time_str}'. Usa HH:MM")
-            return 1
-        recur_suffix = ""
-        if recur:
-            tag = recur if recur.startswith("@") else f"@{recur}"
-            recur_suffix = f" {tag}"
-        new_line = f"- [ ] {date_str} {time_str} {title}{recur_suffix}"
-        heading  = "## ⏰ Recordatorios"
-        if not _insert_into_section(proyecto_path, heading, new_line):
-            print(f"Error: sección '{heading}' no encontrada en {proyecto_path.name}")
-            return 1
-        print(f"✓ [{project_dir.name}] ⏰ {date_str} {time_str} {title}{recur_suffix}")
-
-        # If today → copy to diary and schedule immediately
-        if date_str == date.today().isoformat():
-            _copy_ring_to_diary(new_line)
-            from core.reminders import _schedule_via_applescript, _mark_scheduled
-            h, m = int(time_str[:2]), int(time_str[3:5])
-            ok = _schedule_via_applescript(
-                title=title, project=project_dir.name,
-                year=date.today().year, month=date.today().month, day=date.today().day,
-                hour=h, minute=m,
-            )
-            if ok:
-                # find the line just inserted and mark [~]
-                all_lines = proyecto_path.read_text().splitlines()
-                for idx, l in enumerate(all_lines):
-                    if l.strip() == new_line.strip():
-                        _mark_scheduled(proyecto_path, idx)
-                        break
-                print(f"  ⏰ Programado en Reminders.app → {time_str}")
-            else:
-                print(f"  ⚠️  No se pudo programar en Reminders.app")
-
-        if open_after:
-            open_file(proyecto_path, editor)
-        return 0
 
     # ── ref / result / decision ───────────────────────────────────────────────
     heading, tag, dir_name = SECTION_MAP[action]

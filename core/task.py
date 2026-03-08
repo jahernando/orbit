@@ -8,7 +8,26 @@ from typing import Optional
 from core.log import PROJECTS_DIR, find_project, find_proyecto_file
 from core.tasks import _extract_date_from_parens
 
-_RE_RECUR = re.compile(r"\s+(@\S+)\s*$")
+_RE_TRAILING_TAGS = re.compile(r'(\s+@\S+)+\s*$')
+
+
+def _parse_tags(content: str):
+    """Strip trailing @tags. Returns (clean_content, has_ring, recur_or_None)."""
+    all_tags = re.findall(r'@\S+', content)
+    clean = _RE_TRAILING_TAGS.sub('', content).strip() if all_tags else content
+    ring = '@ring' in all_tags
+    recur = next((t for t in all_tags if t != '@ring'), None)
+    return clean, ring, recur
+
+
+def _build_tags(ring: bool, recur: Optional[str]) -> str:
+    """Build trailing @tags string."""
+    parts = []
+    if ring:
+        parts.append('@ring')
+    if recur:
+        parts.append(recur if recur.startswith('@') else f'@{recur}')
+    return ''.join(f' {p}' for p in parts)
 
 MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
 DIARIO_DIR = MISION_LOG_DIR / "diario"
@@ -16,14 +35,15 @@ TEMPLATES_DIR = Path(__file__).parent.parent / "📐templates"
 
 
 def _find_task_line(lines: list, task_desc: str, done: bool = False) -> int:
-    """Return index of first pending (or done) task matching task_desc, or -1."""
-    marker = "- [x]" if done else "- [ ]"
+    """Return index of first pending/scheduled (or done) task matching task_desc, or -1."""
+    markers = ["- [x]", "- [X]"] if done else ["- [ ]", "- [~]"]
     for i, line in enumerate(lines):
         stripped = line.strip()
-        if not stripped.startswith(marker):
+        if not any(stripped.startswith(m) for m in markers):
             continue
         content = stripped[5:].strip()
-        desc_only, _ = _extract_date_from_parens(content)
+        content_clean, _, _ = _parse_tags(content)
+        desc_only, _ = _extract_date_from_parens(content_clean)
         if task_desc.lower() in desc_only.lower():
             return i
     return -1
@@ -42,12 +62,6 @@ def _build_task_date(fecha: Optional[str], time_str: Optional[str]) -> str:
         return f" ({fecha} {time_str})"
     return f" ({fecha})"
 
-
-def _recur_suffix(recur: Optional[str]) -> str:
-    if not recur:
-        return ""
-    tag = recur if recur.startswith("@") else f"@{recur}"
-    return f" {tag}"
 
 
 def _copy_to_diary_tasks(entry: str) -> None:
@@ -76,9 +90,10 @@ def _copy_to_diary_tasks(entry: str) -> None:
 
 def run_task_open(project: Optional[str], task_desc: str,
                   fecha: Optional[str], time_str: Optional[str] = None,
-                  recur: Optional[str] = None) -> int:
+                  recur: Optional[str] = None, ring: bool = False) -> int:
     date_str = _build_task_date(fecha, time_str)
-    entry    = f"- [ ] {task_desc}{date_str}{_recur_suffix(recur)}"
+    tags     = _build_tags(ring, recur)
+    entry    = f"- [ ] {task_desc}{date_str}{tags}"
 
     # No project → use mission as default (handled in orbit.py); fallback to diary
     if not project:
@@ -118,6 +133,25 @@ def run_task_open(project: Optional[str], task_desc: str,
     if fecha == date.today().isoformat():
         _copy_to_diary_tasks(entry)
 
+    # If ring and due today with time → schedule in Reminders.app immediately
+    if ring and time_str and fecha == date.today().isoformat():
+        from core.reminders import _schedule_via_applescript, _mark_scheduled
+        h, m = int(time_str[:2]), int(time_str[3:5])
+        ok = _schedule_via_applescript(
+            title=task_desc, project=project_dir.name,
+            year=date.today().year, month=date.today().month, day=date.today().day,
+            hour=h, minute=m,
+        )
+        if ok:
+            all_lines = proyecto_path.read_text().splitlines()
+            for idx, l in enumerate(all_lines):
+                if l.strip() == entry.strip():
+                    _mark_scheduled(proyecto_path, idx)
+                    break
+            print(f"  ⏰ Programado en Reminders.app → {time_str}")
+        else:
+            print(f"  ⚠️  No se pudo programar en Reminders.app")
+
     return 0
 
 
@@ -150,9 +184,24 @@ def _open_in_daily(entry: str, task_desc: str, fecha: Optional[str]) -> int:
 
 # ── schedule ──────────────────────────────────────────────────────────────────
 
+def _prompt_keep_recur(old_recur: str) -> Optional[str]:
+    """Ask the user whether to keep, change or drop a recurrence tag.
+    Returns the recur string to use (may be old_recur, a new value, or None)."""
+    try:
+        raw = input(f"Recurrencia ({old_recur}) — Enter para mantener, nueva regla o 'n' para quitar: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return old_recur
+    if raw == "" :
+        return old_recur
+    if raw.lower() == "n":
+        return None
+    return raw if raw.startswith("@") else f"@{raw}"
+
+
 def run_task_schedule(project: Optional[str], task_desc: str,
                       fecha: Optional[str], time_str: Optional[str] = None,
-                      recur: Optional[str] = None) -> int:
+                      recur: Optional[str] = None,
+                      interactive: bool = False) -> int:
     if not fecha:
         print("Error: --date es obligatorio para schedule")
         return 1
@@ -168,14 +217,17 @@ def run_task_schedule(project: Optional[str], task_desc: str,
             continue
         stripped = lines[idx].strip()
         content  = stripped[5:].strip()
-        # Strip existing recur tag before re-building
-        m_recur  = _RE_RECUR.search(content)
-        old_recur = m_recur.group(1) if m_recur else None
-        content  = _RE_RECUR.sub("", content) if m_recur else content
-        desc_only, old_date = _extract_date_from_parens(content)
-        new_recur = recur or old_recur  # keep existing tag if not overridden
+        content_clean, old_ring, old_recur = _parse_tags(content)
+        desc_only, old_date = _extract_date_from_parens(content_clean)
+        if recur is not None:
+            new_recur = recur or None          # explicit: use as-is (empty str → remove)
+        elif old_recur and interactive:
+            new_recur = _prompt_keep_recur(old_recur)
+        else:
+            new_recur = old_recur              # silent default: keep
         new_date  = _build_task_date(fecha, time_str)
-        lines[idx] = f"- [ ] {desc_only}{new_date}{_recur_suffix(new_recur)}"
+        new_tags  = _build_tags(old_ring, new_recur)
+        lines[idx] = f"- [ ] {desc_only}{new_date}{new_tags}"
         _write_lines(proyecto_path, lines)
         old = f" (antes: {old_date})" if old_date else ""
         print(f"✓ [{project_dir.name}] Reprogramada{old} → ({fecha}): {desc_only}")
@@ -187,7 +239,8 @@ def run_task_schedule(project: Optional[str], task_desc: str,
 
 # ── close ─────────────────────────────────────────────────────────────────────
 
-def run_task_close(project: Optional[str], task_desc: str, fecha: Optional[str]) -> int:
+def run_task_close(project: Optional[str], task_desc: str, fecha: Optional[str],
+                   interactive: bool = False) -> int:
     from core.reminders import _next_date
     done_str = fecha or date.today().isoformat()
 
@@ -202,11 +255,17 @@ def run_task_close(project: Optional[str], task_desc: str, fecha: Optional[str])
             continue
         stripped = lines[idx].strip()
         content  = stripped[5:].strip()
-        m_recur  = _RE_RECUR.search(content)
-        if m_recur:
-            recur_tag = m_recur.group(1)
-            content   = _RE_RECUR.sub("", content)
-            desc_only, old_date_str = _extract_date_from_parens(content)
+        content_clean, old_ring, recur_tag = _parse_tags(content)
+        # If recurring and interactive, ask whether to keep recurrence
+        keep = True
+        if recur_tag and interactive:
+            try:
+                raw = input(f"Recurrencia ({recur_tag}) — Enter para avanzar, 'n' para completar definitivamente: ").strip()
+                keep = raw.lower() != "n"
+            except (EOFError, KeyboardInterrupt):
+                keep = True
+        if recur_tag and keep:
+            desc_only, old_date_str = _extract_date_from_parens(content_clean)
             try:
                 from datetime import date as _date
                 base = _date.fromisoformat(old_date_str.split()[0]) if old_date_str else _date.today()
@@ -215,11 +274,12 @@ def run_task_close(project: Optional[str], task_desc: str, fecha: Optional[str])
             next_d    = _next_date(base, recur_tag)
             time_part = old_date_str.split()[1] if old_date_str and " " in old_date_str else None
             new_date  = _build_task_date(next_d.isoformat(), time_part)
-            lines[idx] = f"- [ ] {desc_only}{new_date} {recur_tag}"
+            new_tags  = _build_tags(old_ring, recur_tag)
+            lines[idx] = f"- [ ] {desc_only}{new_date}{new_tags}"
             _write_lines(proyecto_path, lines)
             print(f"✓ [{project_dir.name}] Recurrente avanzada → {next_d}: {desc_only}")
         else:
-            desc_only, _ = _extract_date_from_parens(content)
+            desc_only, _ = _extract_date_from_parens(content_clean)
             lines[idx] = f"- [x] {desc_only} ({done_str})"
             _write_lines(proyecto_path, lines)
             print(f"✓ [{project_dir.name}] Completada: {desc_only} ({done_str})")

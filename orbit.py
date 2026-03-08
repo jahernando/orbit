@@ -8,15 +8,12 @@ from pathlib import Path
 from core.log import VALID_TYPES, add_entry, find_project, find_logbook_file, find_proyecto_file
 from core.search import run_search
 from core.tasks import list_tasks
-from core.monthly import run_monthly
 from core.stats import run_stats
-from core.review import run_review
-from core.misionlog import run_day, run_week, run_month, run_dayreport, run_weekreport, add_entry_to_day
+from core.misionlog import add_entry_to_day, run_shell_startup
 from core.project import run_project
 from core.importer import run_import
 from core.update import run_update
 from core.task import run_task_open, run_task_schedule, run_task_close
-from core.reminders import run_ring_schedule, run_ring_close
 from core.list_cmd import run_list_projects, run_list_section
 from core.add import run_add
 from core.view import run_view
@@ -33,7 +30,7 @@ def _d(expr):
 
 # Long options that users often type with a single dash (e.g. -date instead of --date)
 _SINGLE_DASH_FIX = {
-    "-date", "-time", "-recur", "-entry", "-project", "-type", "-status",
+    "-date", "-time", "-recur", "-ring", "-entry", "-project", "-type", "-status",
     "-priority", "-output", "-editor", "-focus", "-from", "-to", "-limit",
     "-section", "-log", "-open", "-inject", "-apply", "-force", "-no-open",
     "-sync", "-url", "-file", "-keyword", "-dry-run", "-name", "-date-from",
@@ -102,6 +99,7 @@ def cmd_tasks(args):
         fecha=_d(getattr(args, "date", None)),
         keyword=getattr(args, "keyword", None),
         output=getattr(args, "output", None),
+        ring_only=getattr(args, "ring", False),
         open_after=getattr(args, "open", False),
         editor=getattr(args, "editor", "typora"),
     )
@@ -114,15 +112,6 @@ def cmd_create(args):
         return run_project(name=args.name, tipo=args.type, prioridad=args.priority)
     elif args.what == "import":
         return run_import(enex_path=args.file, project=args.project)
-    elif args.what == "day":
-        return run_day(date_str=_d(args.date), force=args.force, focus=args.focus,
-                       open_after=not args.no_open, editor=args.editor)
-    elif args.what == "week":
-        return run_week(date_str=_d(args.date), force=args.force, focus=args.focus,
-                        open_after=not args.no_open, editor=args.editor)
-    elif args.what == "month":
-        return run_month(date_str=_d(args.date), force=args.force, focus=args.focus,
-                         open_after=not args.no_open, editor=args.editor)
     return 1
 
 
@@ -146,7 +135,7 @@ def cmd_view(args):
 
 
 def cmd_change(args):
-    target = args.target   # "task" or "ring"
+    target = args.target   # "task"
     action = args.action   # "schedule" or "close"
 
     if target == "task":
@@ -155,30 +144,14 @@ def cmd_change(args):
                 project=args.project, task_desc=args.desc,
                 fecha=_d(args.date), time_str=getattr(args, "time", None),
                 recur=getattr(args, "recur", None),
+                interactive=True,
             )
         else:
             rc = run_task_close(
                 project=args.project, task_desc=args.desc,
                 fecha=_d(getattr(args, "date", None)),
+                interactive=True,
             )
-    elif target in ("status", "priority", "type"):
-        return run_update(
-            projects=args.project or [],
-            status=args.value    if target == "status"   else None,
-            priority=args.value  if target == "priority" else None,
-            tipo=args.value      if target == "type"     else None,
-            from_status=getattr(args, "from_status", None),
-            from_priority=getattr(args, "from_priority", None),
-        )
-    elif target == "ring":
-        if action == "schedule":
-            rc = run_ring_schedule(
-                project=args.project, desc=args.desc,
-                date_str=_d(args.date), time_str=args.time,
-                recur=getattr(args, "recur", None),
-            )
-        else:
-            rc = run_ring_close(project=args.project, desc=args.desc)
     else:
         return 1
 
@@ -216,11 +189,24 @@ def _resolve_add_project_title(args):
 def cmd_add(args):
     if args.action == "task":
         project, title = _resolve_add_project_title(args)
+        ring = getattr(args, "ring", False)
+        time_str = getattr(args, "time", None)
+        if ring and not time_str:
+            try:
+                raw = input("Hora del recordatorio (HH:MM) [09:00]: ").strip()
+                time_str = raw if raw else "09:00"
+            except (EOFError, KeyboardInterrupt):
+                time_str = "09:00"
+        fecha = _d(getattr(args, "date", None))
+        if not fecha:
+            from datetime import date as _date
+            fecha = _date.today().isoformat()
         rc = run_task_open(
             project=project or "mission", task_desc=title,
-            fecha=_d(getattr(args, "date", None)),
-            time_str=getattr(args, "time", None),
+            fecha=fecha,
+            time_str=time_str,
             recur=getattr(args, "recur", None),
+            ring=ring,
         )
         if rc == 0 and args.open and project:
             project_dir = find_project(project)
@@ -238,8 +224,6 @@ def cmd_add(args):
         file_str=getattr(args, "file", None),
         sync=getattr(args, "sync", False),
         date_str=_d(getattr(args, "date", None)),
-        time_str=getattr(args, "time", None),
-        recur=getattr(args, "recur", None),
         open_after=args.open,
         editor=args.editor,
     )
@@ -284,23 +268,11 @@ def cmd_info(args):
 
 
 def cmd_report(args):
-    if args.period == "day":
-        return run_dayreport(date_str=_d(args.date), inject=args.inject,
-                             output=args.output, open_after=args.open, editor=args.editor)
-    elif args.period == "week":
-        return run_weekreport(date_str=_d(args.date), inject=args.inject,
-                              output=args.output, open_after=args.open, editor=args.editor)
-    elif args.period == "month":
-        return run_monthly(month=_d(args.date), apply=args.apply, inject=args.inject,
-                           output=args.output, open_after=args.open, editor=args.editor)
-    elif args.period == "stats":
+    if args.period == "stats":
         return run_stats(date_str=_d(args.date), date_from=_d(args.date_from),
                          date_to=_d(args.date_to), project=args.project,
                          tipo=args.type, prioridad=args.priority,
                          output=args.output, open_after=args.open, editor=args.editor)
-    elif args.period == "status":
-        return run_review(date_str=_d(args.date), apply=args.apply,
-                          output=args.output, open_after=args.open, editor=args.editor)
     return 1
 
 
@@ -384,12 +356,13 @@ def main():
     ltk_p.add_argument("--status",   default=None, help="Filter by project status")
     ltk_p.add_argument("--priority", default=None, help="Filter by priority (alta, media, baja)")
     ltk_p.add_argument("--date",     default=None, help="Filter by due date — supports natural language")
+    ltk_p.add_argument("--ring",     action="store_true", help="Show only tasks with @ring (reminders)")
     ltk_p.add_argument("--keyword",  default=None, help="Filter by keyword in description")
     ltk_p.add_argument("--output",   default=None, help="Save output to file")
     ltk_p.add_argument("--open",     action="store_true", help="Save to mision-log/tasks.md and open")
     ltk_p.add_argument("--editor",   default="typora")
 
-    # list rings / refs / results / decisions  (shared args)
+    # list refs / results / decisions  (shared args)
     def _add_section_args(p, project_required=False):
         if project_required:
             p.add_argument("project", help="Project name (partial match)")
@@ -399,15 +372,6 @@ def main():
         p.add_argument("--output", default=None, help="Save output to file")
         p.add_argument("--open",   action="store_true", help="Save and open in editor")
         p.add_argument("--editor", default="typora")
-
-    lri_p = list_sub.add_parser("rings",     help="List pending reminders")
-    _add_section_args(lri_p)
-    lrf_p = list_sub.add_parser("refs",      help="List key references")
-    _add_section_args(lrf_p)
-    lrs_p = list_sub.add_parser("results",   help="List results")
-    _add_section_args(lrs_p)
-    lrd_p = list_sub.add_parser("decisions", help="List decisions")
-    _add_section_args(lrd_p)
 
 
     subparsers.add_parser("shell", help="Enter interactive Orbit shell")
@@ -456,49 +420,6 @@ def main():
     ctc_p.add_argument("--open",   action="store_true")
     ctc_p.add_argument("--editor", default="typora")
 
-    # change status
-    cst_p = chg_sub.add_parser("status", help="Change status of one or more projects")
-    cst_p.add_argument("value",   help="New status: inicial, en marcha, parado, esperando, durmiendo, completado")
-    cst_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
-    cst_p.add_argument("--from-status",   default=None, dest="from_status",   help="Filter: only projects with this status")
-    cst_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this priority")
-    cst_p.add_argument("--type",          default=None, help="Filter: project type")
-
-    # change priority
-    cpr_p = chg_sub.add_parser("priority", help="Change priority of one or more projects")
-    cpr_p.add_argument("value",   help="New priority: alta, media, baja")
-    cpr_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
-    cpr_p.add_argument("--from-status",   default=None, dest="from_status",   help="Filter: only projects with this status")
-    cpr_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this priority")
-    cpr_p.add_argument("--type",          default=None, help="Filter: project type")
-
-    # change type
-    cty_p = chg_sub.add_parser("type", help="Change type of one or more projects")
-    cty_p.add_argument("value",   help="New type: investigacion, docencia, gestion, formacion, software, personal, mision")
-    cty_p.add_argument("project", nargs="*", default=None, help="Project name(s) (partial match; omit to use filters)")
-    cty_p.add_argument("--from-status",   default=None, dest="from_status",   help="Filter: only projects with this status")
-    cty_p.add_argument("--from-priority", default=None, dest="from_priority", help="Filter: only projects with this priority")
-
-    # change ring
-    cr_p   = chg_sub.add_parser("ring", help="Reschedule or close a reminder")
-    cr_sub = cr_p.add_subparsers(dest="action")
-
-    crs_p = cr_sub.add_parser("schedule", help="Set or update date/time of a reminder")
-    crs_p.add_argument("project", help="Project name (partial match)")
-    crs_p.add_argument("desc",    help="Reminder description to match (partial)")
-    crs_p.add_argument("--date",  required=True, help="New date — supports natural language")
-    crs_p.add_argument("--time",  required=True, metavar="HH:MM", help="New time HH:MM")
-    crs_p.add_argument("--recur", default=None, metavar="RULE",
-                       help="Set or update recurrence rule")
-    crs_p.add_argument("--open",   action="store_true")
-    crs_p.add_argument("--editor", default="typora")
-
-    crc_p = cr_sub.add_parser("close", help="Manually mark a reminder as done")
-    crc_p.add_argument("project", help="Project name (partial match)")
-    crc_p.add_argument("desc",    help="Reminder description to match (partial)")
-    crc_p.add_argument("--open",   action="store_true")
-    crc_p.add_argument("--editor", default="typora")
-
     # --- create ---
     cre_p   = subparsers.add_parser("create", help="Create a project, note or import")
     cre_sub = cre_p.add_subparsers(dest="what")
@@ -515,23 +436,6 @@ def main():
     cri_p.add_argument("--file",    required=True, help="Path to the .enex file")
     cri_p.add_argument("--project", required=True, help="Target project (partial name match)")
 
-    # create day / week / month  (shared helper)
-    def _add_note_args(p, date_help):
-        p.add_argument("--date",    default=None, help=date_help)
-        p.add_argument("--force",   action="store_true", help="Overwrite if file already exists")
-        p.add_argument("--focus",   nargs="+", metavar="PROJECT", default=None,
-                       help="Focus project(s) (partial name)")
-        p.add_argument("--no-open", action="store_true", help="Do not open the note after creating")
-        p.add_argument("--editor",  default="typora", help="Editor to use (default: typora)")
-
-    crd_p = cre_sub.add_parser("day",   help="Create today's daily note")
-    _add_note_args(crd_p, "Target date YYYY-MM-DD (default: today) — supports natural language")
-
-    crw_p = cre_sub.add_parser("week",  help="Create the weekly note")
-    _add_note_args(crw_p, "Any date in the target week (default: today) — supports natural language")
-
-    crm_p = cre_sub.add_parser("month", help="Create the monthly note")
-    _add_note_args(crm_p, "Target month YYYY-MM (default: current) — supports natural language")
 
     # --- add ---
     add_p   = subparsers.add_parser("add", help="Add a ref, result, decision or reminder to a project")
@@ -569,54 +473,17 @@ def main():
     at_p.add_argument("--date",  default=None, metavar="DATE",
                       help="Due date — supports natural language")
     at_p.add_argument("--time",  default=None, metavar="HH:MM", help="Optional due time")
+    at_p.add_argument("--ring",  action="store_true",
+                      help="Add as a reminder (schedules in Reminders.app); prompts for time if omitted")
     at_p.add_argument("--recur", default=None, metavar="RULE",
                       help="Recurrence: daily/diario, weekly/semanal, monthly/mensual, "
                            "yearly/anual, weekdays/laborables, every:Nd, every:Nw")
     at_p.add_argument("--open",   action="store_true", help="Open the project note in editor after adding")
     at_p.add_argument("--editor", default="typora",    help="Editor to use (default: typora)")
 
-    # add ring
-    aring_p = add_sub.add_parser("ring", help="Add a reminder to a project")
-    aring_p.add_argument("project", nargs="?", default=None,
-                         help="Project name (partial match); omit to use mission")
-    aring_p.add_argument("title",   help="Reminder description")
-    aring_p.add_argument("--date",  required=True, help="Date YYYY-MM-DD — supports natural language")
-    aring_p.add_argument("--time",  required=True, metavar="HH:MM", help="Time HH:MM")
-    aring_p.add_argument("--recur", default=None,
-                         metavar="RULE",
-                         help="Recurrence: daily/diario, weekly/semanal, monthly/mensual, "
-                              "yearly/anual, weekdays/laborables, every:Nd, every:Nw")
-    aring_p.add_argument("--open",   action="store_true", help="Open proyecto.md in editor after adding")
-    aring_p.add_argument("--editor", default="typora",    help="Editor to use (default: typora)")
-
     # --- report ---
-    rep_p   = subparsers.add_parser("report", help="Generate reports: day, week, month, stats, review")
+    rep_p   = subparsers.add_parser("report", help="Generate reports: stats")
     rep_sub = rep_p.add_subparsers(dest="period")
-
-    # report day
-    rd_p = rep_sub.add_parser("day", help="Activity report for a day")
-    rd_p.add_argument("--date", default=None, help="Date (default: today) — supports natural language")
-    rd_p.add_argument("--inject", action="store_true", help="Inject report into the diario note")
-    rd_p.add_argument("--output", default=None, help="Save output to file")
-    rd_p.add_argument("--open", action="store_true", help="Open the diario note in editor")
-    rd_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
-
-    # report week
-    rw_p = rep_sub.add_parser("week", help="Activity report for a week")
-    rw_p.add_argument("--date", default=None, help="Any date in the target week (default: today) — supports natural language")
-    rw_p.add_argument("--inject", action="store_true", help="Inject report into the semanal note")
-    rw_p.add_argument("--output", default=None, help="Save output to file")
-    rw_p.add_argument("--open", action="store_true", help="Open the semanal note in editor")
-    rw_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
-
-    # report month
-    rm_p = rep_sub.add_parser("month", help="Activity report for a month")
-    rm_p.add_argument("--date", default=None, help="Month YYYY-MM (default: current) — supports natural language")
-    rm_p.add_argument("--inject", action="store_true", help="Inject report into the mensual note")
-    rm_p.add_argument("--apply", action="store_true", help="Apply computed status/priority changes to proyecto.md")
-    rm_p.add_argument("--output", default=None, help="Save output to file")
-    rm_p.add_argument("--open", action="store_true", help="Open the mensual note in editor")
-    rm_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # report stats
     rs_p = rep_sub.add_parser("stats", help="Quantitative analytics across projects")
@@ -631,14 +498,6 @@ def main():
     rs_p.add_argument("--output", default=None, help="Save output to file")
     rs_p.add_argument("--open", action="store_true", help="Save to mision-log/stats.md and open in editor")
     rs_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
-
-    # report status
-    rst_p = rep_sub.add_parser("status", help="Project activity and health table (60d / 30d)")
-    rst_p.add_argument("--date",   default=None, help="Reference date (default: today) — supports natural language")
-    rst_p.add_argument("--apply",  action="store_true", help="Apply proposed status/priority changes")
-    rst_p.add_argument("--output", default=None, help="Save output to file")
-    rst_p.add_argument("--open",   action="store_true", help="Save to mision-log/status.md and open in editor")
-    rst_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
 
     # --- calendar ---
     cal_p   = subparsers.add_parser("calendar", help="Show week / month / year calendar in Typora")
@@ -693,10 +552,8 @@ def main():
     elif args.command == "change":
         if not args.target:
             chg_p.print_help()
-        elif args.target in ("status", "priority", "type"):
-            sys.exit(cmd_change(args))
-        elif not args.action:
-            (ct_p if args.target == "task" else cr_p).print_help()
+        elif not getattr(args, "action", None):
+            ct_p.print_help()
         else:
             sys.exit(cmd_change(args))
     elif args.command == "create":
@@ -746,12 +603,11 @@ def run_shell():
     readline.set_completer(completer)
     readline.parse_and_bind("tab: complete")
 
-    print("Orbit shell  —  Tab para completar, Ctrl+D o 'exit' para salir")
+    print("¡Bienvenido a Orbit 🚀!")
     print()
 
-    # Open (or create) today's daily note on startup
-    from core.misionlog import run_day
-    run_day(date_str=None, force=False, focus=None, open_after=True)
+    from core.misionlog import run_shell_startup
+    run_shell_startup()
 
     while True:
         try:
@@ -786,11 +642,25 @@ def run_shell():
 
     readline.write_history_file(history_file)
 
-    # Inject daily report on exit
-    from core.misionlog import run_dayreport
+    from datetime import date as _date
+    from core.misionlog import run_dayreport, run_weekreport
+    from core.monthly import run_monthly
+
+    today = _date.today()
     print()
     print("Generando reporte del día…")
-    run_dayreport(date_str=None, inject=True, output=None, open_after=False)
+    run_dayreport(date_str=None, inject=True, output=None, open_after=True)
+
+    if today.weekday() in (4, 5, 6):  # viernes, sábado, domingo
+        print("Generando reporte de la semana…")
+        run_weekreport(date_str=None, inject=True, output=None, open_after=True)
+
+    if today.day >= 28:
+        print("Generando reporte del mes…")
+        run_monthly(month=None, apply=False, inject=True, output=None, open_after=True)
+
+    print()
+    print("Aquí tienes el resumen de tu trabajo. ¡Hasta Pronto!")
 
 
 if __name__ == "__main__":

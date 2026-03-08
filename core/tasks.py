@@ -1,3 +1,4 @@
+import re
 import unicodedata
 from datetime import date
 from pathlib import Path
@@ -17,7 +18,6 @@ STATUS_MAP = {
     "inicial":    "⬜",
     "en marcha":  "▶️",
     "parado":     "⏸️",
-    "esperando":  "⏳",
     "durmiendo":  "💤",
     "completado": "✅",
 }
@@ -53,7 +53,7 @@ def read_proyecto_field(lines: list, field: str) -> Optional[str]:
 
 
 _TYPE_EMOJIS     = ("🌀", "📚", "⚙️", "📖", "💻", "🌿")
-_STATUS_EMOJIS   = ("⬜", "▶️", "⏸️", "⏳", "💤", "✅")
+_STATUS_EMOJIS   = ("⬜", "▶️", "⏸️", "💤", "✅")
 _PRIORITY_EMOJIS = ("🟠", "🟡", "🔵")
 
 
@@ -102,28 +102,72 @@ def _read_compact_meta(lines: list) -> tuple:
     return tipo, estado, prioridad
 
 
+_RE_TRAILING_TAGS = re.compile(r'(\s+@\S+)+\s*$')
+
+
+def _strip_tags(content: str):
+    """Strip trailing @tags from content. Returns (clean_content, [tags])."""
+    all_tags = re.findall(r'@\S+', content)
+    clean = _RE_TRAILING_TAGS.sub('', content).strip() if all_tags else content
+    return clean, all_tags
+
+
+def _split_due(due_full):
+    """Split 'YYYY-MM-DD HH:MM' into (date, time) or (date, None)."""
+    if not due_full:
+        return None, None
+    parts = due_full.split(' ', 1)
+    return parts[0], (parts[1] if len(parts) > 1 else None)
+
+
 def _extract_date_from_parens(content: str):
-    """Extract (YYYY-MM-DD) from end of string. Returns (content_without_date, date_str or None)."""
+    """Extract (YYYY-MM-DD) or (YYYY-MM-DD HH:MM) from end of string.
+    Returns (content_without_date, date_or_datetime_str or None)."""
     if content.endswith(")") and "(" in content:
         paren_start = content.rfind("(")
         candidate = content[paren_start + 1:-1]
+        # YYYY-MM-DD
         if len(candidate) == 10 and candidate[4] == "-" and candidate[7] == "-":
+            return content[:paren_start].strip(), candidate
+        # YYYY-MM-DD HH:MM
+        if (len(candidate) == 16 and candidate[4] == "-" and candidate[7] == "-"
+                and candidate[10] == " " and candidate[13] == ":"):
             return content[:paren_start].strip(), candidate
     return content, None
 
 
 def parse_task(line: str) -> Optional[dict]:
-    """Parse a pending or completed task line."""
+    """Parse a pending, scheduled or completed task line."""
     stripped = line.strip()
+
     if stripped.startswith("- [x]") or stripped.startswith("- [X]"):
         content = stripped[5:].strip()
+        content, tags = _strip_tags(content)
         content, completed = _extract_date_from_parens(content)
-        return {"description": content, "due": None, "done": True, "completed": completed}
+        return {"description": content, "due": None, "time": None, "done": True,
+                "completed": completed, "ring": '@ring' in tags, "recur": None}
+
+    # [~] = ring already scheduled in Reminders.app — treat as pending
+    if stripped.startswith("- [~]"):
+        content = stripped[5:].strip()
+        content, tags = _strip_tags(content)
+        content, due_full = _extract_date_from_parens(content)
+        due, time = _split_due(due_full)
+        recur = next((t for t in tags if t != '@ring'), None)
+        return {"description": content, "due": due, "time": time, "done": False,
+                "completed": None, "ring": True, "recur": recur, "scheduled": True}
+
     if not stripped.startswith("- [ ]"):
         return None
+
     content = stripped[5:].strip()
-    content, due = _extract_date_from_parens(content)
-    return {"description": content, "due": due, "done": False, "completed": None}
+    content, tags = _strip_tags(content)
+    content, due_full = _extract_date_from_parens(content)
+    due, time = _split_due(due_full)
+    ring = '@ring' in tags
+    recur = next((t for t in tags if t != '@ring'), None)
+    return {"description": content, "due": due, "time": time, "done": False,
+            "completed": None, "ring": ring, "recur": recur}
 
 
 def is_overdue(due: str, today: date) -> bool:
@@ -191,6 +235,7 @@ def list_tasks(
     fecha: Optional[str],
     keyword: Optional[str],
     output: Optional[str],
+    ring_only: bool = False,
     open_after: bool = False,
     editor: str = "typora",
 ) -> int:
@@ -199,7 +244,8 @@ def list_tasks(
         return 1
 
     today = date.today()
-    lines_out = [f"TAREAS PENDIENTES — {today.isoformat()}", "=" * 42, ""]
+    header = f"{'RECORDATORIOS' if ring_only else 'TAREAS PENDIENTES'} — {today.isoformat()}"
+    lines_out = [header, "=" * 42, ""]
 
     project_dirs = sorted([d for d in PROJECTS_DIR.iterdir() if d.is_dir()])
 
@@ -230,6 +276,8 @@ def list_tasks(
 
         # Only pending tasks
         tasks = [t for t in meta["tasks"] if not t.get("done")]
+        if ring_only:
+            tasks = [t for t in tasks if t.get("ring")]
         if fecha:
             tasks = [t for t in tasks if matches_fecha(t["due"], fecha)]
         if keyword:
@@ -255,12 +303,13 @@ def list_tasks(
             return (1, t["due"])
 
         for task in sorted(tasks, key=sort_key):
+            time_suffix = f" {task['time']}" if task.get("time") else ""
             if task["due"] and is_overdue(task["due"], today):
                 marker = "⚠️ "
-                due_str = task["due"]
+                due_str = task["due"] + time_suffix
             elif task["due"]:
-                marker = "[ ]"
-                due_str = task["due"]
+                marker = "⏰ " if task.get("ring") else "[ ]"
+                due_str = task["due"] + time_suffix
             else:
                 marker = "[ ]"
                 due_str = "—"

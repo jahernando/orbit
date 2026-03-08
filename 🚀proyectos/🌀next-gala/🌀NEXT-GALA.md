@@ -1,8 +1,8 @@
 # 🌀next-gala
 
 🌀 Investigación
-▶️ En marcha
-🟡 Media
+parado
+alta
 ## 🎯 Objetivo
 Descripción breve del objetivo.
 ## ✅ Tareas
@@ -17,7 +17,5 @@ Descripción breve del objetivo.
 ## 📌 Decisiones
 -
 
-## ⏰ Recordatorios
-<!-- formato: - [ ] YYYY-MM-DD HH:MM descripción -->
 ## 📓 Logbook
 [Ver logbook completo](./📓NEXT-GALA.md)

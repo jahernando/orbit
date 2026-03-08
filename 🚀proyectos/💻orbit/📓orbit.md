@@ -8,6 +8,20 @@
 
 2026-03-06 Directorios renombrados con emojis: ☀️mision-log, 🚀proyectos, 📐templates, 💻-orbit #decision
 
+2026-03-08 Comando `orbit sync`: git add -A + commit automático al salir del shell para cerrar la jornada #idea
+
+2026-03-08 `orbit list tasks` debería mostrar días restantes junto a la fecha: "(en 3d)" o "(vencida hace 2d)" #idea
+
+2026-03-08 Modo quiet en shell startup: reducir verbosidad cuando mes/semana/día ya existen, flag --quiet o umbral de verbosidad #idea
+
+2026-03-08 `orbit log` sin proyecto debería preguntar confirmación: "¿proyecto? [diario]" antes de anotar en el diario #idea
+
+2026-03-08 Comando `orbit next`: muestra las próximas 5-7 tareas/recordatorios de todos los proyectos ordenadas por fecha #idea
+
+2026-03-08 Aliases cortos de calendario: `orbit week` y `orbit month` como equivalentes de `orbit calendar week/month` #idea
+
+2026-03-08 Validación de foco al crear nota de día: advertir si el proyecto elegido no está en el foco semanal #idea
+
 2026-03-06 Comando 'day' implementado: crea diario/YYYY-MM-DD.md desde plantilla o --copy #resultado
 
 2026-03-06 Comando 'week' implementado: crea semanal/YYYY-Wnn.md con cálculo automático lunes-domingo #resultado
