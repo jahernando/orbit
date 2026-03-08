@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.log import PROJECTS_DIR, find_proyecto_file
+from core.tasks import parse_task
 
 REMINDERS_LIST = "Orbit"
 
@@ -58,12 +59,9 @@ def _next_date(d: date, recur: str) -> date:
     return d
 
 
-import re as _re
-
-
 def _parse_reminders(proyecto_path: Path, target: date) -> list:
-    """Return reminder dicts for target date — scans both new (## ✅ Tareas @ring)
-    and legacy (## ⏰ Recordatorios) formats."""
+    """Return reminder dicts for target date — scans ## ✅ Tareas (@ring)
+    and legacy ## ⏰ Recordatorios formats."""
     results = []
     lines = proyecto_path.read_text().splitlines()
 
@@ -78,29 +76,22 @@ def _parse_reminders(proyecto_path: Path, target: date) -> list:
             break
         if not in_section:
             continue
-        if not (stripped.startswith("- [ ]") or stripped.startswith("- [~]")):
+        task = parse_task(line)
+        if not task or task["done"] or not task.get("ring"):
             continue
-        content = stripped[5:].strip()
-        all_tags = _re.findall(r'@\S+', content)
-        if '@ring' not in all_tags:
+        if not task["due"] or date.fromisoformat(task["due"]) != target:
             continue
-        content_clean = _re.sub(r'(\s+@\S+)+\s*$', '', content).strip()
-        # Expect: Title (YYYY-MM-DD HH:MM)
-        m2 = _re.match(r'^(.+?)\s+\((\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\)\s*$', content_clean)
-        if not m2:
-            continue
-        task_date = date.fromisoformat(m2.group(2))
-        if task_date != target:
-            continue
-        h_str, mi_str = m2.group(3).split(':')
-        recur = next((t for t in all_tags if t != '@ring'), None)
+        hour   = int(task["time"][:2]) if task.get("time") else 9
+        minute = int(task["time"][3:5]) if task.get("time") else 0
+        if not task.get("time"):
+            print(f"  ⚠️  Sin hora para '{task['description']}' — usando 09:00")
         results.append({
             "line_index":    i,
-            "hour":          int(h_str),
-            "minute":        int(mi_str),
-            "title":         m2.group(1).strip(),
-            "recur":         recur,
-            "date":          task_date,
+            "hour":          hour,
+            "minute":        minute,
+            "title":         task["description"],
+            "recur":         task.get("recur"),
+            "date":          date.fromisoformat(task["due"]),
             "project":       proyecto_path.parent.name,
             "proyecto_path": proyecto_path,
         })
@@ -171,41 +162,21 @@ def _mark_scheduled(proyecto_path: Path, line_index: int) -> None:
 
 def _advance_recurring(proyecto_path: Path, line_index: int,
                         recur: str, current_date: date) -> date:
-    """Advance the date of a recurring reminder to the next occurrence."""
+    """Advance a recurring ring task to its next occurrence.
+
+    Replaces the date inside the parenthesised date/time token and resets
+    the marker from [~] (already scheduled) back to [ ] (pending).
+    """
     next_d = _next_date(current_date, recur)
     lines  = proyecto_path.read_text().splitlines(keepends=True)
-    lines[line_index] = re.sub(
-        r"\d{4}-\d{2}-\d{2}", next_d.isoformat(), lines[line_index], count=1,
-    )
+    line   = lines[line_index]
+    # Replace date inside (YYYY-MM-DD) or (YYYY-MM-DD HH:MM) — the first ISO date found
+    line   = re.sub(r"\d{4}-\d{2}-\d{2}", next_d.isoformat(), line, count=1)
+    # Reset [~] → [ ] so the task is re-scheduled on the next day it falls due
+    line   = line.replace("- [~] ", "- [ ] ", 1)
+    lines[line_index] = line
     proyecto_path.write_text("".join(lines))
     return next_d
-
-
-def _find_ring_line(lines: list, desc: str) -> int:
-    """Return index of first pending ring matching desc, or -1."""
-    for i, line in enumerate(lines):
-        if not line.strip().startswith("- [ ]"):
-            continue
-        m = _RE_REMINDER.match(line.strip())
-        if m and desc.lower() in m.group(4).lower():
-            return i
-    return -1
-
-
-def run_ring_schedule(project: str, desc: str, date_str: str,
-                      time_str: str, recur: Optional[str] = None) -> int:
-    """Reschedule a ring — delegates to run_task_schedule (unified format)."""
-    from core.task import run_task_schedule
-    return run_task_schedule(
-        project=project, task_desc=desc,
-        fecha=date_str, time_str=time_str, recur=recur,
-    )
-
-
-def run_ring_close(project: str, desc: str) -> int:
-    """Close/mark a ring as done — delegates to run_task_close (unified format)."""
-    from core.task import run_task_close
-    return run_task_close(project=project, task_desc=desc, fecha=None)
 
 
 INJECT_START = "<!-- orbit:reminders:start -->"
@@ -269,7 +240,6 @@ def inject_reminders_into_note(note_path: Path, reminders: list) -> None:
     lines = [f"- {r['hour']:02d}:{r['minute']:02d}  {_link(r)} — {r['title']}"
              for r in sorted(reminders, key=lambda r: (r["hour"], r["minute"]))]
     block = INJECT_START + "\n" + "\n".join(lines) + "\n" + INJECT_END
-    import re
     new_text = re.sub(
         re.escape(INJECT_START) + r".*?" + re.escape(INJECT_END),
         block, text, flags=re.DOTALL,
