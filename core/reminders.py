@@ -148,10 +148,6 @@ def _advance_recurring(proyecto_path: Path, line_index: int,
     return next_d
 
 
-INJECT_START = "<!-- orbit:reminders:start -->"
-INJECT_END   = "<!-- orbit:reminders:end -->"
-
-
 def _process_reminder(r: dict, proyecto_path: Path, target: date) -> None:
     """After successful AppleScript call: advance recurring task or mark as scheduled."""
     if r.get("recur"):
@@ -195,25 +191,3 @@ def schedule_today_reminders(target: Optional[date] = None) -> list:
                 print(f"  ⚠️  No se pudo programar: [{r['project']}] {r['title']}")
 
     return scheduled
-
-
-def inject_reminders_into_note(note_path: Path, reminders: list) -> None:
-    """Inject scheduled reminders into the diario note between markers."""
-    if not note_path.exists() or not reminders:
-        return
-    text = note_path.read_text()
-    if INJECT_START not in text or INJECT_END not in text:
-        return
-    def _link(r):
-        anchor = "tareas"
-        path   = r["proyecto_path"].resolve()
-        return f"[{r['project']}](file://{path}#{anchor})"
-
-    lines = [f"- {r['hour']:02d}:{r['minute']:02d}  {_link(r)} — {r['title']}"
-             for r in sorted(reminders, key=lambda r: (r["hour"], r["minute"]))]
-    block = INJECT_START + "\n" + "\n".join(lines) + "\n" + INJECT_END
-    new_text = re.sub(
-        re.escape(INJECT_START) + r".*?" + re.escape(INJECT_END),
-        block, text, flags=re.DOTALL,
-    )
-    note_path.write_text(new_text)

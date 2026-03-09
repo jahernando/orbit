@@ -2,7 +2,7 @@
 
 ☀️ Mision
 parado
-🟠 Alta
+🔴 Alta
 
 ## 🎯 Objetivo
 Gestión de proyectos, tareas, recordatorios, y seguimiento de los mismos de forma diaria, semanal y mensual

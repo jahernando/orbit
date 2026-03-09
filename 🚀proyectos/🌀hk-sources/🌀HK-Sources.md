@@ -2,7 +2,7 @@
 
 🌀 Investigación
 ▶️ En marcha
-🟡 Media
+🔶 Media
 ## 🎯 Objetivo
 Descripción breve del objetivo.
 ## ✅ Tareas

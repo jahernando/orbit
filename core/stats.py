@@ -1,4 +1,10 @@
-"""orbit report stats — quantitative analytics across projects and mision-log."""
+"""orbit report — activity report for projects in a time period.
+
+  orbit report [project...] [--from D] [--to D] [--date D]
+
+Scans logbook, highlights, and agenda of each project and prints
+a summary of activity within the period.
+"""
 
 import calendar
 import re
@@ -6,48 +12,34 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, VALID_TYPES, find_logbook_file, find_proyecto_file
-from core.tasks import load_project_meta, normalize, TYPE_MAP, PRIORITY_MAP
-from core.open import open_file
+from core.log import PROJECTS_DIR, VALID_TYPES, TAG_EMOJI, find_logbook_file, resolve_file
+from core.project import _find_new_project, _is_new_project
 
-MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
-DIARIO_DIR     = MISION_LOG_DIR / "diario"
-STATS_OUTPUT   = MISION_LOG_DIR / "stats.md"
 
-TAG_EMOJI = {
-    "idea":       "💡",
-    "referencia": "📎",
-    "tarea":      "✅",
-    "problema":   "⚠️",
-    "resultado":  "📊",
-    "apunte":     "📝",
-    "decision":   "📌",
-    "evento":     "📅",
-}
-
+# ── Period parsing ────────────────────────────────────────────────────────────
 
 def _parse_period(date_str: Optional[str],
                   date_from: Optional[str] = None,
                   date_to: Optional[str] = None):
-    """Return (start, end) dates. Priority: from/to > date > last 30 days."""
+    """Return (start, end) dates.  Priority: from/to > date > last 30 days."""
     today = date.today()
 
-    def _parse_start(s: str) -> date:
+    def _start(s: str) -> date:
         if len(s) == 7:
             y, m = int(s[:4]), int(s[5:7])
             return date(y, m, 1)
         return date.fromisoformat(s)
 
-    def _parse_end(s: str) -> date:
+    def _end(s: str) -> date:
         if len(s) == 7:
             y, m = int(s[:4]), int(s[5:7])
             return date(y, m, calendar.monthrange(y, m)[1])
         return date.fromisoformat(s)
 
     if date_from or date_to:
-        start = _parse_start(date_from) if date_from else date(today.year, today.month, 1)
-        end   = min(_parse_end(date_to), today) if date_to else today
-        return start, end
+        s = _start(date_from) if date_from else date(today.year, today.month, 1)
+        e = min(_end(date_to), today) if date_to else today
+        return s, e
 
     if not date_str:
         return today - timedelta(days=29), today
@@ -58,16 +50,20 @@ def _parse_period(date_str: Optional[str],
     return d, d
 
 
-def _bar(count: int, max_count: int, width: int = 16) -> str:
-    if max_count == 0:
-        return "░" * width
-    filled = round(count / max_count * width)
-    return "█" * filled + "░" * (width - filled)
-
+# ── Logbook scanning ─────────────────────────────────────────────────────────
 
 def _scan_logbook(path: Path, start: date, end: date):
-    """Return (counts_by_tag, total) for entries in [start, end]."""
-    counts = {t: 0 for t in VALID_TYPES}
+    """Scan logbook entries in [start, end].
+
+    Returns (counts_by_tag, entries, completed_tasks, completed_ms)
+    where entries is a list of raw lines,
+    completed_tasks/completed_ms are lists of description strings.
+    """
+    counts = {}
+    entries = []
+    completed_tasks = []
+    completed_ms = []
+
     for line in path.read_text().splitlines():
         s = line.strip()
         if len(s) < 10 or not s[:4].isdigit() or s[4] != "-":
@@ -78,52 +74,98 @@ def _scan_logbook(path: Path, start: date, end: date):
             continue
         if not (start <= entry_date <= end):
             continue
+
+        entries.append(s)
+
+        # Detect tag
+        tag_found = None
         for tag in VALID_TYPES:
             if s.endswith(f"#{tag}"):
-                counts[tag] += 1
+                tag_found = tag
                 break
+        if tag_found:
+            counts[tag_found] = counts.get(tag_found, 0) + 1
         else:
-            counts["apunte"] += 1  # untagged lines count as apunte
-    total = sum(counts.values())
-    return counts, total
+            counts["apunte"] = counts.get("apunte", 0) + 1
+
+        # Detect completion traces
+        if "[completada] Tarea:" in s:
+            desc = s.split("[completada] Tarea:", 1)[1].split("#")[0].strip()
+            completed_tasks.append(desc)
+        elif "[alcanzado] Hito:" in s:
+            desc = s.split("[alcanzado] Hito:", 1)[1].split("#")[0].strip()
+            completed_ms.append(desc)
+
+    return counts, entries, completed_tasks, completed_ms
 
 
-def _scan_tasks(proyecto_path: Path, period_end: date):
-    """Return (open_count, overdue_count) from ## Tareas section."""
-    open_count = overdue_count = 0
-    in_tasks = False
-    for line in proyecto_path.read_text().splitlines():
-        if "## ✅" in line or ("## " in line and "tarea" in line.lower()):
-            in_tasks = True
+# ── Agenda scanning ──────────────────────────────────────────────────────────
+
+def _scan_agenda(path: Path, end: date):
+    """Read agenda.md and return pending/overdue counts.
+
+    Returns dict with:
+      tasks_pending, tasks_overdue (list of desc),
+      ms_pending, ms_overdue (list of desc),
+      events_upcoming (list of (date, desc)) in period.
+    """
+    from core.agenda_cmds import _read_agenda
+
+    data = _read_agenda(path)
+
+    tasks_pending = []
+    tasks_overdue = []
+    for t in data["tasks"]:
+        if t["status"] != "pending":
             continue
-        if in_tasks and line.startswith("## "):
-            in_tasks = False
-        if not in_tasks:
+        tasks_pending.append(t)
+        if t.get("date"):
+            try:
+                if date.fromisoformat(t["date"]) < end:
+                    tasks_overdue.append(t)
+            except ValueError:
+                pass
+
+    ms_pending = []
+    ms_overdue = []
+    for m in data["milestones"]:
+        if m["status"] != "pending":
             continue
-        if re.match(r"- \[ \]", line):
-            open_count += 1
-            m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", line)
-            if m:
-                try:
-                    due = date.fromisoformat(m.group(1))
-                    if due < period_end:
-                        overdue_count += 1
-                except ValueError:
-                    pass
-    return open_count, overdue_count
+        ms_pending.append(m)
+        if m.get("date"):
+            try:
+                if date.fromisoformat(m["date"]) < end:
+                    ms_overdue.append(m)
+            except ValueError:
+                pass
+
+    return {
+        "tasks_pending": tasks_pending,
+        "tasks_overdue": tasks_overdue,
+        "ms_pending": ms_pending,
+        "ms_overdue": ms_overdue,
+        "events": data["events"],
+    }
 
 
-def run_stats(
-    date_str: Optional[str],
-    date_from: Optional[str],
-    date_to: Optional[str],
-    project: Optional[str],
-    tipo: Optional[str],
-    prioridad: Optional[str],
-    output: Optional[str],
-    open_after: bool,
-    editor: str,
+# ── Highlights count ─────────────────────────────────────────────────────────
+
+def _count_highlights(path: Path) -> dict:
+    """Return {section_key: count} for highlights."""
+    from core.highlights import _read_highlights
+    data = _read_highlights(path)
+    return {k: len(v) for k, v in data["sections"].items() if v}
+
+
+# ── Main report ──────────────────────────────────────────────────────────────
+
+def run_report(
+    projects: Optional[list] = None,
+    date_str: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> int:
+    """Print activity report for project(s) in a time period."""
     if not PROJECTS_DIR.exists():
         print(f"Error: directorio de proyectos no encontrado en {PROJECTS_DIR}")
         return 1
@@ -131,99 +173,131 @@ def run_stats(
     start, end = _parse_period(date_str, date_from, date_to)
     period_days = (end - start).days + 1
 
-    global_counts = {t: 0 for t in VALID_TYPES}
-    project_totals = []   # (name, tipo_emoji, total_entries)
-    total_open = total_overdue = 0
+    # Resolve project dirs
+    if projects:
+        dirs = []
+        for p in projects:
+            d = _find_new_project(p)
+            if d:
+                dirs.append(d)
+        if not dirs:
+            return 1
+    else:
+        dirs = sorted(d for d in PROJECTS_DIR.iterdir()
+                      if d.is_dir() and _is_new_project(d))
 
-    for project_dir in sorted(PROJECTS_DIR.iterdir()):
-        if not project_dir.is_dir():
-            continue
-        if project and project.lower() not in project_dir.name.lower():
-            continue
-        proyecto_path = find_proyecto_file(project_dir)
-        if not proyecto_path or not proyecto_path.exists():
-            continue
+    lines = [
+        f"REPORT — {start.isoformat()} → {end.isoformat()}  ({period_days}d)",
+        "═" * 56,
+    ]
 
-        meta = load_project_meta(proyecto_path)
-        if "completado" in meta["estado_raw"]:
-            continue
-        if tipo and normalize(tipo) not in meta["tipo_raw"]:
-            continue
-        if prioridad and normalize(prioridad) not in meta["prioridad_raw"]:
-            continue
+    grand_entries = 0
+    grand_completed_tasks = 0
+    grand_completed_ms = 0
 
+    for project_dir in dirs:
+        # ── Logbook ──
         logbook_path = find_logbook_file(project_dir)
         if logbook_path and logbook_path.exists():
-            counts, total = _scan_logbook(logbook_path, start, end)
+            counts, entries, comp_tasks, comp_ms = _scan_logbook(
+                logbook_path, start, end)
+        else:
+            counts, entries, comp_tasks, comp_ms = {}, [], [], []
+
+        # ── Agenda ──
+        agenda_path = resolve_file(project_dir, "agenda")
+        agenda = _scan_agenda(agenda_path, end)
+
+        # ── Highlights ──
+        hl_path = resolve_file(project_dir, "highlights")
+        hl_counts = _count_highlights(hl_path)
+
+        # ── Events in period ──
+        events_in_period = [
+            e for e in agenda["events"]
+            if start.isoformat() <= e["date"] <= end.isoformat()
+        ]
+
+        # Skip project if no activity at all
+        total_entries = len(entries)
+        has_activity = (total_entries or comp_tasks or comp_ms
+                        or agenda["tasks_overdue"] or agenda["ms_overdue"]
+                        or events_in_period)
+        if not has_activity:
+            continue
+
+        grand_entries += total_entries
+        grand_completed_tasks += len(comp_tasks)
+        grand_completed_ms += len(comp_ms)
+
+        lines.append("")
+        lines.append(f"[{project_dir.name}]")
+
+        # Logbook summary
+        if total_entries:
+            tag_parts = []
             for tag in VALID_TYPES:
-                global_counts[tag] += counts[tag]
-            if total:
-                project_totals.append((project_dir.name, meta["tipo"], total))
+                n = counts.get(tag, 0)
+                if n:
+                    emoji = TAG_EMOJI.get(tag, "")
+                    tag_parts.append(f"{emoji}{n}")
+            tags_str = "  ".join(tag_parts) if tag_parts else ""
+            lines.append(f"  Logbook: {total_entries} entrada{'s' if total_entries != 1 else ''}  {tags_str}")
 
-        open_c, over_c = _scan_tasks(proyecto_path, end)
-        total_open += open_c
-        total_overdue += over_c
+        # Highlights snapshot
+        if hl_counts:
+            hl_parts = [f"{k}: {v}" for k, v in hl_counts.items()]
+            lines.append(f"  Highlights: {', '.join(hl_parts)}")
 
-    # Also scan mision-log/diario
-    diario_total = 0
-    if DIARIO_DIR.exists():
-        for md in DIARIO_DIR.glob("*.md"):
-            _, total = _scan_logbook(md, start, end)
-            diario_total += total
+        # Tasks
+        n_pending = len(agenda["tasks_pending"])
+        n_overdue = len(agenda["tasks_overdue"])
+        n_completed = len(comp_tasks)
+        if n_pending or n_completed or n_overdue:
+            parts = []
+            if n_completed:
+                parts.append(f"{n_completed} completada{'s' if n_completed != 1 else ''}")
+            if n_pending:
+                parts.append(f"{n_pending} pendiente{'s' if n_pending != 1 else ''}")
+            if n_overdue:
+                parts.append(f"{n_overdue} vencida{'s' if n_overdue != 1 else ''}")
+            lines.append(f"  Tareas: {' · '.join(parts)}")
+            # List overdue tasks
+            for t in agenda["tasks_overdue"]:
+                lines.append(f"    ⚠️  {t['desc']} ({t['date']})")
+            # List completed tasks
+            for desc in comp_tasks:
+                lines.append(f"    ✓  {desc}")
 
-    grand_total = sum(global_counts.values()) + diario_total
-    project_totals.sort(key=lambda x: x[2], reverse=True)
-    max_tag = max(global_counts.values(), default=1) or 1
-    max_proj = project_totals[0][2] if project_totals else 1
+        # Milestones
+        n_ms_pending = len(agenda["ms_pending"])
+        n_ms_overdue = len(agenda["ms_overdue"])
+        n_ms_done = len(comp_ms)
+        if n_ms_pending or n_ms_done or n_ms_overdue:
+            parts = []
+            if n_ms_done:
+                parts.append(f"{n_ms_done} alcanzado{'s' if n_ms_done != 1 else ''}")
+            if n_ms_pending:
+                parts.append(f"{n_ms_pending} pendiente{'s' if n_ms_pending != 1 else ''}")
+            if n_ms_overdue:
+                parts.append(f"{n_ms_overdue} vencido{'s' if n_ms_overdue != 1 else ''}")
+            lines.append(f"  Hitos: {' · '.join(parts)}")
 
-    # Build output
-    lines = [
-        f"STATS — {start.isoformat()} → {end.isoformat()}  ({period_days}d)",
-        "═" * 56,
-        "",
-        f"Entradas totales: {grand_total}",
-        f"  (proyectos: {grand_total - diario_total}  ·  diario: {diario_total})",
-        "",
-        "Por tipo de entrada:",
-    ]
+        # Events
+        if events_in_period:
+            lines.append(f"  Eventos:")
+            for e in sorted(events_in_period, key=lambda x: x["date"]):
+                lines.append(f"    {e['date']} — {e['desc']}")
 
-    for tag in VALID_TYPES:
-        n = global_counts[tag]
-        bar = _bar(n, max_tag)
-        lines.append(f"  {TAG_EMOJI[tag]} {tag:<12} {n:>4}  {bar}")
+    # ── Totals ──
+    lines.append("")
+    lines.append("─" * 56)
+    total_parts = [f"{grand_entries} entradas"]
+    if grand_completed_tasks:
+        total_parts.append(f"{grand_completed_tasks} tareas completadas")
+    if grand_completed_ms:
+        total_parts.append(f"{grand_completed_ms} hitos alcanzados")
+    lines.append(f"Total: {' · '.join(total_parts)}")
 
-    lines += [
-        "",
-        "Proyectos más activos:",
-    ]
-    if project_totals:
-        for i, (name, _, total) in enumerate(project_totals[:10], 1):
-            bar = _bar(total, max_proj)
-            lines.append(f"  {i:>2}. {name:<30} {total:>4}  {bar}")
-    else:
-        lines.append("  Sin actividad en el período.")
-
-    lines += [
-        "",
-        f"Tareas: {total_open} abiertas  ·  {total_overdue} vencidas",
-    ]
-
-    text = "\n".join(lines)
-
-    if open_after and not output:
-        dest = STATS_OUTPUT
-    elif output:
-        dest = Path(output)
-    else:
-        dest = None
-
-    if dest:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(text + "\n")
-        print(f"✓ Guardado en {dest}")
-        if open_after:
-            open_file(dest, editor)
-    else:
-        print(text)
-
+    print("\n".join(lines))
     return 0

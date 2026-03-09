@@ -1,44 +1,20 @@
 """orbit open — open a note in an external editor or renderer."""
 
-import re
+import io
 import subprocess
 import sys
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
-from typing import Optional
 
-from core.log import find_project, find_logbook_file, find_proyecto_file
+from core.log import find_project, resolve_file, format_entry, _append_entry, init_logbook
 
-MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
-DIARIO_DIR  = MISION_LOG_DIR / "diario"
-SEMANAL_DIR = MISION_LOG_DIR / "semanal"
-MENSUAL_DIR = MISION_LOG_DIR / "mensual"
 
 EDITORS = {
     "typora": ["open", "-a", "Typora"],
     "glow":   ["glow"],
     "code":   ["code"],
 }
-
-
-def _resolve_path(target: str, log: bool) -> Optional[Path]:
-    """Resolve target string to a file path."""
-    # Week: YYYY-Wnn
-    if re.match(r"^\d{4}-W\d{2}$", target):
-        return SEMANAL_DIR / f"{target}.md"
-    # Month: YYYY-MM
-    if re.match(r"^\d{4}-\d{2}$", target) and len(target) == 7:
-        return MENSUAL_DIR / f"{target}.md"
-    # Date: YYYY-MM-DD
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", target):
-        return DIARIO_DIR / f"{target}.md"
-    # Project name
-    project_dir = find_project(target)
-    if not project_dir:
-        return None
-    if log:
-        return find_logbook_file(project_dir)
-    return find_proyecto_file(project_dir)
 
 
 def open_file(path: Path, editor: str) -> int:
@@ -64,54 +40,51 @@ def open_file(path: Path, editor: str) -> int:
         return 1
 
 
-def find_note(project_dir: Path, note_partial: str) -> Optional[Path]:
-    """Return the first note in notes/ whose name contains note_partial (case-insensitive).
-    If not found, prints available notes as suggestions.
-    """
-    notes_dir = project_dir / "notes"
-    if not notes_dir.exists():
-        print(f"Error: el proyecto '{project_dir.name}' no tiene directorio notes/")
-        return None
-    low = note_partial.lower()
-    all_notes = sorted(notes_dir.glob("*.md"))
-    matches = [f for f in all_notes if low in f.name.lower()]
-    if matches:
-        return matches[0]
-    print(f"Error: nota '{note_partial}' no encontrada en {project_dir.name}/notes/")
-    if all_notes:
-        print("  Notas disponibles:")
-        for n in all_notes:
-            print(f"    📝 {n.name}")
-    else:
-        print("  (no hay notas en este proyecto)")
-    return None
+ORBIT_DIR = Path(__file__).parent.parent
+CMD_MD    = ORBIT_DIR / "cmd.md"
 
 
-def run_open(target: Optional[str], log: bool, note: Optional[str], editor: str) -> int:
-    if not target:
-        target = date.today().isoformat()
+@contextmanager
+def capture_output():
+    """Context manager that captures stdout into a string buffer."""
+    buf = io.StringIO()
+    old = sys.stdout
+    sys.stdout = buf
+    try:
+        yield buf
+    finally:
+        sys.stdout = old
 
-    # --note: open a specific note inside a project
-    if note:
-        if not target or target == date.today().isoformat():
-            print("Error: --note requiere especificar un proyecto (ej: orbit open mi-proyecto --note titulo)")
-            return 1
-        project_dir = find_project(target)
-        if not project_dir:
-            print(f"Error: proyecto '{target}' no encontrado")
-            return 1
-        path = find_note(project_dir, note)
-        if not path:
-            return 1
-    else:
-        path = _resolve_path(target, log)
-        if path is None:
-            print(f"Error: no se encontró ningún fichero para '{target}'")
-            return 1
 
-    if not path.exists():
-        print(f"Error: el fichero no existe: {path}")
+def open_cmd_output(content: str, editor: str = "typora") -> None:
+    """Write content to cmd.md and open it in the editor."""
+    CMD_MD.write_text(content)
+    open_file(CMD_MD, editor)
+
+
+def log_cmd_output(content: str, project: str, entry_type: str = "apunte",
+                   cmd_label: str = "") -> int:
+    """Log captured command output as a logbook entry in the given project."""
+    project_dir = find_project(project)
+    if not project_dir:
         return 1
 
-    print(f"Abriendo {path.name} con {editor}...")
-    return open_file(path, editor)
+    logbook = resolve_file(project_dir, "logbook")
+    if not logbook.exists():
+        init_logbook(logbook, project_dir.name)
+
+    # Build summary line
+    lines = [l for l in content.strip().splitlines() if l.strip()]
+    n = len(lines)
+    label = cmd_label or "output"
+    summary = f"[{label}] {n} líneas"
+
+    # Entry: summary line + code block with content
+    date_str = date.today().isoformat()
+    from core.log import TAG_EMOJI
+    emoji = TAG_EMOJI.get(entry_type, "")
+    block = content.strip()
+    entry = f"{date_str} {emoji} {summary} #{entry_type} [O]\n\n```\n{block}\n```\n"
+    _append_entry(logbook, entry)
+    print(f"✓ [{project_dir.name}] {summary} #{entry_type}")
+    return 0

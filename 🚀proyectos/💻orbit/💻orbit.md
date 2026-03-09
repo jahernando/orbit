@@ -2,7 +2,7 @@
 
 💻 Software
 parado
-🟠 Alta
+🔴 Alta
 ## 🎯 Objetivo
 CLI en Python para gestionar proyectos científicos y personales en markdown.
 ## ✅ Tareas
@@ -21,5 +21,9 @@ CLI en Python para gestionar proyectos científicos y personales en markdown.
 - [x] Test sin fecha ni hora (2026-03-08)
 ## 📊 Resultados
 - Comandos implementados: log, list, tasks, activity, monthly
+
+## 📎 Referencias
+- 📝 [draft_structura](./notes/20260309_draft-structura.md)
+
 ## 📓 Logbook
 [Ver logbook completo](./📓orbit.md)

@@ -2,7 +2,7 @@
 
 🌀 Investigación
 parado
-🟡 Media
+🔶 Media
 ## 🎯 Objetivo
 Descripción breve del objetivo.
 ## ✅ Tareas

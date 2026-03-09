@@ -1,7 +1,4 @@
-# Logbook — [Nombre del proyecto]
+# Logbook — {{PROJECT_NAME}}
 
-<!-- Tipos: #idea #referencia #tarea #problema #resultado #apunte #decision -->
-
-## YYYY-MM-DD
-
-YYYY-MM-DD Primera entrada. #apunte
+<!-- Tipos: #idea #referencia #apunte #problema #resultado #decision #evaluacion -->
+<!-- Formato: YYYY-MM-DD contenido #tipo [O]? -->

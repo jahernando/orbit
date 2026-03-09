@@ -2,7 +2,7 @@
 
 ⚙️ Gestión
 durmiendo
-🔵 Baja
+🔹 Baja
 ## 🎯 Objetivo
 Descripción breve del objetivo.
 ## ✅ Tareas

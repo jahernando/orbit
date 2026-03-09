@@ -1,0 +1,669 @@
+"""Unit tests for core/agenda_cmds.py — Phase 3: task / milestone / event commands."""
+
+import sys
+import textwrap
+from datetime import date, timedelta
+from pathlib import Path
+
+import pytest
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _strip_emoji(name: str) -> str:
+    """Strip leading non-ASCII chars and variation selectors from a name."""
+    import unicodedata
+    i = 0
+    while i < len(name):
+        c = name[i]
+        if ord(c) > 127 or unicodedata.category(c) in ("So", "Sk", "Mn", "Cf"):
+            i += 1
+        else:
+            break
+    return name[i:]
+
+
+def _make_project(tmp_path: Path, name: str = "test-project") -> Path:
+    """Create a minimal new-format project directory."""
+    project_dir = tmp_path / name
+    project_dir.mkdir()
+    base = _strip_emoji(name)
+    (project_dir / f"{base}-project.md").write_text(
+        f"# {name}\n- Tipo: 💻 Software\n- Estado: [auto]\n- Prioridad: media\n"
+    )
+    (project_dir / f"{base}-logbook.md").write_text(f"# Logbook — {name}\n\n")
+    (project_dir / f"{base}-agenda.md").write_text(f"# Agenda — {name}\n\n<!-- ... -->\n")
+    (project_dir / f"{base}-highlights.md").write_text(f"# Highlights — {name}\n\n")
+    (project_dir / "notes").mkdir()
+    return project_dir
+
+
+def _agenda_text(project_dir: Path) -> str:
+    base = _strip_emoji(project_dir.name)
+    return (project_dir / f"{base}-agenda.md").read_text()
+
+
+def _logbook_text(project_dir: Path) -> str:
+    base = _strip_emoji(project_dir.name)
+    return (project_dir / f"{base}-logbook.md").read_text()
+
+
+# ── Fixtures ───────────────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def projects_dir(tmp_path, monkeypatch):
+    """Patch PROJECTS_DIR to an isolated tmp directory."""
+    pdir = tmp_path / "proyectos"
+    pdir.mkdir()
+    import core.agenda_cmds as ac
+    import core.project as cp
+    import core.log as cl
+    monkeypatch.setattr(ac, "PROJECTS_DIR", pdir)
+    monkeypatch.setattr(cp, "PROJECTS_DIR", pdir)
+    monkeypatch.setattr(cl, "PROJECTS_DIR", pdir)
+    return pdir
+
+
+@pytest.fixture()
+def proj(projects_dir):
+    """One ready-made project inside the patched projects_dir."""
+    return _make_project(projects_dir, "💻test-project")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# _parse_task_line / _format_task_line
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestParseTaskLine:
+    from core.agenda_cmds import _parse_task_line, _format_task_line
+
+    def test_pending_no_extras(self):
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [ ] Do something")
+        assert t["status"] == "pending"
+        assert t["desc"]   == "Do something"
+        assert t["date"]   is None
+        assert t["recur"]  is None
+        assert t["ring"]   is None
+
+    def test_done(self):
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [x] Task done (2026-03-10)")
+        assert t["status"] == "done"
+        assert t["date"]   == "2026-03-10"
+
+    def test_cancelled(self):
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [-] Cancelled task")
+        assert t["status"] == "cancelled"
+
+    def test_with_all_attrs(self):
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [ ] Weekly report (2026-03-14) [recur:weekly] [ring:1d]")
+        assert t["desc"]  == "Weekly report"
+        assert t["date"]  == "2026-03-14"
+        assert t["recur"] == "weekly"
+        assert t["ring"]  == "1d"
+
+    def test_returns_none_for_non_task(self):
+        from core.agenda_cmds import _parse_task_line
+        assert _parse_task_line("## ✅ Tareas") is None
+        assert _parse_task_line("2026-03-10 — meeting") is None
+        assert _parse_task_line("") is None
+
+    def test_roundtrip(self):
+        from core.agenda_cmds import _parse_task_line, _format_task_line
+        line = "- [ ] My task (2026-04-01) [recur:monthly] [ring:2h]"
+        t = _parse_task_line(line)
+        assert _format_task_line(t) == line
+
+    def test_format_pending_no_date(self):
+        from core.agenda_cmds import _format_task_line
+        t = {"status": "pending", "desc": "Simple task", "date": None, "recur": None, "ring": None}
+        assert _format_task_line(t) == "- [ ] Simple task"
+
+    def test_format_done(self):
+        from core.agenda_cmds import _format_task_line
+        t = {"status": "done", "desc": "Done task", "date": "2026-03-09", "recur": None, "ring": None}
+        assert _format_task_line(t) == "- [x] Done task (2026-03-09)"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# _parse_event_line / _format_event_line
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestParseEventLine:
+    def test_simple(self):
+        from core.agenda_cmds import _parse_event_line
+        e = _parse_event_line("2026-03-15 — Conference")
+        assert e["date"] == "2026-03-15"
+        assert e["desc"] == "Conference"
+        assert e["end"]  is None
+
+    def test_with_end(self):
+        from core.agenda_cmds import _parse_event_line
+        e = _parse_event_line("2026-03-15 — Conference [end:2026-03-17]")
+        assert e["end"] == "2026-03-17"
+        assert e["desc"] == "Conference"
+
+    def test_none_for_non_event(self):
+        from core.agenda_cmds import _parse_event_line
+        assert _parse_event_line("- [ ] task") is None
+        assert _parse_event_line("## 📅 Eventos") is None
+
+    def test_roundtrip(self):
+        from core.agenda_cmds import _parse_event_line, _format_event_line
+        line = "2026-06-01 — Summer school [end:2026-06-05]"
+        assert _format_event_line(_parse_event_line(line)) == line
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# _read_agenda / _write_agenda
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestAgendaIO:
+    def test_empty_agenda(self, proj):
+        from core.agenda_cmds import _read_agenda
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"]      == []
+        assert data["milestones"] == []
+        assert data["events"]     == []
+
+    def test_missing_file(self, proj):
+        from core.agenda_cmds import _read_agenda
+        data = _read_agenda(proj / "nonexistent.md")
+        assert data["tasks"] == []
+
+    def test_write_and_read_tasks(self, proj):
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        data = _read_agenda(proj / "test-project-agenda.md")
+        data["tasks"].append({"status": "pending", "desc": "Test task",
+                               "date": "2026-04-01", "recur": None, "ring": None})
+        _write_agenda(proj / "test-project-agenda.md", data)
+        data2 = _read_agenda(proj / "test-project-agenda.md")
+        assert len(data2["tasks"]) == 1
+        assert data2["tasks"][0]["desc"] == "Test task"
+
+    def test_write_preserves_header(self, proj):
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        data = _read_agenda(proj / "test-project-agenda.md")
+        data["tasks"].append({"status": "pending", "desc": "X",
+                               "date": None, "recur": None, "ring": None})
+        _write_agenda(proj / "test-project-agenda.md", data)
+        text = _agenda_text(proj)
+        assert text.startswith("# Agenda")
+
+    def test_write_multiple_sections(self, proj):
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        data = _read_agenda(proj / "test-project-agenda.md")
+        data["tasks"].append({"status": "pending", "desc": "Task A",
+                               "date": None, "recur": None, "ring": None})
+        data["milestones"].append({"status": "pending", "desc": "Milestone A",
+                                   "date": "2026-06-01", "recur": None, "ring": None})
+        data["events"].append({"date": "2026-04-10", "desc": "Conference", "end": None})
+        _write_agenda(proj / "test-project-agenda.md", data)
+        text = _agenda_text(proj)
+        assert "## ✅ Tareas" in text
+        assert "## 🏁 Hitos" in text
+        assert "## 📅 Eventos" in text
+
+    def test_events_sorted_by_date(self, proj):
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        data = _read_agenda(proj / "test-project-agenda.md")
+        data["events"] = [
+            {"date": "2026-05-01", "desc": "Later", "end": None},
+            {"date": "2026-03-01", "desc": "Earlier", "end": None},
+        ]
+        _write_agenda(proj / "test-project-agenda.md", data)
+        data2 = _read_agenda(proj / "test-project-agenda.md")
+        assert data2["events"][0]["date"] == "2026-03-01"
+        assert data2["events"][1]["date"] == "2026-05-01"
+
+    def test_roundtrip_complex(self, proj):
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        data = _read_agenda(proj / "test-project-agenda.md")
+        data["tasks"] = [
+            {"status": "pending", "desc": "T1", "date": "2026-04-01",
+             "recur": "weekly", "ring": "1d"},
+            {"status": "done", "desc": "T2", "date": "2026-03-01",
+             "recur": None, "ring": None},
+        ]
+        data["milestones"] = [
+            {"status": "pending", "desc": "M1", "date": "2026-07-01",
+             "recur": None, "ring": None},
+        ]
+        _write_agenda(proj / "test-project-agenda.md", data)
+        data2 = _read_agenda(proj / "test-project-agenda.md")
+        assert len(data2["tasks"])      == 2
+        assert len(data2["milestones"]) == 1
+        assert data2["tasks"][0]["recur"] == "weekly"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# _next_occurrence
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestNextOccurrence:
+    def test_daily(self):
+        from core.agenda_cmds import _next_occurrence
+        assert _next_occurrence("2026-03-10", "daily", "2026-03-10") == "2026-03-11"
+
+    def test_weekly(self):
+        from core.agenda_cmds import _next_occurrence
+        assert _next_occurrence("2026-03-10", "weekly", "2026-03-10") == "2026-03-17"
+
+    def test_monthly(self):
+        from core.agenda_cmds import _next_occurrence
+        assert _next_occurrence("2026-03-10", "monthly", "2026-03-10") == "2026-04-10"
+
+    def test_monthly_end_of_month(self):
+        from core.agenda_cmds import _next_occurrence
+        # Jan 31 → Feb last day
+        assert _next_occurrence("2026-01-31", "monthly", "2026-01-31") == "2026-02-28"
+
+    def test_weekdays_from_friday(self):
+        from core.agenda_cmds import _next_occurrence
+        # 2026-03-06 is Friday → next weekday is Monday 2026-03-09
+        result = _next_occurrence("2026-03-06", "weekdays", "2026-03-06")
+        d = date.fromisoformat(result)
+        assert d.weekday() < 5  # Mon–Fri
+
+    def test_no_due_date_uses_done_date(self):
+        from core.agenda_cmds import _next_occurrence
+        result = _next_occurrence(None, "weekly", "2026-03-09")
+        assert result == "2026-03-16"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# run_task_add
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestRunTaskAdd:
+    def test_adds_task(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add
+        rc = run_task_add("test-project", "Write tests")
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Write tests" in captured.out
+
+    def test_task_appears_in_file(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, _read_agenda
+        run_task_add("test-project", "My task", date_val="2026-04-01")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["desc"]  == "My task"
+        assert data["tasks"][0]["date"]  == "2026-04-01"
+        assert data["tasks"][0]["status"] == "pending"
+
+    def test_task_with_recur_and_ring(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, _read_agenda
+        run_task_add("test-project", "Weekly check", recur="weekly", ring="1d")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        t = data["tasks"][0]
+        assert t["recur"] == "weekly"
+        assert t["ring"]  == "1d"
+
+    def test_invalid_recur(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add
+        rc = run_task_add("test-project", "Bad recur", recur="hourly")
+        assert rc == 1
+        assert "hourly" in capsys.readouterr().out
+
+    def test_project_not_found(self, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add
+        rc = run_task_add("nonexistent", "Task")
+        assert rc == 1
+
+    def test_creates_agenda_if_missing(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, _read_agenda
+        (proj / "test-project-agenda.md").unlink()
+        rc = run_task_add("test-project", "New task")
+        # Agenda file is re-created on write
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["desc"] == "New task"
+
+    def test_multiple_tasks(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, _read_agenda
+        run_task_add("test-project", "Task A")
+        run_task_add("test-project", "Task B")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert len(data["tasks"]) == 2
+
+    def test_output_includes_date(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add
+        run_task_add("test-project", "Task with date", date_val="2026-05-01")
+        out = capsys.readouterr().out
+        assert "2026-05-01" in out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# run_task_done
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestRunTaskDone:
+    def _setup_task(self, proj, projects_dir, desc="Finish report", recur=None):
+        from core.agenda_cmds import run_task_add, _read_agenda, _write_agenda
+        run_task_add("test-project", desc, date_val="2026-03-15", recur=recur)
+
+    def test_marks_done_by_text(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_done, _read_agenda
+        run_task_add("test-project", "Finish report")
+        rc = run_task_done("test-project", "Finish")
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["status"] == "done"
+
+    def test_logbook_entry_on_done(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, run_task_done
+        run_task_add("test-project", "Important task")
+        run_task_done("test-project", "Important")
+        log = _logbook_text(proj)
+        assert "[completada] Tarea: Important task" in log
+        assert "[O]" in log
+
+    def test_recurring_task_creates_next(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_done, _read_agenda
+        run_task_add("test-project", "Weekly standup", date_val="2026-03-09", recur="weekly")
+        rc = run_task_done("test-project", "Weekly standup")
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        # Original is done, new pending task created
+        done_tasks    = [t for t in data["tasks"] if t["status"] == "done"]
+        pending_tasks = [t for t in data["tasks"] if t["status"] == "pending"]
+        assert len(done_tasks)    == 1
+        assert len(pending_tasks) == 1
+        assert pending_tasks[0]["date"] == "2026-03-16"
+
+    def test_recurring_logbook_includes_next_date(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, run_task_done
+        run_task_add("test-project", "Weekly standup", date_val="2026-03-09", recur="weekly")
+        run_task_done("test-project", "standup")
+        log = _logbook_text(proj)
+        assert "recur: weekly" in log
+        assert "próxima:" in log
+
+    def test_done_no_text_interactive_skip(self, proj, projects_dir, monkeypatch):
+        from core.agenda_cmds import run_task_add, run_task_done
+        run_task_add("test-project", "Some task")
+        # stdin not a tty → should return None from _interactive_select
+        monkeypatch.setattr(sys, "stdin", open("/dev/null"))
+        rc = run_task_done("test-project", None)
+        # Returns 1 because no selection was made
+        assert rc == 1
+
+    def test_not_found_text(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_done
+        run_task_add("test-project", "Existing task")
+        rc = run_task_done("test-project", "nonexistent")
+        assert rc == 1
+        assert "no se encontró" in capsys.readouterr().out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# run_task_drop
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestRunTaskDrop:
+    def test_drops_task(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, run_task_drop, _read_agenda
+        run_task_add("test-project", "To drop")
+        rc = run_task_drop("test-project", "drop", force=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["status"] == "cancelled"
+
+    def test_logbook_drop_entry(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, run_task_drop
+        run_task_add("test-project", "Bad idea")
+        run_task_drop("test-project", "Bad idea", force=True)
+        log = _logbook_text(proj)
+        assert "[cancelada] Tarea: Bad idea" in log
+        assert "[O]" in log
+
+    def test_drop_requires_force_in_noninteractive(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, run_task_drop, _read_agenda
+        run_task_add("test-project", "Keep me")
+        rc = run_task_drop("test-project", "Keep me")  # no force, not a tty
+        assert rc == 1
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["status"] == "pending"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# run_task_edit
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestRunTaskEdit:
+    def test_edit_description(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "Old name")
+        rc = run_task_edit("test-project", "Old name", new_text="New name")
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["desc"] == "New name"
+
+    def test_edit_date(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "Task", date_val="2026-03-01")
+        run_task_edit("test-project", "Task", new_date="2026-04-01")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["date"] == "2026-04-01"
+
+    def test_remove_date_with_none(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "Task", date_val="2026-03-01")
+        run_task_edit("test-project", "Task", new_date="none")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["date"] is None
+
+    def test_remove_recur_with_none(self, proj, projects_dir):
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "Task", recur="weekly")
+        run_task_edit("test-project", "Task", new_recur="none")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["recur"] is None
+
+    def test_invalid_recur_in_edit(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_edit
+        run_task_add("test-project", "Task")
+        rc = run_task_edit("test-project", "Task", new_recur="hourly")
+        assert rc == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# run_task_list
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestRunTaskList:
+    def test_lists_pending(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_list
+        run_task_add("test-project", "Pending task")
+        rc = run_task_list()
+        assert rc == 0
+        assert "Pending task" in capsys.readouterr().out
+
+    def test_done_filter(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_done, run_task_list
+        run_task_add("test-project", "Done task")
+        run_task_done("test-project", "Done")
+        run_task_list(status_filter="done")
+        out = capsys.readouterr().out
+        assert "Done task" in out
+
+    def test_no_results(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_list
+        rc = run_task_list()
+        assert rc == 0
+        assert "No hay tareas" in capsys.readouterr().out
+
+    def test_date_filter(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_list
+        run_task_add("test-project", "March task", date_val="2026-03-15")
+        run_task_add("test-project", "April task", date_val="2026-04-01")
+        capsys.readouterr()  # discard add output
+        run_task_list(date_filter="2026-03")
+        out = capsys.readouterr().out
+        assert "March task" in out
+        assert "April task" not in out
+
+    def test_specific_project(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_list
+        run_task_add("test-project", "My task")
+        run_task_list(projects=["test-project"])
+        assert "My task" in capsys.readouterr().out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# run_ms_add / run_ms_done / run_ms_cancel / run_ms_edit / run_ms_list
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestMilestones:
+    def test_add_milestone(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, _read_agenda
+        rc = run_ms_add("test-project", "First calibration complete", date_val="2026-06-01")
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["milestones"][0]["desc"] == "First calibration complete"
+        assert data["milestones"][0]["date"] == "2026-06-01"
+
+    def test_done_milestone(self, proj, projects_dir):
+        from core.agenda_cmds import run_ms_add, run_ms_done, _read_agenda
+        run_ms_add("test-project", "Key milestone")
+        run_ms_done("test-project", "Key")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["milestones"][0]["status"] == "done"
+
+    def test_done_logbook_entry(self, proj, projects_dir):
+        from core.agenda_cmds import run_ms_add, run_ms_done
+        run_ms_add("test-project", "Release v1.0")
+        run_ms_done("test-project", "Release")
+        log = _logbook_text(proj)
+        assert "[alcanzado] Hito: Release v1.0" in log
+        assert "[O]" in log
+
+    def test_drop_milestone(self, proj, projects_dir):
+        from core.agenda_cmds import run_ms_add, run_ms_drop, _read_agenda
+        run_ms_add("test-project", "Deprecated goal")
+        run_ms_drop("test-project", "Deprecated", force=True)
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["milestones"][0]["status"] == "cancelled"
+
+    def test_drop_logbook_entry(self, proj, projects_dir):
+        from core.agenda_cmds import run_ms_add, run_ms_drop
+        run_ms_add("test-project", "Old milestone")
+        run_ms_drop("test-project", "Old milestone", force=True)
+        log = _logbook_text(proj)
+        assert "[cancelado] Hito: Old milestone" in log
+
+    def test_edit_text(self, proj, projects_dir):
+        from core.agenda_cmds import run_ms_add, run_ms_edit, _read_agenda
+        run_ms_add("test-project", "Old name")
+        run_ms_edit("test-project", "Old name", new_text="New name")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["milestones"][0]["desc"] == "New name"
+
+    def test_edit_date_none(self, proj, projects_dir):
+        from core.agenda_cmds import run_ms_add, run_ms_edit, _read_agenda
+        run_ms_add("test-project", "MS", date_val="2026-06-01")
+        run_ms_edit("test-project", "MS", new_date="none")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["milestones"][0]["date"] is None
+
+    def test_list_milestones(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_list
+        run_ms_add("test-project", "Big goal")
+        rc = run_ms_list()
+        assert rc == 0
+        assert "Big goal" in capsys.readouterr().out
+
+    def test_list_no_results(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_list
+        rc = run_ms_list()
+        assert rc == 0
+        assert "No hay hitos" in capsys.readouterr().out
+
+    def test_list_done_filter(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_done, run_ms_list
+        run_ms_add("test-project", "Completed MS")
+        run_ms_done("test-project", "Completed")
+        run_ms_list(status_filter="done")
+        assert "Completed MS" in capsys.readouterr().out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# run_ev_add / run_ev_drop / run_ev_list
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestEvents:
+    def test_add_event(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        rc = run_ev_add("test-project", "Conference", "2026-05-10")
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"][0]["date"] == "2026-05-10"
+        assert data["events"][0]["desc"] == "Conference"
+
+    def test_add_event_with_end(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        run_ev_add("test-project", "Summer school", "2026-07-01", end_date="2026-07-05")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"][0]["end"] == "2026-07-05"
+
+    def test_invalid_date(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add
+        rc = run_ev_add("test-project", "Bad event", "not-a-date")
+        assert rc == 1
+        assert "inválida" in capsys.readouterr().out
+
+    def test_drop_event_by_text(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_drop, _read_agenda
+        run_ev_add("test-project", "Meeting", "2026-03-20")
+        rc = run_ev_drop("test-project", "Meeting", force=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"] == []
+
+    def test_drop_nonexistent(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_drop
+        rc = run_ev_drop("test-project", "Ghost event", force=True)
+        assert rc == 1
+        assert "no se encontró" in capsys.readouterr().out
+
+    def test_list_events(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_list
+        run_ev_add("test-project", "Workshop", "2026-04-15")
+        rc = run_ev_list()
+        assert rc == 0
+        assert "Workshop" in capsys.readouterr().out
+
+    def test_list_with_period_filter(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_list
+        run_ev_add("test-project", "March event",   "2026-03-10")
+        run_ev_add("test-project", "June event",    "2026-06-01")
+        run_ev_add("test-project", "October event", "2026-10-01")
+        capsys.readouterr()  # discard add output
+        run_ev_list(period_from="2026-04-01", period_to="2026-07-31")
+        out = capsys.readouterr().out
+        assert "June event"    in out
+        assert "March event"   not in out
+        assert "October event" not in out
+
+    def test_list_empty(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_list
+        rc = run_ev_list()
+        assert rc == 0
+        assert "No hay eventos" in capsys.readouterr().out
+
+    def test_list_specific_project(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_list
+        run_ev_add("test-project", "Team meeting", "2026-04-01")
+        run_ev_list(project="test-project")
+        assert "Team meeting" in capsys.readouterr().out
+
+    def test_events_sorted_in_list(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_list
+        run_ev_add("test-project", "Later",   "2026-06-01")
+        run_ev_add("test-project", "Earlier", "2026-03-01")
+        capsys.readouterr()  # discard add output
+        run_ev_list()
+        out = capsys.readouterr().out
+        assert out.index("Earlier") < out.index("Later")

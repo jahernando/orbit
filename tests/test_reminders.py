@@ -10,10 +10,7 @@ from core.reminders import (
     _mark_scheduled,
     _advance_recurring,
     _process_reminder,
-    inject_reminders_into_note,
     schedule_today_reminders,
-    INJECT_START,
-    INJECT_END,
 )
 
 TARGET = date(2026, 3, 8)
@@ -267,58 +264,6 @@ class TestProcessReminder:
         content = p.read_text()
         assert "2026-03-15" in content
         assert "- [ ]" in content
-
-
-# ── inject_reminders_into_note ────────────────────────────────────────────────
-
-class TestInjectReminders:
-
-    def _make_reminders(self, proyecto_path: Path) -> list:
-        return [
-            {"hour": 10, "minute": 0,  "title": "Reunión",  "project": "testproj", "proyecto_path": proyecto_path},
-            {"hour":  9, "minute": 30, "title": "Standup",  "project": "testproj", "proyecto_path": proyecto_path},
-        ]
-
-    def test_injects_between_markers(self, orbit_env):
-        note = orbit_env["diario_path"]
-        reminders = self._make_reminders(orbit_env["proyecto_path"])
-        inject_reminders_into_note(note, reminders)
-        content = note.read_text()
-        assert "Reunión" in content
-        assert "Standup" in content
-        assert INJECT_START in content
-        assert INJECT_END in content
-
-    def test_sorted_by_time(self, orbit_env):
-        note = orbit_env["diario_path"]
-        reminders = self._make_reminders(orbit_env["proyecto_path"])
-        inject_reminders_into_note(note, reminders)
-        content = note.read_text()
-        pos_standup = content.index("Standup")
-        pos_reunion = content.index("Reunión")
-        assert pos_standup < pos_reunion   # 09:30 antes que 10:00
-
-    def test_no_markers_leaves_file_unchanged(self, orbit_env):
-        note = orbit_env["diario_path"]
-        original = note.read_text().replace(INJECT_START, "").replace(INJECT_END, "")
-        note.write_text(original)
-        reminders = self._make_reminders(orbit_env["proyecto_path"])
-        inject_reminders_into_note(note, reminders)
-        assert note.read_text() == original
-
-    def test_empty_reminders_leaves_file_unchanged(self, orbit_env):
-        note = orbit_env["diario_path"]
-        original = note.read_text()
-        inject_reminders_into_note(note, [])
-        assert note.read_text() == original
-
-    def test_link_contains_proyecto_path(self, orbit_env):
-        note = orbit_env["diario_path"]
-        reminders = self._make_reminders(orbit_env["proyecto_path"])
-        inject_reminders_into_note(note, reminders)
-        content = note.read_text()
-        assert "file://" in content
-        assert "#tareas" in content
 
 
 # ── schedule_today_reminders ──────────────────────────────────────────────────

@@ -65,3 +65,5 @@
 2026-03-07 📊 creados reminders y tarea automatica de creación de notas diaras #resultado
 
 2026-03-07 📊 añadido calendario  #resultado
+
+2026-03-09 📝 [draft_structura](./notes/20260309_draft-structura.md) #apunte

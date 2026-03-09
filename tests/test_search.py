@@ -5,44 +5,14 @@ from pathlib import Path
 import pytest
 
 from core.search import (
-    _heading_anchor, _matches, _in_date_range,
-    _search_logbook, _search_proyecto, run_search,
+    _matches, _in_date_range,
+    _search_logbook, _search_file, run_search,
 )
-
-# Shorthand for calling run_search with all optional args defaulted
-def _search(query=None, projects=None, tag=None, date_filter=None,
-            date_from=None, date_to=None, tipo=None, estado=None,
-            prioridad=None, any_mode=False, diario=False, notes=False,
-            limit=0, output=None, open_after=False, editor="typora"):
-    return run_search(
-        query=query, projects=projects, tag=tag, date_filter=date_filter,
-        date_from=date_from, date_to=date_to, tipo=tipo, estado=estado,
-        prioridad=prioridad, any_mode=any_mode, diario=diario, notes=notes,
-        limit=limit, output=output, open_after=open_after, editor=editor,
-    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Pure helpers
 # ═══════════════════════════════════════════════════════════════════════════════
-
-class TestHeadingAnchor:
-
-    def test_simple(self):
-        assert _heading_anchor("## Resultados") == "resultados"
-
-    def test_strips_hashes(self):
-        assert _heading_anchor("### Mi sección") == "mi-seccion"
-
-    def test_strips_accents(self):
-        assert _heading_anchor("## Decisión") == "decision"
-
-    def test_spaces_become_hyphens(self):
-        assert _heading_anchor("## Foo Bar Baz") == "foo-bar-baz"
-
-    def test_special_chars_removed(self):
-        assert _heading_anchor("## Test (2026)") == "test-2026"
-
 
 class TestMatches:
 
@@ -146,40 +116,29 @@ class TestSearchLogbook:
         assert "Marzo" in hits[0]
 
 
-class TestSearchProyecto:
+class TestSearchFile:
 
-    def test_finds_match_under_section(self, tmp_path):
-        p = tmp_path / "proyecto.md"
-        p.write_text(
-            "# Mi Proyecto\n\n"
-            "## ✅ Tareas\n"
-            "- [ ] Reproducir figura 3 (2026-03-15)\n\n"
-            "## 📋 Notas\n"
-            "Nada relevante aquí.\n"
+    def test_basic_keyword_match(self, tmp_path):
+        f = tmp_path / "highlights.md"
+        f.write_text(
+            "# Highlights\n"
+            "- Energy resolution 2.3% #resultado\n"
+            "- Calibración relativa decidida #decision\n"
         )
-        results = _search_proyecto(p, ["reproducir"], False)
-        assert len(results) == 1
-        section, anchor, line = results[0]
-        assert "Tareas" in section
-        assert "reproducir" in line.lower()
+        hits = _search_file(f, ["energy"], False, 0)
+        assert len(hits) == 1
+        assert "Energy" in hits[0]
 
-    def test_no_match_returns_empty(self, tmp_path):
-        p = tmp_path / "proyecto.md"
-        p.write_text("# Proyecto\n## Notas\nSin nada relevante.\n")
-        assert _search_proyecto(p, ["calibración"], False) == []
-
-    def test_skips_h1_and_comments(self, tmp_path):
-        p = tmp_path / "proyecto.md"
-        p.write_text(
-            "# Match en título\n"
-            "<!-- match en comment -->\n"
-            "## Sección\n"
-            "cuerpo match\n"
+    def test_skips_headings_and_comments(self, tmp_path):
+        f = tmp_path / "test.md"
+        f.write_text(
+            "# Heading match\n"
+            "<!-- comment match -->\n"
+            "body match\n"
         )
-        results = _search_proyecto(p, ["match"], False)
-        # H1 and comment not returned; only body
-        assert len(results) == 1
-        assert "cuerpo" in results[0][2]
+        hits = _search_file(f, ["match"], False, 0)
+        assert len(hits) == 1
+        assert "body" in hits[0]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -191,15 +150,15 @@ class TestRunSearch:
     def _make_project(self, projects_dir: Path, name: str) -> Path:
         proj = projects_dir / name
         proj.mkdir()
-        (proj / f"{name}.md").write_text(
+        base = name.lstrip("💻⚙️🌀📚📖🌿☀️")
+        (proj / f"{base}-project.md").write_text(
             f"# {name}\n\n"
             "**Tipo:** Investigación\n"
             "**Estado:** En marcha\n"
             "**Prioridad:** media\n\n"
             "## ✅ Tareas\n\n"
         )
-        # Use 📓 prefix so find_proyecto_file excludes it from candidates
-        (proj / f"📓{name}.md").write_text(
+        (proj / f"{base}-logbook.md").write_text(
             "2026-03-01 Calibración relativa #idea\n"
             "2026-03-02 El fit no converge #problema\n"
         )
@@ -208,7 +167,6 @@ class TestRunSearch:
     def _patch(self, monkeypatch, projects_dir):
         monkeypatch.setattr("core.search.PROJECTS_DIR", projects_dir)
         monkeypatch.setattr("core.log.PROJECTS_DIR",    projects_dir)
-        monkeypatch.setattr("core.tasks.PROJECTS_DIR",  projects_dir)
 
     def test_finds_keyword_in_logbook(self, tmp_path, monkeypatch, capsys):
         projects_dir = tmp_path / "🚀proyectos"
@@ -216,7 +174,7 @@ class TestRunSearch:
         self._make_project(projects_dir, "💻testproj")
         self._patch(monkeypatch, projects_dir)
 
-        rc = _search(query="calibración")
+        rc = run_search(query="calibración")
         assert rc == 0
         out = capsys.readouterr().out
         assert "1 resultado" in out or "testproj" in out
@@ -227,7 +185,7 @@ class TestRunSearch:
         self._make_project(projects_dir, "💻testproj")
         self._patch(monkeypatch, projects_dir)
 
-        _search(tag="problema")
+        run_search(None, tag="problema")
         out = capsys.readouterr().out
         assert "converge" in out or "problema" in out
 
@@ -237,27 +195,27 @@ class TestRunSearch:
         self._make_project(projects_dir, "💻testproj")
         self._patch(monkeypatch, projects_dir)
 
-        rc = _search(query="xyzinexistente99")
+        rc = run_search(query="xyzinexistente99")
         assert rc == 0
         out = capsys.readouterr().out
         assert "calibración" not in out.lower()
 
-    def test_output_to_file(self, tmp_path, monkeypatch):
+    def test_open_writes_to_cmd_md(self, tmp_path, monkeypatch):
         projects_dir = tmp_path / "🚀proyectos"
         projects_dir.mkdir()
         self._make_project(projects_dir, "💻testproj")
-        out_file = tmp_path / "search.md"
+        cmd_file = tmp_path / "cmd.md"
         self._patch(monkeypatch, projects_dir)
-        monkeypatch.setattr("core.search.SEARCH_OUTPUT", out_file)
-        monkeypatch.setattr("core.search.open_file",     lambda p, e: 0)
+        monkeypatch.setattr("core.open.CMD_MD",      cmd_file)
+        monkeypatch.setattr("core.open.open_file",   lambda p, e: 0)
 
-        _search(query="calibración", output=str(out_file))
-        assert out_file.exists()
-        assert "calibración" in out_file.read_text().lower()
+        run_search(query="calibración", open_after=True)
+        assert cmd_file.exists()
+        assert "calibración" in cmd_file.read_text().lower()
 
     def test_missing_projects_dir_returns_error(self, tmp_path, monkeypatch, capsys):
         missing = tmp_path / "nonexistent"
         monkeypatch.setattr("core.search.PROJECTS_DIR", missing)
         monkeypatch.setattr("core.log.PROJECTS_DIR",    missing)
-        rc = _search(query="algo")
+        rc = run_search(query="algo")
         assert rc == 1

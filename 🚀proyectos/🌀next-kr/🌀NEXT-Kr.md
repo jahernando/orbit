@@ -2,7 +2,7 @@
 
 🌀 Investigación
 💤 Durmiendo
-🟠 Alta
+🔴 Alta
 ## 🎯 Objetivo
 Descripción breve del objetivo.
 ## ✅ Tareas

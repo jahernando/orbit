@@ -2,7 +2,7 @@
 
 📚 Docencia
 durmiendo
-🟠 Alta
+🔴 Alta
 ## 🎯 Objetivo
 Descripción breve del objetivo.
 ## ✅ Tareas

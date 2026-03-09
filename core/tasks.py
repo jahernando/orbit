@@ -7,8 +7,6 @@ from typing import Optional
 from core.log import PROJECTS_DIR, find_proyecto_file
 from core.open import open_file
 
-MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
-TASKS_OUTPUT   = MISION_LOG_DIR / "tasks.md"
 
 
 def normalize(text: str) -> str:
@@ -23,9 +21,9 @@ STATUS_MAP = {
 }
 
 PRIORITY_MAP = {
-    "alta":  "🟠",
-    "media": "🟡",
-    "baja":  "🔵",
+    "alta":  "🔴",
+    "media": "🔶",
+    "baja":  "🔹",
 }
 
 TYPE_MAP = {
@@ -54,7 +52,7 @@ def read_proyecto_field(lines: list, field: str) -> Optional[str]:
 
 _TYPE_EMOJIS     = ("🌀", "📚", "⚙️", "📖", "💻", "🌿")
 _STATUS_EMOJIS   = ("⬜", "▶️", "⏸️", "💤", "✅")
-_PRIORITY_EMOJIS = ("🟠", "🟡", "🔵")
+_PRIORITY_EMOJIS = ("🔴", "🔶", "🔹")
 
 
 def update_proyecto_field(proyecto_path: Path, field: str, new_value: str) -> None:
@@ -321,9 +319,7 @@ def list_tasks(
 
     text = "\n".join(lines_out)
 
-    if open_after and not output:
-        dest = TASKS_OUTPUT
-    elif output:
+    if output:
         dest = Path(output)
     else:
         dest = None

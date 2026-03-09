@@ -1,27 +1,13 @@
-"""orbit search — full-text search across project logbooks, notes and diario."""
+"""orbit search — full-text search across project logbooks, highlights, agenda and notes."""
 
 import re
-import unicodedata
-from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, find_project, find_logbook_file, find_proyecto_file
-from core.tasks import load_project_meta, normalize
-from core.open import open_file
-
-MISION_LOG_DIR = Path(__file__).parent.parent / "☀️mision-log"
-DIARIO_DIR     = MISION_LOG_DIR / "diario"
-SEMANAL_DIR    = MISION_LOG_DIR / "semanal"
-MENSUAL_DIR    = MISION_LOG_DIR / "mensual"
-SEARCH_OUTPUT  = MISION_LOG_DIR / "search.md"
-
-
-def _heading_anchor(heading: str) -> str:
-    text = heading.lstrip("#").strip()
-    text = unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode()
-    text = re.sub(r"[^\w\s-]", "", text).strip().lower()
-    return re.sub(r"\s+", "-", text)
+from core.log import (PROJECTS_DIR, find_project, find_logbook_file,
+                      find_highlights_file, find_agenda_file)
+from core.open import open_file, open_cmd_output
+from core.project import _is_new_project, _read_project_meta
 
 
 def _matches(line: str, keywords: list, any_mode: bool) -> bool:
@@ -39,7 +25,6 @@ def _in_date_range(line: str, date_from: Optional[str], date_to: Optional[str],
     """Check if a logbook line's date falls within the specified range/filter."""
     if not date_from and not date_to and not date_filter:
         return True
-    # Extract leading date YYYY-MM-DD
     m = re.match(r"^(\d{4}-\d{2}-\d{2})", line.strip())
     if not m:
         return not (date_from or date_to or date_filter)
@@ -73,42 +58,22 @@ def _search_logbook(path: Path, keywords: list, tag: Optional[str],
     return results
 
 
-def _search_proyecto(path: Path, keywords: list, any_mode: bool) -> list:
-    """Return list of (section_heading, anchor, line) matches in proyecto.md."""
+def _search_file(path: Path, keywords: list, any_mode: bool, limit: int) -> list:
+    """Search any markdown file for matching non-comment lines."""
     results = []
-    current_section = ""
-    current_anchor  = ""
     for line in path.read_text().splitlines():
-        if line.startswith("## "):
-            current_section = line.strip()
-            current_anchor  = _heading_anchor(line)
+        if limit and len(results) >= limit:
+            break
+        s = line.strip()
+        if not s or s.startswith("#") or s.startswith("<!--"):
             continue
-        if line.startswith("#") or line.startswith("<!--") or not line.strip():
+        if keywords and not _matches(s, keywords, any_mode):
             continue
-        if keywords and not _matches(line, keywords, any_mode):
-            continue
-        results.append((current_section, current_anchor, line.strip()))
-    return results
-
-
-def _search_misionlog(keywords: list, tag: Optional[str], date_filter: Optional[str],
-                      date_from: Optional[str], date_to: Optional[str],
-                      any_mode: bool, limit: int) -> list:
-    """Search across diario, semanal and mensual files. Returns list of (label, link, hits)."""
-    results = []
-    for directory, label in [(DIARIO_DIR, "diario"), (SEMANAL_DIR, "semanal"), (MENSUAL_DIR, "mensual")]:
-        if not directory.exists():
-            continue
-        for md_file in sorted(directory.glob("*.md"), reverse=True):
-            hits = _search_logbook(md_file, keywords, tag, date_filter, date_from, date_to, any_mode, limit)
-            if hits:
-                link = f"[{label}/{md_file.name}](file://{md_file.resolve()})"
-                results.append((link, hits))
+        results.append(s)
     return results
 
 
 def _search_notes(project_dir: Path, keywords: list, any_mode: bool, limit: int) -> list:
-    """Search all .md files in project notes/ dir. Returns list of (filename, hits)."""
     notes_dir = project_dir / "notes"
     if not notes_dir.exists():
         return []
@@ -121,7 +86,6 @@ def _search_notes(project_dir: Path, keywords: list, any_mode: bool, limit: int)
             s = line.strip()
             if not s or s.startswith("<!--"):
                 continue
-            # Include H1 titles; skip deeper headings (## and beyond) as structural noise
             if s.startswith("## ") or s.startswith("### "):
                 continue
             if keywords and not _matches(s, keywords, any_mode):
@@ -134,21 +98,17 @@ def _search_notes(project_dir: Path, keywords: list, any_mode: bool, limit: int)
 
 def run_search(
     query: Optional[str],
-    projects: Optional[list],
-    tag: Optional[str],
-    date_filter: Optional[str],
-    date_from: Optional[str],
-    date_to: Optional[str],
-    tipo: Optional[str],
-    estado: Optional[str],
-    prioridad: Optional[str],
-    any_mode: bool,
-    diario: bool,
-    notes: bool,
-    limit: int,
-    output: Optional[str],
-    open_after: bool,
-    editor: str,
+    projects: Optional[list] = None,
+    tag: Optional[str] = None,
+    date_filter: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    any_mode: bool = False,
+    notes: bool = False,
+    limit: int = 0,
+    open_after: bool = False,
+    editor: str = "typora",
+    in_filter: Optional[str] = None,
 ) -> int:
     if not PROJECTS_DIR.exists():
         print(f"Error: directorio de proyectos no encontrado en {PROJECTS_DIR}")
@@ -165,17 +125,6 @@ def run_search(
     lines_out = [f"🔍 {query_label}", ""]
     total = 0
 
-    # Search mision-log if requested
-    if diario:
-        mision_hits = _search_misionlog(keywords, tag, date_filter, date_from, date_to, any_mode, limit)
-        for link, hits in mision_hits:
-            lines_out.append(f"**☀️ mision-log**")
-            lines_out.append(f"  {link}")
-            for h in hits:
-                lines_out.append(f"    {h}")
-            lines_out.append("")
-            total += len(hits)
-
     # Resolve project dirs
     if projects:
         project_dirs = []
@@ -188,54 +137,60 @@ def run_search(
     else:
         project_dirs = sorted([d for d in PROJECTS_DIR.iterdir() if d.is_dir()])
 
-    remaining = (limit - total) if limit else 0
-
     for project_dir in project_dirs:
         if limit and total >= limit:
             break
 
-        proyecto_path = find_proyecto_file(project_dir)
-        if not proyecto_path or not proyecto_path.exists():
-            continue
-
-        meta = load_project_meta(proyecto_path)
-
-        if tipo and normalize(tipo) not in meta["tipo_raw"]:
-            continue
-        if estado and normalize(estado) not in meta["estado_raw"]:
-            continue
-        if prioridad and normalize(prioridad) not in meta["prioridad_raw"]:
-            continue
-
-        project_hits = []
+        is_new = _is_new_project(project_dir)
         proj_limit = (limit - total) if limit else 0
 
-        # Search logbook
-        logbook_path = find_logbook_file(project_dir)
-        if logbook_path and logbook_path.exists():
-            matches = _search_logbook(logbook_path, keywords, tag, date_filter,
-                                      date_from, date_to, any_mode, proj_limit)
-            if matches:
-                link = f"[{logbook_path.name}](file://{logbook_path.resolve()})"
-                project_hits.append((link, matches))
-                total += len(matches)
+        # Read metadata for display header
+        if is_new:
+            meta = _read_project_meta(project_dir)
+            header_meta = f"{meta['tipo_emoji']} {meta.get('tipo_label', '')}"
+        else:
+            header_meta = ""
 
-        # Search proyecto.md (only when no tag filter)
-        if not logbooks_only:
-            proj_matches = _search_proyecto(proyecto_path, keywords, any_mode)
-            if proj_matches:
-                by_section: dict = {}
-                for section, anchor, line in proj_matches:
-                    by_section.setdefault((section, anchor), []).append(line)
-                for (section, anchor), hits in by_section.items():
-                    label = (f"{proyecto_path.name} › {section.lstrip('# ').strip()}"
-                             if section else proyecto_path.name)
-                    link = f"[{label}](file://{proyecto_path.resolve()}#{anchor})"
-                    project_hits.append((link, hits))
-                    total += len(hits)
+        project_hits = []
+
+        # Determine which files to search based on --in filter
+        search_logbook_f    = not in_filter or in_filter == "logbook"
+        search_highlights_f = in_filter == "highlights"
+        search_agenda_f     = in_filter == "agenda"
+
+        # Search logbook
+        if search_logbook_f:
+            logbook_path = find_logbook_file(project_dir)
+            if logbook_path and logbook_path.exists():
+                matches = _search_logbook(logbook_path, keywords, tag, date_filter,
+                                          date_from, date_to, any_mode, proj_limit)
+                if matches:
+                    link = f"[{logbook_path.name}](file://{logbook_path.resolve()})"
+                    project_hits.append((link, matches))
+                    total += len(matches)
+
+        # Search highlights
+        if search_highlights_f and is_new:
+            hl_path = find_highlights_file(project_dir)
+            if hl_path and hl_path.exists():
+                matches = _search_file(hl_path, keywords, any_mode, proj_limit)
+                if matches:
+                    link = f"[{hl_path.name}](file://{hl_path.resolve()})"
+                    project_hits.append((link, matches))
+                    total += len(matches)
+
+        # Search agenda
+        if search_agenda_f and is_new:
+            ag_path = find_agenda_file(project_dir)
+            if ag_path and ag_path.exists():
+                matches = _search_file(ag_path, keywords, any_mode, proj_limit)
+                if matches:
+                    link = f"[{ag_path.name}](file://{ag_path.resolve()})"
+                    project_hits.append((link, matches))
+                    total += len(matches)
 
         # Search notes/ directory if requested
-        if notes and not logbooks_only:
+        if notes and not logbooks_only and not in_filter:
             note_matches = _search_notes(project_dir, keywords, any_mode,
                                          (limit - total) if limit else 0)
             for note_file, hits in note_matches:
@@ -244,8 +199,7 @@ def run_search(
                 total += len(hits)
 
         if project_hits:
-            header = f"{project_dir.name}  {meta['tipo']} {meta['estado']}  {meta['prioridad']}"
-            lines_out.append(f"**{header}**")
+            lines_out.append(f"**{project_dir.name}  {header_meta}**")
             for link, hits in project_hits:
                 lines_out.append(f"  {link}")
                 for h in hits:
@@ -259,20 +213,8 @@ def run_search(
 
     text = "\n".join(lines_out)
 
-    # Determine output destination
-    if open_after and not output:
-        dest = SEARCH_OUTPUT
-    elif output:
-        dest = Path(output)
-    else:
-        dest = None
-
-    if dest:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(text + "\n")
-        print(f"✓ Guardado en {dest}")
-        if open_after:
-            open_file(dest, editor)
+    if open_after:
+        open_cmd_output(text + "\n", editor)
     else:
         print(text)
 

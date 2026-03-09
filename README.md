@@ -9,54 +9,20 @@ Sistema personal de gestión de proyectos científicos en markdown plano.
 ```
 Orbit/
 ├── 🚀proyectos/
-│   ├── INDEX.md                        ← tabla maestra de proyectos
-│   └── {emoji}nombre/
-│       ├── {emoji}Nombre.md            ← índice: objetivo, tareas, referencias, resultados, decisiones
-│       ├── 📓Nombre.md                 ← logbook cronológico
-│       ├── references/                 ← PDFs (no en git)
-│       ├── results/                    ← resultados numéricos (no en git)
-│       └── decisions/                  ← documentos de decisión (no en git)
-├── 🚀proyectos/☀️mission/
-│   ├── diario/YYYY-MM-DD.md            ← notas de evaluación diaria
-│   ├── semanal/YYYY-Wnn.md             ← notas de evaluación semanal
-│   └── mensual/YYYY-MM.md             ← notas de evaluación mensual
-├── ☀️mision-log/
-│   ├── diario/YYYY-MM-DD.md            ← diario del día
-│   ├── semanal/YYYY-Wnn.md             ← nota semanal
-│   └── mensual/YYYY-MM.md             ← nota mensual
-├── .orbit/
-│   ├── focus.json                      ← foco activo por período (fuente de verdad)
-│   └── session.json                    ← timestamps de última sesión start/end
-├── 📐templates/
-├── orbit.py                            ← CLI
-├── CHULETA.md                          ← referencia rápida
-└── core/                               ← módulos Python
+│   └── {emoji}nombre-proyecto/
+│       ├── project.md        ← metadatos: tipo, estado, prioridad, objetivo
+│       ├── logbook.md        ← registro permanente (append-only)
+│       ├── highlights.md     ← índice curado: refs, resultados, decisiones, ideas
+│       ├── agenda.md         ← tareas, hitos y eventos
+│       └── notes/            ← notas libres del usuario (.md)
+├── 📐templates/              ← plantillas para project, logbook, highlights, agenda, note
+├── cmd.md                    ← salida temporal de comandos --open
+├── orbit.py                  ← CLI
+├── core/                     ← módulos Python
+├── CHULETA.md                ← referencia rápida de comandos
+├── TUTORIAL.md               ← tutorial para nuevos usuarios
+└── README.md                 ← este fichero
 ```
-
----
-
-## Arquitectura — foco y evaluación
-
-### Foco (`focus.json`)
-
-El foco es la lista de proyectos en los que el usuario trabaja activamente en un período. Se gestiona con `orbit focus` y se guarda en `.orbit/focus.json` — la única fuente de verdad para el foco. Todos los demás comandos (`agenda`, `eval`, `end`, `status --focus`) leen de aquí.
-
-```json
-{
-  "month": { "2026-03": ["💻orbit", "☀️mission"] },
-  "week":  { "2026-W10": ["💻orbit"] },
-  "day":   { "2026-03-08": ["💻orbit"] }
-}
-```
-
-### Evaluación (`☀️mission/`)
-
-Las notas de evaluación son generadas por `orbit eval` / `orbit end` y se guardan dentro del proyecto `☀️mission`. Tienen dos partes:
-
-- **Estadísticas** (`orbit:eval-stats`) — actualizadas automáticamente en cada llamada.
-- **Reflexión** — secciones en blanco creadas una sola vez; el usuario las completa a mano y nunca se sobreescriben.
-
-Separar las notas de evaluación de las notas de trabajo evita que el sistema sobreescriba texto del usuario.
 
 ---
 
@@ -64,7 +30,7 @@ Separar las notas de evaluación de las notas de trabajo evita que el sistema so
 
 | Emoji | Tipo | Uso |
 |-------|------|-----|
-| ☀️ | Misión | Proyecto raíz — tareas, recordatorios y evaluaciones |
+| ☀️ | Misión | Proyecto raíz — gestión global, planificación, evaluaciones |
 | 🌀 | Investigación | Proyectos de investigación científica |
 | 📚 | Docencia | Asignaturas, TFGs, tesis |
 | ⚙️ | Gestión | Gestión, propuestas, comités |
@@ -80,139 +46,100 @@ Separar las notas de evaluación de las notas de trabajo evita que el sistema so
 |-----|-------|-------------|
 | `#idea` | 💡 | Idea nueva |
 | `#referencia` | 📎 | Paper, link o recurso |
-| `#tarea` | ✅ | Tarea a realizar |
+| `#apunte` | 📝 | Nota general |
 | `#problema` | ⚠️ | Problema encontrado |
 | `#resultado` | 📊 | Resultado obtenido |
-| `#apunte` | 📝 | Nota general |
 | `#decision` | 📌 | Decisión tomada |
-| `#evento` | 📅 | Evento de calendario |
-
----
-
-## Flujo de trabajo recomendado
-
-```bash
-# Al empezar el día:
-orbit start                            # estado + foco + alerta sesión perdida
-
-# Durante el día:
-orbit agenda                           # ver tareas del día (con foco marcado)
-orbit log next-kr "El fit converge" --entry resultado
-orbit add task next-kr "Revisar paper" --date "next friday"
-
-# Al terminar:
-orbit end                              # resumen de actividad + nota de evaluación
-```
+| `#evaluacion` | 🔍 | Evaluación parcial |
 
 ---
 
 ## CLI — referencia de comandos
 
-Ver `CHULETA.md` para referencia rápida completa.
+Ver `CHULETA.md` para la referencia rápida completa.
 
-### Sesión
-
-```bash
-orbit start                             # inicio de sesión
-orbit end                               # fin de sesión + evaluación
-```
-
-### Foco
+### Shell interactiva
 
 ```bash
-orbit focus                             # ver foco de todos los períodos
-orbit focus month --set orbit mission   # establecer foco mensual
-orbit focus week  --set orbit           # foco semanal
-orbit focus day   --clear               # limpiar foco del día
-orbit focus week  --interactive         # selección interactiva
+orbit              # entra al shell (¡Hola! ¡Bienvenido! / ¡Hasta pronto!)
+orbit shell        # equivalente explícito
 ```
 
-### Estado de proyectos
+### Proyectos
 
 ```bash
-orbit status                            # todos los proyectos
-orbit status --focus                    # solo proyectos en foco
-orbit status --project next-kr          # un proyecto concreto
+orbit project create next-kr --type investigacion --priority alta
+orbit project list [--status active] [--open]
+orbit project status next-kr [--set paused]
+orbit project edit next-kr
+orbit project delete next-kr [--force]
 ```
 
-### Agenda
+### Tareas, hitos y eventos
 
 ```bash
-orbit agenda                            # agenda del día
-orbit agenda week                       # semana agrupada por día
-orbit agenda month                      # mes agrupado por semana
-orbit agenda day --ring                 # hoy + Reminders.app
+orbit task add next-kr "Reproducir figura" --date 2026-03-20 --ring 1d
+orbit task done next-kr "Reproducir"
+orbit task list [next-kr] [--open]
+
+orbit ms add next-kr "Primera calibración validada" --date 2026-04-01
+orbit ms done next-kr
+orbit ms list [--open]
+
+orbit ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18
+orbit ev list next-kr [--open]
 ```
 
-### Evaluación
+### Highlights y notas
 
 ```bash
-orbit eval day                          # nota de evaluación del día
-orbit eval week                         # nota de evaluación de la semana
-orbit eval month                        # nota de evaluación del mes
+orbit hl add next-kr "González 2024" --type refs --link ./refs/g2024.pdf
+orbit hl list next-kr [--open]
+
+orbit note next-kr "Análisis de calibración"
+orbit note list next-kr [--open]
 ```
 
-### Anotación
+### Anotación y búsqueda
 
 ```bash
 orbit log next-kr "El fit converge" --entry resultado
-orbit log "Llamada a la secretaría"     # sin proyecto → diario de hoy
-
-orbit add task next-kr "Reproducir figura" --date "next friday"
-orbit add task "Reunión CERN" --date today --ring
-orbit add ref  next-kr "Gonzalez 2024" --file ~/Downloads/gonzalez2024.pdf
-```
-
-### Búsqueda y listados
-
-```bash
 orbit search "calibración" --entry resultado
-orbit search --project next-kr --from "last month"
-orbit list projects --type investigacion
-orbit list tasks --priority alta
-orbit list tasks --ring
+orbit search --project next-kr --from 2026-03-01 [--open]
 ```
 
-### Apertura de ficheros
+### Vista y navegación
 
 ```bash
-orbit open                              # diario de hoy en Typora
-orbit open next-kr                      # proyecto en Typora
-orbit open next-kr --log                # logbook del proyecto
-orbit open 2026-W10                     # nota semanal
+orbit view [next-kr] [--open]
+orbit open next-kr logbook
+orbit open next-kr agenda
 ```
 
-### Calendario visual
+### Agenda y report
 
 ```bash
-orbit calendar week                     # semana actual en Typora
-orbit calendar month                    # mes actual en Typora
-orbit calendar year                     # año actual en Typora
+orbit agenda [--date D] [--from D] [--to D] [--calendar] [--open]
+orbit report [project...] [--from D] [--to D] [--open]
 ```
 
-### Modificar tareas
+### Otros
 
 ```bash
-orbit change task schedule next-kr "Reproducir figura" --date "next monday"
-orbit change task close next-kr "Reproducir figura"
-```
-
-### Documentación
-
-```bash
-orbit info chuleta    # chuleta de comandos
-orbit info about      # README
-orbit info tutorial   # tutorial
-orbit info help       # help completo
+orbit commit ["mensaje"]
+orbit help
+orbit help chuleta
+orbit help tutorial
 ```
 
 ---
 
 ## Convenciones
 
-- `.orbit/focus.json` — fuente de verdad del foco activo por período.
-- `proyecto.md` de cada proyecto — fuente de verdad de tareas y metadatos.
-- `logbook.md` de cada proyecto — fuente de verdad del historial de trabajo.
-- `☀️mission/diario|semanal|mensual/` — evaluaciones generadas por Orbit (no editar manualmente).
-- `references/`, `results/`, `decisions/` no se suben a git (binarios).
-- `--date` acepta lenguaje natural: `today/hoy` · `next friday` · `in 5 days` · `last week` · `YYYY-MM-DD`.
+- `logbook.md` de cada proyecto — fuente de verdad del historial de trabajo (append-only).
+- `notes/` — notas libres, rastreadas opcionalmente en git.
+- `cmd.md` — fichero temporal de salida de comandos con `--open`.
+- Las operaciones destructivas piden confirmación (defecto **No**) o requieren `--force`.
+- `--open [--editor E]` disponible en comandos de listado; abre `cmd.md` en el editor.
+- `--log PROJECT [--log-entry TYPE]` guarda el output como entrada en el logbook de un proyecto.
+- `--date` acepta lenguaje natural: `today/hoy` · `next friday` · `in 5 days` · `YYYY-MM-DD`.

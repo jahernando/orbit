@@ -1,31 +1,36 @@
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, VALID_TYPES
+from core.log import PROJECTS_DIR, VALID_TYPES, TAG_EMOJI
 
-TYPE_EMOJI = {
-    "idea":       "💡",
-    "referencia": "📎",
-    "tarea":      "✅",
-    "problema":   "⚠️",
-    "resultado":  "📊",
-    "apunte":     "📝",
-    "decision":   "📌",
-}
+TYPE_EMOJI = TAG_EMOJI  # backward-compatible alias
 
 
 def parse_entry_type(line: str) -> Optional[str]:
+    """Return the #tipo tag from a logbook line, or None."""
+    # Strip [O] marker before checking
+    s = line.strip().removesuffix(" [O]")
     for tipo in VALID_TYPES:
-        if line.strip().endswith(f"#{tipo}"):
+        if s.endswith(f"#{tipo}"):
             return tipo
     return None
 
 
-def entry_matches_fecha(line: str, fecha: Optional[str]) -> bool:
-    if not fecha:
+def _entry_in_period(line: str, fecha: Optional[str],
+                     period_from: Optional[str], period_to: Optional[str]) -> bool:
+    """Return True if the entry line's date matches the given filters."""
+    if not fecha and not period_from and not period_to:
         return True
-    # line starts with YYYY-MM-DD
-    return line.startswith(fecha)
+    if len(line) < 10 or not line[:4].isdigit() or line[4] != "-":
+        return False
+    entry_date = line[:10]
+    if fecha:
+        return entry_date.startswith(fecha)
+    if period_from and entry_date < period_from:
+        return False
+    if period_to and entry_date > period_to:
+        return False
+    return True
 
 
 def list_entries(
@@ -33,6 +38,8 @@ def list_entries(
     tipos: Optional[list],
     fecha: Optional[str],
     output: Optional[str],
+    period_from: Optional[str] = None,
+    period_to:   Optional[str] = None,
 ) -> int:
     from core.log import find_project, find_logbook_file
 
@@ -53,8 +60,8 @@ def list_entries(
     # Apply filters
     if tipos:
         entries = [e for e in entries if parse_entry_type(e) in tipos]
-    if fecha:
-        entries = [e for e in entries if entry_matches_fecha(e, fecha)]
+    entries = [e for e in entries
+               if _entry_in_period(e, fecha, period_from, period_to)]
 
     # Build output
     header = f"[{project_dir.name}]"
@@ -63,6 +70,9 @@ def list_entries(
         header += f" {emojis}"
     if fecha:
         header += f" {fecha}"
+    elif period_from or period_to:
+        rng = f"{period_from or '…'} → {period_to or '…'}"
+        header += f" {rng}"
     header += f" — {len(entries)} entrada{'s' if len(entries) != 1 else ''}"
 
     separator = "─" * len(header)

@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, find_project, find_logbook_file, init_logbook
+from core.log import PROJECTS_DIR, find_project, find_logbook_file, init_logbook, resolve_file
 
 CREDENTIALS_PATH = Path(__file__).parent.parent / "credentials.json"
 TOKEN_PATH = Path(__file__).parent.parent / "token.json"
@@ -118,30 +118,79 @@ def fetch_day_events(target: date) -> Optional[list]:
     return events
 
 
+def _event_in_agenda(project_dir: Path, title: str, date_str: str) -> bool:
+    """Return True if an event with this date+title already exists in agenda.md."""
+    from core.agenda_cmds import _read_agenda
+    data = _read_agenda(resolve_file(project_dir, "agenda"))
+    return any(e["date"] == date_str and e["desc"] == title
+               for e in data["events"])
+
+
+def _sync_new_format(project_dir: Path, title: str, date_str: str,
+                     dry_run: bool) -> bool:
+    """Add event to agenda.md + orbit logbook entry for a new-format project.
+
+    Returns True if a new event was added (False if already present).
+    """
+    if _event_in_agenda(project_dir, title, date_str):
+        return False
+
+    if not dry_run:
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        data = _read_agenda(resolve_file(project_dir, "agenda"))
+        data["events"].append({"date": date_str, "desc": title, "end": None})
+        _write_agenda(resolve_file(project_dir, "agenda"), data)
+        from core.log import add_orbit_entry
+        add_orbit_entry(project_dir, f"[evento sincronizado] {title}", "apunte")
+        print(f"  ✓  [{project_dir.name}] {date_str} — {title} [O]")
+    else:
+        print(f"  ~  [{project_dir.name}] {date_str} — {title} (agenda.md)")
+    return True
+
+
 def sync_events_to_logbooks(events: list, target: date, dry_run: bool) -> tuple:
-    """Write #evento entries to project logbooks. Returns (synced, skipped, not_found)."""
+    """Write events to project files. Returns (synced, skipped, not_found).
+
+    New-format projects: event added to agenda.md + logbook [O] entry.
+    Old-format projects: #evento entry appended to logbook.md (legacy).
+    """
+    from core.project import _is_new_project, _find_new_project
+
     synced = skipped = not_found = 0
     for event in events:
         project_name = event["project_name"]
         if not project_name:
             continue
-        title = event["title"]
+        title      = event["title"]
+        date_str   = target.isoformat()
 
-        project_dir = find_project(project_name)
+        # Try new-format project first, then fall back to old-format
+        project_dir = _find_new_project(project_name) if project_name else None
+        if project_dir is None:
+            project_dir = find_project(project_name)
         if not project_dir:
             print(f"  ⚠️  '{project_name}' no encontrado  ←  {title}")
             not_found += 1
             continue
 
+        if _is_new_project(project_dir):
+            added = _sync_new_format(project_dir, title, date_str, dry_run)
+            if added:
+                synced += 1
+            else:
+                skipped += 1
+            continue
+
+        # ── legacy: old-format project ──────────────────────────────────────
         logbook_path = find_logbook_file(project_dir)
         if not logbook_path:
-            logbook_path = project_dir / "logbook.md"
+            logbook_path = resolve_file(project_dir, "logbook")
 
-        if _entry_exists(logbook_path, title, target.isoformat()):
+        if _entry_exists(logbook_path, title, date_str):
             skipped += 1
             continue
 
-        entry = f"{target.isoformat()} {title} #evento\n"
+        entry = f"{date_str} {title} #evento\n"
         if dry_run:
             print(f"  ~  [{project_dir.name}] {entry.strip()}")
         else:

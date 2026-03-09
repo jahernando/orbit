@@ -8,200 +8,234 @@ orbit shell        # equivalente explícito
 orbit claude       # abre Claude Code en el directorio Orbit
 ```
 
----
-
-## start / end — rutinas de sesión
-
-```bash
-orbit start [--editor E]   # inicio de sesión: status + foco + alerta si hay sesión perdida
-orbit end   [--editor E]   # fin de sesión: resumen de actividad + nota de evaluación
-```
-
-- `start` muestra el estado de proyectos, el foco actual y detecta si ayer hubo actividad sin evaluación.
-- `end` crea o actualiza la nota de evaluación del período que corresponda y la abre en el editor.
-- Fin de semana (vie/sáb/dom) → `end` genera también la evaluación semanal.
-- Últimos 3 días del mes → `end` genera también la evaluación mensual.
+Al entrar: `¡Hola! ¡Bienvenido!`
+Al salir: `¡Hasta pronto!`
 
 ---
 
-## focus — gestión del foco
+## project — gestión de proyectos
 
 ```bash
-orbit focus                              # muestra foco activo en todos los períodos
-orbit focus month                        # muestra solo el foco mensual
-orbit focus month --set orbit mission    # establece proyectos en foco para el mes
-orbit focus week  --set orbit            # foco de la semana
-orbit focus day   --set orbit            # foco del día
-orbit focus week  --clear                # limpia el foco semanal
-orbit focus month --interactive          # selección interactiva de proyectos
+orbit project create <name> --type TIPO [--priority alta|media|baja]
+orbit project list   [--status active|paused|sleeping] [--type TIPO] [--open] [--editor E]
+orbit project status <name> [--set STATUS]
+orbit project edit   <name> [--editor E]
+orbit project delete <name> [--force]
 ```
 
-- El foco se guarda en `.orbit/focus.json` — fuente de verdad, versionada en git.
-- Los comandos `agenda`, `eval` y `end` consultan el foco automáticamente.
+- `create` genera la estructura completa: `project.md`, `logbook.md`, `highlights.md`, `agenda.md`, `notes/`
+- `delete` pide confirmación interactiva (defecto **No**); `--force` la omite
+- `--type`: `investigacion` · `docencia` · `gestion` · `formacion` · `software` · `personal`
 
 ---
 
-## status — salud de proyectos
+## task — tareas
 
 ```bash
-orbit status                   # todos los proyectos agrupados por estado de actividad
-orbit status --project orbit   # un proyecto concreto
-orbit status --focus           # solo proyectos en foco (según focus.json)
+orbit task add    <project> "<text>" [--date DATE] [--recur FREQ] [--ring WHEN]
+orbit task done   [<project>] ["<text>"]
+orbit task drop   [<project>] ["<text>"] [--force]
+orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--recur FREQ|none] [--ring WHEN|none]
+orbit task list   [<project>...] [--status pending|done|all] [--date DATE] [--open] [--editor E]
 ```
 
-- 🟢 **Activo** — actividad en el logbook en los últimos 30 días.
-- 🟡 **Parado** — sin actividad en 30 días, pero sí en 60.
-- 🔴 **Durmiendo** — sin actividad en 60 días.
-- No depende del campo manual en `proyecto.md`; se basa en el logbook real.
+- `done` y `drop`: interactivos si no se especifica texto; `drop` pide confirmación
+- `done` en tarea recurrente: avanza a la siguiente ocurrencia automáticamente
+- `--open`: escribe el resultado en `cmd.md` y lo abre en el editor
+
+### Recurrencia (`--recur`)
+
+`daily` · `weekly` · `monthly` · `weekdays` · `none` (solo en `edit`)
+
+### Ring (`--ring`)
+
+| Valor | Significado |
+|-------|------------|
+| `1d` | 1 día antes del deadline (a las 09:00) |
+| `2h` | 2 horas antes |
+| `YYYY-MM-DD HH:MM` | Fecha/hora exacta |
+| `none` | Eliminar ring (solo en `edit`) |
 
 ---
 
-## agenda — planificación por período
+## ms — hitos
 
 ```bash
-orbit agenda                          # agenda del día (default)
-orbit agenda day                      # explícito
-orbit agenda week                     # semana actual agrupada por día
-orbit agenda month                    # mes actual agrupado por semana
-orbit agenda --date 2026-03-15        # fecha concreta
-orbit agenda day --ring               # hoy + programa @ring en Reminders.app
-orbit agenda --output agenda.md       # guarda en fichero
+orbit ms add    <project> "<text>" [--date DATE]
+orbit ms done   [<project>] ["<text>"]
+orbit ms drop   [<project>] ["<text>"] [--force]
+orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none]
+orbit ms list   [<project>...] [--status pending|done|all] [--open] [--editor E]
 ```
-
-- Vista siempre dinámica — nunca escribe en notas del usuario.
-- 🎯 marca las tareas de proyectos en foco (según `focus.json`).
-- ⚠️ marca tareas vencidas (shown al principio).
-- `--ring` activa el envío de tareas `@ring` a Reminders.app (solo para `day`).
 
 ---
 
-## eval — notas de evaluación
+## ev — eventos
 
 ```bash
-orbit eval day   [--date YYYY-MM-DD] [--no-open]   # evaluación del día
-orbit eval week  [--date YYYY-MM-DD] [--no-open]   # evaluación de la semana
-orbit eval month [--date YYYY-MM-DD] [--no-open]   # evaluación del mes
-orbit eval       [--date YYYY-MM-DD]               # crea/actualiza las tres
+orbit ev add  <project> "<text>" --date DATE [--end DATE]
+orbit ev drop [<project>] ["<text>"] [--force]
+orbit ev list [<project>] [--from DATE] [--to DATE] [--open] [--editor E]
 ```
 
-- Las notas se guardan en `🚀proyectos/☀️mission/diario/`, `semanal/`, `mensual/`.
-- El bloque de estadísticas (`orbit:eval-stats`) se actualiza en cada llamada.
-- La sección de reflexión se crea una sola vez y nunca se sobreescribe.
+- `drop` pide confirmación (defecto **No**); `--force` la omite
 
 ---
 
-## create — crear cosas nuevas
+## hl — highlights
 
 ```bash
-orbit create project  --name NOMBRE --type TIPO [--priority alta|media|baja]
-orbit create import   --file FICHERO.enex --project PROYECTO
+orbit hl add  <project> "<text>" --type TYPE [--link URL]
+orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
+orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE]
+orbit hl list [<project>] [--type TYPE] [--open] [--editor E]
 ```
 
-Las notas de día, semana y mes se crean automáticamente al entrar en el shell de Orbit.
+- `--type`: `refs` · `results` · `decisions` · `ideas` · `evals`
+- `drop` pide confirmación (defecto **No**); `--force` la omite
 
 ---
 
-## add — añadir items a un proyecto
+## note — notas de proyecto
 
 ```bash
-orbit add task  [project] <desc>   [--date D] [--time HH:MM] [--ring] [--recur RULE] [--open]
-orbit add ref   <project> <título> [--entry TIPO] [--url URL] [--file PATH] [--sync] [--open]
-orbit add note  <project> <título> [--file FILE.md] [--entry TIPO] [--no-link] [--no-date] [--open]
+orbit note <project> "<title>" [<file>]          # crear nota (atajo sin subcomando)
+orbit note create <project> "<title>" [--file F] [--no-open] [--editor E]
+orbit note list   <project> [--open] [--editor E]
+orbit note drop   <project> [<file>] [--force]
 ```
 
-- `add task` sin proyecto → va a **mission** por defecto
-- `--date today` → también se copia al diario del día
-- `--ring` → tarea con alarma; si omites `--time` se pide en el prompt (defecto 09:00)
-- `--date today` + `--ring` → también se programa en Reminders.app
-- `--recur` acepta: `daily/diario` · `weekly/semanal` · `monthly/mensual` · `yearly/anual` · `weekdays/laborables` · `every:Nd` · `every:Nw`
-- `add ref --entry TIPO` → determina la sección del proyecto y el tag del logbook; si se omite se pide en el prompt
-- `--entry`: `referencia` 📎 · `resultado` 📊 · `decision` 📌 · `apunte` 📝 · `idea` 💡 · `problema` ⚠️
-- `add note` sin `--file` → crea `YYYYMMDD_título.md` desde plantilla y la abre en Typora
+- Sin `<file>`: crea `título_con_guiones.md` en `notes/` a partir de plantilla
+- Al crear, pregunta: `¿Añadir <fichero> a git? [S/n]`
+- `drop` pide confirmación (defecto **No**); `--force` la omite
 
 ---
 
-## change — modificar cosas existentes
+## view / open — navegar proyectos
 
 ```bash
-orbit change task schedule <project> <desc> --date D [--time HH:MM] [--recur RULE] [--open]
-orbit change task close    <project> <desc> [--date D] [--open]
+orbit view  [<project>] [--open] [--editor E]
+orbit open  <project> [logbook|highlights|agenda|notes|project] [--editor E]
 ```
 
-`change task close` con `@recur` avanza la fecha en vez de cerrar (se pide confirmación interactiva).
-
----
-
-## list — listar proyectos y secciones
-
-```bash
-orbit list projects   [--type T] [--status S] [--priority P] [--output F] [--open]
-orbit list tasks      [--project P] [--type T] [--status S] [--priority P] [--date D] [--keyword K] [--ring]
-orbit list refs       [project]   [--entry TIPO] [--output F] [--open]
-orbit list results    [project]   [--output F] [--open]
-orbit list decisions  [project]   [--output F] [--open]
-orbit list files      [project]   [--output F] [--open]
-orbit list notes      [project]   [--output F] [--open]
-```
-
-- `--ring` → muestra solo tareas con alarma (⏰)
-- `list refs --entry TIPO` → filtra dentro de Referencias por tipo
-
----
-
-## report — informes
-
-```bash
-orbit report stats  [--date D] [--from D] [--to D] [--project P] [--type T] [--priority P] [--output F] [--open]
-```
+- `view` sin proyecto: muestra lista para selección interactiva
+- `view <project>`: resumen en terminal (estado, tareas, hitos, próximos eventos, entradas recientes)
+- `view <project> --open`: genera `cmd.md` y lo abre en Typora
 
 ---
 
 ## log y search
 
 ```bash
-orbit log [project] <msg> [--entry TIPO] [--path RUTA] [--date D] [--open] [--editor E]
-# Sin proyecto → anota en el diario de hoy
+orbit log <project> <msg> [--entry TIPO] [--path RUTA] [--date D] [--open] [--editor E]
 
-orbit search [query] [--project P...] [--entry TIPO] [--date D] [--from D] [--to D]
-             [--type T] [--status S] [--priority P] [--any] [--diario] [--notes]
-             [--limit N] [--output F] [--open] [--editor E]
+orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
+             [--in logbook|highlights|agenda] [--any] [--notes]
+             [--limit N] [--open] [--editor E]
 ```
 
-`--entry`: `idea` · `referencia` · `tarea` · `problema` · `resultado` · `apunte` · `decision` · `evento`
+`--tag`: filtra por hashtag (`idea` · `referencia` · `tarea` · `problema` · `resultado` · `apunte` · `decision`)
+`--in`: busca en un tipo de fichero específico (por defecto logbook)
 
 ---
 
-## open
+## commit
 
 ```bash
-orbit open [target] [--log] [--note NAME] [--editor E]
-orbit open [target] --terminal [--section S] [--entry TIPO] [--log] [--output F]
-# target: nombre-proyecto · YYYY-MM-DD · YYYY-Wnn · YYYY-MM  (defecto: hoy)
+orbit commit ["<mensaje>"]
+```
+
+- Sin mensaje: pide interactivamente; intro vacío → genera mensaje automático
+- Muestra ficheros modificados y pide `[S/n]` antes de ejecutar
+
+---
+
+## ls — listados
+
+```bash
+orbit ls                              # lista proyectos (por defecto)
+orbit ls projects [--status S] [--type T]
+orbit ls tasks    [project...] [--status pending|done|all] [--date D]
+orbit ls ms       [project...] [--status pending|done|all]
+orbit ls ev       [project]    [--from D] [--to D]
+orbit ls hl       [project]    [--type T]
+orbit ls files    [project]    # ficheros md del proyecto con estado git
+orbit ls notes    [project]    # notas con estado git
+```
+
+Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untracked · `✗` ignored
+
+---
+
+## agenda — vista temporal
+
+```bash
+orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--open] [--editor E]
+```
+
+- Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
+- `--date 2026-03`: todo el mes
+- `--from monday --to friday`: rango
+- `--calendar`: vista de calendario con colores (máx. 3 meses)
+  - Azul: número de semana
+  - Amarillo: tarea
+  - Cian: evento
+  - Magenta: hito
+  - Rojo: vencida
+  - Invertido: hoy
+- Compatible con `--open` y `--log`
+
+---
+
+## report — informe de actividad
+
+```bash
+orbit report [project...] [--date D] [--from D] [--to D] [--open] [--editor E]
+```
+
+- Sin proyecto: muestra informe de todos los proyectos activos
+- Con proyecto(s): informe solo de esos proyectos
+- Sin fechas: últimos 30 días
+- Muestra: entradas de logbook, highlights, tareas completadas/pendientes/vencidas, hitos, eventos
+- Compatible con `--log`: redirige el informe al logbook de otro proyecto
+
+---
+
+## help — documentación
+
+```bash
+orbit help            # muestra CHULETA.md en terminal (paginado)
+orbit help chuleta    # abre CHULETA.md en Typora
+orbit help about      # abre README.md en Typora
+orbit help tutorial   # abre TUTORIAL.md en Typora
 ```
 
 ---
 
-## calendar — calendario visual
+## --open — abrir resultado en editor
 
-```bash
-orbit calendar week  [--date D] [--no-open] [--editor E]
-orbit calendar month [--date D] [--no-open] [--editor E]
-orbit calendar year  [--date D] [--no-open] [--editor E]
-```
+Los comandos de listado aceptan `--open [--editor E]`:
+capturan el output, lo escriben en `cmd.md` y abren el fichero en el editor (por defecto Typora).
 
-Genera un fichero markdown con tareas (✅) y recordatorios (⏰) del período y lo abre en Typora.
-Guardado en `☀️mision-log/calendar-{week,month,year}.md`.
+Comandos que lo admiten: `ls` · `view` · `search` · `report`
 
 ---
 
-## info — documentación
+## --log — guardar resultado en logbook
 
 ```bash
-orbit info chuleta    # abre CHULETA.md en Typora
-orbit info about      # abre README.md en Typora
-orbit info tutorial   # abre TUTORIAL.md en Typora
-orbit info help       # muestra el help completo de orbit
+orbit ls projects --log mission                     # guarda en logbook de mission como #apunte
+orbit ls tasks --log mission --log-entry evaluacion  # como #evaluacion
+orbit view next-kr --log orbit                      # resumen al logbook de orbit
+orbit report orbit --log mission                    # informe de orbit al logbook de mission
 ```
+
+- `--log PROJECT` captura el output y lo añade como entrada al logbook del proyecto indicado.
+- `--log-entry TYPE` cambia el tipo de entrada (por defecto `apunte`).
+- La entrada incluye una línea resumen + el output completo en bloque de código.
+- Compatible con `--open`: ambos pueden usarse a la vez.
+
+Comandos que lo admiten: los mismos que `--open`.
 
 ---
 
@@ -211,11 +245,11 @@ orbit info help       # muestra el help completo de orbit
 
 ## Estados
 
-`inicial` ⬜ · `en marcha` ▶️ · `parado` ⏸️ · `durmiendo` 💤 · `completado` ✅
+`active` ▶️ · `paused` ⏸️ · `sleeping` 💤 · `[auto]` (inferido por Orbit)
 
 ## Prioridades
 
-`alta` 🟠 · `media` 🟡 · `baja` 🔵
+`alta` 🔴 · `media` 🔶 · `baja` 🔹
 
 ---
 

@@ -16,3 +16,7 @@
   - areas temáticas
 
 2024-12-23 Presentación de la USC, deadline 24-01-2025 ás 14:00 h. #apunte
+
+2026-03-09 📝 firmada hoja pedido - Vacuum/camara - 15750 euros #apunte
+
+2026-03-09 📝 firmada hoja pedido - China/structura- 2570 euros #apunte

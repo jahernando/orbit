@@ -34,196 +34,61 @@ source ~/.zshrc
 orbit
 ```
 
-Al entrar se abre el shell interactivo `🚀` y se crea (o abre) automáticamente la nota del día en Typora.
+Se abre el shell interactivo `🚀`. Dentro del shell no necesitas el prefijo `orbit`.
 
 ---
 
-## 2. El proyecto Mission
-
-Orbit incluye un proyecto especial llamado **mission** (`☀️`). Es el proyecto raíz donde van:
-
-- Las tareas generales que no pertenecen a ningún proyecto concreto.
-- Los recordatorios generales.
-- Las **notas de evaluación** generadas por `orbit end` y `orbit eval`.
-
-No necesitas crearlo — ya existe. Cuando añades una tarea sin especificar proyecto, va a mission.
-
----
-
-## 3. Crear tu primer proyecto
+## 2. Crear proyectos
 
 ```bash
-orbit create project --name next-kr --type investigacion --priority alta
+project create next-kr --type investigacion --priority alta
 ```
 
-Tipos disponibles: `investigacion` · `docencia` · `gestion` · `formacion` · `software` · `personal`
+Tipos: `investigacion` · `docencia` · `gestion` · `formacion` · `software` · `personal`
 
-Prioridades: `alta` · `media` · `baja`
+Esto crea `🚀proyectos/🌀next-kr/` con: `project.md`, `logbook.md`, `highlights.md`, `agenda.md` y `notes/`.
 
-Esto crea la carpeta `🚀proyectos/🌀next-kr/` con dos ficheros:
-
-- `🌀next-kr.md` — índice del proyecto (objetivo, tareas, referencias, resultados, decisiones)
-- `📓next-kr.md` — logbook cronológico
-
-Abre el proyecto en Typora y rellena el **objetivo**:
+Abre el proyecto en Typora para completar el objetivo:
 
 ```bash
-orbit open next-kr
+open next-kr
 ```
 
 ---
 
-## 4. Rutina de sesión — start y end
+## 3. El proyecto Mission
 
-La forma recomendada de trabajar con Orbit es arrancar con `orbit start` y terminar con `orbit end`.
+Orbit incluye un proyecto especial **☀️mission**. Es el proyecto raíz para:
 
-### orbit start
+- Planificación general (hitos del día, semana, mes).
+- Evaluaciones y decisiones de gestión.
+- Tareas que no pertenecen a ningún proyecto concreto.
 
-```bash
-orbit start
-```
-
-Al ejecutarlo, Orbit:
-
-1. Muestra un **resumen del estado de los proyectos** (cuántos activos, parados, durmiendo).
-2. Muestra el **foco actual** para el mes, la semana y el día.
-3. Si algún período no tiene foco establecido, **pregunta si quieres definirlo ahora**.
-4. Si ayer hubo actividad en el logbook pero no se generó evaluación, **ofrece crearla**.
-
-### orbit end
-
-```bash
-orbit end
-```
-
-Al ejecutarlo, Orbit:
-
-1. Muestra la **actividad de hoy** en los proyectos en foco.
-2. Crea o actualiza la **nota de evaluación** del día en `☀️mission/diario/`.
-3. Si es fin de semana (vie/sáb/dom), genera también la evaluación **semanal**.
-4. Si es fin de mes (últimos 3 días), genera también la evaluación **mensual**.
-5. Abre la nota de evaluación de mayor prioridad en Typora.
-
-### Flujo completo de un día de trabajo
-
-```
-08:30  orbit start         → estado + foco + agenda
-         orbit agenda      → ver tareas del día
-
-       ... trabajar, anotar ...
-
-17:00  orbit end           → resumen + nota de evaluación
-         → Typora se abre con la nota de evaluación para reflexionar
-```
+Puedes usar sus hitos para definir el **foco** de cada período y revisarlos con `report`.
 
 ---
 
-## 5. Foco de proyectos
-
-El foco determina qué proyectos son prioritarios en cada período. Se guarda en `.orbit/focus.json` y es la fuente de verdad que usan `agenda`, `eval`, `status --focus` y `end`.
-
-### Ver el foco actual
+## 4. Empezar el día — revisar la agenda
 
 ```bash
-orbit focus
+agenda
 ```
 
-Muestra el foco establecido para el mes, la semana y el día actual.
-
-### Establecer el foco
+Muestra las tareas pendientes y vencidas, eventos de hoy y hitos próximos de todos los proyectos.
 
 ```bash
-orbit focus month --set orbit mission    # proyectos en foco este mes
-orbit focus week  --set orbit            # foco de esta semana
-orbit focus day   --set orbit            # foco de hoy
+agenda --date 2026-03     # agenda del mes completo
+agenda --calendar         # vista calendario con colores
+agenda --from monday --to friday   # rango personalizado
 ```
 
-Los nombres de proyecto se resuelven por coincidencia parcial (igual que todos los demás comandos).
-
-### Selección interactiva
-
-```bash
-orbit focus month --interactive
-```
-
-Muestra la lista de proyectos disponibles y permite seleccionarlos por número o nombre parcial.
-
-### Ver o limpiar un período
-
-```bash
-orbit focus week           # solo el foco semanal
-orbit focus day --clear    # elimina el foco del día
-```
+Con esto planificas el día: ves qué hay pendiente y qué vence pronto.
 
 ---
 
-## 6. Estado de salud de proyectos
+## 5. Trabajar y anotar — log
 
-```bash
-orbit status
-```
-
-Muestra todos los proyectos agrupados por actividad real (basada en el logbook):
-
-- 🟢 **Activo** — actividad en los últimos 30 días.
-- 🟡 **Parado** — sin actividad en 30 días, pero sí en 60.
-- 🔴 **Durmiendo** — sin actividad en 60 días.
-
-```bash
-orbit status --focus           # solo proyectos en foco
-orbit status --project next-kr # un proyecto concreto
-```
-
-Útil para revisar el estado real del portfolio antes de decidir el foco.
-
----
-
-## 7. Agenda de planificación
-
-```bash
-orbit agenda
-```
-
-Muestra la agenda del día: tareas de hoy, vencidas y próximas 7 días. Los proyectos en foco aparecen marcados con 🎯.
-
-```bash
-orbit agenda day               # equivalente al anterior
-orbit agenda week              # semana actual, agrupada por día
-orbit agenda month             # mes actual, agrupado por semana
-orbit agenda --date 2026-03-15 # una fecha concreta
-orbit agenda day --ring        # hoy + programa @ring en Reminders.app
-```
-
-La agenda es siempre dinámica — nunca escribe en tus notas.
-
----
-
-## 8. Notas de evaluación
-
-Las evaluaciones son notas generadas en `☀️mission/diario/`, `semanal/` y `mensual/`. Tienen dos partes:
-
-- **Estadísticas** (auto-actualizadas): actividad en los proyectos en foco.
-- **Reflexión** (solo se crea una vez): secciones en blanco para que el usuario las complete.
-
-El usuario escribe en la sección de reflexión. Orbit nunca sobreescribe ese texto.
-
-### Generar evaluaciones manualmente
-
-```bash
-orbit eval day                  # evaluación del día
-orbit eval week                 # evaluación de la semana
-orbit eval month                # evaluación del mes
-orbit eval                      # las tres a la vez
-orbit eval day --date 2026-03-07 --no-open   # día concreto, sin abrir
-```
-
-`orbit end` llama a `orbit eval` automáticamente con el período correcto.
-
----
-
-## 9. Anotar en el logbook
-
-El logbook es el historial cronológico de cada proyecto. Cada entrada tiene un tipo:
+El logbook es el registro cronológico de cada proyecto. Cada entrada tiene un tipo:
 
 | Tipo | Uso |
 |------|-----|
@@ -232,158 +97,180 @@ El logbook es el historial cronológico de cada proyecto. Cada entrada tiene un 
 | `problema` | Problema encontrado |
 | `decision` | Decisión tomada |
 | `referencia` | Paper, enlace o recurso |
-| `tarea` | Tarea a realizar |
 | `apunte` | Nota general |
 
 ```bash
-orbit log next-kr "σ/E = 2.3% @ 1 MeV con N=500" --entry resultado
-orbit log next-kr "El fit no converge con dataset completo" --entry problema
-orbit log next-kr "Usaremos calibración relativa" --entry decision
-orbit log next-kr "Gonzalez 2024 tiene la figura que necesitamos" --entry referencia
+log next-kr "σ/E = 2.3% @ 1 MeV con N=500" --entry resultado
+log next-kr "El fit no converge con dataset completo" --entry problema
+log next-kr "Usaremos calibración relativa" --entry decision
+```
 
-# Sin proyecto → va al diario de hoy:
-orbit log "Reunión productiva con Diego"
+Para añadir una referencia con enlace a un fichero local:
+
+```bash
+log next-kr "González 2024 — calibración" --entry referencia --path ./refs/gonzalez2024.pdf
 ```
 
 ---
 
-## 10. Gestión de tareas
+## 6. Gestión de tareas, hitos y eventos
 
-### Añadir tareas
+### Tareas
 
 ```bash
-orbit add task next-kr "Reproducir figura 3" --date "2026-03-15"
-orbit add task "Llamar al banco"               # sin fecha → solo en el proyecto
-orbit add task "Reunión de grupo" --date today # → proyecto + diario de hoy
+task add next-kr "Reproducir figura 3" --date 2026-03-20
+task add next-kr "Reunión semanal" --date 2026-03-15 --recur weekly --ring 1d
+task done next-kr "Reproducir"     # interactivo con match parcial
+task list                          # todas las pendientes
 ```
 
-### Modificar y cerrar tareas
+Las tareas con `--ring` se programan como alarma en Reminders.app de macOS.
+Las tareas recurrentes (`--recur`) avanzan automáticamente al completarlas.
+
+### Hitos
+
+Los hitos son objetivos importantes. Úsalos en el proyecto `mission` para marcar el foco del día o la semana:
 
 ```bash
-orbit change task schedule next-kr "Reproducir figura" --date "next monday"
-orbit change task close next-kr "Reproducir figura"
+ms add mission "Foco: avanzar calibración next-kr" --date 2026-03-09
+ms done mission "Foco"
 ```
 
-### Ver tareas pendientes
+### Eventos
 
 ```bash
-orbit list tasks                         # todas
-orbit list tasks --project next-kr       # de un proyecto
-orbit list tasks --priority alta         # filtrar por prioridad
-```
-
----
-
-## 11. Tareas con alarma (rings)
-
-Las tareas con alarma son tareas normales con la flag `--ring`. Cuando son para hoy, se programan automáticamente en **Reminders.app** de macOS.
-
-```bash
-orbit add task next-kr "Reunión semanal del grupo" --date "next monday" --ring
-orbit add task next-kr "Revisión mensual" --date "2026-04-01" --time 10:00 --ring --recur monthly
-orbit list tasks --ring                   # ver solo alarmas
+ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18
+ev list next-kr
 ```
 
 ---
 
-## 12. Buscar en los logbooks
+## 7. Highlights — índice curado
+
+Los highlights son el índice permanente de lo más relevante: referencias clave, resultados importantes, decisiones fundamentales.
 
 ```bash
-orbit search "calibración"                          # busca en todos los proyectos
-orbit search "fit" --project next-kr                # en un proyecto concreto
-orbit search "resolución" --entry resultado         # filtrar por tipo
-orbit search --from "last month" --to today         # por rango de fechas
-orbit search "sigma" --type investigacion           # por tipo de proyecto
+hl add next-kr "González 2024 — calibración relativa" --type refs --link ./refs/g2024.pdf
+hl add next-kr "σ/E = 2.3% @ 1 MeV" --type results
+hl add next-kr "Calibración relativa como estándar" --type decisions
+hl list next-kr
+```
+
+Tipos: `refs` · `results` · `decisions` · `ideas` · `evals`
+
+---
+
+## 8. Buscar
+
+```bash
+search "calibración"                                # en todos los proyectos
+search "fit" --project next-kr                      # en un proyecto concreto
+search "resolución" --entry resultado               # filtrar por tipo
+search --from "last month" --to today               # por rango de fechas
+search "sigma" --in highlights                      # buscar en highlights
+search "calibración" --notes                        # incluir notas/
 ```
 
 ---
 
-## 13. Listar proyectos y secciones
+## 9. Ver proyectos
 
 ```bash
-orbit list projects                          # todos los proyectos ordenados por prioridad
-orbit list projects --type investigacion     # filtrar por tipo
-orbit list projects --status "en marcha"     # filtrar por estado
-orbit list tasks                             # todas las tareas pendientes
-orbit list refs next-kr                      # referencias de un proyecto
-orbit list decisions                         # decisiones de todos los proyectos
+view next-kr              # resumen en terminal: estado, tareas, hitos, últimas entradas
+view next-kr --open       # genera cmd.md y lo abre en Typora
+open next-kr logbook      # abre el logbook en Typora
+open next-kr highlights   # abre highlights en Typora
 ```
 
 ---
 
-## 14. Abrir ficheros
+## 10. Al final del día — report
 
 ```bash
-orbit open                        # diario de hoy en Typora
-orbit open next-kr                # proyecto en Typora
-orbit open next-kr --log          # logbook del proyecto
-orbit open 2026-W10               # nota semanal
-orbit open 2026-03                # nota mensual
+report
+```
 
-# Ver en terminal:
-orbit open next-kr --terminal
-orbit open next-kr --terminal --log --entry resultado   # filtrar entradas
+Muestra un informe de actividad de todos los proyectos (últimos 30 días por defecto):
+entradas de logbook, tareas completadas/pendientes/vencidas, hitos y eventos.
+
+```bash
+report next-kr --from 2026-03-01 --to 2026-03-09
+report --open                # abre el informe en Typora
+report --log mission         # guarda el informe en el logbook de mission
+```
+
+Guardar el report en el logbook de `mission` es útil para tomar decisiones de gestión: al revisarlo puedes añadir una evaluación como highlight:
+
+```bash
+hl add mission "Semana productiva en next-kr, retrasar hk-sources" --type evals
 ```
 
 ---
 
-## 15. Calendario visual
-
-Genera una vista de calendario con tus tareas y recordatorios y la abre en Typora:
-
-```bash
-orbit calendar week              # semana actual
-orbit calendar month             # mes actual
-orbit calendar year              # año actual
-orbit calendar week --date "next week"
-orbit calendar month --date 2026-04
-```
-
-Los días con eventos aparecen en **negrita** en la rejilla mensual. Los ficheros se guardan en `☀️mision-log/`.
-
----
-
-## 16. Documentación integrada
-
-```bash
-orbit info chuleta    # abre la chuleta de comandos en Typora
-orbit info about      # abre el README en Typora
-orbit info tutorial   # abre este tutorial en Typora
-orbit info help       # muestra el help completo de orbit
-```
-
----
-
-## 17. Flujo de trabajo completo — ejemplo típico
+## 11. Flujo de trabajo completo — ejemplo típico
 
 ```
 Lunes por la mañana
 ───────────────────
-orbit start                        # estado + foco + alerta sesión perdida
-orbit focus month --set orbit mission next-kr   # si no estaba definido
-orbit agenda                       # tareas del día (🎯 marca los proyectos en foco)
+orbit
+  agenda                           # ver qué hay pendiente hoy
+  project list                     # revisar estado del portfolio
 
-# Revisar estado del portfolio:
-orbit status
-
-# Anotar trabajo durante el día:
-log next-kr "Resolución del detector: 2.1% @ 511 keV" --entry resultado
-log next-kr "Probar con diferentes regiones de interés" --entry idea
-add task next-kr "Preparar presentación para el grupo" --date "next thursday"
-
-# Reprogramar una reunión:
-change task schedule next-kr "Reunión grupo" --date "next thursday" --time 10:00
+  # Trabajar y anotar:
+  log next-kr "σ/E = 2.1% @ 511 keV" --entry resultado
+  log next-kr "Probar con diferentes ROI" --entry idea
+  task add next-kr "Preparar presentación" --date "next thursday"
+  hl add next-kr "Resolución validada a 511 keV" --type results
 
 Lunes por la tarde
 ──────────────────
-orbit end                          # resumen de actividad + nota de evaluación
-# → Typora abre ☀️mission/diario/2026-03-09.md
-# → Completar la sección de reflexión manualmente
+  report                           # ¿qué se ha hecho hoy?
+  report --log mission             # guardar en logbook de mission
+  commit                           # guardar cambios en git
 
 Viernes por la tarde
 ────────────────────
-orbit end                          # genera también la evaluación SEMANAL
-# → Typora abre ☀️mission/semanal/2026-W11.md
+  report --from monday --to friday # informe semanal
+  report --from monday --to friday --log mission
+  hl add mission "Buena semana: calibración avanzada, pendiente topo" --type evals
+  commit
+```
+
+---
+
+## 12. Otros comandos útiles
+
+### Notas libres
+
+```bash
+note next-kr "Análisis detallado de calibración"   # crea nota en notes/
+note list next-kr                                   # listar notas con estado git
+```
+
+### Listados
+
+```bash
+ls projects                # lista de proyectos con estado
+ls tasks                   # tareas pendientes de todos los proyectos
+ls ms                      # hitos pendientes
+ls files next-kr           # ficheros del proyecto con estado git
+ls notes next-kr           # notas con estado git
+```
+
+### Commit
+
+```bash
+commit                     # muestra cambios, pide confirmación, genera mensaje
+commit "feat: calibración validada"
+```
+
+### Documentación
+
+```bash
+help                       # chuleta de comandos (terminal, paginado)
+help chuleta               # abre CHULETA.md en Typora
+help tutorial              # abre este tutorial en Typora
+help about                 # abre README.md en Typora
 ```
 
 ---
