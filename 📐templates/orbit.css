@@ -1,0 +1,214 @@
+/* ------------------------------------------------ */
+/* Scientific theme for Typora                      */
+/* Clean layout for research notes                  */
+/* ------------------------------------------------ */
+
+
+/* ---------- Page layout ---------- */
+
+body {
+  font-family: "Libertinus Serif", "Palatino", "Times New Roman", serif;
+  font-size: 17px;
+  line-height: 1.65;
+  max-width: 900px;
+  margin: auto;
+  padding: 2em;
+  color: #222;
+
+  counter-reset: section figure;
+}
+
+
+/* ---------- Title ---------- */
+
+h1 {
+  font-size: 2em;
+  margin-top: 0.5em;
+  margin-bottom: 0.8em;
+}
+
+h1::before {
+  content: "";
+}
+
+
+/* ---------- Sections ---------- */
+
+h2::before {
+  counter-increment: section;
+  counter-reset: subsection;
+  content: counter(section) ". ";
+  font-weight: 600;
+}
+
+
+/* ---------- Subsections ---------- */
+
+h3::before {
+  counter-increment: subsection;
+  counter-reset: subsubsection;
+  content: counter(section) "." counter(subsection) " ";
+}
+
+
+/* ---------- Subsubsections ---------- */
+
+h4::before {
+  counter-increment: subsubsection;
+  content: counter(section) "." counter(subsection) "." counter(subsubsection) " ";
+}
+
+
+/* ---------- Paragraph spacing ---------- */
+
+p {
+  margin: 0.6em 0;
+}
+
+
+/* ---------- Links ---------- */
+
+a {
+  color: #1a4ed8;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+
+/* ---------- Code blocks ---------- */
+
+code {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.9em;
+}
+
+pre {
+  background: #f6f8fa;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+
+/* ---------- Figures ---------- */
+
+figure {
+  counter-increment: figure;
+  text-align: center;
+  margin: 2em auto;
+}
+
+figure img {
+  max-width: 90%;
+  display: block;
+  margin: auto;
+}
+
+figure figcaption::before {
+  content: "Figure " counter(figure) ": ";
+  font-weight: 600;
+}
+
+figcaption {
+  margin-top: 6px;
+  font-style: italic;
+  color: #444;
+}
+
+
+/* ---------- Tables ---------- */
+
+table {
+  border-collapse: collapse;
+  margin: 1.2em auto;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 6px 12px;
+}
+
+th {
+  background: #f2f2f2;
+}
+
+
+/* ---------- Math equations ---------- */
+
+.MathJax_Display {
+  margin: 1.4em 0;
+}
+
+
+/* ---------- Blockquotes ---------- */
+
+blockquote {
+  border-left: 4px solid #ddd;
+  padding-left: 12px;
+  color: #555;
+  margin: 1em 0;
+}
+
+
+/* ---------- Horizontal rules ---------- */
+
+hr {
+  border: none;
+  border-top: 1px solid #ddd;
+  margin: 2em 0;
+}
+
+/* =========================
+   Quitar numeración de encabezados
+   ========================= */
+
+/* Evita que se reinicien contadores */
+body {
+  counter-reset: none;
+}
+
+/* Elimina cualquier numeración automática */
+h1::before,
+h2::before,
+h3::before,
+h4::before,
+h5::before,
+h6::before {
+  content: none !important;
+}
+
+/* Evita que se incrementen contadores */
+h1, h2, h3, h4, h5, h6 {
+  counter-increment: none !important;
+}
+
+/* =========================
+   Tipografía estilo Palatino
+   ========================= */
+
+body {
+  font-family: "Palatino Linotype", "Book Antiqua", Palatino, "TeX Gyre Pagella", serif;
+  font-size: 18px;
+  line-height: 1.65;
+  color: #222;
+}
+
+/* Encabezados elegantes */
+h1, h2, h3, h4 {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Mejor lectura en párrafos largos */
+p {
+  text-align: justify;
+  margin-bottom: 1em;
+}
+
+/* Código o expresiones */
+code, pre {
+  font-family: "Courier New", monospace;
+}
