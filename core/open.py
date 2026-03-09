@@ -10,24 +10,42 @@ from pathlib import Path
 from core.log import find_project, resolve_file, format_entry, _append_entry, init_logbook
 
 
+import os
+import platform
+
 EDITORS = {
     "typora": ["open", "-a", "Typora"],
     "glow":   ["glow"],
     "code":   ["code"],
 }
 
+# Foreground editors (terminal renderers) — block until exit
+_FOREGROUND = {"glow"}
 
-def open_file(path: Path, editor: str) -> int:
+
+def default_editor() -> str:
+    """Return the default editor from ORBIT_EDITOR env var, or system opener."""
+    env = os.environ.get("ORBIT_EDITOR", "").strip()
+    if env:
+        return env
+    # System default: 'open' on macOS, 'xdg-open' on Linux
+    return "open" if platform.system() == "Darwin" else "xdg-open"
+
+
+def open_file(path: Path, editor: str = "") -> int:
     """Open a file in the given editor. Returns 0 on success."""
+    if not editor:
+        editor = default_editor()
+
     cmd_base = EDITORS.get(editor)
     if cmd_base:
         cmd = cmd_base + [str(path)]
+    elif editor == "open":
+        cmd = ["open", str(path)]
     else:
-        # fallback: treat editor as a raw command
         cmd = [editor, str(path)]
 
-    # glow runs in the foreground (terminal renderer); others launch a GUI app
-    foreground = editor == "glow" or editor not in EDITORS
+    foreground = editor in _FOREGROUND or editor not in EDITORS
     try:
         if foreground:
             result = subprocess.run(cmd)
@@ -40,8 +58,7 @@ def open_file(path: Path, editor: str) -> int:
         return 1
 
 
-ORBIT_DIR = Path(__file__).parent.parent
-CMD_MD    = ORBIT_DIR / "cmd.md"
+from core.config import ORBIT_HOME, CMD_MD
 
 
 @contextmanager
@@ -56,7 +73,7 @@ def capture_output():
         sys.stdout = old
 
 
-def open_cmd_output(content: str, editor: str = "typora") -> None:
+def open_cmd_output(content: str, editor: str = "") -> None:
     """Write content to cmd.md and open it in the editor."""
     CMD_MD.write_text(content)
     open_file(CMD_MD, editor)

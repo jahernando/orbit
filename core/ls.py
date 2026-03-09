@@ -17,7 +17,7 @@ from typing import Optional
 from core.log import PROJECTS_DIR
 from core.project import _find_new_project, _is_new_project
 
-ORBIT_DIR = Path(__file__).parent.parent
+from core.config import ORBIT_HOME as ORBIT_DIR
 
 
 # ── Git helpers ───────────────────────────────────────────────────────────────

@@ -234,7 +234,7 @@ def list_tasks(
     output: Optional[str],
     ring_only: bool = False,
     open_after: bool = False,
-    editor: str = "typora",
+    editor: str = "",
 ) -> int:
     if not PROJECTS_DIR.exists():
         print(f"Error: projects directory not found at {PROJECTS_DIR}")

@@ -21,7 +21,7 @@ from core.project import _is_new_project, PROJECTS_DIR
 from core.agenda_cmds import _read_agenda, _write_agenda
 from core.log import resolve_file
 
-ORBIT_DIR       = Path(__file__).parent.parent
+from core.config import ORBIT_HOME as ORBIT_DIR
 REMINDERS_LIST  = "Orbit"
 
 # ── Ring datetime resolution ───────────────────────────────────────────────────

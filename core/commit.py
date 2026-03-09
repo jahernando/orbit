@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-ORBIT_DIR = Path(__file__).parent.parent
+from core.config import ORBIT_HOME as ORBIT_DIR
 
 
 # ── Git helpers ────────────────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ from core.project import _find_new_project
 from core.log import add_orbit_entry
 from core.open import open_file
 
-ORBIT_DIR = Path(__file__).parent.parent
+from core.config import ORBIT_HOME, TEMPLATES_DIR
 
 
 # ── Filename helpers ───────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ def _title_to_filename(title: str) -> str:
 
 def _note_template(title: str, project_name: str) -> str:
     today = date.today().isoformat()
-    tpl = ORBIT_DIR / "📐templates" / "note.md"
+    tpl = TEMPLATES_DIR / "note.md"
     if tpl.exists():
         return (tpl.read_text()
                 .replace("TÍTULO", title)
@@ -49,7 +49,7 @@ def _git_tracked(path: Path) -> Optional[bool]:
     try:
         result = subprocess.run(
             ["git", "ls-files", "--error-unmatch", str(path)],
-            capture_output=True, cwd=ORBIT_DIR,
+            capture_output=True, cwd=ORBIT_HOME,
         )
         return result.returncode == 0
     except FileNotFoundError:
@@ -60,7 +60,7 @@ def _git_add_file(path: Path) -> bool:
     try:
         result = subprocess.run(
             ["git", "add", str(path)],
-            capture_output=True, cwd=ORBIT_DIR,
+            capture_output=True, cwd=ORBIT_HOME,
         )
         return result.returncode == 0
     except FileNotFoundError:
@@ -123,7 +123,7 @@ def _pick_note(notes_dir: Path, text: Optional[str]) -> Optional[Path]:
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def run_note_create(project: str, title: str, file_str: Optional[str] = None,
-                    open_after: bool = True, editor: str = "typora") -> int:
+                    open_after: bool = True, editor: str = "") -> int:
     """Create a new note or import an existing .md into project notes/."""
     project_dir = _find_new_project(project)
     if project_dir is None:

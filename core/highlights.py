@@ -275,7 +275,7 @@ def run_hl_drop(project: Optional[str], text: Optional[str],
 
 def run_hl_edit(project: Optional[str], text: Optional[str],
                 new_text: Optional[str] = None, new_link: Optional[str] = None,
-                hl_type: Optional[str] = None, editor: str = "typora") -> int:
+                hl_type: Optional[str] = None, editor: str = "") -> int:
     """Edit a highlight: update text/link inline, or open file in editor."""
     project_dir = _find_new_project(project) if project else None
     if project and project_dir is None:

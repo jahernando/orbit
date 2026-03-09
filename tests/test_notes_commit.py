@@ -43,7 +43,8 @@ def projects_dir(tmp_path, monkeypatch):
     import core.notes as nt
     import core.project as cp
     import core.log as cl
-    monkeypatch.setattr(nt, "ORBIT_DIR", tmp_path)
+    monkeypatch.setattr(nt, "ORBIT_HOME", tmp_path)
+    monkeypatch.setattr(nt, "TEMPLATES_DIR", tmp_path / "📐templates")
     monkeypatch.setattr(cp, "PROJECTS_DIR", pdir)
     monkeypatch.setattr(cl, "PROJECTS_DIR", pdir)
     return pdir

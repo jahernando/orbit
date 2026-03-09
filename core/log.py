@@ -2,7 +2,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-PROJECTS_DIR = Path(__file__).parent.parent / "🚀proyectos"
+from core.config import PROJECTS_DIR
 
 VALID_TYPES = ["idea", "referencia", "apunte", "problema", "resultado", "decision", "evaluacion",
                "tarea", "evento"]   # tarea/evento kept for backwards compat

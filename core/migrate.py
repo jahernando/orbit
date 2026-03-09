@@ -20,7 +20,7 @@ from typing import Optional
 
 from core.log import PROJECTS_DIR, project_file_path
 
-TEMPLATES_DIR = Path(__file__).parent.parent / "📐templates"
+from core.config import TEMPLATES_DIR
 
 # ── Status / type maps ────────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@ from core.log import PROJECTS_DIR, find_logbook_file, find_proyecto_file, resolv
 from core.tasks import TYPE_MAP, PRIORITY_MAP, normalize
 from core.open import open_file
 
-TEMPLATES_DIR = Path(__file__).parent.parent / "📐templates"
+from core.config import TEMPLATES_DIR
 
 TYPE_LABEL = {
     "investigacion": "Investigación",
@@ -335,7 +335,7 @@ def _set_estado_in_file(project_file: Path, value: str) -> None:
 
 # ── project edit ──────────────────────────────────────────────────────────────
 
-def run_project_edit(name: str, editor: str = "typora") -> int:
+def run_project_edit(name: str, editor: str = "") -> int:
     """Open project.md in editor."""
     project_dir = _find_new_project(name)
     if project_dir is None:

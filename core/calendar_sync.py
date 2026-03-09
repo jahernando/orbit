@@ -7,8 +7,9 @@ from typing import Optional
 
 from core.log import PROJECTS_DIR, find_project, find_logbook_file, init_logbook, resolve_file
 
-CREDENTIALS_PATH = Path(__file__).parent.parent / "credentials.json"
-TOKEN_PATH = Path(__file__).parent.parent / "token.json"
+from core.config import ORBIT_HOME
+CREDENTIALS_PATH = ORBIT_HOME / "credentials.json"
+TOKEN_PATH = ORBIT_HOME / "token.json"
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
 PROJECT_RE = re.compile(r"proyecto\s*:\s*(\S+)", re.IGNORECASE)

@@ -202,7 +202,7 @@ def _pick_project() -> Optional[Path]:
 
 def run_new_view(project: Optional[str] = None,
                  open_after: bool = False,
-                 editor: str = "typora") -> int:
+                 editor: str = "") -> int:
     """Terminal summary of a new-format project (or picker if no project given)."""
     if project:
         project_dir = _find_new_project(project)
@@ -229,7 +229,7 @@ _VALID_WHAT = {"logbook", "highlights", "agenda", "project"}
 
 
 def run_new_open(project: str, what: Optional[str] = None,
-                 editor: str = "typora") -> int:
+                 editor: str = "") -> int:
     """Open a file from a new-format project in the editor.
 
     *what*: logbook | highlights | agenda | notes | project  (default: project)

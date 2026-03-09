@@ -120,7 +120,7 @@ orbit open  <project> [logbook|highlights|agenda|notes|project] [--editor E]
 
 - `view` sin proyecto: muestra lista para selección interactiva
 - `view <project>`: resumen en terminal (estado, tareas, hitos, próximos eventos, entradas recientes)
-- `view <project> --open`: genera `cmd.md` y lo abre en Typora
+- `view <project> --open`: genera `cmd.md` y lo abre en el editor
 
 ---
 
@@ -205,9 +205,9 @@ orbit report [project...] [--date D] [--from D] [--to D] [--open] [--editor E]
 
 ```bash
 orbit help            # muestra CHULETA.md en terminal (paginado)
-orbit help chuleta    # abre CHULETA.md en Typora
-orbit help about      # abre README.md en Typora
-orbit help tutorial   # abre TUTORIAL.md en Typora
+orbit help chuleta    # abre CHULETA.md en el editor
+orbit help about      # abre README.md en el editor
+orbit help tutorial   # abre TUTORIAL.md en el editor
 ```
 
 ---
@@ -215,7 +215,10 @@ orbit help tutorial   # abre TUTORIAL.md en Typora
 ## --open — abrir resultado en editor
 
 Los comandos de listado aceptan `--open [--editor E]`:
-capturan el output, lo escriben en `cmd.md` y abren el fichero en el editor (por defecto Typora).
+capturan el output, lo escriben en `cmd.md` y abren el fichero en el editor.
+
+El editor se configura con `export ORBIT_EDITOR=typora` (o el que prefieras).
+Sin variable, usa el abridor del sistema (`open` en macOS, `xdg-open` en Linux).
 
 Comandos que lo admiten: `ls` · `view` · `search` · `report`
 

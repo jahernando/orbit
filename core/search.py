@@ -107,7 +107,7 @@ def run_search(
     notes: bool = False,
     limit: int = 0,
     open_after: bool = False,
-    editor: str = "typora",
+    editor: str = "",
     in_filter: Optional[str] = None,
 ) -> int:
     if not PROJECTS_DIR.exists():

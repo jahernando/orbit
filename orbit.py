@@ -11,7 +11,7 @@ from core.stats import run_report
 from core.project import (run_project_create, run_project_list,
                           run_project_status, run_project_edit, run_project_delete)
 from core.importer import run_import
-from core.open import open_file, capture_output, open_cmd_output, log_cmd_output
+from core.open import open_file, capture_output, open_cmd_output, log_cmd_output, default_editor
 from core.dateparse import parse_date
 from core.agenda_cmds import (
     run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list,
@@ -48,7 +48,7 @@ def _handle_output(args, run_fn, cmd_label: str = ""):
             run_fn()
         content = buf.getvalue()
         if do_open:
-            open_cmd_output(content, getattr(args, "editor", "typora"))
+            open_cmd_output(content, getattr(args, "editor", None) or "")
         if log_target:
             entry_type = getattr(args, "log_entry", "apunte")
             log_cmd_output(content, log_target, entry_type, cmd_label)
@@ -120,19 +120,19 @@ def cmd_search(args):
 def cmd_open(args):
     what = getattr(args, "what", None)
     return run_new_open(args.target, what=what,
-                        editor=getattr(args, "editor", "typora"))
+                        editor=getattr(args, "editor", None) or default_editor())
 
 
 def cmd_view_new(args):
     log_target = getattr(args, "log", None)
     if log_target:
         fn = lambda: run_new_view(project=getattr(args, "project", None),
-                                  open_after=False, editor="typora")
+                                  open_after=False, editor=default_editor())
         return _handle_output(args, fn, "view")
     return run_new_view(
         project    = getattr(args, "project", None),
         open_after = getattr(args, "open", False),
-        editor     = getattr(args, "editor", "typora"),
+        editor     = getattr(args, "editor", None) or default_editor(),
     )
 
 
@@ -165,7 +165,7 @@ def cmd_hl(args):
             new_text = getattr(args, "new_text", None),
             new_link = getattr(args, "new_link", None),
             hl_type  = getattr(args, "type", None),
-            editor   = getattr(args, "editor", "typora"),
+            editor   = getattr(args, "editor", None) or default_editor(),
         )
     if action == "list":
         fn = lambda: run_hl_list(project=getattr(args, "project", None),
@@ -190,7 +190,7 @@ def cmd_note(args):
         title     = getattr(args, "title", "") or "",
         file_str  = getattr(args, "file", None),
         open_after= not getattr(args, "no_open", False),
-        editor    = getattr(args, "editor", "typora"),
+        editor    = getattr(args, "editor", None) or default_editor(),
     )
 
 
@@ -298,7 +298,7 @@ def cmd_ev(args):
     return 1
 
 
-ORBIT_DIR = Path(__file__).parent
+from core.config import ORBIT_HOME as ORBIT_DIR
 
 
 def cmd_project(args):
@@ -315,7 +315,7 @@ def cmd_project(args):
                                   set_status=getattr(args, "set", None))
     elif sub == "edit":
         return run_project_edit(name=args.name,
-                                editor=getattr(args, "editor", "typora"))
+                                editor=getattr(args, "editor", None) or default_editor())
     elif sub == "delete":
         return run_project_delete(name=args.name,
                                   force=getattr(args, "force", False))
@@ -344,7 +344,7 @@ def cmd_migrate(args):
 def cmd_help(args):
     import subprocess
     topic = getattr(args, "topic", None)
-    editor = getattr(args, "editor", "typora")
+    editor = getattr(args, "editor", None) or default_editor()
     if topic in (None, "chuleta"):
         if topic is None:
             # Print in terminal (paged)
@@ -475,7 +475,7 @@ def main():
     log_p.add_argument("--path", default=None, help="Optional file path — formats entry as a markdown link")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
     log_p.add_argument("--open", action="store_true", help="Open the logbook in editor after logging")
-    log_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+    log_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
 
     # --- search ---
     search_p = subparsers.add_parser("search", help="Search across project logbooks and notes")
@@ -500,7 +500,7 @@ def main():
                           help="Maximum number of results (default: unlimited)")
     search_p.add_argument("--open", action="store_true",
                           help="Open results in editor")
-    search_p.add_argument("--editor", default="typora", help="Editor to use (default: typora)")
+    search_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
     _add_log_args(search_p)
 
     # --- ls (unified listing) ---
@@ -512,7 +512,7 @@ def main():
     ls_proj.add_argument("--status", default=None, help="Filter: active, paused, sleeping")
     ls_proj.add_argument("--type",   default=None, help="Filter: investigacion, docencia, ...")
     ls_proj.add_argument("--open",   action="store_true")
-    ls_proj.add_argument("--editor", default="typora")
+    ls_proj.add_argument("--editor", default=None)
     _add_log_args(ls_proj)
 
     # ls tasks [project...]
@@ -522,7 +522,7 @@ def main():
                           choices=["pending", "done", "cancelled", "all"])
     ls_tasks.add_argument("--date",   default=None, help="Filter by date")
     ls_tasks.add_argument("--open",   action="store_true")
-    ls_tasks.add_argument("--editor", default="typora")
+    ls_tasks.add_argument("--editor", default=None)
     _add_log_args(ls_tasks)
 
     # ls ms [project...]
@@ -531,7 +531,7 @@ def main():
     ls_ms.add_argument("--status", default="pending",
                        choices=["pending", "done", "cancelled", "all"])
     ls_ms.add_argument("--open",   action="store_true")
-    ls_ms.add_argument("--editor", default="typora")
+    ls_ms.add_argument("--editor", default=None)
     _add_log_args(ls_ms)
 
     # ls ev [project]
@@ -540,7 +540,7 @@ def main():
     ls_ev.add_argument("--from", dest="period_from", default=None, metavar="DATE")
     ls_ev.add_argument("--to",   dest="period_to",   default=None, metavar="DATE")
     ls_ev.add_argument("--open",   action="store_true")
-    ls_ev.add_argument("--editor", default="typora")
+    ls_ev.add_argument("--editor", default=None)
     _add_log_args(ls_ev)
 
     # ls hl [project]
@@ -548,21 +548,21 @@ def main():
     ls_hl.add_argument("project_name", nargs="?", default=None, help="Project")
     ls_hl.add_argument("--type", default=None, choices=HL_TYPES, help="Section type")
     ls_hl.add_argument("--open",   action="store_true")
-    ls_hl.add_argument("--editor", default="typora")
+    ls_hl.add_argument("--editor", default=None)
     _add_log_args(ls_hl)
 
     # ls files [project]
     ls_files = ls_sub.add_parser("files", help="List project md files with git status")
     ls_files.add_argument("project_name", nargs="?", default=None, help="Project")
     ls_files.add_argument("--open",   action="store_true")
-    ls_files.add_argument("--editor", default="typora")
+    ls_files.add_argument("--editor", default=None)
     _add_log_args(ls_files)
 
     # ls notes [project]
     ls_notes = ls_sub.add_parser("notes", help="List notes with git status")
     ls_notes.add_argument("project_name", nargs="?", default=None, help="Project")
     ls_notes.add_argument("--open",   action="store_true")
-    ls_notes.add_argument("--editor", default="typora")
+    ls_notes.add_argument("--editor", default=None)
     _add_log_args(ls_notes)
 
     # ls <project> — fallback: list logbook entries
@@ -572,11 +572,11 @@ def main():
     ls_p.add_argument("--from",        dest="period_from", default=None, metavar="DATE")
     ls_p.add_argument("--to",          dest="period_to",   default=None, metavar="DATE")
     ls_p.add_argument("--open",        action="store_true")
-    ls_p.add_argument("--editor",      default="typora")
+    ls_p.add_argument("--editor",      default=None)
     _add_log_args(ls_p)
 
     shell_p = subparsers.add_parser("shell", help="Enter interactive Orbit shell")
-    shell_p.add_argument("--editor", default="typora", help="Editor for opening notes (default: typora)")
+    shell_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
 
     # --- open ---
     open_p = subparsers.add_parser("open", help="Open a project file in editor")
@@ -585,8 +585,8 @@ def main():
     open_p.add_argument("--what",     default=None,
                         choices=["logbook", "highlights", "agenda", "notes", "project"],
                         help="Which file to open: project (default), logbook, highlights, agenda, notes")
-    open_p.add_argument("--editor",   default="typora",
-                        help="Editor to use: typora (default), glow, code, or any command")
+    open_p.add_argument("--editor",   default=None,
+                        help="Editor: typora, glow, code, or any command (env ORBIT_EDITOR)")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")
@@ -599,7 +599,7 @@ def main():
     rep_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
                        help="Period end")
     rep_p.add_argument("--open", action="store_true", help="Open in editor")
-    rep_p.add_argument("--editor", default="typora")
+    rep_p.add_argument("--editor", default=None)
     _add_log_args(rep_p)
 
     # --- agenda ---
@@ -615,7 +615,7 @@ def main():
     ag_p.add_argument("--calendar", action="store_true",
                       help="Show calendar grid with colored markers (max 3 months)")
     ag_p.add_argument("--open",   action="store_true", help="Open in editor")
-    ag_p.add_argument("--editor", default="typora")
+    ag_p.add_argument("--editor", default=None)
     _add_log_args(ag_p)
 
     # --- task (add/done/cancel/edit/list on agenda.md) ---
@@ -663,7 +663,7 @@ def main():
                          help="Status filter (default: pending)")
     tn_list.add_argument("--date",   default=None, help="Filter by date YYYY-MM or YYYY-MM-DD")
     tn_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    tn_list.add_argument("--editor", default="typora")
+    tn_list.add_argument("--editor", default=None)
     _add_log_args(tn_list)
 
     # --- ms ---
@@ -693,7 +693,7 @@ def main():
     ms_list = ms_sub.add_parser("list", help="List milestones")
     ms_list.add_argument("projects", nargs="*", default=None)
     ms_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    ms_list.add_argument("--editor", default="typora")
+    ms_list.add_argument("--editor", default=None)
     _add_log_args(ms_list)
     ms_list.add_argument("--status", default="pending",
                          choices=["pending", "done", "cancelled", "all"])
@@ -718,7 +718,7 @@ def main():
     ev_list.add_argument("--from", dest="period_from", default=None, metavar="YYYY-MM-DD")
     ev_list.add_argument("--to",   dest="period_to",   default=None, metavar="YYYY-MM-DD")
     ev_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    ev_list.add_argument("--editor", default="typora")
+    ev_list.add_argument("--editor", default=None)
     _add_log_args(ev_list)
 
     # --- hl ---
@@ -746,12 +746,12 @@ def main():
     hl_edit.add_argument("--text",   dest="new_text", default=None, help="New text/title")
     hl_edit.add_argument("--link",   dest="new_link", default=None,
                          help="New link (or 'none' to remove)")
-    hl_edit.add_argument("--editor", default="typora")
+    hl_edit.add_argument("--editor", default=None)
 
     hl_list = hl_sub.add_parser("list", help="List highlights")
     hl_list.add_argument("project", nargs="?", default=None)
     hl_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    hl_list.add_argument("--editor", default="typora")
+    hl_list.add_argument("--editor", default=None)
     _add_log_args(hl_list)
     hl_list.add_argument("--type",  default=None, choices=HL_TYPES,
                          help="Filter by section type")
@@ -763,7 +763,7 @@ def main():
                       help="Project name (partial match; omit for interactive picker)")
     v2_p.add_argument("--open",   action="store_true",
                       help="Open summary as markdown in editor")
-    v2_p.add_argument("--editor", default="typora")
+    v2_p.add_argument("--editor", default=None)
     _add_log_args(v2_p)
 
     # --- note (new-model notes/) ---
@@ -777,12 +777,12 @@ def main():
                            help="Import an existing .md file instead of creating a new one")
     nt_create.add_argument("--no-open", action="store_true",
                            help="Do not open the note after creating")
-    nt_create.add_argument("--editor",  default="typora")
+    nt_create.add_argument("--editor",  default=None)
 
     nt_list = note_sub.add_parser("list", help="List notes with git status")
     nt_list.add_argument("project", help="Project name (partial match)")
     nt_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    nt_list.add_argument("--editor", default="typora")
+    nt_list.add_argument("--editor", default=None)
     _add_log_args(nt_list)
 
     nt_drop = note_sub.add_parser("drop", help="Delete a note (interactive)")
@@ -796,7 +796,7 @@ def main():
     note_p.add_argument("title",   nargs="?", default=None)
     note_p.add_argument("--file",    default=None)
     note_p.add_argument("--no-open", action="store_true")
-    note_p.add_argument("--editor",  default="typora")
+    note_p.add_argument("--editor",  default=None)
 
     # --- commit ---
     cmt_p = subparsers.add_parser("commit", help="Git commit with confirmation")
@@ -821,7 +821,7 @@ def main():
                        help="Filter by status: active/activo, paused/pausado, sleeping/durmiendo")
     prl_p.add_argument("--type",   default=None, help="Filter by project type")
     prl_p.add_argument("--open",   action="store_true", help="Open output in editor")
-    prl_p.add_argument("--editor", default="typora")
+    prl_p.add_argument("--editor", default=None)
     _add_log_args(prl_p)
 
     # project status
@@ -833,7 +833,7 @@ def main():
     # project edit
     pre_p = prj_sub.add_parser("edit", help="Open project.md in editor")
     pre_p.add_argument("name", help="Project name (partial match)")
-    pre_p.add_argument("--editor", default="typora", help="Editor (default: typora)")
+    pre_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
 
     # project delete
     prd_p = prj_sub.add_parser("delete", help="Delete a project (requires confirmation)")
@@ -859,11 +859,11 @@ def main():
     # --- help ---
     hlp_p   = subparsers.add_parser("help", help="Show help: chuleta (default), tutorial, about")
     hlp_sub = hlp_p.add_subparsers(dest="topic")
-    for _name, _help in [("chuleta",  "Open CHULETA.md in Typora"),
-                          ("tutorial", "Open TUTORIAL.md in Typora"),
-                          ("about",    "Open README.md in Typora")]:
+    for _name, _help in [("chuleta",  "Open CHULETA.md in editor"),
+                          ("tutorial", "Open TUTORIAL.md in editor"),
+                          ("about",    "Open README.md in editor")]:
         _p = hlp_sub.add_parser(_name, help=_help)
-        _p.add_argument("--editor", default="typora")
+        _p.add_argument("--editor", default=None)
 
     args = parser.parse_args(_fix_argv(sys.argv[1:]))
 
@@ -885,14 +885,14 @@ def main():
     elif args.command in _simple:
         sys.exit(_simple[args.command](args))
     elif args.command == "shell":
-        run_shell(editor=getattr(args, "editor", "typora"))
+        run_shell(editor=getattr(args, "editor", None) or default_editor())
     elif args.command == "help":
         sys.exit(cmd_help(args))
     else:
         parser.print_help()
 
 
-def run_shell(editor: str = "typora"):
+def run_shell(editor: str = ""):
     import readline
     import shlex
     from datetime import date as _date
@@ -949,7 +949,7 @@ def run_shell(editor: str = "typora"):
             break
         if line == "claude":
             import subprocess
-            subprocess.run(["claude"], cwd=Path(__file__).parent)
+            subprocess.run(["claude"], cwd=ORBIT_DIR)
             continue
 
         try:
