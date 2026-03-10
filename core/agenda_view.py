@@ -20,7 +20,7 @@ _MONTH_NAMES = [
 
 from core.log import PROJECTS_DIR, resolve_file
 from core.project import _find_new_project, _is_new_project
-from core.agenda_cmds import _read_agenda
+from core.agenda_cmds import _read_agenda, _next_occurrence
 
 
 # ── ANSI helpers ──────────────────────────────────────────────────────────────
@@ -111,6 +111,58 @@ def _event_overlaps(ev: dict, start: date, end: date) -> bool:
     return ev_start <= end and ev_end >= start
 
 
+# ── Recurrence expansion ─────────────────────────────────────────────────────
+
+def _expand_recurrences(task: dict, start: date, end: date) -> list:
+    """Expand a recurring task into virtual occurrences within [start, end].
+
+    Returns a list of task dicts with concrete dates (no recur).
+    The original task is NOT included — caller handles that.
+    """
+    if not task.get("recur") or not task.get("date"):
+        return []
+
+    recur = task["recur"]
+    until_date = None
+    if task.get("until"):
+        try:
+            until_date = date.fromisoformat(task["until"])
+        except ValueError:
+            pass
+
+    base = date.fromisoformat(task["date"])
+    occurrences = []
+    current = base
+
+    # Generate occurrences up to end (or until, whichever is earlier)
+    limit = end
+    if until_date and until_date < limit:
+        limit = until_date
+
+    # Safety cap: max 366 occurrences
+    for _ in range(366):
+        if current > limit:
+            break
+        if current >= start:
+            occurrences.append(current)
+        nxt_str = _next_occurrence(current.isoformat(), recur, current.isoformat())
+        nxt = date.fromisoformat(nxt_str)
+        if nxt <= current:
+            break  # safety: no infinite loop
+        current = nxt
+
+    # Build virtual task dicts (without recur, to avoid re-expansion)
+    result = []
+    for d in occurrences:
+        if d == base:
+            continue  # skip the original date, caller handles it
+        vt = dict(task)
+        vt["date"] = d.isoformat()
+        vt["_virtual"] = True  # marker: not a real entry
+        result.append(vt)
+    return result
+
+
 # ── Collect agenda data ──────────────────────────────────────────────────────
 
 def _collect_data(dirs, start, end):
@@ -140,6 +192,9 @@ def _collect_data(dirs, start, end):
                         tasks.append(t)
                 except ValueError:
                     pass
+            # Expand recurring tasks into virtual occurrences
+            if t.get("recur") and t.get("date"):
+                tasks.extend(_expand_recurrences(t, start, end))
 
         events = [e for e in data["events"] if _event_overlaps(e, start, end)]
 
@@ -227,7 +282,7 @@ def run_agenda(
 
 # ── Calendar: ANSI terminal version ──────────────────────────────────────────
 
-def _collect_calendar_dates(dirs):
+def _collect_calendar_dates(dirs, start: date = None, end: date = None):
     """Collect date sets for calendar display. Returns (task_dates, event_dates, ms_dates, overdue_dates, overdue_items)."""
     today = date.today()
     task_dates = set()
@@ -251,6 +306,14 @@ def _collect_calendar_dates(dirs):
                             (project_dir.name, "[ ]", t["desc"], t["date"]))
                 except ValueError:
                     pass
+                # Expand recurring tasks for calendar
+                if t.get("recur"):
+                    for vt in _expand_recurrences(t, start, end):
+                        try:
+                            vd = date.fromisoformat(vt["date"])
+                            task_dates.add(vd)
+                        except ValueError:
+                            pass
 
         for e in data["events"]:
             try:
@@ -333,7 +396,12 @@ def _format_detail_lines(collected, markdown=False):
                         overdue = " ⚠️"
                 except ValueError:
                     pass
-            recur_s = f" [recur:{t['recur']}]" if t.get("recur") else ""
+            recur_s = ""
+            if t.get("recur"):
+                recur_s = f" [recur:{t['recur']}"
+                if t.get("until"):
+                    recur_s += f":{t['until']}"
+                recur_s += "]"
             lines.append(f"{pfx}{check} {t['desc']}{date_s}{recur_s}{overdue}")
 
     return lines
@@ -344,7 +412,7 @@ def _print_calendar_ansi(dirs: list, start: date, end: date) -> int:
     today = date.today()
     end = _cap_end(start, end)
     task_dates, event_dates, ms_dates, overdue_dates, overdue_items = \
-        _collect_calendar_dates(dirs)
+        _collect_calendar_dates(dirs, start, end)
 
     lines = []
     if overdue_items:
@@ -429,7 +497,7 @@ def _print_calendar_md(dirs: list, start: date, end: date) -> int:
     today = date.today()
     end = _cap_end(start, end)
     task_dates, event_dates, ms_dates, overdue_dates, overdue_items = \
-        _collect_calendar_dates(dirs)
+        _collect_calendar_dates(dirs, start, end)
 
     lines = []
 
