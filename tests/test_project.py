@@ -93,20 +93,20 @@ def _make_new_project(projects_dir: Path, name: str,
 
 class TestInferStatus:
 
-    def test_no_logbook_returns_sleeping(self, tmp_path):
+    def test_no_logbook_returns_new(self, tmp_path):
         proj = tmp_path / "💻myproject"
         proj.mkdir()
         status, days = _infer_status(proj)
-        assert status == "sleeping"
-        assert days == 999
+        assert status == "new"
+        assert days == 0
 
-    def test_empty_logbook_returns_sleeping(self, tmp_path):
+    def test_empty_logbook_returns_new(self, tmp_path):
         proj = tmp_path / "💻myproject"
         proj.mkdir()
         (proj / "myproject-logbook.md").write_text("# Logbook\n\n")
         status, days = _infer_status(proj)
-        assert status == "sleeping"
-        assert days == 999
+        assert status == "new"
+        assert days == 0
 
     def test_entry_today_is_active(self, tmp_path):
         proj = tmp_path / "💻myproject"

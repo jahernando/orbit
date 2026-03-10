@@ -18,11 +18,13 @@ _ACTIVE_DAYS  = 14
 _PAUSED_DAYS  = 60
 
 _STATUS_EMOJI = {
+    "new":      "⬜",
     "active":   "▶️",
     "paused":   "⏸️",
     "sleeping": "💤",
 }
 _STATUS_LABEL = {
+    "new":      "Nuevo",
     "active":   "Activo",
     "paused":   "Pausado",
     "sleeping": "Durmiendo",
@@ -51,7 +53,7 @@ def _infer_status(project_dir: Path) -> tuple:
     """Return (status_key, days_since_last_entry) from logbook activity."""
     logbook = find_logbook_file(project_dir)
     if not logbook or not logbook.exists():
-        return "sleeping", 999
+        return "new", 0
 
     today    = date.today()
     last_day = None
@@ -68,7 +70,7 @@ def _infer_status(project_dir: Path) -> tuple:
                 pass
 
     if last_day is None:
-        return "sleeping", 999
+        return "new", 0
 
     days = (today - last_day).days
     if days <= _ACTIVE_DAYS:
@@ -216,7 +218,7 @@ def run_project_create(name: str, tipo: str, prioridad: str) -> int:
 # ── project list ──────────────────────────────────────────────────────────────
 
 _PRIO_ORDER = {"alta": 0, "media": 1, "baja": 2}
-_STATUS_ORDER = {"active": 0, "paused": 1, "sleeping": 2}
+_STATUS_ORDER = {"active": 0, "paused": 1, "new": 2, "sleeping": 3}
 
 
 def run_project_list(status_filter: Optional[str] = None,
