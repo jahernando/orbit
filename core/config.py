@@ -14,6 +14,7 @@ ORBIT_PROMPT = os.environ.get("ORBIT_PROMPT", "🚀")
 PROJECTS_DIR  = ORBIT_HOME / "🚀proyectos"
 TEMPLATES_DIR = ORBIT_HOME / "📐templates"
 CMD_MD        = ORBIT_HOME / "cmd.md"
+PROYECTOS_MD  = ORBIT_HOME / "proyectos.md"
 
 
 # ── Project types (from orbit.json) ──────────────────────────────────────────
