@@ -207,7 +207,7 @@ def _collect_data(dirs, start, end, dated_only=False):
                 continue
             if t.get("date") and _in_range(t["date"], start, end):
                 tasks.append(t)
-            elif not dated_only and is_single_day and start == today and not t.get("date"):
+            elif not dated_only and start <= today <= end and not t.get("date"):
                 tasks.append(t)
             elif t.get("date"):
                 try:
@@ -233,7 +233,7 @@ def _collect_data(dirs, start, end, dated_only=False):
                 continue
             if m.get("date") and _in_range(m["date"], start, end):
                 milestones.append(m)
-            elif not dated_only and is_single_day and start == today and not m.get("date"):
+            elif not dated_only and start <= today <= end and not m.get("date"):
                 milestones.append(m)
             elif m.get("date"):
                 try:
