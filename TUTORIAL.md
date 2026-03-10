@@ -127,24 +127,27 @@ task done next-kr "Reproducir"     # interactivo con match parcial
 task list                          # todas las pendientes
 ```
 
-Las tareas con `--ring` se programan como alarma en Reminders.app de macOS.
-Las tareas recurrentes (`--recur`) avanzan automáticamente al completarlas.
-
 ### Hitos
 
 Los hitos son objetivos importantes. Úsalos en el proyecto `mission` para marcar el foco del día o la semana:
 
 ```bash
-ms add mission "Foco: avanzar calibración next-kr" --date 2026-03-09
+ms add mission "Foco: avanzar calibración next-kr" --date 2026-03-09 --ring 1d
 ms done mission "Foco"
 ```
 
 ### Eventos
 
 ```bash
-ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18
+ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18 --ring 1d
+ev add next-kr "Seminario" --date 2026-03-20 --recur weekly
+ev edit next-kr "Congreso" --date 2026-04-20
 ev list next-kr
 ```
+
+Los tres (task, ms, ev) comparten la misma interfaz: `--date`, `--recur`, `--until`, `--ring`.
+Las tareas y hitos recurrentes avanzan automáticamente al completarlas.
+`--ring` programa una alarma en Reminders.app de macOS.
 
 ---
 
@@ -265,6 +268,17 @@ ls notes next-kr           # notas con estado git
 ```bash
 commit                     # muestra cambios, pide confirmación, genera mensaje
 commit "feat: calibración validada"
+```
+
+### Doctor y clean
+
+```bash
+doctor                     # valida sintaxis de logbook, agenda y highlights
+doctor --fix               # ofrece corregir errores detectados
+
+clean                      # elimina entradas de logbook y eventos con más de 6 meses
+clean next-kr --months 3   # solo un proyecto, antigüedad 3 meses
+clean --dry-run            # muestra qué se eliminaría sin borrar
 ```
 
 ### Documentación

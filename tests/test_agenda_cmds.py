@@ -693,7 +693,7 @@ class TestEvents:
         from core.agenda_cmds import run_ev_add
         rc = run_ev_add("test-project", "Bad event", "not-a-date")
         assert rc == 1
-        assert "inválida" in capsys.readouterr().out
+        assert "no reconocida" in capsys.readouterr().out
 
     def test_drop_event_by_text(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_ev_add, run_ev_drop, _read_agenda

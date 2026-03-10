@@ -35,10 +35,10 @@ orbit project type drop <name>              # elimina tipo
 ## task — tareas
 
 ```bash
-orbit task add    <project> "<text>" [--date DATE] [--recur FREQ] [--ring WHEN]
+orbit task add    <project> "<text>" [--date DATE] [--recur FREQ] [--until DATE] [--ring WHEN]
 orbit task done   [<project>] ["<text>"]
 orbit task drop   [<project>] ["<text>"] [--force]
-orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--recur FREQ|none] [--ring WHEN|none]
+orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none]
 ```
 
 - `done` y `drop`: interactivos si no se especifica texto; `drop` pide confirmación
@@ -68,6 +68,7 @@ Se aceptan días de la semana en inglés y español (`lunes`, `viernes`, etc.).
 |-------|------------|
 | `1d` | 1 día antes del deadline (a las 09:00) |
 | `2h` | 2 horas antes |
+| `HH:MM` | Hoy (o en la fecha de la tarea) a esa hora |
 | `YYYY-MM-DD HH:MM` | Fecha/hora exacta |
 | `none` | Eliminar ring (solo en `edit`) |
 
@@ -76,10 +77,10 @@ Se aceptan días de la semana en inglés y español (`lunes`, `viernes`, etc.).
 ## ms — hitos
 
 ```bash
-orbit ms add    <project> "<text>" [--date DATE]
+orbit ms add    <project> "<text>" [--date DATE] [--recur FREQ] [--until DATE] [--ring WHEN]
 orbit ms done   [<project>] ["<text>"]
 orbit ms drop   [<project>] ["<text>"] [--force]
-orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none]
+orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none]
 ```
 
 ---
@@ -87,8 +88,10 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none]
 ## ev — eventos
 
 ```bash
-orbit ev add  <project> "<text>" --date DATE [--end DATE]
+orbit ev add  <project> "<text>" --date DATE [--end DATE] [--recur FREQ] [--until DATE] [--ring WHEN]
 orbit ev drop [<project>] ["<text>"] [--force]
+orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none]
+orbit ev list [<project>] [--from DATE] [--to DATE]
 ```
 
 - `drop` pide confirmación (defecto **No**); `--force` la omite

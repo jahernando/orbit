@@ -41,6 +41,11 @@ def _parse_ring(ring: str) -> Optional[dict]:
     if m:
         return {"type": "absolute", "date": m.group(1), "time": m.group(2)}
 
+    # Time only: HH:MM → same day as due date (or today)
+    m = re.match(r"^(\d{2}:\d{2})$", ring)
+    if m:
+        return {"type": "time_only", "time": m.group(1)}
+
     # Relative: Nd or Nh
     m = re.match(r"^(\d+)([dh])$", ring)
     if m:
@@ -68,6 +73,14 @@ def resolve_ring_datetime(due_date: str, ring: str,
             return datetime(d.year, d.month, d.day, h, m)
         except ValueError:
             return None
+
+    if parsed["type"] == "time_only":
+        try:
+            base = date.fromisoformat(due_date)
+        except ValueError:
+            base = date.today()
+        h, m = map(int, parsed["time"].split(":"))
+        return datetime(base.year, base.month, base.day, h, m)
 
     # Relative — compute anchor datetime
     try:
