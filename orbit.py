@@ -66,7 +66,7 @@ _SINGLE_DASH_FIX = {
     "-priority", "-output", "-editor", "-from", "-to", "-limit",
     "-log", "-open", "-force", "-no-open",
     "-file", "-keyword", "-dry-run", "-name", "-date-from",
-    "-date-to", "-notes",
+    "-date-to", "-notes", "-fix",
 }
 
 def _fix_argv(argv: list) -> list:
@@ -395,6 +395,14 @@ def cmd_gsync(args):
     )
 
 
+def cmd_doctor(args):
+    from core.doctor import run_doctor
+    return run_doctor(
+        project=getattr(args, "project", None),
+        fix=getattr(args, "fix", False),
+    )
+
+
 def cmd_ls(args):
     """Unified ls command: ls [what] [project...] [--open] [--editor E]."""
     what = getattr(args, "what", None) or "projects"
@@ -650,6 +658,14 @@ def main():
     gsync_p.add_argument("--list-calendars", action="store_true", dest="list_calendars",
                          help="List available Google Calendars with IDs")
 
+    # --- doctor ---
+    doc_p = subparsers.add_parser("doctor",
+                                   help="Check syntax of project files (logbook, agenda, highlights)")
+    doc_p.add_argument("project", nargs="?", default=None,
+                       help="Project name (omit for all)")
+    doc_p.add_argument("--fix", action="store_true",
+                       help="Offer to fix issues interactively")
+
     # --- task (add/done/cancel/edit/list on agenda.md) ---
     tsknew_p   = subparsers.add_parser("task", help="Task commands: add, done, cancel, edit, list")
     tsknew_sub = tsknew_p.add_subparsers(dest="action")
@@ -884,7 +900,7 @@ def main():
         "report": cmd_report, "open": cmd_open,
         "import": cmd_import,
         "project": cmd_project, "migrate": cmd_migrate,
-        "ls": cmd_ls, "agenda": cmd_agenda, "gsync": cmd_gsync,
+        "ls": cmd_ls, "agenda": cmd_agenda, "gsync": cmd_gsync, "doctor": cmd_doctor,
     }
 
     if args.command is None:
@@ -914,7 +930,7 @@ def run_shell(editor: str = ""):
 
     COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "migrate",
                 "import", "ls", "log", "search", "open", "report", "agenda",
-                "gsync", "help", "project", "claude", "exit", "quit"]
+                "gsync", "doctor", "help", "project", "claude", "exit", "quit"]
 
     def completer(text, state):
         options = [c for c in COMMANDS if c.startswith(text)]
@@ -926,22 +942,43 @@ def run_shell(editor: str = ""):
     print("¡Hola! ¡Bienvenido!")
     print()
 
-    # 1. Start Google sync in background
+    # 1. Start Google sync and doctor in background (parallel)
     from core.gsync import gsync_background
+    from core.doctor import doctor_background
     gsync_thread = gsync_background()
+    doctor_thread, doctor_issues = doctor_background()
 
-    # 2. Schedule today's reminders (runs while gsync works in parallel)
+    # 2. Schedule today's reminders (runs while background tasks work)
     from core.ring import schedule_new_format_reminders
     scheduled = schedule_new_format_reminders()
     if scheduled:
         print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
         print()
 
-    # 3. Wait for gsync to finish (max 5s) so sync IDs are written
+    # 3. Wait for background tasks (max 5s)
     if gsync_thread is not None:
         gsync_thread.join(timeout=5)
+    doctor_thread.join(timeout=5)
 
-    # 4. Check for uncommitted changes → prompt commit + push
+    # 4. Doctor: if issues found, present and offer fixes
+    if doctor_issues:
+        fixable = [i for i in doctor_issues if i.fix]
+        unfixable = [i for i in doctor_issues if not i.fix]
+        n = len(doctor_issues)
+        print(f"  🩺 {n} problema{'s' if n != 1 else ''} de sintaxis encontrado{'s' if n != 1 else ''}:")
+        for issue in doctor_issues:
+            prefix = "🔧" if issue.fix else "⚠️"
+            print(f"      {prefix} [{issue.project}] {issue.file}:{issue.line_num} — {issue.msg}")
+        print()
+        if fixable:
+            from core.doctor import _interactive_fix
+            _interactive_fix(fixable)
+            print()
+        if unfixable:
+            print(f"  {len(unfixable)} problema{'s' if len(unfixable) != 1 else ''} requiere{'n' if len(unfixable) != 1 else ''} corrección manual.")
+            print()
+
+    # 5. Untracked files + commit + push
     from core.commit import startup_commit_check
     startup_commit_check()
     print()
