@@ -165,10 +165,11 @@ def _expand_recurrences(task: dict, start: date, end: date) -> list:
 
 # ── Collect agenda data ──────────────────────────────────────────────────────
 
-def _collect_data(dirs, start, end):
+def _collect_data(dirs, start, end, dated_only=False):
     """Collect tasks/events/milestones per project for the given period.
 
     Returns list of (project_dir, tasks, events, milestones).
+    If dated_only, excludes tasks/milestones without a date.
     """
     today = date.today()
     is_single_day = start == end
@@ -184,7 +185,7 @@ def _collect_data(dirs, start, end):
                 continue
             if t.get("date") and _in_range(t["date"], start, end):
                 tasks.append(t)
-            elif is_single_day and start == today and not t.get("date"):
+            elif not dated_only and is_single_day and start == today and not t.get("date"):
                 tasks.append(t)
             elif t.get("date"):
                 try:
@@ -203,6 +204,8 @@ def _collect_data(dirs, start, end):
             if m["status"] != "pending":
                 continue
             if m.get("date") and _in_range(m["date"], start, end):
+                milestones.append(m)
+            elif not dated_only and is_single_day and start == today and not m.get("date"):
                 milestones.append(m)
             elif m.get("date"):
                 try:
@@ -226,6 +229,7 @@ def run_agenda(
     date_to: Optional[str] = None,
     show_calendar: bool = False,
     markdown: bool = False,
+    dated_only: bool = False,
 ) -> int:
     """Print agenda (tasks/events/milestones) for a day or period."""
     if not PROJECTS_DIR.exists():
@@ -255,7 +259,7 @@ def run_agenda(
 
     lines = [header, "─" * 56]
 
-    collected = _collect_data(dirs, start, end)
+    collected = _collect_data(dirs, start, end, dated_only=dated_only)
     lines.extend(_format_detail_lines(collected, markdown=markdown))
 
     total_tasks = sum(len(t) for _, t, _, _ in collected)

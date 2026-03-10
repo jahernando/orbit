@@ -400,6 +400,7 @@ def cmd_agenda(args):
         date_to=_d(getattr(args, "date_to", None)),
         show_calendar=getattr(args, "calendar", False),
         markdown=bool(to_file),
+        dated_only=getattr(args, "dated", False),
     )
     return _handle_output(args, fn, "agenda")
 
@@ -689,6 +690,8 @@ def main():
                       help="Period end")
     ag_p.add_argument("--calendar", action="store_true",
                       help="Show calendar grid with colored markers (max 3 months)")
+    ag_p.add_argument("--dated",  action="store_true",
+                      help="Only show tasks/milestones with a date")
     ag_p.add_argument("--open",   action="store_true", help="Open in editor")
     ag_p.add_argument("--editor", default=None)
     _add_log_args(ag_p)
