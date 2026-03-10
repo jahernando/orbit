@@ -961,7 +961,10 @@ def run_shell(editor: str = ""):
     doctor_thread.join(timeout=5)
 
     # 4. Doctor: if issues found, present and offer fixes
-    if doctor_issues:
+    if doctor_thread.is_alive():
+        print("  🏥 Doctor aún revisando... (ejecuta 'doctor' manualmente)")
+        print()
+    elif doctor_issues:
         fixable = [i for i in doctor_issues if i.fix]
         unfixable = [i for i in doctor_issues if not i.fix]
         n = len(doctor_issues)
