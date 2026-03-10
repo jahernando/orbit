@@ -435,6 +435,10 @@ def cmd_clean(args):
         project=getattr(args, "project", None),
         months=getattr(args, "months", 6),
         dry_run=getattr(args, "dry_run", False),
+        force=getattr(args, "force", False),
+        do_agenda=getattr(args, "agenda", False),
+        do_logbook=getattr(args, "logbook", False),
+        do_notes=getattr(args, "notes", False),
     )
 
 
@@ -703,13 +707,21 @@ def main():
 
     # --- clean ---
     clean_p = subparsers.add_parser("clean",
-                                     help="Remove old logbook entries, past events, and stale notes")
+                                     help="Remove old entries, done tasks, past events, stale notes")
     clean_p.add_argument("project", nargs="?", default=None,
                          help="Project name (omit for all)")
     clean_p.add_argument("--months", type=int, default=6,
                          help="Age threshold in months (default: 6)")
     clean_p.add_argument("--dry-run", action="store_true", dest="dry_run",
                          help="Preview what would be removed without deleting")
+    clean_p.add_argument("--force", action="store_true",
+                         help="Skip all confirmations")
+    clean_p.add_argument("--agenda", action="store_true",
+                         help="Only clean done tasks/milestones and past events")
+    clean_p.add_argument("--logbook", action="store_true",
+                         help="Only clean old logbook entries")
+    clean_p.add_argument("--notes", action="store_true",
+                         help="Only clean stale notes")
 
     # --- task (add/done/cancel/edit/list on agenda.md) ---
     tsknew_p   = subparsers.add_parser("task", help="Task commands: add, done, cancel, edit, list")
