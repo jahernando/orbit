@@ -107,6 +107,14 @@ def run_type_list() -> int:
     return 0
 
 
+def _projects_with_emoji(emoji: str) -> list:
+    """Return list of project dir names whose folder starts with this emoji."""
+    if not PROJECTS_DIR.exists():
+        return []
+    return [d.name for d in PROJECTS_DIR.iterdir()
+            if d.is_dir() and d.name.startswith(emoji)]
+
+
 def run_type_add(name: str, emoji: str) -> int:
     """Add a new project type."""
     norm = _normalize(name)
@@ -116,6 +124,12 @@ def run_type_add(name: str, emoji: str) -> int:
     if norm in types:
         print(f"⚠️  El tipo '{norm}' ya existe ({types[norm]})")
         return 1
+
+    # Check if emoji is already used by another type
+    for existing_key, existing_emoji in types.items():
+        if existing_emoji == emoji:
+            print(f"⚠️  El emoji {emoji} ya está en uso para el tipo '{existing_key}'")
+            return 1
 
     types[norm] = emoji
     config["types"] = types
@@ -134,7 +148,17 @@ def run_type_drop(name: str) -> int:
         print(f"⚠️  El tipo '{norm}' no existe")
         return 1
 
-    emoji = types.pop(norm)
+    emoji = types[norm]
+    projects = _projects_with_emoji(emoji)
+    if projects:
+        print(f"⚠️  No se puede eliminar '{norm}': hay {len(projects)} proyecto{'s' if len(projects) != 1 else ''} de este tipo")
+        for p in projects[:5]:
+            print(f"      {p}")
+        if len(projects) > 5:
+            print(f"      ... y {len(projects) - 5} más")
+        return 1
+
+    types.pop(norm)
     config["types"] = types
     _save_orbit_json(config)
     print(f"✓ Tipo eliminado: {emoji}  {norm}")
