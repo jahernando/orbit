@@ -183,6 +183,7 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
     non-recurring tasks.  Returns list of scheduled task dicts.
     """
     target = target or date.today()
+    now = datetime.now()
     if not PROJECTS_DIR.exists():
         return []
 
@@ -193,6 +194,9 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
 
         tasks = _tasks_ringing_on(project_dir, target)
         for t in tasks:
+            # Skip reminders whose time has already passed
+            if t["ring_dt"] < now:
+                continue
             ok = _schedule_reminder(t["desc"], project_dir.name, t["ring_dt"])
             if ok:
                 print(f"  ⏰ {project_dir.name}  "

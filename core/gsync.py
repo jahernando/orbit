@@ -557,9 +557,7 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
 
     t = threading.Thread(target=_do_sync, daemon=True)
     t.start()
-    t.join(timeout=_SYNC_TIMEOUT)
-    if t.is_alive():
-        print("  ⚠️  gsync: timeout (se sincronizará con orbit gsync)")
+    # No join — sync runs in the background without blocking the CLI
 
 
 # ── Background sync on shell startup ───────────────────────────────────────
