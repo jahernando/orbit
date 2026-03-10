@@ -127,6 +127,8 @@ def _write_highlights(path: Path, data: dict) -> None:
             out.append(_format_item(item["text"], item.get("link")))
         out.append("")
 
+    from core.undo import save_snapshot
+    save_snapshot(path)
     path.write_text("\n".join(out) + "\n")
 
 

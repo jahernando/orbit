@@ -158,6 +158,8 @@ def format_entry(message: str, tipo: str, path: Optional[str], fecha: Optional[s
 
 def _append_entry(logbook_path: Path, entry: str) -> None:
     """Append an entry ensuring a blank line separator for markdown readability."""
+    from core.undo import save_snapshot
+    save_snapshot(logbook_path)
     existing = logbook_path.read_text() if logbook_path.exists() else ""
     with open(logbook_path, "a") as f:
         if existing and not existing.endswith("\n\n"):

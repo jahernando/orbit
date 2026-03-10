@@ -141,13 +141,19 @@ ms done mission "Foco"
 
 ```bash
 ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18 --ring 1d
-ev add next-kr "Seminario" --date 2026-03-20 --recur weekly
+ev add next-kr "Seminario" --date 2026-03-20 --time 10:00-11:00 --recur weekly
+ev add next-kr "Dentista" --date 2026-03-25 --time 16:00
 ev edit next-kr "Congreso" --date 2026-04-20
 ev list next-kr
 ```
 
+- `--time HH:MM` — evento con hora de inicio (1h por defecto en Google Calendar)
+- `--time HH:MM-HH:MM` — evento con hora de inicio y fin
+- Sin `--time` — evento de día completo (o multi-día con `--end`)
+
 Los tres (task, ms, ev) comparten la misma interfaz: `--date`, `--recur`, `--until`, `--ring`.
 Las tareas y hitos recurrentes avanzan automáticamente al completarlas.
+Los eventos recurrentes se expanden automáticamente en la agenda y el calendario.
 `--ring` programa una alarma en Reminders.app de macOS.
 
 ---
@@ -270,6 +276,14 @@ ls notes next-kr           # notas con estado git
 commit                     # muestra cambios, pide confirmación, genera mensaje
 commit "feat: calibración validada"
 ```
+
+### Undo — deshacer
+
+```bash
+undo                       # deshace la última operación (task, ev, hl, log, note)
+```
+
+Orbit guarda el estado de los ficheros antes de cada operación. Si te equivocas, `undo` restaura los ficheros al estado anterior. Puedes deshacer varias veces (hasta 20 operaciones por sesión).
 
 ### Doctor y clean
 

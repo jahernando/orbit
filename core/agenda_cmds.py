@@ -39,6 +39,19 @@ def _valid_date(val: str) -> bool:
     except ValueError:
         return False
 
+
+def _valid_time(val: str) -> bool:
+    """Validate time spec: HH:MM or HH:MM-HH:MM."""
+    pat = r'^\d{2}:\d{2}(-\d{2}:\d{2})?$'
+    if not re.match(pat, val):
+        return False
+    parts = val.split("-")
+    for p in parts:
+        h, m = int(p[:2]), int(p[3:5])
+        if h > 23 or m > 59:
+            return False
+    return True
+
 # Extended recurrence patterns (stored in [recur:...])
 _WEEKDAY_NAMES = {
     "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
@@ -163,11 +176,14 @@ def _parse_event_line(line: str) -> Optional[dict]:
         return None
     date_val = m.group(1)
     rest     = m.group(2)
-    end = recur = until = ring = None
+    end = recur = until = ring = time_val = None
     synced = False
     end_m = re.search(r"\[end:(\d{4}-\d{2}-\d{2})\]", rest)
     if end_m:
         end  = end_m.group(1)
+    time_m = re.search(r"\[time:([^\]]+)\]", rest)
+    if time_m:
+        time_val = time_m.group(1)
     recur_m = re.search(r"\[recur:([^\]]+)\]", rest)
     if recur_m:
         raw = recur_m.group(1)
@@ -184,11 +200,11 @@ def _parse_event_line(line: str) -> Optional[dict]:
     if re.search(r"\[gcal:[^\]]+\]", rest):
         synced = True
     # Strip attribute tags from description
-    for pat in [r"\[end:[^\]]+\]", r"\[recur:[^\]]+\]",
+    for pat in [r"\[end:[^\]]+\]", r"\[time:[^\]]+\]", r"\[recur:[^\]]+\]",
                 r"\[ring:[^\]]+\]", r"\[gcal:[^\]]+\]", r"\[G\]"]:
         rest = re.sub(pat, "", rest)
     rest = rest.strip()
-    return {"date": date_val, "desc": rest, "end": end,
+    return {"date": date_val, "desc": rest, "end": end, "time": time_val,
             "recur": recur, "until": until, "ring": ring, "synced": synced}
 
 
@@ -197,6 +213,8 @@ def _format_event_line(ev: dict) -> str:
     line = f"{ev['date']} — {ev['desc']}"
     if ev.get("end"):
         line += f" [end:{ev['end']}]"
+    if ev.get("time"):
+        line += f" [time:{ev['time']}]"
     if ev.get("recur"):
         recur_tag = ev["recur"]
         if ev.get("until"):
@@ -282,6 +300,8 @@ def _write_agenda(path: Path, data: dict) -> None:
             out.append(_format_event_line(ev))
         out.append("")
 
+    from core.undo import save_snapshot
+    save_snapshot(path)
     path.write_text("\n".join(out) + "\n")
 
 
@@ -953,13 +973,17 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
 # ── EVENT commands ─────────────────────────────────────────────────────────────
 
 def run_ev_add(project: str, text: str, date_val: str,
-               end_date: Optional[str] = None, recur: Optional[str] = None,
+               end_date: Optional[str] = None, time_val: Optional[str] = None,
+               recur: Optional[str] = None,
                until: Optional[str] = None, ring: Optional[str] = None) -> int:
     if not _valid_date(date_val):
         print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
         return 1
     if end_date and not _valid_date(end_date):
         print(f"⚠️  Fecha --end '{end_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if time_val and not _valid_time(time_val):
+        print(f"⚠️  Hora '{time_val}' no válida. Usa: HH:MM o HH:MM-HH:MM (ej. 10:00, 10:00-12:30)")
         return 1
     if until and not _valid_date(until):
         print(f"⚠️  Fecha --until '{until}' no reconocida.")
@@ -988,11 +1012,12 @@ def run_ev_add(project: str, text: str, date_val: str,
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
     new_ev = {"date": date_val, "desc": text, "end": end_date,
-              "recur": recur, "until": until, "ring": ring}
+              "time": time_val, "recur": recur, "until": until, "ring": ring}
     data["events"].append(new_ev)
     _write_agenda(agenda_path, data)
 
     attrs = ""
+    if time_val: attrs += f" {time_val}"
     if end_date: attrs += f" → {end_date}"
     if recur:
         recur_s = recur
@@ -1063,13 +1088,17 @@ def run_ev_drop(project: Optional[str], text: Optional[str],
 
 def run_ev_edit(project: Optional[str], text: Optional[str],
                 new_text: Optional[str] = None, new_date: Optional[str] = None,
-                new_end: Optional[str] = None, new_recur: Optional[str] = None,
+                new_end: Optional[str] = None, new_time: Optional[str] = None,
+                new_recur: Optional[str] = None,
                 new_until: Optional[str] = None, new_ring: Optional[str] = None) -> int:
     if new_date and not _valid_date(new_date):
         print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
         return 1
     if new_end and new_end != "none" and not _valid_date(new_end):
         print(f"⚠️  Fecha --end '{new_end}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if new_time and new_time != "none" and not _valid_time(new_time):
+        print(f"⚠️  Hora '{new_time}' no válida. Usa: HH:MM o HH:MM-HH:MM (ej. 10:00, 10:00-12:30)")
         return 1
     if new_until and new_until != "none" and not _valid_date(new_until):
         print(f"⚠️  Fecha --until '{new_until}' no reconocida.")
@@ -1103,6 +1132,7 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
     if new_text:  ev["desc"]  = new_text
     if new_date:  ev["date"]  = new_date
     if new_end:   ev["end"]   = None if new_end   == "none" else new_end
+    if new_time:  ev["time"]  = None if new_time  == "none" else new_time
     if new_recur: ev["recur"] = None if new_recur == "none" else new_recur
     if new_until: ev["until"] = None if new_until == "none" else new_until
     if new_ring:  ev["ring"]  = None if new_ring  == "none" else new_ring

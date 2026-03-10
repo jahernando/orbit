@@ -818,3 +818,205 @@ class TestDatedFlag:
         out = capsys.readouterr().out
         assert "Dated task" in out
         assert "Undated task" in out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Event time field
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestEventTime:
+
+    def test_valid_time_hhmm(self):
+        from core.agenda_cmds import _valid_time
+        assert _valid_time("10:00")
+        assert _valid_time("09:30")
+        assert _valid_time("23:59")
+
+    def test_valid_time_range(self):
+        from core.agenda_cmds import _valid_time
+        assert _valid_time("10:00-12:30")
+        assert _valid_time("09:00-17:00")
+
+    def test_invalid_time(self):
+        from core.agenda_cmds import _valid_time
+        assert not _valid_time("25:00")
+        assert not _valid_time("10")
+        assert not _valid_time("10:00-")
+        assert not _valid_time("abc")
+        assert not _valid_time("10:60")
+
+    def test_parse_event_with_time(self):
+        from core.agenda_cmds import _parse_event_line
+        e = _parse_event_line("2026-03-15 — Meeting [time:10:00-11:30]")
+        assert e["time"] == "10:00-11:30"
+        assert e["desc"] == "Meeting"
+
+    def test_parse_event_time_only_start(self):
+        from core.agenda_cmds import _parse_event_line
+        e = _parse_event_line("2026-03-25 — Dentist [time:16:00]")
+        assert e["time"] == "16:00"
+
+    def test_parse_event_no_time(self):
+        from core.agenda_cmds import _parse_event_line
+        e = _parse_event_line("2026-03-15 — All day event")
+        assert e["time"] is None
+
+    def test_format_event_with_time(self):
+        from core.agenda_cmds import _format_event_line
+        ev = {"date": "2026-03-15", "desc": "Meeting", "end": None,
+              "time": "10:00-11:30", "recur": None, "until": None,
+              "ring": None, "synced": False}
+        line = _format_event_line(ev)
+        assert "[time:10:00-11:30]" in line
+
+    def test_format_event_without_time(self):
+        from core.agenda_cmds import _format_event_line
+        ev = {"date": "2026-03-15", "desc": "All day", "end": None,
+              "time": None, "recur": None, "until": None,
+              "ring": None, "synced": False}
+        line = _format_event_line(ev)
+        assert "[time:" not in line
+
+    def test_roundtrip_event_with_time(self):
+        from core.agenda_cmds import _parse_event_line, _format_event_line
+        line = "2026-03-15 — Team meeting [time:10:00-11:30] [recur:weekly]"
+        ev = _parse_event_line(line)
+        assert ev["time"] == "10:00-11:30"
+        assert ev["recur"] == "weekly"
+        formatted = _format_event_line(ev)
+        assert "[time:10:00-11:30]" in formatted
+        assert "[recur:weekly]" in formatted
+
+    def test_roundtrip_all_fields(self):
+        from core.agenda_cmds import _parse_event_line, _format_event_line
+        line = "2026-03-15 — Conference [end:2026-03-17] [time:09:00] [recur:monthly] [ring:1d] [G]"
+        ev = _parse_event_line(line)
+        assert ev["time"] == "09:00"
+        assert ev["end"] == "2026-03-17"
+        assert ev["recur"] == "monthly"
+        assert ev["ring"] == "1d"
+        assert ev["synced"] is True
+        formatted = _format_event_line(ev)
+        assert "[time:09:00]" in formatted
+        assert "[end:2026-03-17]" in formatted
+
+    def test_add_event_with_time(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        rc = run_ev_add("test-project", "Standup", "2026-03-15",
+                        time_val="09:00-09:30")
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"][0]["time"] == "09:00-09:30"
+
+    def test_add_event_invalid_time(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add
+        rc = run_ev_add("test-project", "Bad", "2026-03-15", time_val="25:00")
+        assert rc == 1
+        assert "no válida" in capsys.readouterr().out
+
+    def test_add_event_without_time(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        run_ev_add("test-project", "All day", "2026-03-15")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"][0]["time"] is None
+
+    def test_write_read_roundtrip_with_time(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        run_ev_add("test-project", "Meeting", "2026-03-15",
+                   time_val="14:00-15:30")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"][0]["time"] == "14:00-15:30"
+        assert data["events"][0]["desc"] == "Meeting"
+
+    def test_edit_event_add_time(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Meeting", "2026-03-15")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"][0]["time"] is None
+        run_ev_edit("test-project", "Meeting", new_time="10:00-11:00")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"][0]["time"] == "10:00-11:00"
+
+    def test_edit_event_remove_time(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Meeting", "2026-03-15", time_val="10:00")
+        run_ev_edit("test-project", "Meeting", new_time="none")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"][0]["time"] is None
+
+    def test_edit_event_invalid_time(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_edit
+        run_ev_add("test-project", "Meeting", "2026-03-15")
+        rc = run_ev_edit("test-project", "Meeting", new_time="25:00")
+        assert rc == 1
+        assert "no válida" in capsys.readouterr().out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Event recurrence in agenda view
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestEventRecurrence:
+
+    def test_recurring_event_expands_in_agenda(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add
+        import core.agenda_view as av
+        av.PROJECTS_DIR = projects_dir
+        run_ev_add("test-project", "Weekly sync", "2026-03-10",
+                   recur="weekly")
+        capsys.readouterr()
+        av.run_agenda(date_from="2026-03-10", date_to="2026-03-31")
+        out = capsys.readouterr().out
+        # Should appear multiple times (original + virtual occurrences)
+        assert out.count("Weekly sync") >= 3  # Mar 10, 17, 24, 31
+
+    def test_recurring_event_in_calendar(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add
+        import core.agenda_view as av
+        av.PROJECTS_DIR = projects_dir
+        run_ev_add("test-project", "Monthly review", "2026-03-15",
+                   recur="monthly")
+        capsys.readouterr()
+        av.run_agenda(date_from="2026-03-01", date_to="2026-05-31",
+                      show_calendar=True)
+        out = capsys.readouterr().out
+        # Should appear in detail section multiple times
+        assert out.count("Monthly review") >= 3  # Mar, Apr, May
+
+    def test_recurring_event_with_time_in_agenda(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add
+        import core.agenda_view as av
+        av.PROJECTS_DIR = projects_dir
+        run_ev_add("test-project", "Standup", "2026-03-10",
+                   time_val="09:00-09:30", recur="weekly")
+        capsys.readouterr()
+        av.run_agenda(date_from="2026-03-10", date_to="2026-03-24")
+        out = capsys.readouterr().out
+        assert "09:00-09:30" in out
+        assert out.count("Standup") >= 2
+
+    def test_recurring_multiday_event_preserves_duration(self):
+        from datetime import date
+        from core.agenda_view import _expand_recurrences
+        ev = {"date": "2026-03-10", "end": "2026-03-12", "desc": "Conf",
+              "recur": "monthly", "until": None}
+        results = _expand_recurrences(ev, date(2026, 4, 1), date(2026, 5, 31))
+        assert len(results) == 2  # Apr and May
+        # Duration preserved: 2 days
+        for r in results:
+            start = date.fromisoformat(r["date"])
+            end = date.fromisoformat(r["end"])
+            assert (end - start).days == 2
+
+    def test_agenda_dated_with_calendar(self, proj, projects_dir, capsys):
+        """--dated with --calendar should exclude undated tasks."""
+        from core.agenda_cmds import run_task_add
+        import core.agenda_view as av
+        av.PROJECTS_DIR = projects_dir
+        run_task_add("test-project", "Dated task", date_val="2026-03-15")
+        run_task_add("test-project", "Undated task")
+        capsys.readouterr()
+        av.run_agenda(date_str="2026-03", show_calendar=True, dated_only=True)
+        out = capsys.readouterr().out
+        assert "Dated task" in out
+        assert "Undated task" not in out

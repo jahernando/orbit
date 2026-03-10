@@ -139,6 +139,8 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
             print(f"Error: solo se pueden importar ficheros .md (recibido: {src.name})")
             return 1
         dest = notes_dir / src.name
+        from core.undo import save_snapshot
+        save_snapshot(dest)
         shutil.copy2(src, dest)
         note_name = dest.name
         print(f"✓ [{project_dir.name}] Nota importada: {note_name}")
@@ -147,6 +149,8 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
         dest      = notes_dir / note_name
         if dest.exists():
             print(f"⚠️  La nota ya existe: {note_name} (se sobreescribirá)")
+        from core.undo import save_snapshot
+        save_snapshot(dest)
         dest.write_text(_note_template(title, project_dir.name))
         print(f"✓ [{project_dir.name}] Nota creada: {note_name}")
 
@@ -230,6 +234,8 @@ def run_note_drop(project: str, file_str: Optional[str] = None,
             print("Cancelado.")
             return 0
 
+    from core.undo import save_snapshot
+    save_snapshot(note_path)
     note_path.unlink()
     print(f"✓ [{project_dir.name}] Nota borrada: {note_name}")
     add_orbit_entry(project_dir,

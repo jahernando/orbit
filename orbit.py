@@ -2,6 +2,7 @@
 """Orbit — personal project management CLI."""
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -31,8 +32,24 @@ from core.gsync import run_gsync
 
 
 def _d(expr):
-    """Parse a natural language date expression, or return None if not provided."""
-    return parse_date(expr) if expr else None
+    """Parse a natural language date expression, or return None if not provided.
+
+    Passes through special values like 'none' unchanged (used by edit commands).
+    Raises SystemExit with a clear message for unrecognised date expressions.
+    """
+    if not expr:
+        return None
+    if expr.strip().lower() == "none":
+        return "none"
+    result = parse_date(expr)
+    # If parse_date returned the input unchanged, validate it
+    if result == expr.strip() and not re.match(r'^\d{4}-\d{2}(-\d{2})?$', result) \
+            and not re.match(r'^\d{4}-W\d{2}$', result):
+        print(f"Error: fecha no reconocida: '{expr}'")
+        print("  Formatos válidos: YYYY-MM-DD, YYYY-MM, hoy, mañana, ayer,")
+        print("  lunes..domingo, 'en 3 días', 'próxima semana', etc.")
+        raise SystemExit(1)
+    return result
 
 
 def _handle_output(args, run_fn, cmd_label: str = ""):
@@ -286,8 +303,9 @@ def cmd_ev(args):
         return run_ev_add(
             project  = args.project,
             text     = args.text,
-            date_val = args.date,
+            date_val = _d(args.date),
             end_date = _d(getattr(args, "end", None)),
+            time_val = getattr(args, "time", None),
             recur    = getattr(args, "recur", None),
             until    = _d(getattr(args, "until", None)),
             ring     = getattr(args, "ring", None),
@@ -305,6 +323,7 @@ def cmd_ev(args):
             new_text  = getattr(args, "new_text", None),
             new_date  = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
             new_end   = _d(getattr(args, "new_end", None)) or getattr(args, "new_end", None),
+            new_time  = getattr(args, "new_time", None),
             new_recur = getattr(args, "new_recur", None),
             new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
             new_ring  = getattr(args, "new_ring", None),
@@ -433,6 +452,11 @@ def cmd_doctor(args):
         project=getattr(args, "project", None),
         fix=getattr(args, "fix", False),
     )
+
+
+def cmd_undo(args):
+    from core.undo import run_undo
+    return run_undo()
 
 
 def cmd_clean(args):
@@ -815,6 +839,7 @@ def main():
     ev_add.add_argument("text",     nargs="?", default=None, help="Event description")
     ev_add.add_argument("--date",   required=True, help="Event date YYYY-MM-DD")
     ev_add.add_argument("--end",    default=None, help="End date YYYY-MM-DD (optional)")
+    ev_add.add_argument("--time",   default=None, help="Time: HH:MM or HH:MM-HH:MM (ej. 10:00, 10:00-12:30)")
     ev_add.add_argument("--recur",  default=None, help="Recurrence: daily, weekly, monthly, every 2 weeks, ...")
     ev_add.add_argument("--until",  default=None, help="End date for recurrence")
     ev_add.add_argument("--ring",   default=None, help="Reminder: HH:MM, 1d, 2h, YYYY-MM-DD HH:MM")
@@ -830,6 +855,7 @@ def main():
     ev_edit.add_argument("--text",  dest="new_text",  default=None)
     ev_edit.add_argument("--date",  dest="new_date",  default=None)
     ev_edit.add_argument("--end",   dest="new_end",   default=None, help="End date or 'none'")
+    ev_edit.add_argument("--time",  dest="new_time",  default=None, help="HH:MM, HH:MM-HH:MM, or 'none'")
     ev_edit.add_argument("--recur", dest="new_recur", default=None, help="Recurrence (or 'none')")
     ev_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
     ev_edit.add_argument("--ring",  dest="new_ring",  default=None, help="HH:MM, 1d, 2h, YYYY-MM-DD HH:MM, or none")
@@ -972,6 +998,9 @@ def main():
     imp_p.add_argument("--file",    required=True, help="Path to the .enex file")
     imp_p.add_argument("--project", required=True, help="Target project (partial name match)")
 
+    # --- undo ---
+    subparsers.add_parser("undo", help="Undo the last operation")
+
     # --- help ---
     hlp_p   = subparsers.add_parser("help", help="Show help: chuleta (default), tutorial, about")
     hlp_sub = hlp_p.add_subparsers(dest="topic")
@@ -994,7 +1023,7 @@ def main():
         "import": cmd_import,
         "project": cmd_project, "migrate": cmd_migrate,
         "ls": cmd_ls, "agenda": cmd_agenda, "gsync": cmd_gsync,
-        "doctor": cmd_doctor, "clean": cmd_clean,
+        "doctor": cmd_doctor, "clean": cmd_clean, "undo": cmd_undo,
     }
 
     if args.command is None:

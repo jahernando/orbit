@@ -113,24 +113,36 @@ def _event_overlaps(ev: dict, start: date, end: date) -> bool:
 
 # ── Recurrence expansion ─────────────────────────────────────────────────────
 
-def _expand_recurrences(task: dict, start: date, end: date) -> list:
-    """Expand a recurring task into virtual occurrences within [start, end].
+def _expand_recurrences(item: dict, start: date, end: date) -> list:
+    """Expand a recurring item (task, milestone or event) into virtual
+    occurrences within [start, end].
 
-    Returns a list of task dicts with concrete dates (no recur).
-    The original task is NOT included — caller handles that.
+    Returns a list of dicts with concrete dates (no recur).
+    The original item is NOT included — caller handles that.
+    For events with an ``end`` date, each occurrence preserves the same
+    duration (offset between date and end).
     """
-    if not task.get("recur") or not task.get("date"):
+    if not item.get("recur") or not item.get("date"):
         return []
 
-    recur = task["recur"]
+    recur = item["recur"]
     until_date = None
-    if task.get("until"):
+    if item.get("until"):
         try:
-            until_date = date.fromisoformat(task["until"])
+            until_date = date.fromisoformat(item["until"])
         except ValueError:
             pass
 
-    base = date.fromisoformat(task["date"])
+    base = date.fromisoformat(item["date"])
+
+    # Event duration (for multi-day events)
+    duration = None
+    if item.get("end"):
+        try:
+            duration = date.fromisoformat(item["end"]) - base
+        except ValueError:
+            pass
+
     occurrences = []
     current = base
 
@@ -151,15 +163,17 @@ def _expand_recurrences(task: dict, start: date, end: date) -> list:
             break  # safety: no infinite loop
         current = nxt
 
-    # Build virtual task dicts (without recur, to avoid re-expansion)
+    # Build virtual dicts (without recur, to avoid re-expansion)
     result = []
     for d in occurrences:
         if d == base:
             continue  # skip the original date, caller handles it
-        vt = dict(task)
-        vt["date"] = d.isoformat()
-        vt["_virtual"] = True  # marker: not a real entry
-        result.append(vt)
+        vi = dict(item)
+        vi["date"] = d.isoformat()
+        if duration is not None:
+            vi["end"] = (d + duration).isoformat()
+        vi["_virtual"] = True  # marker: not a real entry
+        result.append(vi)
     return result
 
 
@@ -197,7 +211,13 @@ def _collect_data(dirs, start, end, dated_only=False):
             if t.get("recur") and t.get("date"):
                 tasks.extend(_expand_recurrences(t, start, end))
 
-        events = [e for e in data["events"] if _event_overlaps(e, start, end)]
+        events = []
+        for e in data["events"]:
+            if _event_overlaps(e, start, end):
+                events.append(e)
+            # Expand recurring events into virtual occurrences
+            if e.get("recur") and e.get("date"):
+                events.extend(_expand_recurrences(e, start, end))
 
         milestones = []
         for m in data["milestones"]:
@@ -243,8 +263,8 @@ def run_agenda(
 
     if show_calendar:
         if markdown:
-            return _print_calendar_md(dirs, start, end)
-        return _print_calendar_ansi(dirs, start, end)
+            return _print_calendar_md(dirs, start, end, dated_only=dated_only)
+        return _print_calendar_ansi(dirs, start, end, dated_only=dated_only)
 
     today = date.today()
     is_single_day = start == end
@@ -320,20 +340,25 @@ def _collect_calendar_dates(dirs, start: date = None, end: date = None):
                             pass
 
         for e in data["events"]:
-            try:
-                ev_start = date.fromisoformat(e["date"])
-                ev_end = ev_start
-                if e.get("end"):
-                    try:
-                        ev_end = date.fromisoformat(e["end"])
-                    except ValueError:
-                        pass
-                d = ev_start
-                while d <= ev_end:
-                    event_dates.add(d)
-                    d += timedelta(days=1)
-            except ValueError:
-                pass
+            # Collect the original event + any virtual recurrences
+            ev_instances = [e]
+            if e.get("recur") and e.get("date"):
+                ev_instances.extend(_expand_recurrences(e, start, end))
+            for ei in ev_instances:
+                try:
+                    ev_start = date.fromisoformat(ei["date"])
+                    ev_end = ev_start
+                    if ei.get("end"):
+                        try:
+                            ev_end = date.fromisoformat(ei["end"])
+                        except ValueError:
+                            pass
+                    d = ev_start
+                    while d <= ev_end:
+                        event_dates.add(d)
+                        d += timedelta(days=1)
+                except ValueError:
+                    pass
 
         for m in data["milestones"]:
             if m["status"] == "pending" and m.get("date"):
@@ -375,9 +400,16 @@ def _format_detail_lines(collected, markdown=False):
 
         pfx = "- " if markdown else "  "
 
-        for e in sorted(events, key=lambda x: x["date"]):
+        for e in sorted(events, key=lambda x: (x["date"], x.get("time") or "")):
+            time_s = f" {e['time']}" if e.get("time") else ""
             end_s = f" → {e['end']}" if e.get("end") else ""
-            lines.append(f"{pfx}📅 {e['date']} — {e['desc']}{end_s}")
+            recur_s = ""
+            if e.get("recur"):
+                recur_s = f" [recur:{e['recur']}"
+                if e.get("until"):
+                    recur_s += f":{e['until']}"
+                recur_s += "]"
+            lines.append(f"{pfx}📅 {e['date']}{time_s} — {e['desc']}{end_s}{recur_s}")
 
         for m in milestones:
             date_s = f" ({m['date']})" if m.get("date") else ""
@@ -411,7 +443,7 @@ def _format_detail_lines(collected, markdown=False):
     return lines
 
 
-def _print_calendar_ansi(dirs: list, start: date, end: date) -> int:
+def _print_calendar_ansi(dirs: list, start: date, end: date, dated_only: bool = False) -> int:
     """Print a colored calendar grid using ANSI codes (for terminal)."""
     today = date.today()
     end = _cap_end(start, end)
@@ -483,7 +515,7 @@ def _print_calendar_ansi(dirs: list, start: date, end: date) -> int:
     )
 
     # Detail list below calendar
-    collected = _collect_data(dirs, start, end)
+    collected = _collect_data(dirs, start, end, dated_only=dated_only)
     if collected:
         lines.append("")
         lines.append("─" * 56)
@@ -496,7 +528,7 @@ def _print_calendar_ansi(dirs: list, start: date, end: date) -> int:
 
 # ── Calendar: Markdown version (for Typora / --open / --log) ─────────────────
 
-def _print_calendar_md(dirs: list, start: date, end: date) -> int:
+def _print_calendar_md(dirs: list, start: date, end: date, dated_only: bool = False) -> int:
     """Print a markdown calendar table with emoji markers."""
     today = date.today()
     end = _cap_end(start, end)
@@ -568,7 +600,7 @@ def _print_calendar_md(dirs: list, start: date, end: date) -> int:
     lines.append("**[N]** hoy · 📅 evento · ✅ tarea · 🏁 hito · ⚠️ vencida")
 
     # Detail list below calendar
-    collected = _collect_data(dirs, start, end)
+    collected = _collect_data(dirs, start, end, dated_only=dated_only)
     if collected:
         lines.append("")
         lines.append("---")

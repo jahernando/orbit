@@ -7,7 +7,6 @@ a summary of activity within the period.
 """
 
 import calendar
-import re
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional

@@ -1,11 +1,10 @@
 """shell.py — interactive Orbit shell with startup sequence.
 
 Startup flow:
-  1. gsync + doctor run in background (parallel)
-  2. Today's reminders are scheduled
-  3. Wait for background tasks (max 5s)
-  4. Doctor issues presented with fix option
-  5. Untracked files detected, commit+push offered
+  1. Doctor — validate data integrity, offer fixes
+  2. Untracked files — prompt to stage new files
+  3. Commit + push — offer to commit staged changes
+  4. gsync in background (fire & forget) + schedule reminders
 """
 
 import readline
@@ -28,7 +27,7 @@ def _run_startup():
       3. Untracked files + commit + push
     """
 
-    # 1. Doctor first — validate before syncing
+    # 1. Doctor — validate data integrity, offer fixes
     from core.doctor import doctor_background
     doctor_thread, doctor_issues = doctor_background()
     doctor_thread.join(timeout=5)
@@ -53,22 +52,23 @@ def _run_startup():
             print(f"  {len(unfixable)} problema{'s' if len(unfixable) != 1 else ''} requiere{'n' if len(unfixable) != 1 else ''} corrección manual.")
             print()
 
-    # 2. Google sync + reminders (parallel, after data validated)
+    # 2. Untracked files — prompt to stage new files
+    from core.commit import startup_untracked_check, startup_commit_offer
+    startup_untracked_check()
+
+    # 3. Commit + push — offer to commit staged changes
+    startup_commit_offer()
+    print()
+
+    # 4. gsync in background (fire & forget) + schedule reminders
     from core.gsync import gsync_background
     from core.ring import schedule_new_format_reminders
 
-    gsync_thread = gsync_background()
+    gsync_background()
     scheduled = schedule_new_format_reminders()
     if scheduled:
         print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
         print()
-    if gsync_thread is not None:
-        gsync_thread.join(timeout=5)
-
-    # 3. Untracked files + commit + push
-    from core.commit import startup_commit_check
-    startup_commit_check()
-    print()
 
 
 # ── Shell REPL ───────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ def run_shell(editor: str = ""):
 
     COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "migrate",
                 "import", "ls", "log", "search", "open", "report", "agenda",
-                "gsync", "doctor", "clean", "help", "project", "claude", "exit", "quit"]
+                "gsync", "doctor", "clean", "undo", "help", "project", "claude", "exit", "quit"]
 
     def completer(text, state):
         options = [c for c in COMMANDS if c.startswith(text)]
@@ -135,12 +135,18 @@ def run_shell(editor: str = ""):
             print(f"Error al parsear: {e}")
             continue
 
+        from core.undo import commit_operation, discard_operation
+
         old_argv = sys.argv
         sys.argv  = ["orbit"] + tokens
         try:
             main()
+            commit_operation(label=line)
         except SystemExit:
-            pass
+            commit_operation(label=line)
+        except Exception:
+            discard_operation()
+            raise
         finally:
             sys.argv = old_argv
 

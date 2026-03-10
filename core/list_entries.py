@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, VALID_TYPES, TAG_EMOJI
+from core.log import PROJECTS_DIR, VALID_TYPES, TAG_EMOJI  # noqa: F401 (PROJECTS_DIR used via monkeypatch in tests)
 
 TYPE_EMOJI = TAG_EMOJI  # backward-compatible alias
 

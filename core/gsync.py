@@ -289,14 +289,43 @@ def _sync_one_event(service, calendar_id: str, ev: dict,
     summary = f"{project_name} — {ev['desc']}"
 
     start_date = ev["date"]
-    # End date: day after end (Google all-day events use exclusive end)
     from datetime import timedelta
-    if ev.get("end"):
-        end_d = date.fromisoformat(ev["end"])
-        end_date = (end_d + timedelta(days=1)).isoformat()
+
+    # Build start/end for Google Calendar API
+    time_val = ev.get("time")
+    if time_val:
+        # Timed event — use dateTime
+        tz = "Europe/Madrid"
+        parts = time_val.split("-")
+        start_time = parts[0]   # HH:MM
+        gcal_start = {"dateTime": f"{start_date}T{start_time}:00", "timeZone": tz}
+        if len(parts) == 2:
+            end_time = parts[1]
+            end_dt_date = ev.get("end") or start_date
+            gcal_end = {"dateTime": f"{end_dt_date}T{end_time}:00", "timeZone": tz}
+        else:
+            # No end time — default to 1 hour
+            from datetime import datetime
+            dt = datetime.fromisoformat(f"{start_date}T{start_time}:00")
+            dt_end = dt + timedelta(hours=1)
+            gcal_end = {"dateTime": dt_end.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": tz}
     else:
-        end_d = date.fromisoformat(start_date)
-        end_date = (end_d + timedelta(days=1)).isoformat()
+        # All-day event — use date (Google uses exclusive end)
+        if ev.get("end"):
+            end_d = date.fromisoformat(ev["end"])
+            end_date = (end_d + timedelta(days=1)).isoformat()
+        else:
+            end_d = date.fromisoformat(start_date)
+            end_date = (end_d + timedelta(days=1)).isoformat()
+        gcal_start = {"date": start_date}
+        gcal_end = {"date": end_date}
+
+    body = {
+        "summary": summary,
+        "description": description,
+        "start": gcal_start,
+        "end": gcal_end,
+    }
 
     gcal_id = ev.get("_gcal_id")  # looked up from .gsync-ids.json
     if gcal_id:
@@ -304,12 +333,6 @@ def _sync_one_event(service, calendar_id: str, ev: dict,
             print(f"  ~ actualizar: 📅 {start_date} — {summary}")
             return gcal_id
         try:
-            body = {
-                "summary": summary,
-                "description": description,
-                "start": {"date": start_date},
-                "end": {"date": end_date},
-            }
             service.events().patch(
                 calendarId=calendar_id, eventId=gcal_id, body=body
             ).execute()
@@ -322,12 +345,6 @@ def _sync_one_event(service, calendar_id: str, ev: dict,
             print(f"  ~ crear: 📅 {start_date} — {summary}")
             return None
         try:
-            body = {
-                "summary": summary,
-                "description": description,
-                "start": {"date": start_date},
-                "end": {"date": end_date},
-            }
             result = service.events().insert(
                 calendarId=calendar_id, body=body
             ).execute()

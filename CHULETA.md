@@ -88,12 +88,14 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--re
 ## ev — eventos
 
 ```bash
-orbit ev add  <project> "<text>" --date DATE [--end DATE] [--recur FREQ] [--until DATE] [--ring WHEN]
+orbit ev add  <project> "<text>" --date DATE [--end DATE] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN]
 orbit ev drop [<project>] ["<text>"] [--force]
-orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none]
+orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none]
 orbit ev list [<project>] [--from DATE] [--to DATE]
 ```
 
+- `--time`: hora del evento. `HH:MM` (solo inicio, 1h por defecto) o `HH:MM-HH:MM` (inicio-fin)
+- Sin `--time`: evento de día completo
 - `drop` pide confirmación (defecto **No**); `--force` la omite
 
 ---
@@ -152,6 +154,19 @@ orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
 
 `--tag`: filtra por hashtag (`idea` · `referencia` · `tarea` · `problema` · `resultado` · `apunte` · `decision`)
 `--in`: busca en un tipo de fichero específico (por defecto logbook)
+
+---
+
+## undo — deshacer última acción
+
+```bash
+orbit undo
+```
+
+- Deshace la última operación que modificó ficheros (task, ms, ev, hl, log, note)
+- Restaura el estado anterior de todos los ficheros afectados
+- Stack de hasta 20 operaciones (en memoria, durante la sesión del shell)
+- Si se creó un fichero nuevo, lo elimina; si se borró, lo restaura
 
 ---
 
@@ -277,9 +292,9 @@ Los datos eliminados son recuperables con `git log -p -- <fichero>`.
 Al entrar en `orbit shell`:
 
 1. **Doctor** — valida la integridad de logbook, agenda y highlights; ofrece corregir errores
-2. **gsync** + **recordatorios** — sincroniza con Google y programa los recordatorios del día (solo tras validar datos)
-3. **Ficheros sin trackear** en `🚀proyectos/` — ofrece añadirlos a git
-4. **Cambios sin commit** — ofrece hacer commit + push (mensaje por defecto: `sync YYYY-MM-DD`)
+2. **Ficheros sin trackear** en `🚀proyectos/` — ofrece añadirlos a git
+3. **Cambios sin commit** — ofrece hacer commit + push (mensaje por defecto: `sync YYYY-MM-DD`)
+4. **gsync** en background + **recordatorios** — sincroniza con Google y programa los recordatorios del día (tras commit)
 
 ---
 
@@ -344,4 +359,4 @@ Configurables en `orbit.json`. Ver: `orbit project type`
 
 Todos los `--date`, `--from`, `--to` aceptan:
 
-`today/hoy` · `yesterday/ayer` · `tomorrow/mañana` · `this week/esta semana` · `last month/mes pasado` · `next friday/próximo viernes` · `in 5 days/en 5 días` · `last friday of march` · `YYYY-MM-DD` · `YYYY-MM` · `YYYY-Wnn`
+`today/hoy` · `yesterday/ayer` · `tomorrow/mañana` · `this week/esta semana` · `last month/mes pasado` · `next friday/próximo viernes` · `in 5 days/en 5 días` · `last friday of march` · `YYYY-MM-DD` · `YYYY-M-D` (zero-pad automático) · `YYYY-MM` · `YYYY-Wnn`

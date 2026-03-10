@@ -289,16 +289,21 @@ def _git_push() -> int:
 
 # ── Startup check ────────────────────────────────────────────────────────────
 
-def startup_commit_check() -> None:
-    """Check for uncommitted changes on shell startup.
+def startup_untracked_check() -> None:
+    """Stage tracked files and prompt to add untracked ones.
 
-    Shows a summary and prompts the user to commit + push.
+    Called early in the startup sequence so new files are staged
+    before the commit prompt.
     """
     _git_add_all_tracked()
-
-    # Detect and offer to add untracked files in projects
     _prompt_untracked()
 
+
+def startup_commit_offer() -> None:
+    """Show uncommitted changes and offer to commit + push.
+
+    Called after untracked check so all staged files are visible.
+    """
     status = _git_status()
     if not status:
         return

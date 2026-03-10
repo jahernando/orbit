@@ -433,6 +433,58 @@ class TestParseDateNextLastWeekday:
 # Edge cases
 # ═══════════════════════════════════════════════════════════════════════════════
 
+class TestParseDateZeroPad:
+    """Dates with single-digit month/day are zero-padded automatically."""
+
+    def test_single_digit_day(self):
+        assert parse_date("2026-03-9") == "2026-03-09"
+
+    def test_single_digit_month(self):
+        assert parse_date("2026-3-09") == "2026-03-09"
+
+    def test_both_single_digit(self):
+        assert parse_date("2026-3-9") == "2026-03-09"
+
+    def test_single_digit_month_only(self):
+        assert parse_date("2026-3") == "2026-03"
+
+    def test_already_padded_unchanged(self):
+        assert parse_date("2026-03-10") == "2026-03-10"
+        assert parse_date("2026-03") == "2026-03"
+
+
+class TestDateDispatcher:
+    """Test the _d() function in orbit.py that wraps parse_date."""
+
+    def test_none_returns_none(self):
+        from orbit import _d
+        assert _d(None) is None
+        assert _d("") is None
+
+    def test_none_keyword_passes_through(self):
+        from orbit import _d
+        assert _d("none") == "none"
+        assert _d("None") == "none"
+
+    def test_valid_dates(self):
+        from orbit import _d
+        assert _d("2026-03-10") == "2026-03-10"
+        assert _d("2026-3-9") == "2026-03-09"
+        assert _d("2026-03") == "2026-03"
+
+    def test_invalid_date_raises(self):
+        import pytest
+        from orbit import _d
+        with pytest.raises(SystemExit):
+            _d("asdf")
+
+    def test_invalid_partial_raises(self):
+        import pytest
+        from orbit import _d
+        with pytest.raises(SystemExit):
+            _d("2026")
+
+
 class TestParseDateEdgeCases:
 
     def test_empty_string(self):

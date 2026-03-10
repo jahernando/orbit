@@ -100,6 +100,16 @@ def parse_date(expr: str) -> str:
     if re.match(r'^\d{4}-W\d{2}$', expr):
         return expr
 
+    # Near-standard: YYYY-M-D or YYYY-MM-D or YYYY-M-DD — zero-pad
+    m = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})$', expr)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+
+    # Near-standard: YYYY-M — zero-pad month
+    m = re.match(r'^(\d{4})-(\d)$', expr)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}"
+
     today = date.today()
     n = _norm(expr)
 

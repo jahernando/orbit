@@ -1,17 +1,15 @@
 """orbit open — open a note in an external editor or renderer."""
 
 import io
+import os
+import platform
 import subprocess
 import sys
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 
-from core.log import find_project, resolve_file, format_entry, _append_entry, init_logbook
-
-
-import os
-import platform
+from core.log import find_project, resolve_file, _append_entry, init_logbook
 
 EDITORS = {
     "typora": ["open", "-a", "Typora"],

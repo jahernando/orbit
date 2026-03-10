@@ -2,7 +2,7 @@ import re
 import shutil
 import sys
 import unicodedata
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -330,13 +330,19 @@ def generate_proyectos_md() -> Path:
             rel = f"🚀proyectos/{r['dir']}"
             project_link = f"[{r['name']}]({rel}/)" if not r["project_f"] \
                 else f"[{r['name']}]({rel}/{r['project_f'].name})"
-            lines.append(f"- {r['tipo_emoji']} {project_link}  {r['status']} {r['prio']}")
-            # Sub-links to logbook, agenda, highlights
-            for kind, label in [("logbook", "logbook"), ("agenda", "agenda"),
-                                ("highlights", "highlights")]:
+            # Collect links to sections that exist
+            section_links = []
+            for kind, label in [("agenda", "📅"), ("logbook", "📓"),
+                                ("highlights", "⭐")]:
                 f = resolve_file(r["path"], kind)
                 if f.exists():
-                    lines.append(f"  - [{label}]({rel}/{f.name})")
+                    section_links.append(f"[{label}]({rel}/{f.name})")
+            # Notes directory
+            notes_dir = r["path"] / "notes"
+            if notes_dir.exists() and any(notes_dir.glob("*.md")):
+                section_links.append(f"[📝]({rel}/notes/)")
+            parts = " ".join(section_links)
+            lines.append(f"- {r['tipo_emoji']} {project_link}  {r['status']} {r['prio']}  {parts}")
 
         lines.append("")
 
