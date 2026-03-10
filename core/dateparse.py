@@ -189,5 +189,10 @@ def parse_date(expr: str) -> str:
         if wd is not None:
             return _last_weekday_occurrence(today, wd).isoformat()
 
+    # ── bare weekday name → next occurrence ──────────────────────────────
+    wd = _parse_weekday(n)
+    if wd is not None:
+        return _next_weekday(today, wd).isoformat()
+
     # Unrecognised — return as-is
     return expr

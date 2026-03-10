@@ -92,6 +92,38 @@ def _git_add_files(files: list) -> bool:
         return False
 
 
+def _gitignore_files(files: list) -> None:
+    """Append files to .gitignore."""
+    gitignore = Path(ORBIT_DIR) / ".gitignore"
+    with open(gitignore, "a") as f:
+        f.write("\n# Auto-ignored by Orbit\n")
+        for p in files:
+            f.write(p + "\n")
+    print(f"  ✓ {len(files)} fichero{'s' if len(files) != 1 else ''} añadido{'s' if len(files) != 1 else ''} a .gitignore")
+
+
+def _confirm_gitignore(files: list) -> bool:
+    """Show files and confirm before adding to .gitignore.
+
+    Returns True if confirmed (or cancelled), False to go back to main menu.
+    """
+    n = len(files)
+    print(f"\n  Se añadirán a .gitignore ({n} fichero{'s' if n != 1 else ''}):")
+    for p in files:
+        print(f"      ✗  {p}")
+    try:
+        ans = input("  ¿Confirmar? [S/n/r(repetir)]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return True
+    if ans in ("r", "repetir"):
+        return False
+    if ans in ("", "s", "si", "sí", "y", "yes"):
+        _gitignore_files(files)
+        return True
+    return True  # n/no → cancel, don't loop
+
+
 def _prompt_untracked() -> None:
     """Detect untracked files in projects and ask to add them.
 
@@ -109,7 +141,8 @@ def _prompt_untracked() -> None:
             print(f"      [{i}] +  {p}")
 
         try:
-            prompt = "  ¿Añadir? [S=todos / 1,2,... / n]: " if n > 1 else "  ¿Añadir? [S/n]: "
+            prompt = ("  ¿Añadir? [S=todos / 1,2,... / n / i=ignorar]: "
+                      if n > 1 else "  ¿Añadir? [S/n/i=ignorar]: ")
             ans = input(prompt).strip()
         except (EOFError, KeyboardInterrupt):
             print()
@@ -117,6 +150,12 @@ def _prompt_untracked() -> None:
 
         if ans.lower() in ("n", "no"):
             return
+
+        if ans.lower() in ("i", "ignorar"):
+            if _confirm_gitignore(untracked):
+                return
+            print()
+            continue
 
         # Determine selected files
         if ans == "" or ans.lower() in ("s", "si", "sí", "y", "yes"):
@@ -152,6 +191,11 @@ def _prompt_untracked() -> None:
         _git_add_files(selected)
         ns = len(selected)
         print(f"  ✓ {ns} fichero{'s' if ns != 1 else ''} añadido{'s' if ns != 1 else ''}")
+
+        # Offer to gitignore the remaining untracked files
+        remaining = [f for f in untracked if f not in selected]
+        if remaining:
+            _confirm_gitignore(remaining)
         return
 
 

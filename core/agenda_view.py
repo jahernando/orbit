@@ -49,12 +49,18 @@ def _parse_period(date_str: Optional[str],
     today = date.today()
 
     def _start(s: str) -> date:
+        if "W" in s:                              # YYYY-Wnn
+            y, w = int(s[:4]), int(s.split("W")[1])
+            return date.fromisocalendar(y, w, 1)  # Monday
         if len(s) == 7:
             y, m = int(s[:4]), int(s[5:7])
             return date(y, m, 1)
         return date.fromisoformat(s)
 
     def _end(s: str) -> date:
+        if "W" in s:                              # YYYY-Wnn
+            y, w = int(s[:4]), int(s.split("W")[1])
+            return date.fromisocalendar(y, w, 7)  # Sunday
         if len(s) == 7:
             y, m = int(s[:4]), int(s[5:7])
             return date(y, m, _cal.monthrange(y, m)[1])
@@ -65,6 +71,8 @@ def _parse_period(date_str: Optional[str],
         e = _end(date_to) if date_to else today
         return s, e
     if date_str:
+        if "W" in date_str:
+            return _start(date_str), _end(date_str)
         if len(date_str) == 7:
             y, m = int(date_str[:4]), int(date_str[5:7])
             return date(y, m, 1), date(y, m, _cal.monthrange(y, m)[1])
