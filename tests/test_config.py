@@ -16,7 +16,7 @@ from pathlib import Path
 from core.config import (
     get_type_map, get_type_emojis, get_type_label,
     run_type_list, run_type_add, run_type_drop,
-    _normalize,
+    normalize as _normalize,
 )
 
 

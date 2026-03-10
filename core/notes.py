@@ -8,7 +8,6 @@ import re
 import shutil
 import subprocess
 import sys
-import unicodedata
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -17,15 +16,14 @@ from core.project import _find_new_project
 from core.log import add_orbit_entry
 from core.open import open_file
 
-from core.config import ORBIT_HOME, TEMPLATES_DIR
+from core.config import ORBIT_HOME, TEMPLATES_DIR, normalize as _normalize
 
 
 # ── Filename helpers ───────────────────────────────────────────────────────────
 
 def _title_to_filename(title: str) -> str:
     """Convert a note title to a safe filename: lowercase, spaces→underscore, no accents."""
-    text = unicodedata.normalize("NFD", title).encode("ascii", "ignore").decode()
-    text = text.lower()
+    text = _normalize(title)
     text = re.sub(r"[^\w\s-]", "", text)
     text = re.sub(r"[\s]+", "_", text).strip("_")
     return f"{text}.md"

@@ -272,6 +272,87 @@ class TestNextOccurrence:
         result = _next_occurrence(None, "weekly", "2026-03-09")
         assert result == "2026-03-16"
 
+    # Extended recurrence
+
+    def test_every_2_weeks(self):
+        from core.agenda_cmds import _next_occurrence
+        assert _next_occurrence("2026-03-10", "every-2-weeks", "2026-03-10") == "2026-03-24"
+
+    def test_every_3_days(self):
+        from core.agenda_cmds import _next_occurrence
+        assert _next_occurrence("2026-03-10", "every-3-days", "2026-03-10") == "2026-03-13"
+
+    def test_every_2_months(self):
+        from core.agenda_cmds import _next_occurrence
+        assert _next_occurrence("2026-03-10", "every-2-months", "2026-03-10") == "2026-05-10"
+
+    def test_first_monday(self):
+        from core.agenda_cmds import _next_occurrence
+        # Base 2026-03-10 → first Monday of April = 2026-04-06
+        assert _next_occurrence("2026-03-10", "first-monday", "2026-03-10") == "2026-04-06"
+
+    def test_last_friday(self):
+        from core.agenda_cmds import _next_occurrence
+        # Base 2026-03-10 → last Friday of April = 2026-04-24
+        assert _next_occurrence("2026-03-10", "last-friday", "2026-03-10") == "2026-04-24"
+
+
+class TestNormalizeRecur:
+
+    def test_simple_values_unchanged(self):
+        from core.agenda_cmds import _normalize_recur
+        assert _normalize_recur("daily") == "daily"
+        assert _normalize_recur("weekly") == "weekly"
+        assert _normalize_recur("monthly") == "monthly"
+        assert _normalize_recur("weekdays") == "weekdays"
+
+    def test_every_n_weeks(self):
+        from core.agenda_cmds import _normalize_recur
+        assert _normalize_recur("every 2 weeks") == "every-2-weeks"
+        assert _normalize_recur("every-2-weeks") == "every-2-weeks"
+
+    def test_every_n_days(self):
+        from core.agenda_cmds import _normalize_recur
+        assert _normalize_recur("every 3 days") == "every-3-days"
+
+    def test_every_n_months(self):
+        from core.agenda_cmds import _normalize_recur
+        assert _normalize_recur("every 2 months") == "every-2-months"
+
+    def test_first_monday(self):
+        from core.agenda_cmds import _normalize_recur
+        assert _normalize_recur("first monday") == "first-monday"
+        assert _normalize_recur("first-monday") == "first-monday"
+        assert _normalize_recur("1st monday") == "first-monday"
+
+    def test_last_friday(self):
+        from core.agenda_cmds import _normalize_recur
+        assert _normalize_recur("last friday") == "last-friday"
+
+    def test_spanish_weekday(self):
+        from core.agenda_cmds import _normalize_recur
+        assert _normalize_recur("first lunes") == "first-lunes"
+        assert _normalize_recur("last viernes") == "last-viernes"
+
+
+class TestIsValidRecur:
+
+    def test_simple_valid(self):
+        from core.agenda_cmds import is_valid_recur
+        assert is_valid_recur("daily")
+        assert is_valid_recur("weekly")
+
+    def test_extended_valid(self):
+        from core.agenda_cmds import is_valid_recur
+        assert is_valid_recur("every 2 weeks")
+        assert is_valid_recur("first monday")
+        assert is_valid_recur("last friday")
+
+    def test_invalid(self):
+        from core.agenda_cmds import is_valid_recur
+        assert not is_valid_recur("biweekly")
+        assert not is_valid_recur("every banana")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # run_task_add
