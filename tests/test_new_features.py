@@ -109,19 +109,24 @@ class TestProjectListSort:
                                prioridad="media")
         (p3 / "gamma-logbook.md").write_text(f"# Logbook\n\n{old} Nota vieja #apunte\n")
 
+    def _data_lines(self, out):
+        """Extract data lines from markdown table output (skip header + separator)."""
+        lines = [l.strip() for l in out.strip().split("\n") if l.strip()]
+        return [l for l in lines if not l.startswith("|--") and "Proyecto" not in l]
+
     def test_sort_by_priority(self, project_env, capsys):
         self._make_projects(project_env["projects_dir"])
         run_project_list(sort_by="priority")
         out = capsys.readouterr().out
-        lines = [l for l in out.strip().split("\n") if l.strip()]
-        # alta first, then media, then baja
-        assert lines[0].index("beta") < lines[0].index("beta") or "beta" in lines[0]
+        lines = self._data_lines(out)
+        # alta first
+        assert "beta" in lines[0]
 
     def test_sort_by_status(self, project_env, capsys):
         self._make_projects(project_env["projects_dir"])
         run_project_list(sort_by="status")
         out = capsys.readouterr().out
-        lines = [l.strip() for l in out.strip().split("\n") if l.strip()]
+        lines = self._data_lines(out)
         # active (alpha) first, then new (beta), then sleeping (gamma)
         assert "alpha" in lines[0]
 
@@ -129,7 +134,7 @@ class TestProjectListSort:
         self._make_projects(project_env["projects_dir"])
         run_project_list(sort_by="type")
         out = capsys.readouterr().out
-        lines = [l.strip() for l in out.strip().split("\n") if l.strip()]
+        lines = self._data_lines(out)
         # Investigación, Personal, Software (alphabetical)
         assert "alpha" in lines[0]  # Investigación
         assert "gamma" in lines[1]  # Personal
