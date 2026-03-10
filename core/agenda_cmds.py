@@ -469,6 +469,9 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
     if until and not recur:
         print("Error: --until requiere --recur.")
         return 1
+    if ring and not date_val:
+        print("⚠️  --ring requiere --date.")
+        return 1
     if ring:
         from core.ring import _parse_ring
         if _parse_ring(ring) is None:
@@ -498,7 +501,7 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
     print(f"✓ [{project_dir.name}] Tarea: {text}{attrs}")
 
     # Schedule reminder immediately if ring fires today
-    if ring and date_val:
+    if ring:
         from core.ring import resolve_ring_datetime, _schedule_reminder
         ring_dt = resolve_ring_datetime(date_val, ring)
         if ring_dt and ring_dt.date() == date.today():
@@ -730,6 +733,9 @@ def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
     if until and not recur:
         print("Error: --until requiere --recur.")
         return 1
+    if ring and not date_val:
+        print("⚠️  --ring requiere --date.")
+        return 1
     if ring:
         from core.ring import _parse_ring
         if _parse_ring(ring) is None:
@@ -757,7 +763,7 @@ def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
     print(f"✓ [{project_dir.name}] Hito: {text}{attrs}")
 
     # Schedule reminder immediately if ring fires today
-    if ring and date_val:
+    if ring:
         from core.ring import resolve_ring_datetime, _schedule_reminder
         ring_dt = resolve_ring_datetime(date_val, ring)
         if ring_dt and ring_dt.date() == date.today():
@@ -953,6 +959,9 @@ def run_ev_add(project: str, text: str, date_val: str,
             return 1
     if until and not recur:
         print("Error: --until requiere --recur.")
+        return 1
+    if ring and not date_val:
+        print("⚠️  --ring requiere --date.")
         return 1
     if ring:
         from core.ring import _parse_ring
