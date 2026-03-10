@@ -77,3 +77,5 @@
 2026-03-10 📝 secuencia de entradas: doctor, google, reminders, commit #apunte
 
 2026-03-10 📝 revision de la deuda técnica #apunte
+
+2026-03-10 📝 [cancelado] Hito: Review #apunte [O]

@@ -26,3 +26,6 @@
 - [ ] Fixtures compartidas de test: generalizar make_project (2026-03-13) [gtask:bGRZVDRHSkdZeWxYRWJWVw]
 - [ ] Refactorizar funciones >80 líneas (doctor, import, migrate) (2026-03-13) [gtask:TkgzX2F1WGU3TTRVRXNqNA]
 
+## 🏁 Hitos
+- [-] Review (2026-03-20) [recur:monthly] [ring:1d] [gtask:ckRjdUZ1dHdoODlSajdNXw]
+

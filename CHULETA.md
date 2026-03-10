@@ -35,10 +35,10 @@ orbit project type drop <name>              # elimina tipo
 ## task — tareas
 
 ```bash
-orbit task add    <project> "<text>" [--date DATE] [--recur FREQ] [--ring WHEN]
+orbit task add    <project> "<text>" [--date DATE] [--recur FREQ] [--until DATE] [--ring WHEN]
 orbit task done   [<project>] ["<text>"]
 orbit task drop   [<project>] ["<text>"] [--force]
-orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--recur FREQ|none] [--ring WHEN|none]
+orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none]
 ```
 
 - `done` y `drop`: interactivos si no se especifica texto; `drop` pide confirmación
@@ -77,10 +77,10 @@ Se aceptan días de la semana en inglés y español (`lunes`, `viernes`, etc.).
 ## ms — hitos
 
 ```bash
-orbit ms add    <project> "<text>" [--date DATE] [--ring WHEN]
+orbit ms add    <project> "<text>" [--date DATE] [--recur FREQ] [--until DATE] [--ring WHEN]
 orbit ms done   [<project>] ["<text>"]
 orbit ms drop   [<project>] ["<text>"] [--force]
-orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--ring WHEN|none]
+orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none]
 ```
 
 ---
@@ -88,9 +88,9 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--ri
 ## ev — eventos
 
 ```bash
-orbit ev add  <project> "<text>" --date DATE [--end DATE]
+orbit ev add  <project> "<text>" --date DATE [--end DATE] [--recur FREQ] [--until DATE] [--ring WHEN]
 orbit ev drop [<project>] ["<text>"] [--force]
-orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none]
+orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none]
 orbit ev list [<project>] [--from DATE] [--to DATE]
 ```
 

@@ -77,16 +77,21 @@ orbit project drop next-kr [--force]
 
 ### Tareas, hitos y eventos
 
+Los tres tipos comparten la misma interfaz: `add`, `done` (excepto ev), `drop`, `edit`, `list`.
+Todos aceptan `--date`, `--recur`, `--until` y `--ring`.
+
 ```bash
 orbit task add next-kr "Reproducir figura" --date 2026-03-20 --ring 1d
+orbit task add next-kr "Reunión semanal" --date 2026-03-15 --recur weekly
 orbit task done next-kr "Reproducir"
 orbit task list [next-kr] [--open]
 
-orbit ms add next-kr "Primera calibración validada" --date 2026-04-01
+orbit ms add next-kr "Calibración validada" --date 2026-04-01 --ring 1d
 orbit ms done next-kr
 orbit ms list [--open]
 
-orbit ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18
+orbit ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18 --ring 1d
+orbit ev edit next-kr "Congreso" --date 2026-04-20
 orbit ev list next-kr [--open]
 ```
 
@@ -123,13 +128,21 @@ orbit agenda [--date D] [--from D] [--to D] [--calendar] [--open]
 orbit report [project...] [--from D] [--to D] [--open]
 ```
 
-### Otros
+### Mantenimiento
 
 ```bash
-orbit commit ["mensaje"]
-orbit help
-orbit help chuleta
-orbit help tutorial
+orbit doctor [project] [--fix]     # validar sintaxis de ficheros
+orbit clean [project] [--months N] [--dry-run]  # limpiar entradas antiguas
+orbit gsync [--dry-run]            # sincronizar con Google Tasks/Calendar
+orbit commit ["mensaje"]           # commit + push interactivo
+```
+
+### Documentación
+
+```bash
+orbit help                         # chuleta de comandos (terminal)
+orbit help chuleta                 # abre CHULETA.md en el editor
+orbit help tutorial                # abre TUTORIAL.md en el editor
 ```
 
 ---
