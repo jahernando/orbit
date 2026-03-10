@@ -44,13 +44,18 @@ def _parse_task_line(line: str) -> Optional[dict]:
     status = {" ": "pending", "x": "done", "-": "cancelled"}[m.group(1)]
     rest   = m.group(2)
 
-    date_val = recur = ring = None
+    date_val = recur = until = ring = None
     date_m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", rest)
     if date_m:
         date_val = date_m.group(1)
     recur_m = re.search(r"\[recur:([^\]]+)\]", rest)
     if recur_m:
-        recur = recur_m.group(1)
+        raw = recur_m.group(1)
+        # Format: freq or freq:YYYY-MM-DD (with until date)
+        if ":" in raw:
+            recur, until = raw.split(":", 1)
+        else:
+            recur = raw
     ring_m = re.search(r"\[ring:([^\]]+)\]", rest)
     if ring_m:
         ring = ring_m.group(1)
@@ -61,7 +66,8 @@ def _parse_task_line(line: str) -> Optional[dict]:
         desc = re.sub(pat, "", desc)
     desc = desc.strip()
 
-    return {"status": status, "desc": desc, "date": date_val, "recur": recur, "ring": ring}
+    return {"status": status, "desc": desc, "date": date_val,
+            "recur": recur, "until": until, "ring": ring}
 
 
 def _format_task_line(task: dict) -> str:
@@ -71,7 +77,10 @@ def _format_task_line(task: dict) -> str:
     if task.get("date"):
         parts.append(f"({task['date']})")
     if task.get("recur"):
-        parts.append(f"[recur:{task['recur']}]")
+        recur_tag = task["recur"]
+        if task.get("until"):
+            recur_tag += f":{task['until']}"
+        parts.append(f"[recur:{recur_tag}]")
     if task.get("ring"):
         parts.append(f"[ring:{task['ring']}]")
     return f"- [{char}] {' '.join(parts)}"
@@ -313,9 +322,13 @@ def _next_occurrence(due: Optional[str], recur: str, done_date: str) -> str:
 # ── TASK commands ──────────────────────────────────────────────────────────────
 
 def run_task_add(project: str, text: str, date_val: Optional[str] = None,
-                 recur: Optional[str] = None, ring: Optional[str] = None) -> int:
+                 recur: Optional[str] = None, until: Optional[str] = None,
+                 ring: Optional[str] = None) -> int:
     if recur and recur not in VALID_RECUR:
         print(f"Error: recurrencia '{recur}' no válida. Opciones: {', '.join(sorted(VALID_RECUR))}")
+        return 1
+    if until and not recur:
+        print("Error: --until requiere --recur.")
         return 1
 
     project_dir = _find_new_project(project)
@@ -325,12 +338,17 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
     data["tasks"].append({"status": "pending", "desc": text,
-                           "date": date_val, "recur": recur, "ring": ring})
+                           "date": date_val, "recur": recur,
+                           "until": until, "ring": ring})
     _write_agenda(agenda_path, data)
 
     attrs = ""
     if date_val: attrs += f" ({date_val})"
-    if recur:    attrs += f" [recur:{recur}]"
+    if recur:
+        recur_s = recur
+        if until:
+            recur_s += f":{until}"
+        attrs += f" [recur:{recur_s}]"
     if ring:     attrs += f" [ring:{ring}]"
     print(f"✓ [{project_dir.name}] Tarea: {text}{attrs}")
 
@@ -371,10 +389,15 @@ def run_task_done(project: Optional[str], text: Optional[str]) -> int:
     next_info = ""
     if task.get("recur"):
         next_due = _next_occurrence(task.get("date"), task["recur"], done_date)
-        data["tasks"].append({"status": "pending", "desc": task_desc,
-                               "date": next_due, "recur": task["recur"],
-                               "ring": task.get("ring")})
-        next_info = f" (recur: {task['recur']}) → próxima: {next_due}"
+        until = task.get("until")
+        # Only create next occurrence if within until limit
+        if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+            next_info = f" (recur: {task['recur']}) — serie finalizada ({until})"
+        else:
+            data["tasks"].append({"status": "pending", "desc": task_desc,
+                                   "date": next_due, "recur": task["recur"],
+                                   "until": until, "ring": task.get("ring")})
+            next_info = f" (recur: {task['recur']}) → próxima: {next_due}"
 
     _write_agenda(agenda_path, data)
     add_orbit_entry(project_dir, f"[completada] Tarea: {task_desc}{next_info}", "apunte")
@@ -423,7 +446,8 @@ def run_task_drop(project: Optional[str], text: Optional[str],
 
 def run_task_edit(project: Optional[str], text: Optional[str],
                   new_text: Optional[str] = None, new_date: Optional[str] = None,
-                  new_recur: Optional[str] = None, new_ring: Optional[str] = None) -> int:
+                  new_recur: Optional[str] = None, new_until: Optional[str] = None,
+                  new_ring: Optional[str] = None) -> int:
     project_dir = _find_new_project(project) if project else None
     if project and project_dir is None:
         return 1
@@ -448,6 +472,8 @@ def run_task_edit(project: Optional[str], text: Optional[str],
         task["date"]  = None if new_date == "none" else new_date
     if new_recur:
         task["recur"] = None if new_recur == "none" else new_recur
+    if new_until:
+        task["until"] = None if new_until == "none" else new_until
     if new_ring:
         task["ring"]  = None if new_ring  == "none" else new_ring
 
@@ -489,7 +515,12 @@ def run_task_list(projects: Optional[list] = None,
         for t in tasks:
             status_s = {"pending": "[ ]", "done": "[x]", "cancelled": "[-]"}[t["status"]]
             date_s   = f" ({t['date']})" if t.get("date") else ""
-            recur_s  = f" [recur:{t['recur']}]" if t.get("recur") else ""
+            recur_s = ""
+            if t.get("recur"):
+                recur_s = f" [recur:{t['recur']}"
+                if t.get("until"):
+                    recur_s += f":{t['until']}"
+                recur_s += "]"
             ring_s   = f" [ring:{t['ring']}]"   if t.get("ring")  else ""
             print(f"  {status_s} {t['desc']}{date_s}{recur_s}{ring_s}")
             total += 1
