@@ -301,6 +301,49 @@ def run_project_list(status_filter: Optional[str] = None,
     return 0
 
 
+def generate_proyectos_md() -> Path:
+    """Regenerate proyectos.md — project index with relative links."""
+    from core.config import PROYECTOS_MD
+    lines = ["# Proyectos", ""]
+
+    rows = []
+    for d in sorted(PROJECTS_DIR.iterdir()):
+        if not d.is_dir() or not _is_new_project(d):
+            continue
+        meta = _read_project_meta(d)
+        status, _, _ = _resolve_status(meta, d)
+        prio_key = normalize(meta["prioridad"])
+        rows.append({
+            "name":       meta["name"],
+            "dir":        d.name,
+            "path":       d,
+            "tipo_emoji": meta["tipo_emoji"] or "❓",
+            "status":     _STATUS_EMOJI.get(status, "❓"),
+            "prio":       PRIORITY_MAP.get(prio_key, ""),
+            "project_f":  find_proyecto_file(d),
+        })
+
+    if not rows:
+        lines.append("No hay proyectos.")
+    else:
+        for r in rows:
+            rel = f"🚀proyectos/{r['dir']}"
+            project_link = f"[{r['name']}]({rel}/)" if not r["project_f"] \
+                else f"[{r['name']}]({rel}/{r['project_f'].name})"
+            lines.append(f"- {r['tipo_emoji']} {project_link}  {r['status']} {r['prio']}")
+            # Sub-links to logbook, agenda, highlights
+            for kind, label in [("logbook", "logbook"), ("agenda", "agenda"),
+                                ("highlights", "highlights")]:
+                f = resolve_file(r["path"], kind)
+                if f.exists():
+                    lines.append(f"  - [{label}]({rel}/{f.name})")
+
+        lines.append("")
+
+    PROYECTOS_MD.write_text("\n".join(lines) + "\n")
+    return PROYECTOS_MD
+
+
 # ── project status ────────────────────────────────────────────────────────────
 
 def run_project_status(name: str, set_status: Optional[str] = None) -> int:

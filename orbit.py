@@ -123,6 +123,11 @@ def cmd_open(args):
     if getattr(args, "dir", False):
         from core.project_view import run_open_dir
         return run_open_dir(args.target)
+    if args.target is None:
+        from core.project import generate_proyectos_md
+        path = generate_proyectos_md()
+        print(f"Generado {path.name}")
+        return open_file(path, getattr(args, "editor", None) or default_editor())
     what = getattr(args, "what", None)
     return run_new_open(args.target, what=what,
                         editor=getattr(args, "editor", None) or default_editor())
