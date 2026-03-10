@@ -83,6 +83,7 @@ Muestra las tareas pendientes y vencidas, eventos de hoy y hitos próximos de to
 agenda --date 2026-03     # agenda del mes completo
 agenda --calendar         # vista calendario con colores
 agenda --from monday --to friday   # rango personalizado
+agenda --dated                   # solo tareas/hitos con fecha
 ```
 
 Con esto planificas el día: ves qué hay pendiente y qué vence pronto.

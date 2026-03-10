@@ -171,8 +171,8 @@ orbit commit ["<mensaje>"]
 ```bash
 orbit ls                              # lista proyectos (por defecto)
 orbit ls projects [--status S] [--type T] [--sort type|status|priority]
-orbit ls tasks    [project...] [--status pending|done|all] [--date D]
-orbit ls ms       [project...] [--status pending|done|all]
+orbit ls tasks    [project...] [--status pending|done|all] [--date D] [--dated]
+orbit ls ms       [project...] [--status pending|done|all] [--dated]
 orbit ls ev       [project]    [--from D] [--to D]
 orbit ls hl       [project]    [--type T]
 orbit ls files    [project]    # ficheros md del proyecto con estado git
@@ -186,7 +186,7 @@ Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untra
 ## agenda — vista temporal
 
 ```bash
-orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--open] [--editor E]
+orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--dated] [--open] [--editor E]
 ```
 
 - Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
@@ -199,6 +199,7 @@ orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--open] [
   - Magenta: hito
   - Rojo: vencida
   - Invertido: hoy
+- `--dated`: solo muestra tareas/hitos que tienen fecha asignada
 - Compatible con `--open` y `--log`
 
 ---

@@ -748,3 +748,73 @@ class TestEvents:
         run_ev_list()
         out = capsys.readouterr().out
         assert out.index("Earlier") < out.index("Later")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# --dated flag
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestDatedFlag:
+    def test_task_list_dated_excludes_undated(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_list
+        run_task_add("test-project", "With date", date_val="2026-05-01")
+        run_task_add("test-project", "Without date")
+        capsys.readouterr()
+        run_task_list(dated_only=True)
+        out = capsys.readouterr().out
+        assert "With date" in out
+        assert "Without date" not in out
+
+    def test_task_list_default_shows_undated(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_list
+        run_task_add("test-project", "With date", date_val="2026-05-01")
+        run_task_add("test-project", "Without date")
+        capsys.readouterr()
+        run_task_list()
+        out = capsys.readouterr().out
+        assert "With date" in out
+        assert "Without date" in out
+
+    def test_ms_list_dated_excludes_undated(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_list
+        run_ms_add("test-project", "Dated milestone", date_val="2026-06-01")
+        run_ms_add("test-project", "Undated milestone")
+        capsys.readouterr()
+        run_ms_list(dated_only=True)
+        out = capsys.readouterr().out
+        assert "Dated milestone" in out
+        assert "Undated milestone" not in out
+
+    def test_ms_list_default_shows_undated(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_list
+        run_ms_add("test-project", "Dated milestone", date_val="2026-06-01")
+        run_ms_add("test-project", "Undated milestone")
+        capsys.readouterr()
+        run_ms_list()
+        out = capsys.readouterr().out
+        assert "Dated milestone" in out
+        assert "Undated milestone" in out
+
+    def test_agenda_dated_excludes_undated(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_ms_add
+        import core.agenda_view as av
+        av.PROJECTS_DIR = projects_dir
+        run_task_add("test-project", "Dated task", date_val="2026-03-10")
+        run_task_add("test-project", "Undated task")
+        capsys.readouterr()
+        av.run_agenda(date_str="2026-03-10", dated_only=True)
+        out = capsys.readouterr().out
+        assert "Dated task" in out
+        assert "Undated task" not in out
+
+    def test_agenda_default_shows_undated(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add
+        import core.agenda_view as av
+        av.PROJECTS_DIR = projects_dir
+        run_task_add("test-project", "Dated task", date_val="2026-03-10")
+        run_task_add("test-project", "Undated task")
+        capsys.readouterr()
+        av.run_agenda(date_str="2026-03-10", dated_only=False)
+        out = capsys.readouterr().out
+        assert "Dated task" in out
+        assert "Undated task" in out

@@ -124,7 +124,7 @@ orbit open next-kr agenda
 ### Agenda y report
 
 ```bash
-orbit agenda [--date D] [--from D] [--to D] [--calendar] [--open]
+orbit agenda [--date D] [--from D] [--to D] [--calendar] [--dated] [--open]
 orbit report [project...] [--from D] [--to D] [--open]
 ```
 
