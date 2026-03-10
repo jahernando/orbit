@@ -60,7 +60,7 @@ def _handle_output(args, run_fn, cmd_label: str = ""):
 
 # Long options that users often type with a single dash (e.g. -date instead of --date)
 _SINGLE_DASH_FIX = {
-    "-date", "-time", "-recur", "-ring", "-entry", "-project", "-type", "-status",
+    "-date", "-time", "-recur", "-until", "-ring", "-entry", "-project", "-type", "-status",
     "-priority", "-output", "-editor", "-from", "-to", "-limit",
     "-log", "-open", "-force", "-no-open",
     "-file", "-keyword", "-dry-run", "-name", "-date-from",
@@ -208,6 +208,7 @@ def cmd_task_new(args):
             text     = args.text,
             date_val = _d(getattr(args, "date", None)),
             recur    = getattr(args, "recur", None),
+            until    = _d(getattr(args, "until", None)),
             ring     = getattr(args, "ring", None),
         )
     if action == "done":
@@ -228,6 +229,7 @@ def cmd_task_new(args):
             new_text  = getattr(args, "new_text", None),
             new_date  = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
             new_recur = getattr(args, "new_recur", None),
+            new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
             new_ring  = getattr(args, "new_ring", None),
         )
     if action == "list":
@@ -457,8 +459,21 @@ def _add_log_args(p):
                    help="Entry type for --log (default: apunte)")
 
 
+class _OrbitParser(argparse.ArgumentParser):
+    """ArgumentParser that shows a friendlier error message."""
+
+    def error(self, message):
+        sys.stderr.write(f"⚠️  No pude ejecutar el comando: {message}\n")
+        self.print_usage(sys.stderr)
+        sys.exit(2)
+
+    def add_subparsers(self, **kwargs):
+        kwargs.setdefault("parser_class", _OrbitParser)
+        return super().add_subparsers(**kwargs)
+
+
 def main():
-    parser = argparse.ArgumentParser(prog="orbit", description="Orbit project management CLI")
+    parser = _OrbitParser(prog="orbit", description="Orbit project management CLI")
     subparsers = parser.add_subparsers(dest="command")
 
     # --- log ---
@@ -636,6 +651,8 @@ def main():
     tn_add.add_argument("--date",  default=None, help="Due date YYYY-MM-DD")
     tn_add.add_argument("--recur", default=None,
                         help="Recurrence: daily, weekly, monthly, weekdays")
+    tn_add.add_argument("--until", default=None,
+                        help="End date for recurrence YYYY-MM-DD (requires --recur)")
     tn_add.add_argument("--ring",  default=None,
                         help="Reminder: 1d, 2h, or YYYY-MM-DD HH:MM")
 
@@ -652,6 +669,8 @@ def main():
     tn_edit.add_argument("--date",  dest="new_date",  default=None, help="New date (or 'none')")
     tn_edit.add_argument("--recur", dest="new_recur", default=None,
                          help="New recurrence (or 'none')")
+    tn_edit.add_argument("--until", dest="new_until", default=None,
+                         help="New end date for recurrence (or 'none')")
     tn_edit.add_argument("--ring",  dest="new_ring",  default=None,
                          help="New ring value (or 'none')")
 
