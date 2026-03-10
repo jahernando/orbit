@@ -1,7 +1,7 @@
 # 💻orbit
 
 - Tipo: 💻 Software
-- Estado: ⏸️ Pausado
+- Estado: [auto]
 - Prioridad: 🔶 Media
 
 ## Estado actual

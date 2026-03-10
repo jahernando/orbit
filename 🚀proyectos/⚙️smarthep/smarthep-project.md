@@ -1,7 +1,7 @@
 # ⚙️smarthep
 
 - Tipo: ⚙️ Gestión
-- Estado: ▶️ Activo
+- Estado: [auto]
 - Prioridad: 🔶 Media
 
 ## Estado actual

@@ -1,7 +1,7 @@
 # 🌀next-ana-es
 
 - Tipo: 🌀 Investigación
-- Estado: ⏸️ Pausado
+- Estado: [auto]
 - Prioridad: 🔶 Media
 
 ## Estado actual

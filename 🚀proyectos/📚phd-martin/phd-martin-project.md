@@ -1,7 +1,7 @@
 # 📚phd-martin
 
 - Tipo: 📚 Docencia
-- Estado: ▶️ Activo
+- Estado: [auto]
 - Prioridad: 🔴 Alta
 
 ## Estado actual

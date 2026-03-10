@@ -1,7 +1,7 @@
 # ☀️mission
 
 - Tipo: ☀️ Misión
-- Estado: ▶️ Activo
+- Estado: [auto]
 - Prioridad: 🔶 Media
 
 ## Estado actual

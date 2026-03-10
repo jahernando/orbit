@@ -1,7 +1,7 @@
 # 🌀next-gala
 
 - Tipo: 🌀 Investigación
-- Estado: ⏸️ Pausado
+- Estado: [auto]
 - Prioridad: 🔴 Alta
 
 ## Estado actual

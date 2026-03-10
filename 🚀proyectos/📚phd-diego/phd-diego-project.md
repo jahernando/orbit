@@ -1,7 +1,7 @@
 # 📚phd-diego
 
 - Tipo: 📚 Docencia
-- Estado: ▶️ Activo
+- Estado: [auto]
 - Prioridad: 🔴 Alta
 
 ## Estado actual

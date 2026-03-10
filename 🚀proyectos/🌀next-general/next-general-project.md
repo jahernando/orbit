@@ -1,7 +1,7 @@
 # 🌀next-general
 
 - Tipo: 🌀 Investigación
-- Estado: ▶️ Activo
+- Estado: [auto]
 - Prioridad: 🔶 Media
 
 ## Estado actual

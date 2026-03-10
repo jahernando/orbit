@@ -1,7 +1,7 @@
 # ⚙️appec
 
 - Tipo: ⚙️ Gestión
-- Estado: ▶️ Activo
+- Estado: [auto]
 - Prioridad: 🔴 Alta
 
 ## Estado actual

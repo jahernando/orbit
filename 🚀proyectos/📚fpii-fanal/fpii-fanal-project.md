@@ -1,7 +1,7 @@
 # 📚fpii-fanal
 
 - Tipo: 📚 Docencia
-- Estado: 💤 Durmiendo
+- Estado: [auto]
 - Prioridad: 🔶 Media
 
 ## Estado actual

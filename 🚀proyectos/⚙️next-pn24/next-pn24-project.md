@@ -1,7 +1,7 @@
 # ⚙️next-pn24
 
 - Tipo: ⚙️ Gestión
-- Estado: 💤 Durmiendo
+- Estado: [auto]
 - Prioridad: 🔶 Media
 
 ## Estado actual

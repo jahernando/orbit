@@ -1,7 +1,7 @@
 # 🌀next-nn
 
 - Tipo: 🌀 Investigación
-- Estado: 💤 Durmiendo
+- Estado: [auto]
 - Prioridad: 🔶 Media
 
 ## Estado actual
