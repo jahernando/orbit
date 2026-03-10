@@ -93,27 +93,66 @@ def _git_add_files(files: list) -> bool:
 
 
 def _prompt_untracked() -> None:
-    """Detect untracked files in projects and ask to add them."""
+    """Detect untracked files in projects and ask to add them.
+
+    Shows numbered list; user can select all, specific indices, or none.
+    Confirms selection before staging.
+    """
     untracked = _git_untracked_in_projects()
     if not untracked or not sys.stdin.isatty():
         return
 
-    n = len(untracked)
-    print(f"  📂 {n} fichero{'s' if n != 1 else ''} nuevo{'s' if n != 1 else ''} sin trackear:")
-    for p in untracked[:5]:
-        print(f"      +   {p}")
-    if n > 5:
-        print(f"      ... y {n - 5} más")
+    while True:
+        n = len(untracked)
+        print(f"  📂 {n} fichero{'s' if n != 1 else ''} nuevo{'s' if n != 1 else ''} sin trackear:")
+        for i, p in enumerate(untracked, 1):
+            print(f"      [{i}] +  {p}")
 
-    try:
-        ans = input("  ¿Añadir al commit? [S/n]: ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
+        try:
+            prompt = "  ¿Añadir? [S=todos / 1,2,... / n]: " if n > 1 else "  ¿Añadir? [S/n]: "
+            ans = input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+
+        if ans.lower() in ("n", "no"):
+            return
+
+        # Determine selected files
+        if ans == "" or ans.lower() in ("s", "si", "sí", "y", "yes"):
+            selected = untracked
+        else:
+            # Parse comma-separated indices
+            try:
+                indices = [int(x.strip()) for x in ans.split(",")]
+                selected = [untracked[i - 1] for i in indices if 1 <= i <= n]
+            except (ValueError, IndexError):
+                print("  ⚠️  Selección no válida")
+                continue
+            if not selected:
+                print("  ⚠️  Ningún fichero seleccionado")
+                continue
+
+        # Confirm selection (skip if all selected with S)
+        if len(selected) < n:
+            print(f"\n  Ficheros seleccionados:")
+            for p in selected:
+                print(f"      +  {p}")
+            try:
+                confirm = input("  ¿Confirmar? [S/n/r(repetir)]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+            if confirm in ("r", "repetir"):
+                print()
+                continue
+            if confirm not in ("", "s", "si", "sí", "y", "yes"):
+                return
+
+        _git_add_files(selected)
+        ns = len(selected)
+        print(f"  ✓ {ns} fichero{'s' if ns != 1 else ''} añadido{'s' if ns != 1 else ''}")
         return
-
-    if ans in ("", "s", "si", "sí", "y", "yes"):
-        _git_add_files(untracked)
-        print(f"  ✓ {n} fichero{'s' if n != 1 else ''} añadido{'s' if n != 1 else ''}")
 
 
 def _git_commit(message: str) -> int:
