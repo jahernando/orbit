@@ -353,7 +353,7 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
         print("✓ Todo en orden — no se encontraron problemas.")
         return 0
 
-    print(f"  🩺 {len(issues)} problema{'s' if len(issues) != 1 else ''} encontrado{'s' if len(issues) != 1 else ''}:")
+    print(f"  🏥 {len(issues)} problema{'s' if len(issues) != 1 else ''} encontrado{'s' if len(issues) != 1 else ''}:")
     print()
 
     fixable   = [i for i in issues if i.fix]

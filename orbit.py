@@ -965,7 +965,7 @@ def run_shell(editor: str = ""):
         fixable = [i for i in doctor_issues if i.fix]
         unfixable = [i for i in doctor_issues if not i.fix]
         n = len(doctor_issues)
-        print(f"  🩺 {n} problema{'s' if n != 1 else ''} de sintaxis encontrado{'s' if n != 1 else ''}:")
+        print(f"  🏥 {n} problema{'s' if n != 1 else ''} de sintaxis encontrado{'s' if n != 1 else ''}:")
         for issue in doctor_issues:
             prefix = "🔧" if issue.fix else "⚠️"
             print(f"      {prefix} [{issue.project}] {issue.file}:{issue.line_num} — {issue.msg}")
