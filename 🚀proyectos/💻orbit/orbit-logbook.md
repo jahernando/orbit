@@ -79,3 +79,5 @@
 2026-03-10 📝 revision de la deuda técnica #apunte
 
 2026-03-10 📝 [cancelado] Hito: Review #apunte [O]
+
+2026-03-10 📝 [completada] Tarea: Reminder - Prueba #apunte [O]

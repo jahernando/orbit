@@ -16,7 +16,7 @@
 - [x] quitar duplicaciones al listar tareas o proyectos (2026-03-10) [G]
 - [x] test recur (2026-03-10) [recur:daily:2026-03-15]
 - [-] test recur (2026-03-11) [recur:daily:2026-03-15]
-- [ ] Reminder - Prueba (2026-03-10) [G]
+- [x] Reminder - Prueba (2026-03-10) [G]
 - [ ] Refactorizar main() en orbit.py: separar parsers del dispatch (2026-03-13) [G]
 - [ ] Unificar dispatchers de subcomandos con factory genérico (2026-03-13) [G]
 - [ ] Tests para agenda_view (calendario y vista agenda) (2026-03-13) [G]
