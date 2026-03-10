@@ -8,7 +8,8 @@ Architecture:
   - Tasks + Milestones → Google Tasks API (one TaskList per project type)
   - Events → Google Calendar Events API (one calendar per project type)
   - Orbit is the source of truth (one-directional sync)
-  - Sync IDs stored in agenda.md: [gtask:id] and [gcal:id]
+  - Sync IDs stored in .gsync-ids.json per project (not in agenda.md)
+  - Synced items show [G] marker in agenda.md
 
 Config file: google-sync.json in ORBIT_HOME
 """
@@ -24,6 +25,31 @@ from core.project import _find_new_project, _is_new_project, _read_project_meta
 from core.agenda_cmds import _read_agenda, _write_agenda
 
 CONFIG_PATH = ORBIT_HOME / "google-sync.json"
+
+_IDS_FILE = ".gsync-ids.json"
+
+
+def _ids_path(project_dir: Path) -> Path:
+    """Path to .gsync-ids.json in a project directory."""
+    return project_dir / _IDS_FILE
+
+
+def _load_ids(project_dir: Path) -> dict:
+    """Load sync IDs mapping for a project. Returns {key: {gtask_id, gcal_id}}."""
+    p = _ids_path(project_dir)
+    if p.exists():
+        return json.loads(p.read_text())
+    return {}
+
+
+def _save_ids(project_dir: Path, ids: dict) -> None:
+    """Save sync IDs mapping for a project."""
+    _ids_path(project_dir).write_text(json.dumps(ids, indent=2, ensure_ascii=False) + "\n")
+
+
+def _item_key(item: dict) -> str:
+    """Build a unique key for an item: desc::date."""
+    return f"{item.get('desc', '')}::{item.get('date', '')}"
 
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -152,22 +178,23 @@ def _sync_one_task(service, tasklist_id: str, item: dict,
     status_map = {"pending": "needsAction", "done": "completed", "cancelled": "completed"}
     g_status = status_map.get(item["status"], "needsAction")
 
-    if item.get("gtask_id"):
+    gtask_id = item.get("_gtask_id")  # looked up from .gsync-ids.json
+    if gtask_id:
         # Update existing
         if dry_run:
             print(f"  ~ actualizar: {title}")
-            return item["gtask_id"]
+            return gtask_id
         try:
             body = {"title": title, "notes": notes, "status": g_status}
             if due:
                 body["due"] = due
             service.tasks().patch(
-                tasklist=tasklist_id, task=item["gtask_id"], body=body
+                tasklist=tasklist_id, task=gtask_id, body=body
             ).execute()
-            return item["gtask_id"]
+            return gtask_id
         except Exception as e:
             print(f"  ⚠️  Error actualizando '{item['desc']}': {e}")
-            return item["gtask_id"]
+            return gtask_id
     else:
         # Create new
         if dry_run:
@@ -202,39 +229,53 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
     if not tasklist_id:
         return 0, 0, 0
 
+    ids = _load_ids(project_dir)
     created = updated = skipped = 0
     changed = False
+    ids_changed = False
 
     # Sync tasks
     for t in data["tasks"]:
-        if t["status"] == "pending" or t.get("gtask_id"):
+        key = _item_key(t)
+        t["_gtask_id"] = ids.get(key, {}).get("gtask_id")
+        if t["status"] == "pending" or t.get("_gtask_id"):
             new_id = _sync_one_task(tasks_service, tasklist_id, t,
                                     project_name, False, description, dry_run)
-            if new_id and not t.get("gtask_id"):
-                t["gtask_id"] = new_id
+            if new_id and not t.get("_gtask_id"):
+                ids.setdefault(key, {})["gtask_id"] = new_id
+                t["synced"] = True
                 created += 1
                 changed = True
-            elif t.get("gtask_id"):
+                ids_changed = True
+            elif t.get("_gtask_id"):
                 updated += 1
             else:
                 skipped += 1
+        t.pop("_gtask_id", None)
 
     # Sync milestones
     for m in data["milestones"]:
-        if m["status"] == "pending" or m.get("gtask_id"):
+        key = _item_key(m)
+        m["_gtask_id"] = ids.get(key, {}).get("gtask_id")
+        if m["status"] == "pending" or m.get("_gtask_id"):
             new_id = _sync_one_task(tasks_service, tasklist_id, m,
                                     project_name, True, description, dry_run)
-            if new_id and not m.get("gtask_id"):
-                m["gtask_id"] = new_id
+            if new_id and not m.get("_gtask_id"):
+                ids.setdefault(key, {})["gtask_id"] = new_id
+                m["synced"] = True
                 created += 1
                 changed = True
-            elif m.get("gtask_id"):
+                ids_changed = True
+            elif m.get("_gtask_id"):
                 updated += 1
             else:
                 skipped += 1
+        m.pop("_gtask_id", None)
 
     if changed and not dry_run:
         _write_agenda(agenda_path, data)
+    if ids_changed and not dry_run:
+        _save_ids(project_dir, ids)
 
     return created, updated, skipped
 
@@ -257,10 +298,11 @@ def _sync_one_event(service, calendar_id: str, ev: dict,
         end_d = date.fromisoformat(start_date)
         end_date = (end_d + timedelta(days=1)).isoformat()
 
-    if ev.get("gcal_id"):
+    gcal_id = ev.get("_gcal_id")  # looked up from .gsync-ids.json
+    if gcal_id:
         if dry_run:
             print(f"  ~ actualizar: 📅 {start_date} — {summary}")
-            return ev["gcal_id"]
+            return gcal_id
         try:
             body = {
                 "summary": summary,
@@ -269,12 +311,12 @@ def _sync_one_event(service, calendar_id: str, ev: dict,
                 "end": {"date": end_date},
             }
             service.events().patch(
-                calendarId=calendar_id, eventId=ev["gcal_id"], body=body
+                calendarId=calendar_id, eventId=gcal_id, body=body
             ).execute()
-            return ev["gcal_id"]
+            return gcal_id
         except Exception as e:
             print(f"  ⚠️  Error actualizando evento '{summary}': {e}")
-            return ev["gcal_id"]
+            return gcal_id
     else:
         if dry_run:
             print(f"  ~ crear: 📅 {start_date} — {summary}")
@@ -310,23 +352,32 @@ def _sync_events_for_project(cal_service, project_dir: Path,
     project_name = project_dir.name
     description = _project_description(project_dir, config, html=True)
 
+    ids = _load_ids(project_dir)
     created = updated = skipped = 0
     changed = False
+    ids_changed = False
 
     for ev in data["events"]:
+        key = _item_key(ev)
+        ev["_gcal_id"] = ids.get(key, {}).get("gcal_id")
         new_id = _sync_one_event(cal_service, calendar_id, ev,
                                  project_name, description, dry_run)
-        if new_id and not ev.get("gcal_id"):
-            ev["gcal_id"] = new_id
+        if new_id and not ev.get("_gcal_id"):
+            ids.setdefault(key, {})["gcal_id"] = new_id
+            ev["synced"] = True
             created += 1
             changed = True
-        elif ev.get("gcal_id"):
+            ids_changed = True
+        elif ev.get("_gcal_id"):
             updated += 1
         else:
             skipped += 1
+        ev.pop("_gcal_id", None)
 
     if changed and not dry_run:
         _write_agenda(agenda_path, data)
+    if ids_changed and not dry_run:
+        _save_ids(project_dir, ids)
 
     return created, updated, skipped
 
@@ -455,7 +506,13 @@ def _is_gsync_configured() -> bool:
 
 def delete_gcal_event(project_dir: Path, ev: dict) -> None:
     """Delete a Google Calendar event. Fails silently."""
-    if not _is_gsync_configured() or not ev.get("gcal_id"):
+    if not _is_gsync_configured():
+        return
+
+    ids = _load_ids(project_dir)
+    key = _item_key(ev)
+    gcal_id = ids.get(key, {}).get("gcal_id")
+    if not gcal_id:
         return
 
     import threading
@@ -472,14 +529,17 @@ def delete_gcal_event(project_dir: Path, ev: dict) -> None:
             service = _get_calendar_service()
             if service:
                 service.events().delete(
-                    calendarId=cal_id, eventId=ev["gcal_id"]
+                    calendarId=cal_id, eventId=gcal_id
                 ).execute()
+            # Remove from IDs file
+            ids_data = _load_ids(project_dir)
+            ids_data.pop(key, None)
+            _save_ids(project_dir, ids_data)
         except Exception:
             pass
 
     t = threading.Thread(target=_do_delete, daemon=True)
     t.start()
-    t.join(timeout=3)
 
 
 # ── Individual item sync (for add/done/edit/drop hooks) ────────────────────
@@ -502,6 +562,8 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
         try:
             config = _load_config()
             tipo = _get_project_tipo(project_dir)
+            ids = _load_ids(project_dir)
+            key = _item_key(item)
 
             if kind in ("task", "milestone"):
                 service = _get_tasks_service()
@@ -513,20 +575,23 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                 project_name = project_dir.name
                 description = _project_description(project_dir, config)
                 is_ms = kind == "milestone"
+                item["_gtask_id"] = ids.get(key, {}).get("gtask_id")
                 new_id = _sync_one_task(service, tasklist_id, item,
                                         project_name, is_ms, description,
                                         dry_run=False)
-                if new_id and not item.get("gtask_id"):
-                    item["gtask_id"] = new_id
-                    # Write back to agenda.md
+                if new_id and not item.get("_gtask_id"):
+                    ids.setdefault(key, {})["gtask_id"] = new_id
+                    _save_ids(project_dir, ids)
+                    # Mark [G] in agenda.md
                     agenda_path = resolve_file(project_dir, "agenda")
                     data = _read_agenda(agenda_path)
                     section = "tasks" if kind == "task" else "milestones"
                     for t in data[section]:
                         if t["desc"] == item["desc"] and t.get("date") == item.get("date"):
-                            t["gtask_id"] = new_id
+                            t["synced"] = True
                             break
                     _write_agenda(agenda_path, data)
+                item.pop("_gtask_id", None)
 
             elif kind == "event":
                 cal_id = config.get("calendars", {}).get(tipo)
@@ -539,27 +604,97 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                     return
                 project_name = project_dir.name
                 description = _project_description(project_dir, config, html=True)
+                item["_gcal_id"] = ids.get(key, {}).get("gcal_id")
                 new_id = _sync_one_event(service, cal_id, item,
                                          project_name, description,
                                          dry_run=False)
-                if new_id and not item.get("gcal_id"):
-                    item["gcal_id"] = new_id
+                if new_id and not item.get("_gcal_id"):
+                    ids.setdefault(key, {})["gcal_id"] = new_id
+                    _save_ids(project_dir, ids)
+                    # Mark [G] in agenda.md
                     agenda_path = resolve_file(project_dir, "agenda")
                     data = _read_agenda(agenda_path)
                     for e in data["events"]:
                         if e["desc"] == item["desc"] and e["date"] == item["date"]:
-                            e["gcal_id"] = new_id
+                            e["synced"] = True
                             break
                     _write_agenda(agenda_path, data)
+                item.pop("_gcal_id", None)
 
         except Exception:
             pass  # fail silently
 
     t = threading.Thread(target=_do_sync, daemon=True)
     t.start()
-    t.join(timeout=_SYNC_TIMEOUT)
-    if t.is_alive():
-        print("  ⚠️  gsync: timeout (se sincronizará con orbit gsync)")
+    # No join — sync runs in the background without blocking the CLI
+
+
+# ── Migration: [gtask:id]/[gcal:id] → .gsync-ids.json + [G] ──────────────
+
+def migrate_sync_ids() -> int:
+    """Migrate old [gtask:id]/[gcal:id] from agenda.md to .gsync-ids.json.
+
+    Reads each project's agenda.md, extracts Google IDs into .gsync-ids.json,
+    and rewrites agenda.md with [G] markers instead of raw IDs.
+    """
+    import re
+    if not PROJECTS_DIR.exists():
+        return 0
+
+    migrated = 0
+    for project_dir in sorted(PROJECTS_DIR.iterdir()):
+        if not project_dir.is_dir() or not _is_new_project(project_dir):
+            continue
+
+        agenda_path = resolve_file(project_dir, "agenda")
+        if not agenda_path.exists():
+            continue
+
+        text = agenda_path.read_text()
+        if "[gtask:" not in text and "[gcal:" not in text:
+            continue
+
+        # Parse and extract IDs
+        ids = _load_ids(project_dir)
+        data = _read_agenda(agenda_path)
+
+        for section in ("tasks", "milestones"):
+            for item in data[section]:
+                # _parse_task_line already strips [gtask:...] from desc
+                # but we need the raw ID — re-parse from file
+                pass
+
+        # Re-read raw lines to extract IDs
+        gtask_re = re.compile(r"\[gtask:([^\]]+)\]")
+        gcal_re = re.compile(r"\[gcal:([^\]]+)\]")
+
+        for item in data["tasks"] + data["milestones"]:
+            key = _item_key(item)
+            # Find matching raw line for this item
+            for line in text.splitlines():
+                if item["desc"] in line:
+                    gm = gtask_re.search(line)
+                    if gm:
+                        ids.setdefault(key, {})["gtask_id"] = gm.group(1)
+                        item["synced"] = True
+                    break
+
+        for ev in data["events"]:
+            key = _item_key(ev)
+            for line in text.splitlines():
+                if ev["desc"] in line and ev["date"] in line:
+                    gm = gcal_re.search(line)
+                    if gm:
+                        ids.setdefault(key, {})["gcal_id"] = gm.group(1)
+                        ev["synced"] = True
+                    break
+
+        _save_ids(project_dir, ids)
+        _write_agenda(agenda_path, data)
+        migrated += 1
+        print(f"  ✓ {project_dir.name}: IDs migrados a .gsync-ids.json")
+
+    return migrated
 
 
 # ── Background sync on shell startup ───────────────────────────────────────

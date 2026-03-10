@@ -60,6 +60,7 @@ def _check_logbook(project_name: str, path: Path,
 
     # Only check last N lines for performance
     start = max(0, len(lines) - max_lines)
+    last_was_entry = False
 
     for i in range(start, len(lines)):
         line = lines[i]
@@ -67,18 +68,30 @@ def _check_logbook(project_name: str, path: Path,
 
         # Skip headers, blank lines, comments
         if not s or s.startswith("#") or s.startswith("<!--"):
+            last_was_entry = False
+            continue
+
+        # Indented continuation line (2+ spaces) — valid multiline
+        if line.startswith("  ") and last_was_entry:
             continue
 
         # Should be a dated entry
         dm = _DATE_RE.match(s)
         if not dm:
-            # Non-date line in logbook — could be continuation or junk
-            # Only flag if it looks like it should be an entry
-            if s.startswith("20") or any(s.startswith(e) for e in _ALL_ENTRY_EMOJIS):
+            # Non-date, non-indented line after an entry → suggest indenting
+            if last_was_entry:
+                fixed = f"  {line}"
+                issues.append(Issue(project_name, path.name, i + 1, line,
+                                    "Línea suelta en logbook — ¿continuación? (indentar con 2 espacios)",
+                                    fix=fixed))
+            # Line that looks like a broken entry
+            elif s.startswith("20") or any(s.startswith(e) for e in _ALL_ENTRY_EMOJIS):
                 issues.append(Issue(project_name, path.name, i + 1, line,
                                     "Fecha mal formada"))
+            last_was_entry = False
             continue
 
+        last_was_entry = True
         date_str = dm.group(1)
 
         # Validate date
@@ -101,18 +114,25 @@ def _check_logbook(project_name: str, path: Path,
         tipo = entry_tags[0]
         expected_emoji = _EMOJI_BY_TAG.get(tipo, "")
 
-        # Check if a wrong emoji is present (not just missing)
         if expected_emoji:
             after_date = s[len(date_str):].lstrip()
-            has_wrong_emoji = False
-            for emoji in _ALL_ENTRY_EMOJIS:
-                if after_date.startswith(emoji) and emoji != expected_emoji:
-                    has_wrong_emoji = True
-                    fixed = f"{date_str} {expected_emoji} {after_date[len(emoji):].lstrip()}"
-                    issues.append(Issue(project_name, path.name, i + 1, line,
-                                        f"Emoji {emoji} no coincide con #{tipo} (esperado {expected_emoji})",
-                                        fix=fixed))
-                    break
+
+            # Check if emoji is missing entirely
+            has_any_emoji = any(after_date.startswith(e) for e in _ALL_ENTRY_EMOJIS)
+            if not has_any_emoji:
+                fixed = f"{date_str} {expected_emoji} {after_date}"
+                issues.append(Issue(project_name, path.name, i + 1, line,
+                                    f"Falta emoji para #{tipo} (esperado {expected_emoji})",
+                                    fix=fixed))
+            else:
+                # Check if a wrong emoji is present
+                for emoji in _ALL_ENTRY_EMOJIS:
+                    if after_date.startswith(emoji) and emoji != expected_emoji:
+                        fixed = f"{date_str} {expected_emoji} {after_date[len(emoji):].lstrip()}"
+                        issues.append(Issue(project_name, path.name, i + 1, line,
+                                            f"Emoji {emoji} no coincide con #{tipo} (esperado {expected_emoji})",
+                                            fix=fixed))
+                        break
 
     return issues
 

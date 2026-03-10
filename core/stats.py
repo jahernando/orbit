@@ -66,6 +66,9 @@ def _scan_logbook(path: Path, start: date, end: date):
 
     for line in path.read_text().splitlines():
         s = line.strip()
+        # Skip continuation lines (indented)
+        if line.startswith("  "):
+            continue
         if len(s) < 10 or not s[:4].isdigit() or s[4] != "-":
             continue
         try:
