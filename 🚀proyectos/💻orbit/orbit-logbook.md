@@ -83,3 +83,5 @@
 2026-03-10 📝 [completada] Tarea: Reminder - Prueba #apunte [O]
 
 2026-03-10 🔍 Valoración v0.6.1: recomendaciones de funcionalidad y refactorización → notes/valoracion_v0.6.1.md #evaluacion
+
+2026-03-10 📊 tag v0.6.1 #resultado
