@@ -249,17 +249,23 @@ orbit doctor --fix [<project>]  # revisa y ofrece corregir
 ## clean — limpieza de entradas antiguas
 
 ```bash
-orbit clean [<project>] [--months N] [--dry-run]
+orbit clean [<project>] [--months N] [--dry-run] [--force]
+orbit clean orbit --agenda              # solo tareas/hitos done + eventos pasados
+orbit clean orbit --logbook             # solo entradas de logbook
+orbit clean orbit --notes               # solo notas obsoletas
+orbit clean orbit --agenda --logbook    # combinación
 ```
 
 - Sin proyecto: limpia todos los proyectos
+- Sin flags: limpia todo, preguntando confirmación por cada categoría
 - `--months N`: antigüedad mínima para eliminar (defecto: 6 meses)
 - `--dry-run`: muestra qué se eliminaría sin borrar nada
+- `--force`: salta todas las confirmaciones
 
 Qué se limpia:
-1. Entradas de logbook con fecha anterior al corte
-2. Eventos pasados en agenda.md
-3. Notas en `notes/` no modificadas en N meses (interactivo)
+1. **agenda**: tareas/hitos completados `[x]`/cancelados `[-]` + eventos pasados
+2. **logbook**: entradas con fecha anterior al corte
+3. **notes**: notas en `notes/` no modificadas en N meses
 
 Los datos eliminados son recuperables con `git log -p -- <fichero>`.
 
