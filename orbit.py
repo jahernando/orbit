@@ -120,6 +120,9 @@ def cmd_search(args):
 
 
 def cmd_open(args):
+    if getattr(args, "dir", False):
+        from core.project_view import run_open_dir
+        return run_open_dir(args.target)
     what = getattr(args, "what", None)
     return run_new_open(args.target, what=what,
                         editor=getattr(args, "editor", None) or default_editor())
@@ -604,6 +607,8 @@ def main():
     open_p.add_argument("--what",     default=None,
                         choices=["logbook", "highlights", "agenda", "notes", "project"],
                         help="Which file to open: project (default), logbook, highlights, agenda, notes")
+    open_p.add_argument("--dir",      action="store_true",
+                        help="Open the project directory in Finder")
     open_p.add_argument("--editor",   default=None,
                         help="Editor: typora, glow, code, or any command (env ORBIT_EDITOR)")
 
