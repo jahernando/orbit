@@ -457,13 +457,15 @@ def cmd_ls(args):
         fn = lambda: run_task_list(
             projects=getattr(args, "projects", None) or None,
             status_filter=getattr(args, "status", "pending"),
-            date_filter=_d(getattr(args, "date", None)))
+            date_filter=_d(getattr(args, "date", None)),
+            dated_only=getattr(args, "dated", False))
         return _handle_output(args, fn, "ls tasks")
 
     if what == "ms":
         fn = lambda: run_ms_list(
             projects=getattr(args, "projects", None) or None,
-            status_filter=getattr(args, "status", "pending"))
+            status_filter=getattr(args, "status", "pending"),
+            dated_only=getattr(args, "dated", False))
         return _handle_output(args, fn, "ls ms")
 
     if what == "ev":
@@ -590,6 +592,7 @@ def main():
     ls_tasks.add_argument("--status", default="pending",
                           choices=["pending", "done", "cancelled", "all"])
     ls_tasks.add_argument("--date",   default=None, help="Filter by date")
+    ls_tasks.add_argument("--dated",  action="store_true", help="Only show tasks with a date")
     ls_tasks.add_argument("--open",   action="store_true")
     ls_tasks.add_argument("--editor", default=None)
     _add_log_args(ls_tasks)
@@ -599,6 +602,7 @@ def main():
     ls_ms.add_argument("projects", nargs="*", default=None, help="Project(s)")
     ls_ms.add_argument("--status", default="pending",
                        choices=["pending", "done", "cancelled", "all"])
+    ls_ms.add_argument("--dated",  action="store_true", help="Only show milestones with a date")
     ls_ms.add_argument("--open",   action="store_true")
     ls_ms.add_argument("--editor", default=None)
     _add_log_args(ls_ms)
