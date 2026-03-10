@@ -1,4 +1,4 @@
-# Highlights — ☀️temp
+# Highlights — {{PROJECT_NAME}}
 
 <!-- Secciones disponibles:
      ## 📚 Referencias   — enlaces a papers, recursos, presentaciones ajenas

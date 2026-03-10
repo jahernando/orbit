@@ -1,12 +1,12 @@
-## ✅ Tareas
 
+## ✅ Tareas
 - [x] Set new directory
 - [x] Add general NB
 - [x] put images to clarify the physics
 - [x] Add NB for selection
-- [ ] clean the dataset, put only E, num_tracks, length, num_voxels, eblob1, eblob2
+- [ ] clean the dataset, put only E, num_tracks, length, num_voxels, eblob1, eblob2 [gtask:QmMwSkxfaklHd3h2MjVySQ]
 - [x] Add NB for energy resolution
-- [ ] let as exercise the energy resolution of the signal
+- [ ] let as exercise the energy resolution of the signal [gtask:WGZ2b3VjNnV6Q1NPZHI4Uw]
 - [x] Add NB for bkg estimation
 - [x] Add NB for Counting Experiment, Feldman-Cousin intervals, p-value
 - [x] add NB for fit to the 3samples, p-value, and CI
@@ -16,8 +16,5 @@
 - [x] add true NB for total signal of each sample
 - [x] verified that the output is in the collpars.py file and that the estimated number of events a grees with the true values
 - [x] verified that with the download repository version and run all the NBs
-- [ ] revisit the test
+- [ ] revisit the test [gtask:SHdHdnNGOHU0anUxM0Z2RQ]
 
-## 🏁 Hitos
-
-## 📅 Eventos

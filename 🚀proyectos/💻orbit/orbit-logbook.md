@@ -33,3 +33,37 @@
 2026-03-06 Directorios renombrados con emojis: ☀️mision-log, 🚀proyectos, 📐templates, 💻-orbit #decision
 2026-03-06 Comandos log, list, tasks, activity, monthly implementados #resultado
 2026-03-06 Estructura base del CLI definida #apunte
+
+2026-03-09 📝 [completada] Tarea: Revisar ideas de Claude del logbook y decidir próximas features #apunte [O]
+
+2026-03-09 📝 [cancelada] Tarea: Comando init/end (hota/adios?) con el flujo de entrada/salida #apunte [O]
+
+2026-03-09 📝 [completada] Tarea: Carperta con las notas de proyectos, add note con pregunta de sincronizacion #apunte [O]
+
+2026-03-09 📝 [completada] Tarea: Reducir referencias/resultados/decisiones a notes introducir con --entry #apunte [O]
+
+2026-03-09 📝 Mayor refactory separation proyect in: proyect, agenda, logbook, hightlights #apunte
+
+2026-03-09 📝 Mayor refactory command to manipulate proyect, task, ms, hl, events, and user notes #apunte
+
+2026-03-09 📝 Mayor refactory command to search, list #apunte
+
+2026-03-09 📝 Mayor refactory: agenda with --calendar #apunte
+
+2026-03-09 📝 GitHub public repository: orbit #apunte
+
+2026-03-09 📊 GitHub tag: v0.1.0! #resultado
+
+2026-03-10 ⚠️ recurrencia debe tener un final #problema
+
+2026-03-10 ⚠️ recurrencia debe aparecer en la agenda y --calendar #problema
+
+2026-03-10 💡 asociar notas a las citas (task, ev, ms) #idea
+
+2026-03-10 💡 asociar las citas (task, ev, ms) y ponerlas en Google Calendar #idea
+
+2026-03-10 💡 para los comandos es mejor: verbo + objeto + donde + que + como (i.e task add) vs (add task) #idea
+
+2026-03-10 📝 [completada] Tarea: test recur (recur: daily) → próxima: 2026-03-11 #apunte [O]
+
+2026-03-10 📝 [cancelada] Tarea: test recur #apunte [O]
