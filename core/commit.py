@@ -67,6 +67,55 @@ def _git_add_all_tracked() -> bool:
         return False
 
 
+def _git_untracked_in_projects() -> list:
+    """Return list of untracked file paths inside 🚀proyectos/."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "🚀proyectos/"],
+            capture_output=True, text=True, cwd=ORBIT_DIR,
+        )
+        if result.returncode != 0:
+            return []
+        return [p.strip() for p in result.stdout.splitlines() if p.strip()]
+    except FileNotFoundError:
+        return []
+
+
+def _git_add_files(files: list) -> bool:
+    """Stage specific files."""
+    try:
+        result = subprocess.run(
+            ["git", "add"] + files, cwd=ORBIT_DIR, capture_output=True,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
+def _prompt_untracked() -> None:
+    """Detect untracked files in projects and ask to add them."""
+    untracked = _git_untracked_in_projects()
+    if not untracked or not sys.stdin.isatty():
+        return
+
+    n = len(untracked)
+    print(f"  📂 {n} fichero{'s' if n != 1 else ''} nuevo{'s' if n != 1 else ''} sin trackear:")
+    for p in untracked[:5]:
+        print(f"      +   {p}")
+    if n > 5:
+        print(f"      ... y {n - 5} más")
+
+    try:
+        ans = input("  ¿Añadir al commit? [S/n]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+
+    if ans in ("", "s", "si", "sí", "y", "yes"):
+        _git_add_files(untracked)
+        print(f"  ✓ {n} fichero{'s' if n != 1 else ''} añadido{'s' if n != 1 else ''}")
+
+
 def _git_commit(message: str) -> int:
     """Run git commit -m message. Returns returncode."""
     try:
@@ -132,6 +181,9 @@ def _auto_message(status_lines: list) -> str:
 def run_commit(message: Optional[str] = None) -> int:
     # Stage all tracked-file changes
     _git_add_all_tracked()
+
+    # Detect and offer to add untracked files in projects
+    _prompt_untracked()
 
     status = _git_status()
 
@@ -204,6 +256,10 @@ def startup_commit_check() -> None:
     Shows a summary and prompts the user to commit + push.
     """
     _git_add_all_tracked()
+
+    # Detect and offer to add untracked files in projects
+    _prompt_untracked()
+
     status = _git_status()
     if not status:
         return
