@@ -72,7 +72,7 @@ orbit project create next-kr --type investigacion --priority alta
 orbit project list [--status active] [--open]
 orbit project status next-kr [--set paused]
 orbit project edit next-kr
-orbit project delete next-kr [--force]
+orbit project drop next-kr [--force]
 ```
 
 ### Tareas, hitos y eventos

@@ -370,10 +370,10 @@ def _find_new_project(name: str) -> Optional[Path]:
     return matches[0]
 
 
-# ── project delete ────────────────────────────────────────────────────────────
+# ── project drop ──────────────────────────────────────────────────────────────
 
-def run_project_delete(name: str, force: bool = False) -> int:
-    """Delete a project directory after confirmation (or --force)."""
+def run_project_drop(name: str, force: bool = False) -> int:
+    """Drop a project directory after confirmation (or --force)."""
     project_dir = _find_new_project(name)
     if project_dir is None:
         return 1

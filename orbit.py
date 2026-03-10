@@ -9,7 +9,7 @@ from core.log import VALID_TYPES, add_entry, find_project, find_logbook_file, fi
 from core.search import run_search
 from core.stats import run_report
 from core.project import (run_project_create, run_project_list,
-                          run_project_status, run_project_edit, run_project_delete)
+                          run_project_status, run_project_edit, run_project_drop)
 from core.importer import run_import
 from core.open import open_file, capture_output, open_cmd_output, log_cmd_output, default_editor
 from core.dateparse import parse_date
@@ -27,6 +27,7 @@ from core.commit import run_commit
 from core.migrate import run_migrate, run_migrate_all
 from core.agenda_view import run_agenda
 from core.ls import run_ls_files, run_ls_notes
+from core.gsync import run_gsync
 
 
 def _d(expr):
@@ -61,6 +62,7 @@ def _handle_output(args, run_fn, cmd_label: str = ""):
 # Long options that users often type with a single dash (e.g. -date instead of --date)
 _SINGLE_DASH_FIX = {
     "-date", "-time", "-recur", "-until", "-ring", "-entry", "-project", "-type", "-status",
+    "-list-calendars", "-dry-run",
     "-priority", "-output", "-editor", "-from", "-to", "-limit",
     "-log", "-open", "-force", "-no-open",
     "-file", "-keyword", "-dry-run", "-name", "-date-from",
@@ -318,9 +320,9 @@ def cmd_project(args):
     elif sub == "edit":
         return run_project_edit(name=args.name,
                                 editor=getattr(args, "editor", None) or default_editor())
-    elif sub == "delete":
-        return run_project_delete(name=args.name,
-                                  force=getattr(args, "force", False))
+    elif sub == "drop":
+        return run_project_drop(name=args.name,
+                                force=getattr(args, "force", False))
     else:
         return run_project_list()
 
@@ -389,6 +391,13 @@ def cmd_report(args):
         date_to=_d(getattr(args, "date_to", None)),
     )
     return _handle_output(args, fn, "report")
+
+
+def cmd_gsync(args):
+    return run_gsync(
+        dry_run=getattr(args, "dry_run", False),
+        list_calendars=getattr(args, "list_calendars", False),
+    )
 
 
 def cmd_ls(args):
@@ -633,6 +642,14 @@ def main():
     ag_p.add_argument("--editor", default=None)
     _add_log_args(ag_p)
 
+    # --- gsync ---
+    gsync_p = subparsers.add_parser("gsync",
+                                     help="Sync tasks/milestones/events to Google Tasks/Calendar")
+    gsync_p.add_argument("--dry-run", action="store_true", dest="dry_run",
+                         help="Preview sync without writing to Google")
+    gsync_p.add_argument("--list-calendars", action="store_true", dest="list_calendars",
+                         help="List available Google Calendars with IDs")
+
     # --- task (add/done/cancel/edit/list on agenda.md) ---
     tsknew_p   = subparsers.add_parser("task", help="Task commands: add, done, cancel, edit, list")
     tsknew_sub = tsknew_p.add_subparsers(dest="action")
@@ -854,8 +871,8 @@ def main():
     pre_p.add_argument("name", help="Project name (partial match)")
     pre_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
 
-    # project delete
-    prd_p = prj_sub.add_parser("delete", help="Delete a project (requires confirmation)")
+    # project drop
+    prd_p = prj_sub.add_parser("drop", help="Drop a project (requires confirmation)")
     prd_p.add_argument("name", help="Project name (partial match)")
     prd_p.add_argument("--force", action="store_true",
                        help="Skip confirmation prompt")
@@ -896,7 +913,7 @@ def main():
         "report": cmd_report, "open": cmd_open,
         "import": cmd_import,
         "project": cmd_project, "migrate": cmd_migrate,
-        "ls": cmd_ls, "agenda": cmd_agenda,
+        "ls": cmd_ls, "agenda": cmd_agenda, "gsync": cmd_gsync,
     }
 
     if args.command is None:
@@ -926,7 +943,7 @@ def run_shell(editor: str = ""):
 
     COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "migrate",
                 "import", "ls", "log", "search", "open", "report", "agenda",
-                "help", "project", "claude", "exit", "quit"]
+                "gsync", "help", "project", "claude", "exit", "quit"]
 
     def completer(text, state):
         options = [c for c in COMMANDS if c.startswith(text)]
@@ -945,6 +962,10 @@ def run_shell(editor: str = ""):
         print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
         print()
 
+    # Background sync to Google
+    from core.gsync import gsync_background
+    gsync_background()
+
     shell_start_date = _date.today()
 
     while True:
@@ -957,7 +978,8 @@ def run_shell(editor: str = ""):
             shell_start_date = _date.today()
 
         try:
-            line = input("🚀 ").strip()
+            from core.config import ORBIT_PROMPT
+            line = input(f"{ORBIT_PROMPT} ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break

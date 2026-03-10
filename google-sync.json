@@ -1,0 +1,19 @@
+{
+  "repo_url": "https://github.com/jahernando/orbit-ws/blob/main",
+  "calendars": {
+    "docencia": "3df2ef2b5b1c0153d0fed7a6816c6a1e367b8070638250eceb3a34421b0b09bb@group.calendar.google.com",
+    "investigacion": "hernando.joseangel@gmail.com",
+    "personal": "c074e357f3d704a3164ec96aebc2681db9d331941699579f6aa033e8babe1e13@group.calendar.google.com",
+    "gestion": "60aa126502ce2ace1be52e264803fd28c184739870aefc7947224a89b4237926@group.calendar.google.com",
+    "mision": "60aa126502ce2ace1be52e264803fd28c184739870aefc7947224a89b4237926@group.calendar.google.com",
+    "software": "60aa126502ce2ace1be52e264803fd28c184739870aefc7947224a89b4237926@group.calendar.google.com",
+    "default": "hernando.joseangel@gmail.com"
+  },
+  "task_lists": {
+    "mision": "dFJaQmlsNmE4NEFtaEdlbw",
+    "gestion": "QnE2amZUS29JTFBKUThsOQ",
+    "investigacion": "MlVlcTk3WGhHTzU2VENucg",
+    "software": "MDBKU3ZHQW9sWGNYMjJvNw",
+    "docencia": "bUt5aHZxYktIeGdHcV8wYg"
+  }
+}

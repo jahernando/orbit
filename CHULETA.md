@@ -20,11 +20,11 @@ orbit project create <name> --type TIPO [--priority alta|media|baja]
 orbit project list   [--status active|paused|sleeping] [--type TIPO] [--open] [--editor E]
 orbit project status <name> [--set STATUS]
 orbit project edit   <name> [--editor E]
-orbit project delete <name> [--force]
+orbit project drop <name> [--force]
 ```
 
 - `create` genera la estructura completa: `project.md`, `logbook.md`, `highlights.md`, `agenda.md`, `notes/`
-- `delete` pide confirmación interactiva (defecto **No**); `--force` la omite
+- `drop` pide confirmación interactiva (defecto **No**); `--force` la omite
 - `--type`: `investigacion` · `docencia` · `gestion` · `formacion` · `software` · `personal`
 
 ---

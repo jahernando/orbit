@@ -10,18 +10,20 @@ from core.log import PROJECTS_DIR, find_project, find_logbook_file, init_logbook
 from core.config import ORBIT_HOME
 CREDENTIALS_PATH = ORBIT_HOME / "credentials.json"
 TOKEN_PATH = ORBIT_HOME / "token.json"
-SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/tasks",
+]
 
 PROJECT_RE = re.compile(r"proyecto\s*:\s*(\S+)", re.IGNORECASE)
 
 
-def _get_service():
-    """Authenticate and return the Google Calendar API service."""
+def _get_credentials():
+    """Authenticate and return Google API credentials."""
     try:
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
         from google_auth_oauthlib.flow import InstalledAppFlow
-        from googleapiclient.discovery import build
     except ImportError:
         print("Error: instala las dependencias:")
         print("  pip install google-api-python-client google-auth-oauthlib")
@@ -29,18 +31,15 @@ def _get_service():
 
     creds = None
     if TOKEN_PATH.exists():
-        from google.oauth2.credentials import Credentials
         creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            from google.auth.transport.requests import Request
             creds.refresh(Request())
         else:
             if not CREDENTIALS_PATH.exists():
                 print(f"Error: no se encontró credentials.json en {CREDENTIALS_PATH.parent}")
                 return None
-            from google_auth_oauthlib.flow import InstalledAppFlow
             import subprocess
             import webbrowser as _wb
             _orig_open = _wb.open
@@ -54,8 +53,21 @@ def _get_service():
             _wb.open = _orig_open
         TOKEN_PATH.write_text(creds.to_json())
 
+    return creds
+
+
+def _build_service(service_name: str, version: str):
+    """Build a Google API service (calendar v3, tasks v1, etc.)."""
+    creds = _get_credentials()
+    if not creds:
+        return None
     from googleapiclient.discovery import build
-    return build("calendar", "v3", credentials=creds)
+    return build(service_name, version, credentials=creds)
+
+
+def _get_service():
+    """Return the Google Calendar API service."""
+    return _build_service("calendar", "v3")
 
 
 def _day_bounds(target: date) -> tuple:
