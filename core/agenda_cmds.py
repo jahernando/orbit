@@ -671,7 +671,8 @@ def run_task_edit(project: Optional[str], text: Optional[str],
 
 def run_task_list(projects: Optional[list] = None,
                   status_filter: str = "pending",
-                  date_filter: Optional[str] = None) -> int:
+                  date_filter: Optional[str] = None,
+                  dated_only: bool = False) -> int:
     """List tasks from new-format projects."""
     if projects:
         dirs = []
@@ -694,6 +695,8 @@ def run_task_list(projects: Optional[list] = None,
             tasks = [t for t in tasks if t["status"] == status_filter]
         if date_filter:
             tasks = [t for t in tasks if t.get("date", "").startswith(date_filter)]
+        if dated_only:
+            tasks = [t for t in tasks if t.get("date")]
 
         if not tasks:
             continue
@@ -907,7 +910,8 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
     return 0
 
 
-def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending") -> int:
+def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
+                dated_only: bool = False) -> int:
     if projects:
         dirs = []
         for p in projects:
@@ -927,6 +931,8 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending")
 
         if status_filter != "all":
             mss = [ms for ms in mss if ms["status"] == status_filter]
+        if dated_only:
+            mss = [ms for ms in mss if ms.get("date")]
         if not mss:
             continue
 
