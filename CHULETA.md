@@ -114,12 +114,13 @@ orbit note drop   <project> [<file>] [--force]
 
 ```bash
 orbit view  [<project>] [--open] [--editor E]
-orbit open  <project> [logbook|highlights|agenda|notes|project] [--editor E]
+orbit open  <project> [logbook|highlights|agenda|notes|project] [--editor E] [--dir]
 ```
 
 - `view` sin proyecto: muestra lista para selección interactiva
 - `view <project>`: resumen en terminal (estado, tareas, hitos, próximos eventos, entradas recientes)
 - `view <project> --open`: genera `cmd.md` y lo abre en el editor
+- `open --dir`: abre el directorio del proyecto en Finder
 
 ---
 
@@ -215,6 +216,31 @@ orbit gsync --list-calendars   # muestra calendarios disponibles
 
 ---
 
+## doctor — validación de ficheros
+
+```bash
+orbit doctor [<project>]        # revisa todos o un proyecto
+orbit doctor --fix [<project>]  # revisa y ofrece corregir
+```
+
+- Valida logbook (fechas, tipos, emojis), agenda (marcadores, fechas, recurrencia, formato de eventos) y highlights (secciones, formato de items, links)
+- Se ejecuta automáticamente en segundo plano al iniciar la shell
+- Con `--fix`: muestra correcciones disponibles y permite aplicarlas interactivamente
+
+---
+
+## Startup — al iniciar la shell
+
+Al entrar en `orbit shell`:
+
+1. **gsync** y **doctor** se ejecutan en paralelo (background)
+2. Se muestran los **recordatorios** del día (tareas con ring)
+3. Si doctor encuentra problemas, los muestra con opción de corregir
+4. Si hay **ficheros sin trackear** en `🚀proyectos/`, ofrece añadirlos a git
+5. Si hay **cambios sin commit**, ofrece hacer commit + push (mensaje por defecto: `sync YYYY-MM-DD`)
+
+---
+
 ## help — documentación
 
 ```bash
@@ -262,7 +288,9 @@ Configurables en `orbit.json`. Ver: `orbit project type`
 
 ## Estados
 
-`active` ▶️ · `paused` ⏸️ · `sleeping` 💤 · `[auto]` (inferido por Orbit)
+`new` ⬜ · `active` ▶️ · `paused` ⏸️ · `sleeping` 💤 · `[auto]` (inferido por Orbit)
+
+- `new`: proyecto recién creado, sin entradas en logbook
 
 ## Prioridades
 

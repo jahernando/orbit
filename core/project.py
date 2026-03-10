@@ -352,8 +352,14 @@ def run_project_priority(name: str, new_priority: str) -> int:
     prio_emoji = PRIORITY_MAP[prio_key]
     new_value = f"{prio_emoji} {new_priority.capitalize()}"
 
-    from core.tasks import update_proyecto_field
-    update_proyecto_field(project_file, "prioridad", f"- Prioridad: {new_value}")
+    lines = project_file.read_text().splitlines()
+    out = []
+    for line in lines:
+        if line.strip().startswith("- Prioridad:"):
+            out.append(f"- Prioridad: {new_value}")
+        else:
+            out.append(line)
+    project_file.write_text("\n".join(out) + "\n")
     print(f"✓ [{project_dir.name}] Prioridad → {new_value}")
     return 0
 
@@ -424,70 +430,3 @@ def run_project_drop(name: str, force: bool = False) -> int:
     return 0
 
 
-# ── legacy: run_project (old format, kept for backwards compat) ───────────────
-
-def run_project(name: str, tipo: str, prioridad: str) -> int:
-    tipo_key = normalize(tipo)
-    if tipo_key not in TYPE_MAP:
-        valid = ", ".join(k for k in TYPE_MAP if not k.endswith("ón"))
-        print(f"Error: tipo '{tipo}' no válido. Opciones: {valid}")
-        return 1
-
-    prio_key = normalize(prioridad)
-    if prio_key not in PRIORITY_MAP:
-        print(f"Error: prioridad '{prioridad}' no válida. Opciones: alta, media, baja")
-        return 1
-
-    tipo_emoji  = TYPE_MAP[tipo_key]
-    tipo_label  = TYPE_LABEL.get(tipo_key, tipo.capitalize())
-    prio_emoji  = PRIORITY_MAP[prio_key]
-    prio_label  = prio_key.capitalize()
-
-    dir_name    = f"{tipo_emoji}{name.lower()}"
-    project_dir = PROJECTS_DIR / dir_name
-
-    if project_dir.exists():
-        print(f"Error: ya existe el proyecto en {project_dir}")
-        return 1
-
-    tpl_proyecto = TEMPLATES_DIR / "proyecto.md"
-    tpl_logbook  = TEMPLATES_DIR / "logbook.md"
-    if not tpl_proyecto.exists() or not tpl_logbook.exists():
-        print(f"Error: plantillas no encontradas en {TEMPLATES_DIR}")
-        return 1
-
-    print(f"\nObjetivo del proyecto (intro para dejarlo en blanco):")
-    try:
-        objetivo = input("> ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        objetivo = ""
-
-    project_dir.mkdir(parents=True)
-
-    logbook_filename = f"📓{name}.md"
-
-    proyecto_content = (
-        tpl_proyecto.read_text()
-        .replace("# [Nombre del proyecto]", f"# {dir_name}")
-        .replace("🌀 Investigación", f"{tipo_emoji} {tipo_label}")
-        .replace("🟡 Media", f"{prio_emoji} {prio_label}")
-        .replace("./logbook.md", f"./{logbook_filename}")
-        .replace("Descripción breve del objetivo.", objetivo or "Descripción breve del objetivo.")
-    )
-    proyecto_file = project_dir / f"{tipo_emoji}{name}.md"
-    proyecto_file.write_text(proyecto_content)
-
-    logbook_content = (
-        tpl_logbook.read_text()
-        .replace("# Logbook — {{PROJECT_NAME}}", f"# Logbook — {dir_name}")
-        .replace("## YYYY-MM-DD\n\nYYYY-MM-DD Primera entrada. #apunte", "")
-        .replace("YYYY-MM-DD", date.today().isoformat())
-    )
-    logbook_file = project_dir / logbook_filename
-    logbook_file.write_text(logbook_content)
-
-    print(f"✓ Proyecto creado: {project_dir}")
-    print(f"  {proyecto_file}")
-    print(f"  {logbook_file}")
-    return 0
