@@ -9,20 +9,9 @@ from core.log import PROJECTS_DIR, find_logbook_file, find_proyecto_file, resolv
 from core.tasks import TYPE_MAP, PRIORITY_MAP, normalize
 from core.open import open_file
 
-from core.config import TEMPLATES_DIR
+from core.config import TEMPLATES_DIR, get_type_label
 
-TYPE_LABEL = {
-    "investigacion": "Investigación",
-    "investigación": "Investigación",
-    "docencia":      "Docencia",
-    "gestion":       "Gestión",
-    "gestión":       "Gestión",
-    "formacion":     "Formación",
-    "formación":     "Formación",
-    "software":      "Software",
-    "personal":      "Personal",
-    "mision":        "Misión",
-}
+TYPE_LABEL = get_type_label()
 
 # ── Status inference thresholds ───────────────────────────────────────────────
 _ACTIVE_DAYS  = 14
