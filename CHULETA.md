@@ -16,16 +16,19 @@ Al salir: `¡Hasta pronto!`
 ## project — gestión de proyectos
 
 ```bash
-orbit project create <name> --type TIPO [--priority alta|media|baja]
-orbit project list   [--status active|paused|sleeping] [--type TIPO] [--open] [--editor E]
-orbit project status <name> [--set STATUS]
-orbit project edit   <name> [--editor E]
-orbit project drop <name> [--force]
+orbit project create   <name> --type TIPO [--priority alta|media|baja]
+orbit project status   <name> [--set STATUS]
+orbit project priority <name> alta|media|baja
+orbit project edit     <name> [--editor E]
+orbit project drop     <name> [--force]
+orbit project type                          # lista tipos configurados
+orbit project type add <name> <emoji>       # añade tipo
+orbit project type drop <name>              # elimina tipo
 ```
 
 - `create` genera la estructura completa: `project.md`, `logbook.md`, `highlights.md`, `agenda.md`, `notes/`
 - `drop` pide confirmación interactiva (defecto **No**); `--force` la omite
-- `--type`: `investigacion` · `docencia` · `gestion` · `formacion` · `software` · `personal`
+- tipos configurables en `orbit.json` (ver `project type`)
 
 ---
 
@@ -36,7 +39,6 @@ orbit task add    <project> "<text>" [--date DATE] [--recur FREQ] [--ring WHEN]
 orbit task done   [<project>] ["<text>"]
 orbit task drop   [<project>] ["<text>"] [--force]
 orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--recur FREQ|none] [--ring WHEN|none]
-orbit task list   [<project>...] [--status pending|done|all] [--date DATE] [--open] [--editor E]
 ```
 
 - `done` y `drop`: interactivos si no se especifica texto; `drop` pide confirmación
@@ -65,7 +67,6 @@ orbit ms add    <project> "<text>" [--date DATE]
 orbit ms done   [<project>] ["<text>"]
 orbit ms drop   [<project>] ["<text>"] [--force]
 orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none]
-orbit ms list   [<project>...] [--status pending|done|all] [--open] [--editor E]
 ```
 
 ---
@@ -75,7 +76,6 @@ orbit ms list   [<project>...] [--status pending|done|all] [--open] [--editor E]
 ```bash
 orbit ev add  <project> "<text>" --date DATE [--end DATE]
 orbit ev drop [<project>] ["<text>"] [--force]
-orbit ev list [<project>] [--from DATE] [--to DATE] [--open] [--editor E]
 ```
 
 - `drop` pide confirmación (defecto **No**); `--force` la omite
@@ -88,7 +88,6 @@ orbit ev list [<project>] [--from DATE] [--to DATE] [--open] [--editor E]
 orbit hl add  <project> "<text>" --type TYPE [--link URL]
 orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
 orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE]
-orbit hl list [<project>] [--type TYPE] [--open] [--editor E]
 ```
 
 - `--type`: `refs` · `results` · `decisions` · `ideas` · `evals`
@@ -154,7 +153,7 @@ orbit commit ["<mensaje>"]
 
 ```bash
 orbit ls                              # lista proyectos (por defecto)
-orbit ls projects [--status S] [--type T]
+orbit ls projects [--status S] [--type T] [--sort type|status|priority]
 orbit ls tasks    [project...] [--status pending|done|all] [--date D]
 orbit ls ms       [project...] [--status pending|done|all]
 orbit ls ev       [project]    [--from D] [--to D]
@@ -201,6 +200,21 @@ orbit report [project...] [--date D] [--from D] [--to D] [--open] [--editor E]
 
 ---
 
+## gsync — sincronización con Google
+
+```bash
+orbit gsync                    # sincroniza tareas/hitos/eventos con Google
+orbit gsync --dry-run          # preview sin escribir
+orbit gsync --list-calendars   # muestra calendarios disponibles
+```
+
+- Tareas e hitos → Google Tasks (una lista por tipo de proyecto)
+- Eventos → Google Calendar (un calendario por tipo, configurable en `google-sync.json`)
+- Sincronización automática: al iniciar la shell + al añadir/completar/editar/eliminar items
+- IDs de sincronización almacenados en agenda.md: `[gtask:id]` y `[gcal:id]`
+
+---
+
 ## help — documentación
 
 ```bash
@@ -244,7 +258,7 @@ Comandos que lo admiten: los mismos que `--open`.
 
 ## Tipos de proyecto
 
-`investigacion` 🌀 · `docencia` 📚 · `gestion` ⚙️ · `formacion` 📖 · `software` 💻 · `personal` 🌿 · `mision` ☀️
+Configurables en `orbit.json`. Ver: `orbit project type`
 
 ## Estados
 

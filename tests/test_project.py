@@ -390,7 +390,7 @@ class TestRunProjectList:
         (proj / "recent-logbook.md").write_text(f"# Logbook\n\n{today} Nota #apunte\n")
         run_project_list()
         out = capsys.readouterr().out
-        assert "Activo" in out
+        assert "▶️" in out
 
     def test_filter_by_status_active(self, project_env, capsys):
         proj_a = _make_new_project(project_env["projects_dir"], "active-one")

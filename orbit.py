@@ -169,10 +169,6 @@ def cmd_hl(args):
             hl_type  = getattr(args, "type", None),
             editor   = getattr(args, "editor", None) or default_editor(),
         )
-    if action == "list":
-        fn = lambda: run_hl_list(project=getattr(args, "project", None),
-                                 hl_type=getattr(args, "type", None))
-        return _handle_output(args, fn, "hl list")
     return 1
 
 
@@ -234,11 +230,6 @@ def cmd_task_new(args):
             new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
             new_ring  = getattr(args, "new_ring", None),
         )
-    if action == "list":
-        fn = lambda: run_task_list(projects=getattr(args, "projects", None),
-                                   status_filter=getattr(args, "status", "pending"),
-                                   date_filter=_d(getattr(args, "date", None)))
-        return _handle_output(args, fn, "task list")
     return 1
 
 
@@ -270,10 +261,6 @@ def cmd_ms(args):
             new_text = getattr(args, "new_text", None),
             new_date = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
         )
-    if action == "list":
-        fn = lambda: run_ms_list(projects=getattr(args, "projects", None),
-                                 status_filter=getattr(args, "status", "pending"))
-        return _handle_output(args, fn, "ms list")
     return 1
 
 
@@ -294,11 +281,6 @@ def cmd_ev(args):
             text    = getattr(args, "text", None),
             force   = getattr(args, "force", False),
         )
-    if action == "list":
-        fn = lambda: run_ev_list(project=getattr(args, "project", None),
-                                 period_from=_d(getattr(args, "period_from", None)),
-                                 period_to=_d(getattr(args, "period_to", None)))
-        return _handle_output(args, fn, "ev list")
     return 1
 
 
@@ -310,10 +292,6 @@ def cmd_project(args):
     if sub == "create":
         return run_project_create(name=args.name, tipo=args.type,
                                   prioridad=args.priority)
-    elif sub == "list":
-        fn = lambda: run_project_list(status_filter=getattr(args, "status", None),
-                                      tipo_filter=getattr(args, "type", None))
-        return _handle_output(args, fn, "project list")
     elif sub == "status":
         return run_project_status(name=args.name,
                                   set_status=getattr(args, "set", None))
@@ -323,6 +301,10 @@ def cmd_project(args):
     elif sub == "drop":
         return run_project_drop(name=args.name,
                                 force=getattr(args, "force", False))
+    elif sub == "priority":
+        from core.project import run_project_priority
+        return run_project_priority(name=args.name,
+                                     new_priority=args.priority)
     elif sub == "type":
         type_sub = getattr(args, "type_sub", None)
         if type_sub == "add":
@@ -334,8 +316,7 @@ def cmd_project(args):
         else:
             from core.config import run_type_list
             return run_type_list()
-    else:
-        return run_project_list()
+    return 1
 
 
 def cmd_import(args):
@@ -418,7 +399,8 @@ def cmd_ls(args):
     if what == "projects":
         fn = lambda: run_project_list(
             status_filter=getattr(args, "status", None),
-            tipo_filter=getattr(args, "type", None))
+            tipo_filter=getattr(args, "type", None),
+            sort_by=getattr(args, "sort", None))
         return _handle_output(args, fn, "ls projects")
 
     if what == "tasks":
@@ -546,6 +528,8 @@ def main():
     ls_proj = ls_sub.add_parser("projects", help="List projects with status")
     ls_proj.add_argument("--status", default=None, help="Filter: active, paused, sleeping")
     ls_proj.add_argument("--type",   default=None, help="Filter: investigacion, docencia, ...")
+    ls_proj.add_argument("--sort",   default=None, choices=["type", "status", "priority"],
+                         help="Sort by: type, status, priority")
     ls_proj.add_argument("--open",   action="store_true")
     ls_proj.add_argument("--editor", default=None)
     _add_log_args(ls_proj)
@@ -702,17 +686,6 @@ def main():
     tn_edit.add_argument("--ring",  dest="new_ring",  default=None,
                          help="New ring value (or 'none')")
 
-    tn_list = tsknew_sub.add_parser("list", help="List tasks")
-    tn_list.add_argument("projects", nargs="*", default=None,
-                         help="Project name(s) (omit for all)")
-    tn_list.add_argument("--status", default="pending",
-                         choices=["pending", "done", "cancelled", "all"],
-                         help="Status filter (default: pending)")
-    tn_list.add_argument("--date",   default=None, help="Filter by date YYYY-MM or YYYY-MM-DD")
-    tn_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    tn_list.add_argument("--editor", default=None)
-    _add_log_args(tn_list)
-
     # --- ms ---
     ms_p   = subparsers.add_parser("ms", help="Milestone commands (agenda.md)")
     ms_sub = ms_p.add_subparsers(dest="action")
@@ -737,14 +710,6 @@ def main():
     ms_edit.add_argument("--text",  dest="new_text", default=None)
     ms_edit.add_argument("--date",  dest="new_date", default=None)
 
-    ms_list = ms_sub.add_parser("list", help="List milestones")
-    ms_list.add_argument("projects", nargs="*", default=None)
-    ms_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    ms_list.add_argument("--editor", default=None)
-    _add_log_args(ms_list)
-    ms_list.add_argument("--status", default="pending",
-                         choices=["pending", "done", "cancelled", "all"])
-
     # --- ev ---
     ev_p   = subparsers.add_parser("ev", help="Event commands (agenda.md)")
     ev_sub = ev_p.add_subparsers(dest="action")
@@ -759,14 +724,6 @@ def main():
     ev_drop.add_argument("project", nargs="?", default=None)
     ev_drop.add_argument("text",    nargs="?", default=None)
     ev_drop.add_argument("--force", action="store_true", help="Skip confirmation")
-
-    ev_list = ev_sub.add_parser("list", help="List events")
-    ev_list.add_argument("project", nargs="?", default=None)
-    ev_list.add_argument("--from", dest="period_from", default=None, metavar="YYYY-MM-DD")
-    ev_list.add_argument("--to",   dest="period_to",   default=None, metavar="YYYY-MM-DD")
-    ev_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    ev_list.add_argument("--editor", default=None)
-    _add_log_args(ev_list)
 
     # --- hl ---
     hl_p   = subparsers.add_parser("hl", help="Highlights commands (highlights.md)")
@@ -794,14 +751,6 @@ def main():
     hl_edit.add_argument("--link",   dest="new_link", default=None,
                          help="New link (or 'none' to remove)")
     hl_edit.add_argument("--editor", default=None)
-
-    hl_list = hl_sub.add_parser("list", help="List highlights")
-    hl_list.add_argument("project", nargs="?", default=None)
-    hl_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    hl_list.add_argument("--editor", default=None)
-    _add_log_args(hl_list)
-    hl_list.add_argument("--type",  default=None, choices=HL_TYPES,
-                         help="Filter by section type")
 
     # --- view (project summary) ---
     v2_p = subparsers.add_parser("view",
@@ -862,15 +811,6 @@ def main():
     prc_p.add_argument("--priority", default="media",
                        help="Priority: alta, media, baja (default: media)")
 
-    # project list
-    prl_p = prj_sub.add_parser("list", help="List projects with status")
-    prl_p.add_argument("--status", default=None,
-                       help="Filter by status: active/activo, paused/pausado, sleeping/durmiendo")
-    prl_p.add_argument("--type",   default=None, help="Filter by project type")
-    prl_p.add_argument("--open",   action="store_true", help="Open output in editor")
-    prl_p.add_argument("--editor", default=None)
-    _add_log_args(prl_p)
-
     # project status
     prs_p = prj_sub.add_parser("status", help="Show or set project status")
     prs_p.add_argument("name", help="Project name (partial match)")
@@ -881,6 +821,12 @@ def main():
     pre_p = prj_sub.add_parser("edit", help="Open project.md in editor")
     pre_p.add_argument("name", help="Project name (partial match)")
     pre_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
+
+    # project priority
+    prp_p = prj_sub.add_parser("priority", help="Change project priority")
+    prp_p.add_argument("name", help="Project name (partial match)")
+    prp_p.add_argument("priority", choices=["alta", "media", "baja"],
+                        help="New priority: alta, media, baja")
 
     # project drop
     prd_p = prj_sub.add_parser("drop", help="Drop a project (requires confirmation)")

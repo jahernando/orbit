@@ -215,18 +215,23 @@ def run_project_create(name: str, tipo: str, prioridad: str) -> int:
 
 # ── project list ──────────────────────────────────────────────────────────────
 
+_PRIO_ORDER = {"alta": 0, "media": 1, "baja": 2}
+_STATUS_ORDER = {"active": 0, "paused": 1, "sleeping": 2}
+
+
 def run_project_list(status_filter: Optional[str] = None,
-                     tipo_filter:   Optional[str] = None) -> int:
-    """List projects. New-format projects show auto-inferred status."""
+                     tipo_filter:   Optional[str] = None,
+                     sort_by:       Optional[str] = None) -> int:
+    """List projects with emoji-only columns for tipo, estado, prioridad."""
     rows = []
     for d in sorted(PROJECTS_DIR.iterdir()):
         if not d.is_dir():
             continue
         if not _is_new_project(d):
-            continue  # skip old-format projects for now
+            continue
 
         meta             = _read_project_meta(d)
-        status, display, _ = _resolve_status(meta, d)
+        status, _, _ = _resolve_status(meta, d)
 
         # Apply filters
         if status_filter:
@@ -237,17 +242,19 @@ def run_project_list(status_filter: Optional[str] = None,
             if tipo_filter.lower() not in meta.get("tipo_label", "").lower():
                 continue
 
-        prio_raw = meta["prioridad"]
-        prio_key = normalize(prio_raw)
+        prio_key = normalize(meta["prioridad"])
         prio_emoji = PRIORITY_MAP.get(prio_key, "")
-        prio_label = prio_raw.split(None, 1)[-1] if any(prio_raw.startswith(e) for e in PRIORITY_MAP.values()) else prio_raw
-        prio_display = f"{prio_emoji} {prio_label.capitalize()}" if prio_emoji else prio_raw
+        status_emoji = _STATUS_EMOJI.get(status, "❓")
+        tipo_emoji = meta["tipo_emoji"] or "❓"
 
         rows.append({
-            "name":     meta["name"],
-            "tipo":     f"{meta['tipo_emoji']} {meta['tipo_label']}",
-            "prioridad": prio_display,
-            "display":  display,
+            "name":         meta["name"],
+            "tipo_emoji":   tipo_emoji,
+            "status_emoji": status_emoji,
+            "prio_emoji":   prio_emoji,
+            "status_key":   status,
+            "prio_key":     prio_key,
+            "tipo_label":   meta.get("tipo_label", ""),
         })
 
     if not rows:
@@ -255,15 +262,19 @@ def run_project_list(status_filter: Optional[str] = None,
               (f" con estado '{status_filter}'" if status_filter else "") + ".")
         return 0
 
-    # Column widths
-    w_name = max(len(r["name"])     for r in rows)
-    w_tipo = max(len(r["tipo"])     for r in rows)
-    w_prio = max(len(r["prioridad"]) for r in rows)
+    # Sort
+    if sort_by == "type":
+        rows.sort(key=lambda r: r["tipo_label"].lower())
+    elif sort_by == "status":
+        rows.sort(key=lambda r: _STATUS_ORDER.get(r["status_key"], 9))
+    elif sort_by == "priority":
+        rows.sort(key=lambda r: _PRIO_ORDER.get(r["prio_key"], 9))
+
+    w_name = max(len(r["name"]) for r in rows)
 
     print()
     for r in rows:
-        print(f"  {r['name']:<{w_name}}  {r['display']:<30}  "
-              f"{r['prioridad']:<{w_prio}}  {r['tipo']}")
+        print(f"  {r['tipo_emoji']}  {r['status_emoji']}  {r['prio_emoji']}  {r['name']}")
     print()
     return 0
 
@@ -320,6 +331,29 @@ def _set_estado_in_file(project_file: Path, value: str) -> None:
         else:
             out.append(line)
     project_file.write_text("\n".join(out) + "\n")
+
+
+# ── project priority ──────────────────────────────────────────────────────────
+
+def run_project_priority(name: str, new_priority: str) -> int:
+    """Change the priority of a project."""
+    project_dir = _find_new_project(name)
+    if project_dir is None:
+        return 1
+
+    prio_key = normalize(new_priority)
+    if prio_key not in PRIORITY_MAP:
+        print(f"⚠️  Prioridad '{new_priority}' no válida. Opciones: alta, media, baja")
+        return 1
+
+    project_file = resolve_file(project_dir, "project")
+    prio_emoji = PRIORITY_MAP[prio_key]
+    new_value = f"{prio_emoji} {new_priority.capitalize()}"
+
+    from core.tasks import update_proyecto_field
+    update_proyecto_field(project_file, "prioridad", f"- Prioridad: {new_value}")
+    print(f"✓ [{project_dir.name}] Prioridad → {new_value}")
+    return 0
 
 
 # ── project edit ──────────────────────────────────────────────────────────────
