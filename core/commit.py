@@ -7,6 +7,7 @@ Shows changed files and asks for confirmation before executing.
 """
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -177,3 +178,69 @@ def run_commit(message: Optional[str] = None) -> int:
     else:
         print("\n✗ Error al hacer el commit.")
     return rc
+
+
+# ── Git push ──────────────────────────────────────────────────────────────────
+
+def _git_push() -> int:
+    """Push to origin. Returns returncode."""
+    try:
+        result = subprocess.run(
+            ["git", "push"],
+            cwd=ORBIT_DIR,
+            capture_output=True, text=True,
+        )
+        return result.returncode
+    except FileNotFoundError:
+        print("Error: git no encontrado")
+        return 1
+
+
+# ── Startup check ────────────────────────────────────────────────────────────
+
+def startup_commit_check() -> None:
+    """Check for uncommitted changes on shell startup.
+
+    Shows a summary and prompts the user to commit + push.
+    """
+    _git_add_all_tracked()
+    status = _git_status()
+    if not status:
+        return
+
+    n = len(status)
+    print(f"  📌 {n} fichero{'s' if n != 1 else ''} modificado{'s' if n != 1 else ''} sin commit")
+    for code, path in status[:5]:
+        print(f"      {code:<2}  {path}")
+    if n > 5:
+        print(f"      ... y {n - 5} más")
+    print()
+
+    default_msg = f"sync {date.today().isoformat()}"
+
+    if not sys.stdin.isatty():
+        return
+
+    try:
+        raw = input(f"  ¿Commit + push? [mensaje / Enter=\"{default_msg}\" / n]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+
+    if raw.lower() in ("n", "no"):
+        return
+
+    msg = raw if raw else default_msg
+
+    rc = _git_commit(msg)
+    if rc != 0:
+        print("  ✗ Error al hacer el commit.")
+        return
+
+    print(f"  ✓ Commit: \"{msg}\"")
+
+    rc = _git_push()
+    if rc == 0:
+        print("  ✓ Push realizado.")
+    else:
+        print("  ⚠️  Error en push (puedes hacerlo manualmente con: git push)")

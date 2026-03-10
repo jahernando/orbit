@@ -569,10 +569,13 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
 
 # ── Background sync on shell startup ───────────────────────────────────────
 
-def gsync_background() -> None:
-    """Run a full gsync in a background thread. Called on shell startup."""
+def gsync_background() -> "threading.Thread | None":
+    """Run a full gsync in a background thread. Called on shell startup.
+
+    Returns the thread so the caller can join() it before checking git status.
+    """
     if not _is_gsync_configured():
-        return
+        return None
 
     import threading
 
@@ -612,3 +615,4 @@ def gsync_background() -> None:
 
     t = threading.Thread(target=_do_full_sync, daemon=True)
     t.start()
+    return t

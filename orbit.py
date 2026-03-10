@@ -955,16 +955,25 @@ def run_shell(editor: str = ""):
     print("¡Hola! ¡Bienvenido!")
     print()
 
-    # Schedule today's reminders on shell start
+    # 1. Start Google sync in background
+    from core.gsync import gsync_background
+    gsync_thread = gsync_background()
+
+    # 2. Schedule today's reminders (runs while gsync works in parallel)
     from core.ring import schedule_new_format_reminders
     scheduled = schedule_new_format_reminders()
     if scheduled:
         print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
         print()
 
-    # Background sync to Google
-    from core.gsync import gsync_background
-    gsync_background()
+    # 3. Wait for gsync to finish (max 5s) so sync IDs are written
+    if gsync_thread is not None:
+        gsync_thread.join(timeout=5)
+
+    # 4. Check for uncommitted changes → prompt commit + push
+    from core.commit import startup_commit_check
+    startup_commit_check()
+    print()
 
     shell_start_date = _date.today()
 
