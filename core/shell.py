@@ -20,27 +20,19 @@ from core.config import ORBIT_HOME as ORBIT_DIR, ORBIT_PROMPT
 # ── Startup sequence ─────────────────────────────────────────────────────────
 
 def _run_startup():
-    """Execute all startup checks. Called once when shell starts."""
+    """Execute all startup checks. Called once when shell starts.
 
-    # 1. Start Google sync and doctor in background (parallel)
-    from core.gsync import gsync_background
+    Order matters:
+      1. Doctor — validate data integrity (fast, local)
+      2. Google sync + reminders — only after data is clean
+      3. Untracked files + commit + push
+    """
+
+    # 1. Doctor first — validate before syncing
     from core.doctor import doctor_background
-    gsync_thread = gsync_background()
     doctor_thread, doctor_issues = doctor_background()
-
-    # 2. Schedule today's reminders (runs while background tasks work)
-    from core.ring import schedule_new_format_reminders
-    scheduled = schedule_new_format_reminders()
-    if scheduled:
-        print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
-        print()
-
-    # 3. Wait for background tasks (max 5s)
-    if gsync_thread is not None:
-        gsync_thread.join(timeout=5)
     doctor_thread.join(timeout=5)
 
-    # 4. Doctor: if issues found, present and offer fixes
     if doctor_thread.is_alive():
         print("  🏥 Doctor aún revisando... (ejecuta 'doctor' manualmente)")
         print()
@@ -61,7 +53,19 @@ def _run_startup():
             print(f"  {len(unfixable)} problema{'s' if len(unfixable) != 1 else ''} requiere{'n' if len(unfixable) != 1 else ''} corrección manual.")
             print()
 
-    # 5. Untracked files + commit + push
+    # 2. Google sync + reminders (parallel, after data validated)
+    from core.gsync import gsync_background
+    from core.ring import schedule_new_format_reminders
+
+    gsync_thread = gsync_background()
+    scheduled = schedule_new_format_reminders()
+    if scheduled:
+        print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
+        print()
+    if gsync_thread is not None:
+        gsync_thread.join(timeout=5)
+
+    # 3. Untracked files + commit + push
     from core.commit import startup_commit_check
     startup_commit_check()
     print()
@@ -82,7 +86,7 @@ def run_shell(editor: str = ""):
 
     COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "migrate",
                 "import", "ls", "log", "search", "open", "report", "agenda",
-                "gsync", "doctor", "help", "project", "claude", "exit", "quit"]
+                "gsync", "doctor", "clean", "help", "project", "claude", "exit", "quit"]
 
     def completer(text, state):
         options = [c for c in COMMANDS if c.startswith(text)]

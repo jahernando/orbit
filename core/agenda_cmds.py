@@ -30,6 +30,56 @@ from core.log import PROJECTS_DIR, add_orbit_entry, resolve_file
 
 VALID_RECUR = {"daily", "weekly", "monthly", "weekdays"}
 
+# Extended recurrence patterns (stored in [recur:...])
+_WEEKDAY_NAMES = {
+    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+    "friday": 4, "saturday": 5, "sunday": 6,
+    "lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3,
+    "viernes": 4, "sabado": 5, "domingo": 6,
+}
+
+_EVERY_RE = re.compile(r"^every[- ](\d+)[- ](days?|weeks?|months?)$")
+_POS_RE   = re.compile(r"^(first|last|1st)[- ](monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+                        r"|lunes|martes|miercoles|jueves|viernes|sabado|domingo)$")
+
+
+def _normalize_recur(raw: str) -> str:
+    """Normalize a recurrence expression to its stored key.
+
+    Accepts:
+      daily, weekly, monthly, weekdays           → as-is
+      "every 2 weeks" / "every-2-weeks"          → every-2-weeks
+      "every 3 days"                             → every-3-days
+      "first monday" / "first-monday"            → first-monday
+      "last friday"  / "last-friday"             → last-friday
+    Returns the canonical key or the original string if not recognized.
+    """
+    s = raw.strip().lower().replace(" ", "-")
+    if s in VALID_RECUR:
+        return s
+    if _EVERY_RE.match(s):
+        m = _EVERY_RE.match(s)
+        n = int(m.group(1))
+        unit = m.group(2).rstrip("s")  # day/week/month
+        return f"every-{n}-{unit}s"
+    if _POS_RE.match(s):
+        m = _POS_RE.match(s)
+        pos = "first" if m.group(1) in ("first", "1st") else "last"
+        return f"{pos}-{m.group(2)}"
+    return raw
+
+
+def is_valid_recur(raw: str) -> bool:
+    """Check if a recurrence expression is valid."""
+    key = _normalize_recur(raw)
+    if key in VALID_RECUR:
+        return True
+    if _EVERY_RE.match(key):
+        return True
+    if _POS_RE.match(key):
+        return True
+    return False
+
 _TASK_HEADER = "## ✅ Tareas"
 _MS_HEADER   = "## 🏁 Hitos"
 _EV_HEADER   = "## 📅 Eventos"
@@ -329,7 +379,46 @@ def _next_occurrence(due: Optional[str], recur: str, done_date: str) -> str:
         while nxt.weekday() >= 5:
             nxt += timedelta(days=1)
     else:
-        nxt = base + timedelta(weeks=1)
+        # Extended patterns
+        em = _EVERY_RE.match(recur)
+        if em:
+            n = int(em.group(1))
+            unit = em.group(2).rstrip("s")
+            if unit == "day":
+                nxt = base + timedelta(days=n)
+            elif unit == "week":
+                nxt = base + timedelta(weeks=n)
+            elif unit == "month":
+                for _ in range(n):
+                    mo = base.month + 1
+                    yr = base.year + (mo - 1) // 12
+                    mo = (mo - 1) % 12 + 1
+                    last = _cal.monthrange(yr, mo)[1]
+                    base = date(yr, mo, min(base.day, last))
+                nxt = base
+            else:
+                nxt = base + timedelta(weeks=1)
+        else:
+            pm = _POS_RE.match(recur)
+            if pm:
+                pos = pm.group(1)
+                wd = _WEEKDAY_NAMES.get(pm.group(2), 0)
+                # Advance to next month
+                mo = base.month + 1
+                yr = base.year + (mo - 1) // 12
+                mo = (mo - 1) % 12 + 1
+                if pos in ("first", "1st"):
+                    d = date(yr, mo, 1)
+                    while d.weekday() != wd:
+                        d += timedelta(days=1)
+                else:  # last
+                    last_day = _cal.monthrange(yr, mo)[1]
+                    d = date(yr, mo, last_day)
+                    while d.weekday() != wd:
+                        d -= timedelta(days=1)
+                nxt = d
+            else:
+                nxt = base + timedelta(weeks=1)
     return nxt.isoformat()
 
 
@@ -338,9 +427,11 @@ def _next_occurrence(due: Optional[str], recur: str, done_date: str) -> str:
 def run_task_add(project: str, text: str, date_val: Optional[str] = None,
                  recur: Optional[str] = None, until: Optional[str] = None,
                  ring: Optional[str] = None) -> int:
-    if recur and recur not in VALID_RECUR:
-        print(f"Error: recurrencia '{recur}' no válida. Opciones: {', '.join(sorted(VALID_RECUR))}")
-        return 1
+    if recur:
+        recur = _normalize_recur(recur)
+        if not is_valid_recur(recur):
+            print(f"Error: recurrencia '{recur}' no válida.")
+            return 1
     if until and not recur:
         print("Error: --until requiere --recur.")
         return 1
@@ -485,7 +576,9 @@ def run_task_edit(project: Optional[str], text: Optional[str],
         print("Error: especifica un proyecto")
         return 1
 
-    if new_recur and new_recur != "none" and new_recur not in VALID_RECUR:
+    if new_recur and new_recur != "none":
+        new_recur = _normalize_recur(new_recur)
+    if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
         print(f"Error: recurrencia '{new_recur}' no válida.")
         return 1
 

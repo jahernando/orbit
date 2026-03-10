@@ -47,7 +47,20 @@ orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--
 
 ### Recurrencia (`--recur`)
 
-`daily` · `weekly` · `monthly` · `weekdays` · `none` (solo en `edit`)
+| Valor | Significado |
+|-------|------------|
+| `daily` | Cada día |
+| `weekly` | Cada semana |
+| `monthly` | Cada mes |
+| `weekdays` | Días laborables (lun–vie) |
+| `every 2 weeks` | Cada 2 semanas |
+| `every 3 days` | Cada 3 días |
+| `every 2 months` | Cada 2 meses |
+| `first monday` | Primer lunes de cada mes |
+| `last friday` | Último viernes de cada mes |
+| `none` | Eliminar recurrencia (solo en `edit`) |
+
+Se aceptan días de la semana en inglés y español (`lunes`, `viernes`, etc.).
 
 ### Ring (`--ring`)
 
@@ -229,15 +242,33 @@ orbit doctor --fix [<project>]  # revisa y ofrece corregir
 
 ---
 
+## clean — limpieza de entradas antiguas
+
+```bash
+orbit clean [<project>] [--months N] [--dry-run]
+```
+
+- Sin proyecto: limpia todos los proyectos
+- `--months N`: antigüedad mínima para eliminar (defecto: 6 meses)
+- `--dry-run`: muestra qué se eliminaría sin borrar nada
+
+Qué se limpia:
+1. Entradas de logbook con fecha anterior al corte
+2. Eventos pasados en agenda.md
+3. Notas en `notes/` no modificadas en N meses (interactivo)
+
+Los datos eliminados son recuperables con `git log -p -- <fichero>`.
+
+---
+
 ## Startup — al iniciar la shell
 
 Al entrar en `orbit shell`:
 
-1. **gsync** y **doctor** se ejecutan en paralelo (background)
-2. Se muestran los **recordatorios** del día (tareas con ring)
-3. Si doctor encuentra problemas, los muestra con opción de corregir
-4. Si hay **ficheros sin trackear** en `🚀proyectos/`, ofrece añadirlos a git
-5. Si hay **cambios sin commit**, ofrece hacer commit + push (mensaje por defecto: `sync YYYY-MM-DD`)
+1. **Doctor** — valida la integridad de logbook, agenda y highlights; ofrece corregir errores
+2. **gsync** + **recordatorios** — sincroniza con Google y programa los recordatorios del día (solo tras validar datos)
+3. **Ficheros sin trackear** en `🚀proyectos/` — ofrece añadirlos a git
+4. **Cambios sin commit** — ofrece hacer commit + push (mensaje por defecto: `sync YYYY-MM-DD`)
 
 ---
 

@@ -38,8 +38,9 @@ _ACCENT_MAP = {
 }
 
 
-def _normalize(text: str) -> str:
-    return unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode().lower()
+def normalize(text: str) -> str:
+    """Lowercase + strip accents. Single source for all modules."""
+    return unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode().lower().strip()
 
 
 def _load_orbit_json() -> dict:
@@ -60,7 +61,7 @@ def get_type_map() -> dict:
     base = _load_types()
     result = {}
     for key, emoji in base.items():
-        norm = _normalize(key)
+        norm = normalize(key)
         result[norm] = emoji
         # Add accented variant if known
         for accented, plain in _ACCENT_MAP.items():
@@ -74,7 +75,7 @@ def get_type_label() -> dict:
     base = _load_types()
     result = {}
     for key in base:
-        norm = _normalize(key)
+        norm = normalize(key)
         result[norm] = key.capitalize()
         for accented, plain in _ACCENT_MAP.items():
             if plain == norm:
@@ -117,7 +118,7 @@ def _projects_with_emoji(emoji: str) -> list:
 
 def run_type_add(name: str, emoji: str) -> int:
     """Add a new project type."""
-    norm = _normalize(name)
+    norm = normalize(name)
     config = _load_orbit_json()
     types = config.get("types", dict(_DEFAULT_TYPES))
 
@@ -140,7 +141,7 @@ def run_type_add(name: str, emoji: str) -> int:
 
 def run_type_drop(name: str) -> int:
     """Remove a project type."""
-    norm = _normalize(name)
+    norm = normalize(name)
     config = _load_orbit_json()
     types = config.get("types", dict(_DEFAULT_TYPES))
 

@@ -15,7 +15,7 @@ from core.log import PROJECTS_DIR, TAG_EMOJI, VALID_TYPES, resolve_file
 from core.project import _find_new_project, _is_new_project
 from core.agenda_cmds import (
     _parse_task_line, _parse_event_line,
-    _TASK_HEADER, _MS_HEADER, _EV_HEADER, VALID_RECUR,
+    _TASK_HEADER, _MS_HEADER, _EV_HEADER, VALID_RECUR, is_valid_recur,
 )
 from core.highlights import SECTION_MAP
 
@@ -169,10 +169,9 @@ def _check_agenda(project_name: str, path: Path) -> list:
                             issues.append(Issue(project_name, path.name, i + 1, line,
                                                 f"Fecha inválida: {parsed['date']}"))
                     # Validate recurrence
-                    if parsed.get("recur") and parsed["recur"] not in VALID_RECUR:
+                    if parsed.get("recur") and not is_valid_recur(parsed["recur"]):
                         issues.append(Issue(project_name, path.name, i + 1, line,
-                                            f"Recurrencia inválida: {parsed['recur']} "
-                                            f"(usar {', '.join(sorted(VALID_RECUR))})"))
+                                            f"Recurrencia inválida: {parsed['recur']}"))
                     # Validate until date
                     if parsed.get("until"):
                         try:

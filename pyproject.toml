@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "orbit-pm"
+version = "0.1.0"
+description = "Personal scientific project management in plain markdown"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+
+[project.scripts]
+orbit = "orbit:main"
+
+[project.optional-dependencies]
+gcal = [
+    "google-api-python-client",
+    "google-auth-httplib2",
+    "google-auth-oauthlib",
+]
+
+[tool.setuptools.packages.find]
+include = ["core*"]
+
+[tool.setuptools.package-data]
+"*" = ["📐templates/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

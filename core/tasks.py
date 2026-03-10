@@ -1,16 +1,11 @@
 import re
-import unicodedata
 from datetime import date
 from pathlib import Path
 from typing import Optional
 
 from core.log import PROJECTS_DIR, find_proyecto_file
 from core.open import open_file
-
-
-
-def normalize(text: str) -> str:
-    return unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode().lower()
+from core.config import normalize
 
 STATUS_MAP = {
     "inicial":    "⬜",

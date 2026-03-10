@@ -18,7 +18,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from core.config import ORBIT_HOME
+from core.config import ORBIT_HOME, normalize as _normalize
 from core.log import PROJECTS_DIR, resolve_file
 from core.project import _find_new_project, _is_new_project, _read_project_meta
 from core.agenda_cmds import _read_agenda, _write_agenda
@@ -30,12 +30,7 @@ CONFIG_PATH = ORBIT_HOME / "google-sync.json"
 
 def _normalize_tipo(tipo_label: str) -> str:
     """Normalize project type label to a canonical key."""
-    import unicodedata
-    s = tipo_label.lower().strip()
-    # Remove accents
-    s = "".join(c for c in unicodedata.normalize("NFD", s)
-                if unicodedata.category(c) != "Mn")
-    return s
+    return _normalize(tipo_label)
 
 
 def _load_config() -> dict:

@@ -403,6 +403,15 @@ def cmd_doctor(args):
     )
 
 
+def cmd_clean(args):
+    from core.clean import run_clean
+    return run_clean(
+        project=getattr(args, "project", None),
+        months=getattr(args, "months", 6),
+        dry_run=getattr(args, "dry_run", False),
+    )
+
+
 def cmd_ls(args):
     """Unified ls command: ls [what] [project...] [--open] [--editor E]."""
     what = getattr(args, "what", None) or "projects"
@@ -612,7 +621,7 @@ def main():
     open_p = subparsers.add_parser("open", help="Open a project file in editor")
     open_p.add_argument("target", nargs="?", default=None,
                         help="Project name (partial match)")
-    open_p.add_argument("--what",     default=None,
+    open_p.add_argument("what", nargs="?", default=None,
                         choices=["logbook", "highlights", "agenda", "notes", "project"],
                         help="Which file to open: project (default), logbook, highlights, agenda, notes")
     open_p.add_argument("--dir",      action="store_true",
@@ -665,6 +674,16 @@ def main():
                        help="Project name (omit for all)")
     doc_p.add_argument("--fix", action="store_true",
                        help="Offer to fix issues interactively")
+
+    # --- clean ---
+    clean_p = subparsers.add_parser("clean",
+                                     help="Remove old logbook entries, past events, and stale notes")
+    clean_p.add_argument("project", nargs="?", default=None,
+                         help="Project name (omit for all)")
+    clean_p.add_argument("--months", type=int, default=6,
+                         help="Age threshold in months (default: 6)")
+    clean_p.add_argument("--dry-run", action="store_true", dest="dry_run",
+                         help="Preview what would be removed without deleting")
 
     # --- task (add/done/cancel/edit/list on agenda.md) ---
     tsknew_p   = subparsers.add_parser("task", help="Task commands: add, done, cancel, edit, list")
@@ -900,7 +919,8 @@ def main():
         "report": cmd_report, "open": cmd_open,
         "import": cmd_import,
         "project": cmd_project, "migrate": cmd_migrate,
-        "ls": cmd_ls, "agenda": cmd_agenda, "gsync": cmd_gsync, "doctor": cmd_doctor,
+        "ls": cmd_ls, "agenda": cmd_agenda, "gsync": cmd_gsync,
+        "doctor": cmd_doctor, "clean": cmd_clean,
     }
 
     if args.command is None:

@@ -8,10 +8,11 @@ Translates natural expressions (English and Spanish) into standard formats:
 """
 
 import re
-import unicodedata
 from datetime import date, timedelta
 import calendar as _calendar
 from typing import Optional
+
+from core.config import normalize as _norm
 
 
 # ── Vocabulary ────────────────────────────────────────────────────────────────
@@ -23,11 +24,6 @@ MONTHS_EN = ["january", "february", "march", "april", "may", "june",
              "july", "august", "september", "october", "november", "december"]
 MONTHS_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
-
-
-def _norm(s: str) -> str:
-    """Lowercase + strip accents."""
-    return unicodedata.normalize("NFD", s.lower()).encode("ascii", "ignore").decode().strip()
 
 
 def _week_key(d: date) -> str:

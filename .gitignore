@@ -19,3 +19,5 @@ token.json
 ☀️mision-log/search.md
 ☀️mision-log/tasks.md
 cmd.md
+.orbit/
+sync-public.sh
