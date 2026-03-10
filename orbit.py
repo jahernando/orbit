@@ -323,6 +323,17 @@ def cmd_project(args):
     elif sub == "drop":
         return run_project_drop(name=args.name,
                                 force=getattr(args, "force", False))
+    elif sub == "type":
+        type_sub = getattr(args, "type_sub", None)
+        if type_sub == "add":
+            from core.config import run_type_add
+            return run_type_add(name=args.name, emoji=args.emoji)
+        elif type_sub == "drop":
+            from core.config import run_type_drop
+            return run_type_drop(name=args.name)
+        else:
+            from core.config import run_type_list
+            return run_type_list()
     else:
         return run_project_list()
 
@@ -847,7 +858,7 @@ def main():
     prc_p = prj_sub.add_parser("create", help="Create a new project")
     prc_p.add_argument("name", help="Project name (e.g. my-project)")
     prc_p.add_argument("--type",     required=True,
-                       help="Type: investigacion, docencia, gestion, formacion, software, personal")
+                       help="Project type (see: orbit project type)")
     prc_p.add_argument("--priority", default="media",
                        help="Priority: alta, media, baja (default: media)")
 
@@ -876,6 +887,15 @@ def main():
     prd_p.add_argument("name", help="Project name (partial match)")
     prd_p.add_argument("--force", action="store_true",
                        help="Skip confirmation prompt")
+
+    # project type
+    prt_p = prj_sub.add_parser("type", help="Manage project types")
+    prt_sub = prt_p.add_subparsers(dest="type_sub")
+    prt_add = prt_sub.add_parser("add", help="Add a new project type")
+    prt_add.add_argument("name",  help="Type name (e.g. viajes)")
+    prt_add.add_argument("emoji", help="Emoji for the type (e.g. ✈️)")
+    prt_drop = prt_sub.add_parser("drop", help="Remove a project type")
+    prt_drop.add_argument("name", help="Type name to remove")
 
     # --- migrate ---
     mig_p = subparsers.add_parser("migrate",

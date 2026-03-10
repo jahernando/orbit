@@ -86,3 +86,56 @@ def get_type_label() -> dict:
 def get_type_emojis() -> tuple:
     """Return tuple of all type emojis (for field detection in project files)."""
     return tuple(set(_load_types().values()))
+
+
+# ── Type management commands ──────────────────────────────────────────────────
+
+def _save_orbit_json(config: dict) -> None:
+    """Write orbit.json back."""
+    _ORBIT_JSON.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
+
+
+def run_type_list() -> int:
+    """List configured project types."""
+    types = _load_types()
+    if not types:
+        print("No hay tipos configurados.")
+        return 0
+    print("Tipos de proyecto:")
+    for key, emoji in sorted(types.items()):
+        print(f"  {emoji}  {key}")
+    return 0
+
+
+def run_type_add(name: str, emoji: str) -> int:
+    """Add a new project type."""
+    norm = _normalize(name)
+    config = _load_orbit_json()
+    types = config.get("types", dict(_DEFAULT_TYPES))
+
+    if norm in types:
+        print(f"⚠️  El tipo '{norm}' ya existe ({types[norm]})")
+        return 1
+
+    types[norm] = emoji
+    config["types"] = types
+    _save_orbit_json(config)
+    print(f"✓ Tipo añadido: {emoji}  {norm}")
+    return 0
+
+
+def run_type_drop(name: str) -> int:
+    """Remove a project type."""
+    norm = _normalize(name)
+    config = _load_orbit_json()
+    types = config.get("types", dict(_DEFAULT_TYPES))
+
+    if norm not in types:
+        print(f"⚠️  El tipo '{norm}' no existe")
+        return 1
+
+    emoji = types.pop(norm)
+    config["types"] = types
+    _save_orbit_json(config)
+    print(f"✓ Tipo eliminado: {emoji}  {norm}")
+    return 0
