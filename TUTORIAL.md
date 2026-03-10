@@ -276,9 +276,13 @@ commit "feat: calibración validada"
 doctor                     # valida sintaxis de logbook, agenda y highlights
 doctor --fix               # ofrece corregir errores detectados
 
-clean                      # elimina entradas de logbook y eventos con más de 6 meses
+clean                      # elimina todo (pregunta por cada categoría)
 clean next-kr --months 3   # solo un proyecto, antigüedad 3 meses
+clean --agenda             # solo tareas/hitos completados + eventos pasados
+clean --logbook            # solo entradas de logbook antiguas
+clean --notes              # solo notas obsoletas
 clean --dry-run            # muestra qué se eliminaría sin borrar
+clean --force              # salta confirmaciones
 ```
 
 ### Documentación
