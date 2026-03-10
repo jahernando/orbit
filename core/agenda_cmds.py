@@ -44,7 +44,7 @@ def _parse_task_line(line: str) -> Optional[dict]:
     status = {" ": "pending", "x": "done", "-": "cancelled"}[m.group(1)]
     rest   = m.group(2)
 
-    date_val = recur = until = ring = None
+    date_val = recur = until = ring = gtask_id = None
     date_m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", rest)
     if date_m:
         date_val = date_m.group(1)
@@ -59,15 +59,19 @@ def _parse_task_line(line: str) -> Optional[dict]:
     ring_m = re.search(r"\[ring:([^\]]+)\]", rest)
     if ring_m:
         ring = ring_m.group(1)
+    gtask_m = re.search(r"\[gtask:([^\]]+)\]", rest)
+    if gtask_m:
+        gtask_id = gtask_m.group(1)
 
     # Description = rest minus attribute patterns
     desc = rest
-    for pat in [r"\(\d{4}-\d{2}-\d{2}\)", r"\[recur:[^\]]+\]", r"\[ring:[^\]]+\]"]:
+    for pat in [r"\(\d{4}-\d{2}-\d{2}\)", r"\[recur:[^\]]+\]",
+                r"\[ring:[^\]]+\]", r"\[gtask:[^\]]+\]"]:
         desc = re.sub(pat, "", desc)
     desc = desc.strip()
 
     return {"status": status, "desc": desc, "date": date_val,
-            "recur": recur, "until": until, "ring": ring}
+            "recur": recur, "until": until, "ring": ring, "gtask_id": gtask_id}
 
 
 def _format_task_line(task: dict) -> str:
@@ -83,6 +87,8 @@ def _format_task_line(task: dict) -> str:
         parts.append(f"[recur:{recur_tag}]")
     if task.get("ring"):
         parts.append(f"[ring:{task['ring']}]")
+    if task.get("gtask_id"):
+        parts.append(f"[gtask:{task['gtask_id']}]")
     return f"- [{char}] {' '.join(parts)}"
 
 
@@ -95,12 +101,18 @@ def _parse_event_line(line: str) -> Optional[dict]:
         return None
     date_val = m.group(1)
     rest     = m.group(2)
-    end = None
+    end = gcal_id = None
     end_m = re.search(r"\[end:(\d{4}-\d{2}-\d{2})\]", rest)
     if end_m:
         end  = end_m.group(1)
-        rest = re.sub(r"\[end:[^\]]+\]", "", rest).strip()
-    return {"date": date_val, "desc": rest, "end": end}
+    gcal_m = re.search(r"\[gcal:([^\]]+)\]", rest)
+    if gcal_m:
+        gcal_id = gcal_m.group(1)
+    # Strip attribute tags from description
+    for pat in [r"\[end:[^\]]+\]", r"\[gcal:[^\]]+\]"]:
+        rest = re.sub(pat, "", rest)
+    rest = rest.strip()
+    return {"date": date_val, "desc": rest, "end": end, "gcal_id": gcal_id}
 
 
 def _format_event_line(ev: dict) -> str:
@@ -108,6 +120,8 @@ def _format_event_line(ev: dict) -> str:
     line = f"{ev['date']} — {ev['desc']}"
     if ev.get("end"):
         line += f" [end:{ev['end']}]"
+    if ev.get("gcal_id"):
+        line += f" [gcal:{ev['gcal_id']}]"
     return line
 
 
@@ -337,9 +351,10 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
 
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-    data["tasks"].append({"status": "pending", "desc": text,
-                           "date": date_val, "recur": recur,
-                           "until": until, "ring": ring})
+    new_task = {"status": "pending", "desc": text,
+                "date": date_val, "recur": recur,
+                "until": until, "ring": ring}
+    data["tasks"].append(new_task)
     _write_agenda(agenda_path, data)
 
     attrs = ""
@@ -362,6 +377,10 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
                 print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
             else:
                 print(f"  ⚠️  No se pudo programar el recordatorio")
+
+    # Sync to Google
+    from core.gsync import sync_item
+    sync_item(project_dir, new_task, "task")
 
     return 0
 
@@ -402,6 +421,11 @@ def run_task_done(project: Optional[str], text: Optional[str]) -> int:
     _write_agenda(agenda_path, data)
     add_orbit_entry(project_dir, f"[completada] Tarea: {task_desc}{next_info}", "apunte")
     print(f"✓ [{project_dir.name}] [completada] {task_desc}{next_info}")
+
+    # Sync completed task to Google
+    from core.gsync import sync_item
+    sync_item(project_dir, task, "task")
+
     return 0
 
 
@@ -436,11 +460,17 @@ def run_task_drop(project: Optional[str], text: Optional[str],
             print("Cancelado.")
             return 0
 
-    data["tasks"][idx]["status"] = "cancelled"
+    task = data["tasks"][idx]
+    task["status"] = "cancelled"
 
     _write_agenda(agenda_path, data)
     add_orbit_entry(project_dir, f"[cancelada] Tarea: {task_desc}", "apunte")
     print(f"✓ [{project_dir.name}] [cancelada] {task_desc}")
+
+    # Sync cancelled task to Google
+    from core.gsync import sync_item
+    sync_item(project_dir, task, "task")
+
     return 0
 
 
@@ -479,6 +509,11 @@ def run_task_edit(project: Optional[str], text: Optional[str],
 
     _write_agenda(agenda_path, data)
     print(f"✓ [{project_dir.name}] Tarea actualizada: {task['desc']}")
+
+    # Sync updated task to Google
+    from core.gsync import sync_item
+    sync_item(project_dir, task, "task")
+
     return 0
 
 
@@ -542,12 +577,17 @@ def run_ms_add(project: str, text: str, date_val: Optional[str] = None) -> int:
 
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-    data["milestones"].append({"status": "pending", "desc": text,
-                                "date": date_val, "recur": None, "ring": None})
+    new_ms = {"status": "pending", "desc": text,
+              "date": date_val, "recur": None, "ring": None}
+    data["milestones"].append(new_ms)
     _write_agenda(agenda_path, data)
 
     date_s = f" ({date_val})" if date_val else ""
     print(f"✓ [{project_dir.name}] Hito: {text}{date_s}")
+
+    from core.gsync import sync_item
+    sync_item(project_dir, new_ms, "milestone")
+
     return 0
 
 
@@ -566,12 +606,17 @@ def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
     if idx is None:
         return 1
 
-    ms_desc = data["milestones"][idx]["desc"]
-    data["milestones"][idx]["status"] = "done"
+    ms = data["milestones"][idx]
+    ms_desc = ms["desc"]
+    ms["status"] = "done"
 
     _write_agenda(agenda_path, data)
     add_orbit_entry(project_dir, f"[alcanzado] Hito: {ms_desc}", "apunte")
     print(f"✓ [{project_dir.name}] [alcanzado] {ms_desc}")
+
+    from core.gsync import sync_item
+    sync_item(project_dir, ms, "milestone")
+
     return 0
 
 
@@ -606,11 +651,16 @@ def run_ms_drop(project: Optional[str], text: Optional[str],
             print("Cancelado.")
             return 0
 
-    data["milestones"][idx]["status"] = "cancelled"
+    ms = data["milestones"][idx]
+    ms["status"] = "cancelled"
 
     _write_agenda(agenda_path, data)
     add_orbit_entry(project_dir, f"[cancelado] Hito: {ms_desc}", "apunte")
     print(f"✓ [{project_dir.name}] [cancelado] {ms_desc}")
+
+    from core.gsync import sync_item
+    sync_item(project_dir, ms, "milestone")
+
     return 0
 
 
@@ -636,6 +686,10 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
 
     _write_agenda(agenda_path, data)
     print(f"✓ [{project_dir.name}] Hito actualizado: {ms['desc']}")
+
+    from core.gsync import sync_item
+    sync_item(project_dir, ms, "milestone")
+
     return 0
 
 
@@ -692,11 +746,16 @@ def run_ev_add(project: str, text: str, date_val: str,
 
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-    data["events"].append({"date": date_val, "desc": text, "end": end_date})
+    new_ev = {"date": date_val, "desc": text, "end": end_date}
+    data["events"].append(new_ev)
     _write_agenda(agenda_path, data)
 
     end_s = f" → {end_date}" if end_date else ""
     print(f"✓ [{project_dir.name}] Evento: {date_val} — {text}{end_s}")
+
+    from core.gsync import sync_item
+    sync_item(project_dir, new_ev, "event")
+
     return 0
 
 
@@ -733,9 +792,15 @@ def run_ev_drop(project: Optional[str], text: Optional[str],
             print("Cancelado.")
             return 0
 
-    data["events"].pop(idx)
+    ev_removed = data["events"].pop(idx)
     _write_agenda(agenda_path, data)
     print(f"✓ [{project_dir.name}] Evento eliminado: {display}")
+
+    # Delete from Google Calendar if synced
+    if ev_removed.get("gcal_id"):
+        from core.gsync import delete_gcal_event
+        delete_gcal_event(project_dir, ev_removed)
+
     return 0
 
 

@@ -96,7 +96,7 @@ def resolve_ring_datetime(due_date: str, ring: str,
 def _schedule_reminder(title: str, project: str,
                         dt: datetime) -> bool:
     """Create a reminder in macOS Reminders.app. Returns True on success."""
-    full_title = f"🚀 [{project}] {title}"
+    full_title = f"[{project}] {title}"
     script = f"""
 tell application "Reminders"
     if not (exists list "{REMINDERS_LIST}") then
@@ -182,7 +182,7 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
         for t in tasks:
             ok = _schedule_reminder(t["desc"], project_dir.name, t["ring_dt"])
             if ok:
-                print(f"  ⏰ [{project_dir.name}] "
+                print(f"  ⏰ {project_dir.name}  "
                       f"{t['ring_dt'].strftime('%H:%M')}  {t['desc']}")
                 # Clear ring on one-shot tasks; keep it for recurring tasks
                 if not t.get("recur"):

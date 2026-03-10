@@ -257,3 +257,14 @@ def run_new_open(project: str, what: Optional[str] = None,
 
     print(f"Abriendo {path.name}...")
     return open_file(path, editor)
+
+
+def run_open_dir(project: str) -> int:
+    """Open the project directory in Finder."""
+    project_dir = _find_new_project(project)
+    if project_dir is None:
+        return 1
+    import subprocess
+    subprocess.run(["open", str(project_dir)])
+    print(f"Abriendo directorio {project_dir.name}...")
+    return 0

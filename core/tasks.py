@@ -26,19 +26,9 @@ PRIORITY_MAP = {
     "baja":  "🔹",
 }
 
-TYPE_MAP = {
-    "investigación": "🌀",
-    "investigacion": "🌀",
-    "docencia":      "📚",
-    "gestión":       "⚙️",
-    "gestion":       "⚙️",
-    "formación":     "📖",
-    "formacion":     "📖",
-    "software":      "💻",
-    "personal":      "🌿",
-    "mision":        "☀️",
-    "misión":        "☀️",
-}
+from core.config import get_type_map, get_type_emojis
+
+TYPE_MAP = get_type_map()
 
 
 def read_proyecto_field(lines: list, field: str) -> Optional[str]:
@@ -50,7 +40,7 @@ def read_proyecto_field(lines: list, field: str) -> Optional[str]:
     return None
 
 
-_TYPE_EMOJIS     = ("🌀", "📚", "⚙️", "📖", "💻", "🌿")
+_TYPE_EMOJIS     = get_type_emojis()
 _STATUS_EMOJIS   = ("⬜", "▶️", "⏸️", "💤", "✅")
 _PRIORITY_EMOJIS = ("🔴", "🔶", "🔹")
 

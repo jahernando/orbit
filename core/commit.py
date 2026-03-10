@@ -7,6 +7,7 @@ Shows changed files and asks for confirmation before executing.
 """
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -64,6 +65,94 @@ def _git_add_all_tracked() -> bool:
         return result.returncode == 0
     except FileNotFoundError:
         return False
+
+
+def _git_untracked_in_projects() -> list:
+    """Return list of untracked file paths inside 🚀proyectos/."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "🚀proyectos/"],
+            capture_output=True, text=True, cwd=ORBIT_DIR,
+        )
+        if result.returncode != 0:
+            return []
+        return [p.strip() for p in result.stdout.splitlines() if p.strip()]
+    except FileNotFoundError:
+        return []
+
+
+def _git_add_files(files: list) -> bool:
+    """Stage specific files."""
+    try:
+        result = subprocess.run(
+            ["git", "add"] + files, cwd=ORBIT_DIR, capture_output=True,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
+def _prompt_untracked() -> None:
+    """Detect untracked files in projects and ask to add them.
+
+    Shows numbered list; user can select all, specific indices, or none.
+    Confirms selection before staging.
+    """
+    untracked = _git_untracked_in_projects()
+    if not untracked or not sys.stdin.isatty():
+        return
+
+    while True:
+        n = len(untracked)
+        print(f"  📂 {n} fichero{'s' if n != 1 else ''} nuevo{'s' if n != 1 else ''} sin trackear:")
+        for i, p in enumerate(untracked, 1):
+            print(f"      [{i}] +  {p}")
+
+        try:
+            prompt = "  ¿Añadir? [S=todos / 1,2,... / n]: " if n > 1 else "  ¿Añadir? [S/n]: "
+            ans = input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+
+        if ans.lower() in ("n", "no"):
+            return
+
+        # Determine selected files
+        if ans == "" or ans.lower() in ("s", "si", "sí", "y", "yes"):
+            selected = untracked
+        else:
+            # Parse comma-separated indices
+            try:
+                indices = [int(x.strip()) for x in ans.split(",")]
+                selected = [untracked[i - 1] for i in indices if 1 <= i <= n]
+            except (ValueError, IndexError):
+                print("  ⚠️  Selección no válida")
+                continue
+            if not selected:
+                print("  ⚠️  Ningún fichero seleccionado")
+                continue
+
+        # Confirm selection (skip if all selected with S)
+        if len(selected) < n:
+            print(f"\n  Ficheros seleccionados:")
+            for p in selected:
+                print(f"      +  {p}")
+            try:
+                confirm = input("  ¿Confirmar? [S/n/r(repetir)]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+            if confirm in ("r", "repetir"):
+                print()
+                continue
+            if confirm not in ("", "s", "si", "sí", "y", "yes"):
+                return
+
+        _git_add_files(selected)
+        ns = len(selected)
+        print(f"  ✓ {ns} fichero{'s' if ns != 1 else ''} añadido{'s' if ns != 1 else ''}")
+        return
 
 
 def _git_commit(message: str) -> int:
@@ -132,6 +221,9 @@ def run_commit(message: Optional[str] = None) -> int:
     # Stage all tracked-file changes
     _git_add_all_tracked()
 
+    # Detect and offer to add untracked files in projects
+    _prompt_untracked()
+
     status = _git_status()
 
     if not status:
@@ -177,3 +269,73 @@ def run_commit(message: Optional[str] = None) -> int:
     else:
         print("\n✗ Error al hacer el commit.")
     return rc
+
+
+# ── Git push ──────────────────────────────────────────────────────────────────
+
+def _git_push() -> int:
+    """Push to origin. Returns returncode."""
+    try:
+        result = subprocess.run(
+            ["git", "push"],
+            cwd=ORBIT_DIR,
+            capture_output=True, text=True,
+        )
+        return result.returncode
+    except FileNotFoundError:
+        print("Error: git no encontrado")
+        return 1
+
+
+# ── Startup check ────────────────────────────────────────────────────────────
+
+def startup_commit_check() -> None:
+    """Check for uncommitted changes on shell startup.
+
+    Shows a summary and prompts the user to commit + push.
+    """
+    _git_add_all_tracked()
+
+    # Detect and offer to add untracked files in projects
+    _prompt_untracked()
+
+    status = _git_status()
+    if not status:
+        return
+
+    n = len(status)
+    print(f"  📌 {n} fichero{'s' if n != 1 else ''} modificado{'s' if n != 1 else ''} sin commit")
+    for code, path in status[:5]:
+        print(f"      {code:<2}  {path}")
+    if n > 5:
+        print(f"      ... y {n - 5} más")
+    print()
+
+    default_msg = f"sync {date.today().isoformat()}"
+
+    if not sys.stdin.isatty():
+        return
+
+    try:
+        raw = input(f"  ¿Commit + push? [mensaje / Enter=\"{default_msg}\" / n]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+
+    if raw.lower() in ("n", "no"):
+        return
+
+    msg = raw if raw else default_msg
+
+    rc = _git_commit(msg)
+    if rc != 0:
+        print("  ✗ Error al hacer el commit.")
+        return
+
+    print(f"  ✓ Commit: \"{msg}\"")
+
+    rc = _git_push()
+    if rc == 0:
+        print("  ✓ Push realizado.")
+    else:
+        print("  ⚠️  Error en push (puedes hacerlo manualmente con: git push)")

@@ -93,20 +93,20 @@ def _make_new_project(projects_dir: Path, name: str,
 
 class TestInferStatus:
 
-    def test_no_logbook_returns_sleeping(self, tmp_path):
+    def test_no_logbook_returns_new(self, tmp_path):
         proj = tmp_path / "💻myproject"
         proj.mkdir()
         status, days = _infer_status(proj)
-        assert status == "sleeping"
-        assert days == 999
+        assert status == "new"
+        assert days == 0
 
-    def test_empty_logbook_returns_sleeping(self, tmp_path):
+    def test_empty_logbook_returns_new(self, tmp_path):
         proj = tmp_path / "💻myproject"
         proj.mkdir()
         (proj / "myproject-logbook.md").write_text("# Logbook\n\n")
         status, days = _infer_status(proj)
-        assert status == "sleeping"
-        assert days == 999
+        assert status == "new"
+        assert days == 0
 
     def test_entry_today_is_active(self, tmp_path):
         proj = tmp_path / "💻myproject"
@@ -390,7 +390,7 @@ class TestRunProjectList:
         (proj / "recent-logbook.md").write_text(f"# Logbook\n\n{today} Nota #apunte\n")
         run_project_list()
         out = capsys.readouterr().out
-        assert "Activo" in out
+        assert "▶️" in out
 
     def test_filter_by_status_active(self, project_env, capsys):
         proj_a = _make_new_project(project_env["projects_dir"], "active-one")

@@ -9,7 +9,7 @@ from core.log import VALID_TYPES, add_entry, find_project, find_logbook_file, fi
 from core.search import run_search
 from core.stats import run_report
 from core.project import (run_project_create, run_project_list,
-                          run_project_status, run_project_edit, run_project_delete)
+                          run_project_status, run_project_edit, run_project_drop)
 from core.importer import run_import
 from core.open import open_file, capture_output, open_cmd_output, log_cmd_output, default_editor
 from core.dateparse import parse_date
@@ -27,6 +27,7 @@ from core.commit import run_commit
 from core.migrate import run_migrate, run_migrate_all
 from core.agenda_view import run_agenda
 from core.ls import run_ls_files, run_ls_notes
+from core.gsync import run_gsync
 
 
 def _d(expr):
@@ -61,10 +62,11 @@ def _handle_output(args, run_fn, cmd_label: str = ""):
 # Long options that users often type with a single dash (e.g. -date instead of --date)
 _SINGLE_DASH_FIX = {
     "-date", "-time", "-recur", "-until", "-ring", "-entry", "-project", "-type", "-status",
+    "-list-calendars", "-dry-run",
     "-priority", "-output", "-editor", "-from", "-to", "-limit",
     "-log", "-open", "-force", "-no-open",
     "-file", "-keyword", "-dry-run", "-name", "-date-from",
-    "-date-to", "-notes",
+    "-date-to", "-notes", "-fix",
 }
 
 def _fix_argv(argv: list) -> list:
@@ -118,6 +120,9 @@ def cmd_search(args):
 
 
 def cmd_open(args):
+    if getattr(args, "dir", False):
+        from core.project_view import run_open_dir
+        return run_open_dir(args.target)
     what = getattr(args, "what", None)
     return run_new_open(args.target, what=what,
                         editor=getattr(args, "editor", None) or default_editor())
@@ -167,10 +172,6 @@ def cmd_hl(args):
             hl_type  = getattr(args, "type", None),
             editor   = getattr(args, "editor", None) or default_editor(),
         )
-    if action == "list":
-        fn = lambda: run_hl_list(project=getattr(args, "project", None),
-                                 hl_type=getattr(args, "type", None))
-        return _handle_output(args, fn, "hl list")
     return 1
 
 
@@ -232,11 +233,6 @@ def cmd_task_new(args):
             new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
             new_ring  = getattr(args, "new_ring", None),
         )
-    if action == "list":
-        fn = lambda: run_task_list(projects=getattr(args, "projects", None),
-                                   status_filter=getattr(args, "status", "pending"),
-                                   date_filter=_d(getattr(args, "date", None)))
-        return _handle_output(args, fn, "task list")
     return 1
 
 
@@ -268,10 +264,6 @@ def cmd_ms(args):
             new_text = getattr(args, "new_text", None),
             new_date = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
         )
-    if action == "list":
-        fn = lambda: run_ms_list(projects=getattr(args, "projects", None),
-                                 status_filter=getattr(args, "status", "pending"))
-        return _handle_output(args, fn, "ms list")
     return 1
 
 
@@ -292,11 +284,6 @@ def cmd_ev(args):
             text    = getattr(args, "text", None),
             force   = getattr(args, "force", False),
         )
-    if action == "list":
-        fn = lambda: run_ev_list(project=getattr(args, "project", None),
-                                 period_from=_d(getattr(args, "period_from", None)),
-                                 period_to=_d(getattr(args, "period_to", None)))
-        return _handle_output(args, fn, "ev list")
     return 1
 
 
@@ -308,21 +295,31 @@ def cmd_project(args):
     if sub == "create":
         return run_project_create(name=args.name, tipo=args.type,
                                   prioridad=args.priority)
-    elif sub == "list":
-        fn = lambda: run_project_list(status_filter=getattr(args, "status", None),
-                                      tipo_filter=getattr(args, "type", None))
-        return _handle_output(args, fn, "project list")
     elif sub == "status":
         return run_project_status(name=args.name,
                                   set_status=getattr(args, "set", None))
     elif sub == "edit":
         return run_project_edit(name=args.name,
                                 editor=getattr(args, "editor", None) or default_editor())
-    elif sub == "delete":
-        return run_project_delete(name=args.name,
-                                  force=getattr(args, "force", False))
-    else:
-        return run_project_list()
+    elif sub == "drop":
+        return run_project_drop(name=args.name,
+                                force=getattr(args, "force", False))
+    elif sub == "priority":
+        from core.project import run_project_priority
+        return run_project_priority(name=args.name,
+                                     new_priority=args.priority)
+    elif sub == "type":
+        type_sub = getattr(args, "type_sub", None)
+        if type_sub == "add":
+            from core.config import run_type_add
+            return run_type_add(name=args.name, emoji=args.emoji)
+        elif type_sub == "drop":
+            from core.config import run_type_drop
+            return run_type_drop(name=args.name)
+        else:
+            from core.config import run_type_list
+            return run_type_list()
+    return 1
 
 
 def cmd_import(args):
@@ -391,6 +388,21 @@ def cmd_report(args):
     return _handle_output(args, fn, "report")
 
 
+def cmd_gsync(args):
+    return run_gsync(
+        dry_run=getattr(args, "dry_run", False),
+        list_calendars=getattr(args, "list_calendars", False),
+    )
+
+
+def cmd_doctor(args):
+    from core.doctor import run_doctor
+    return run_doctor(
+        project=getattr(args, "project", None),
+        fix=getattr(args, "fix", False),
+    )
+
+
 def cmd_ls(args):
     """Unified ls command: ls [what] [project...] [--open] [--editor E]."""
     what = getattr(args, "what", None) or "projects"
@@ -398,7 +410,8 @@ def cmd_ls(args):
     if what == "projects":
         fn = lambda: run_project_list(
             status_filter=getattr(args, "status", None),
-            tipo_filter=getattr(args, "type", None))
+            tipo_filter=getattr(args, "type", None),
+            sort_by=getattr(args, "sort", None))
         return _handle_output(args, fn, "ls projects")
 
     if what == "tasks":
@@ -526,6 +539,8 @@ def main():
     ls_proj = ls_sub.add_parser("projects", help="List projects with status")
     ls_proj.add_argument("--status", default=None, help="Filter: active, paused, sleeping")
     ls_proj.add_argument("--type",   default=None, help="Filter: investigacion, docencia, ...")
+    ls_proj.add_argument("--sort",   default=None, choices=["type", "status", "priority"],
+                         help="Sort by: type, status, priority")
     ls_proj.add_argument("--open",   action="store_true")
     ls_proj.add_argument("--editor", default=None)
     _add_log_args(ls_proj)
@@ -600,6 +615,8 @@ def main():
     open_p.add_argument("--what",     default=None,
                         choices=["logbook", "highlights", "agenda", "notes", "project"],
                         help="Which file to open: project (default), logbook, highlights, agenda, notes")
+    open_p.add_argument("--dir",      action="store_true",
+                        help="Open the project directory in Finder")
     open_p.add_argument("--editor",   default=None,
                         help="Editor: typora, glow, code, or any command (env ORBIT_EDITOR)")
 
@@ -632,6 +649,22 @@ def main():
     ag_p.add_argument("--open",   action="store_true", help="Open in editor")
     ag_p.add_argument("--editor", default=None)
     _add_log_args(ag_p)
+
+    # --- gsync ---
+    gsync_p = subparsers.add_parser("gsync",
+                                     help="Sync tasks/milestones/events to Google Tasks/Calendar")
+    gsync_p.add_argument("--dry-run", action="store_true", dest="dry_run",
+                         help="Preview sync without writing to Google")
+    gsync_p.add_argument("--list-calendars", action="store_true", dest="list_calendars",
+                         help="List available Google Calendars with IDs")
+
+    # --- doctor ---
+    doc_p = subparsers.add_parser("doctor",
+                                   help="Check syntax of project files (logbook, agenda, highlights)")
+    doc_p.add_argument("project", nargs="?", default=None,
+                       help="Project name (omit for all)")
+    doc_p.add_argument("--fix", action="store_true",
+                       help="Offer to fix issues interactively")
 
     # --- task (add/done/cancel/edit/list on agenda.md) ---
     tsknew_p   = subparsers.add_parser("task", help="Task commands: add, done, cancel, edit, list")
@@ -674,17 +707,6 @@ def main():
     tn_edit.add_argument("--ring",  dest="new_ring",  default=None,
                          help="New ring value (or 'none')")
 
-    tn_list = tsknew_sub.add_parser("list", help="List tasks")
-    tn_list.add_argument("projects", nargs="*", default=None,
-                         help="Project name(s) (omit for all)")
-    tn_list.add_argument("--status", default="pending",
-                         choices=["pending", "done", "cancelled", "all"],
-                         help="Status filter (default: pending)")
-    tn_list.add_argument("--date",   default=None, help="Filter by date YYYY-MM or YYYY-MM-DD")
-    tn_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    tn_list.add_argument("--editor", default=None)
-    _add_log_args(tn_list)
-
     # --- ms ---
     ms_p   = subparsers.add_parser("ms", help="Milestone commands (agenda.md)")
     ms_sub = ms_p.add_subparsers(dest="action")
@@ -709,14 +731,6 @@ def main():
     ms_edit.add_argument("--text",  dest="new_text", default=None)
     ms_edit.add_argument("--date",  dest="new_date", default=None)
 
-    ms_list = ms_sub.add_parser("list", help="List milestones")
-    ms_list.add_argument("projects", nargs="*", default=None)
-    ms_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    ms_list.add_argument("--editor", default=None)
-    _add_log_args(ms_list)
-    ms_list.add_argument("--status", default="pending",
-                         choices=["pending", "done", "cancelled", "all"])
-
     # --- ev ---
     ev_p   = subparsers.add_parser("ev", help="Event commands (agenda.md)")
     ev_sub = ev_p.add_subparsers(dest="action")
@@ -731,14 +745,6 @@ def main():
     ev_drop.add_argument("project", nargs="?", default=None)
     ev_drop.add_argument("text",    nargs="?", default=None)
     ev_drop.add_argument("--force", action="store_true", help="Skip confirmation")
-
-    ev_list = ev_sub.add_parser("list", help="List events")
-    ev_list.add_argument("project", nargs="?", default=None)
-    ev_list.add_argument("--from", dest="period_from", default=None, metavar="YYYY-MM-DD")
-    ev_list.add_argument("--to",   dest="period_to",   default=None, metavar="YYYY-MM-DD")
-    ev_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    ev_list.add_argument("--editor", default=None)
-    _add_log_args(ev_list)
 
     # --- hl ---
     hl_p   = subparsers.add_parser("hl", help="Highlights commands (highlights.md)")
@@ -766,14 +772,6 @@ def main():
     hl_edit.add_argument("--link",   dest="new_link", default=None,
                          help="New link (or 'none' to remove)")
     hl_edit.add_argument("--editor", default=None)
-
-    hl_list = hl_sub.add_parser("list", help="List highlights")
-    hl_list.add_argument("project", nargs="?", default=None)
-    hl_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    hl_list.add_argument("--editor", default=None)
-    _add_log_args(hl_list)
-    hl_list.add_argument("--type",  default=None, choices=HL_TYPES,
-                         help="Filter by section type")
 
     # --- view (project summary) ---
     v2_p = subparsers.add_parser("view",
@@ -830,18 +828,9 @@ def main():
     prc_p = prj_sub.add_parser("create", help="Create a new project")
     prc_p.add_argument("name", help="Project name (e.g. my-project)")
     prc_p.add_argument("--type",     required=True,
-                       help="Type: investigacion, docencia, gestion, formacion, software, personal")
+                       help="Project type (see: orbit project type)")
     prc_p.add_argument("--priority", default="media",
                        help="Priority: alta, media, baja (default: media)")
-
-    # project list
-    prl_p = prj_sub.add_parser("list", help="List projects with status")
-    prl_p.add_argument("--status", default=None,
-                       help="Filter by status: active/activo, paused/pausado, sleeping/durmiendo")
-    prl_p.add_argument("--type",   default=None, help="Filter by project type")
-    prl_p.add_argument("--open",   action="store_true", help="Open output in editor")
-    prl_p.add_argument("--editor", default=None)
-    _add_log_args(prl_p)
 
     # project status
     prs_p = prj_sub.add_parser("status", help="Show or set project status")
@@ -854,11 +843,26 @@ def main():
     pre_p.add_argument("name", help="Project name (partial match)")
     pre_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
 
-    # project delete
-    prd_p = prj_sub.add_parser("delete", help="Delete a project (requires confirmation)")
+    # project priority
+    prp_p = prj_sub.add_parser("priority", help="Change project priority")
+    prp_p.add_argument("name", help="Project name (partial match)")
+    prp_p.add_argument("priority", choices=["alta", "media", "baja"],
+                        help="New priority: alta, media, baja")
+
+    # project drop
+    prd_p = prj_sub.add_parser("drop", help="Drop a project (requires confirmation)")
     prd_p.add_argument("name", help="Project name (partial match)")
     prd_p.add_argument("--force", action="store_true",
                        help="Skip confirmation prompt")
+
+    # project type
+    prt_p = prj_sub.add_parser("type", help="Manage project types")
+    prt_sub = prt_p.add_subparsers(dest="type_sub")
+    prt_add = prt_sub.add_parser("add", help="Add a new project type")
+    prt_add.add_argument("name",  help="Type name (e.g. viajes)")
+    prt_add.add_argument("emoji", help="Emoji for the type (e.g. ✈️)")
+    prt_drop = prt_sub.add_parser("drop", help="Remove a project type")
+    prt_drop.add_argument("name", help="Type name to remove")
 
     # --- migrate ---
     mig_p = subparsers.add_parser("migrate",
@@ -896,7 +900,7 @@ def main():
         "report": cmd_report, "open": cmd_open,
         "import": cmd_import,
         "project": cmd_project, "migrate": cmd_migrate,
-        "ls": cmd_ls, "agenda": cmd_agenda,
+        "ls": cmd_ls, "agenda": cmd_agenda, "gsync": cmd_gsync, "doctor": cmd_doctor,
     }
 
     if args.command is None:
@@ -912,84 +916,8 @@ def main():
 
 
 def run_shell(editor: str = ""):
-    import readline
-    import shlex
-    from datetime import date as _date
-
-    # Enable persistent history
-    history_file = Path.home() / ".orbit_history"
-    try:
-        readline.read_history_file(history_file)
-    except FileNotFoundError:
-        pass
-    readline.set_history_length(500)
-
-    COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "migrate",
-                "import", "ls", "log", "search", "open", "report", "agenda",
-                "help", "project", "claude", "exit", "quit"]
-
-    def completer(text, state):
-        options = [c for c in COMMANDS if c.startswith(text)]
-        return options[state] if state < len(options) else None
-
-    readline.set_completer(completer)
-    readline.parse_and_bind("tab: complete")
-
-    print("¡Hola! ¡Bienvenido!")
-    print()
-
-    # Schedule today's reminders on shell start
-    from core.ring import schedule_new_format_reminders
-    scheduled = schedule_new_format_reminders()
-    if scheduled:
-        print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
-        print()
-
-    shell_start_date = _date.today()
-
-    while True:
-        # Midnight check
-        if _date.today() != shell_start_date:
-            print()
-            print("🎃 ¡Medianoche! Orbit se convierte en calabaza.")
-            print("   Los recordatorios del nuevo día no se programarán hasta que reinicies el shell.")
-            print()
-            shell_start_date = _date.today()
-
-        try:
-            line = input("🚀 ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-
-        if not line or line.startswith("#"):
-            continue
-        if line in ("exit", "quit", "q"):
-            break
-        if line == "claude":
-            import subprocess
-            subprocess.run(["claude"], cwd=ORBIT_DIR)
-            continue
-
-        try:
-            tokens = shlex.split(line)
-        except ValueError as e:
-            print(f"Error al parsear: {e}")
-            continue
-
-        old_argv = sys.argv
-        sys.argv  = ["orbit"] + tokens
-        try:
-            main()
-        except SystemExit:
-            pass
-        finally:
-            sys.argv = old_argv
-
-    readline.write_history_file(history_file)
-
-    print()
-    print("¡Hasta pronto!")
+    from core.shell import run_shell as _run_shell
+    _run_shell(editor)
 
 
 if __name__ == "__main__":
