@@ -1,6 +1,7 @@
 import re
 import shutil
 import sys
+import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
@@ -272,11 +273,30 @@ def run_project_list(status_filter: Optional[str] = None,
     elif sort_by == "priority":
         rows.sort(key=lambda r: _PRIO_ORDER.get(r["prio_key"], 9))
 
-    w_name = max(len(r["name"]) for r in rows)
+    def _display_width(s: str) -> int:
+        """Compute terminal display width accounting for wide chars/emojis."""
+        w = 0
+        chars = list(s)
+        for i, ch in enumerate(chars):
+            if ch == '\ufe0f':  # variation selector: previous char renders wide
+                if w > 0:
+                    w += 1    # promote previous narrow char to width 2
+                continue
+            if ch == '\u200d':  # zero-width joiner
+                continue
+            cat = unicodedata.east_asian_width(ch)
+            w += 2 if cat in ('W', 'F') else 1
+        return w
+
+    w_name = max(_display_width(r["name"]) for r in rows)
 
     print()
+    hdr = "Proyecto"
+    print(f"| {hdr}{' ' * (w_name - len(hdr))} | Tipo | Estado | Prioridad |")
+    print(f"|{'-' * (w_name + 2)}|------|--------|-----------|")
     for r in rows:
-        print(f"  {r['tipo_emoji']}  {r['status_emoji']}  {r['prio_emoji']}  {r['name']}")
+        pad = w_name - _display_width(r["name"])
+        print(f"| {r['name']}{' ' * pad} | {r['tipo_emoji']}   | {r['status_emoji']}     | {r['prio_emoji']}        |")
     print()
     return 0
 

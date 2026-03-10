@@ -376,7 +376,7 @@ class TestRunTaskAdd:
 
     def test_task_with_recur_and_ring(self, proj, projects_dir):
         from core.agenda_cmds import run_task_add, _read_agenda
-        run_task_add("test-project", "Weekly check", recur="weekly", ring="1d")
+        run_task_add("test-project", "Weekly check", date_val="2026-03-15", recur="weekly", ring="1d")
         data = _read_agenda(proj / "test-project-agenda.md")
         t = data["tasks"][0]
         assert t["recur"] == "weekly"
