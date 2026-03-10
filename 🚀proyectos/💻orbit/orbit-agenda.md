@@ -9,23 +9,23 @@
 - [-] Comando init/end (hota/adios?) con el flujo de entrada/salida (2026-03-08)
 - [x] Reducir referencias/resultados/decisiones a notes introducir con --entry (2026-03-08)
 - [x] Carperta con las notas de proyectos, add note con pregunta de sincronizacion (2026-03-08)
-- [x] Refactory Orbit, clean and info (2026-03-08) [gtask:WVc2TFljLWU2YURCWkFnSw]
+- [x] Refactory Orbit, clean and info (2026-03-08) [G]
 - [x] Test ring unificado (2026-03-08)
 - [x] Reunión con equipo (2026-03-08)
 - [x] Test sin fecha ni hora (2026-03-08)
-- [x] quitar duplicaciones al listar tareas o proyectos (2026-03-10) [gtask:QmdvTU1zSEQ1dzJESXVxcw]
+- [x] quitar duplicaciones al listar tareas o proyectos (2026-03-10) [G]
 - [x] test recur (2026-03-10) [recur:daily:2026-03-15]
 - [-] test recur (2026-03-11) [recur:daily:2026-03-15]
-- [ ] Reminder - Prueba (2026-03-10) [gtask:MzJOTmFITEc2VWh4c2hVTg]
-- [ ] Refactorizar main() en orbit.py: separar parsers del dispatch (2026-03-13) [gtask:TDlhYTFnTEZTdlhUVTVXQQ]
-- [ ] Unificar dispatchers de subcomandos con factory genérico (2026-03-13) [gtask:c0RIbkdyUGJnYzU2MEV6SA]
-- [ ] Tests para agenda_view (calendario y vista agenda) (2026-03-13) [gtask:Q0VNTzJ1WHM0NXZiZFZFVA]
-- [ ] Tests para gsync (mockear API Google) (2026-03-13) [gtask:TUN2SERoaUg1QW5LcmV3cg]
-- [ ] Tests para migrate e importer (2026-03-13) [gtask:alFyOVUxSERRLWxlNk9tMw]
-- [ ] Limpiar imports no usados en orbit.py y project.py (2026-03-13) [gtask:UXlaX0cxVTlDWW1sN3ZZaQ]
-- [ ] Fixtures compartidas de test: generalizar make_project (2026-03-13) [gtask:bGRZVDRHSkdZeWxYRWJWVw]
-- [ ] Refactorizar funciones >80 líneas (doctor, import, migrate) (2026-03-13) [gtask:TkgzX2F1WGU3TTRVRXNqNA]
+- [ ] Reminder - Prueba (2026-03-10) [G]
+- [ ] Refactorizar main() en orbit.py: separar parsers del dispatch (2026-03-13) [G]
+- [ ] Unificar dispatchers de subcomandos con factory genérico (2026-03-13) [G]
+- [ ] Tests para agenda_view (calendario y vista agenda) (2026-03-13) [G]
+- [ ] Tests para gsync (mockear API Google) (2026-03-13) [G]
+- [ ] Tests para migrate e importer (2026-03-13) [G]
+- [ ] Limpiar imports no usados en orbit.py y project.py (2026-03-13) [G]
+- [ ] Fixtures compartidas de test: generalizar make_project (2026-03-13) [G]
+- [ ] Refactorizar funciones >80 líneas (doctor, import, migrate) (2026-03-13) [G]
 
 ## 🏁 Hitos
-- [-] Review (2026-03-20) [recur:monthly] [ring:1d] [gtask:ckRjdUZ1dHdoODlSajdNXw]
+- [-] Review (2026-03-20) [recur:monthly] [ring:1d] [G]
 

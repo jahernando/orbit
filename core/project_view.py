@@ -24,14 +24,19 @@ _WIDTH = 54   # summary box width
 # ── Logbook helpers ────────────────────────────────────────────────────────────
 
 def _recent_logbook_entries(project_dir: Path, n: int = 5) -> list:
-    """Return the last *n* logbook entry lines (date-prefixed)."""
+    """Return the last *n* logbook entries (with continuation lines joined)."""
     logbook = find_logbook_file(project_dir)
     if not logbook or not logbook.exists():
         return []
     entries = []
     for line in logbook.read_text().splitlines():
         s = line.strip()
-        if len(s) >= 10 and s[:4].isdigit() and s[4] == "-":
+        if not s or s.startswith("#") or s.startswith("<!--"):
+            continue
+        if line.startswith("  ") and entries:
+            # Continuation line — append to previous entry
+            entries[-1] += "\n  " + s
+        elif len(s) >= 10 and s[:4].isdigit() and s[4] == "-":
             entries.append(s)
     return entries[-n:]
 

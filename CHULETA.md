@@ -228,7 +228,8 @@ orbit gsync --list-calendars   # muestra calendarios disponibles
 - Tareas e hitos → Google Tasks (una lista por tipo de proyecto)
 - Eventos → Google Calendar (un calendario por tipo, configurable en `google-sync.json`)
 - Sincronización automática: al iniciar la shell + al añadir/completar/editar/eliminar items
-- IDs de sincronización almacenados en agenda.md: `[gtask:id]` y `[gcal:id]`
+- IDs de sincronización en `.gsync-ids.json` por proyecto (no en agenda.md)
+- Items sincronizados muestran `[G]` en agenda.md
 
 ---
 

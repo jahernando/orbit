@@ -103,7 +103,8 @@ def _parse_task_line(line: str) -> Optional[dict]:
     status = {" ": "pending", "x": "done", "-": "cancelled"}[m.group(1)]
     rest   = m.group(2)
 
-    date_val = recur = until = ring = gtask_id = None
+    date_val = recur = until = ring = None
+    synced = False
     date_m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", rest)
     if date_m:
         date_val = date_m.group(1)
@@ -118,19 +119,21 @@ def _parse_task_line(line: str) -> Optional[dict]:
     ring_m = re.search(r"\[ring:([^\]]+)\]", rest)
     if ring_m:
         ring = ring_m.group(1)
-    gtask_m = re.search(r"\[gtask:([^\]]+)\]", rest)
-    if gtask_m:
-        gtask_id = gtask_m.group(1)
+    if re.search(r"\[G\]", rest):
+        synced = True
+    # Legacy: parse old [gtask:...] as synced
+    if re.search(r"\[gtask:[^\]]+\]", rest):
+        synced = True
 
     # Description = rest minus attribute patterns
     desc = rest
     for pat in [r"\(\d{4}-\d{2}-\d{2}\)", r"\[recur:[^\]]+\]",
-                r"\[ring:[^\]]+\]", r"\[gtask:[^\]]+\]"]:
+                r"\[ring:[^\]]+\]", r"\[gtask:[^\]]+\]", r"\[G\]"]:
         desc = re.sub(pat, "", desc)
     desc = desc.strip()
 
     return {"status": status, "desc": desc, "date": date_val,
-            "recur": recur, "until": until, "ring": ring, "gtask_id": gtask_id}
+            "recur": recur, "until": until, "ring": ring, "synced": synced}
 
 
 def _format_task_line(task: dict) -> str:
@@ -146,8 +149,8 @@ def _format_task_line(task: dict) -> str:
         parts.append(f"[recur:{recur_tag}]")
     if task.get("ring"):
         parts.append(f"[ring:{task['ring']}]")
-    if task.get("gtask_id"):
-        parts.append(f"[gtask:{task['gtask_id']}]")
+    if task.get("synced"):
+        parts.append("[G]")
     return f"- [{char}] {' '.join(parts)}"
 
 
@@ -160,7 +163,8 @@ def _parse_event_line(line: str) -> Optional[dict]:
         return None
     date_val = m.group(1)
     rest     = m.group(2)
-    end = recur = until = ring = gcal_id = None
+    end = recur = until = ring = None
+    synced = False
     end_m = re.search(r"\[end:(\d{4}-\d{2}-\d{2})\]", rest)
     if end_m:
         end  = end_m.group(1)
@@ -174,16 +178,18 @@ def _parse_event_line(line: str) -> Optional[dict]:
     ring_m = re.search(r"\[ring:([^\]]+)\]", rest)
     if ring_m:
         ring = ring_m.group(1)
-    gcal_m = re.search(r"\[gcal:([^\]]+)\]", rest)
-    if gcal_m:
-        gcal_id = gcal_m.group(1)
+    if re.search(r"\[G\]", rest):
+        synced = True
+    # Legacy: parse old [gcal:...] as synced
+    if re.search(r"\[gcal:[^\]]+\]", rest):
+        synced = True
     # Strip attribute tags from description
     for pat in [r"\[end:[^\]]+\]", r"\[recur:[^\]]+\]",
-                r"\[ring:[^\]]+\]", r"\[gcal:[^\]]+\]"]:
+                r"\[ring:[^\]]+\]", r"\[gcal:[^\]]+\]", r"\[G\]"]:
         rest = re.sub(pat, "", rest)
     rest = rest.strip()
     return {"date": date_val, "desc": rest, "end": end,
-            "recur": recur, "until": until, "ring": ring, "gcal_id": gcal_id}
+            "recur": recur, "until": until, "ring": ring, "synced": synced}
 
 
 def _format_event_line(ev: dict) -> str:
@@ -198,8 +204,8 @@ def _format_event_line(ev: dict) -> str:
         line += f" [recur:{recur_tag}]"
     if ev.get("ring"):
         line += f" [ring:{ev['ring']}]"
-    if ev.get("gcal_id"):
-        line += f" [gcal:{ev['gcal_id']}]"
+    if ev.get("synced"):
+        line += " [G]"
     return line
 
 
@@ -1042,7 +1048,7 @@ def run_ev_drop(project: Optional[str], text: Optional[str],
     print(f"✓ [{project_dir.name}] Evento eliminado: {display}")
 
     # Delete from Google Calendar if synced
-    if ev_removed.get("gcal_id"):
+    if ev_removed.get("synced"):
         from core.gsync import delete_gcal_event
         delete_gcal_event(project_dir, ev_removed)
 

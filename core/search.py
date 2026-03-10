@@ -42,19 +42,31 @@ def _search_logbook(path: Path, keywords: list, tag: Optional[str],
                     date_filter: Optional[str], date_from: Optional[str],
                     date_to: Optional[str], any_mode: bool, limit: int) -> list:
     results = []
-    for line in path.read_text().splitlines():
-        if limit and len(results) >= limit:
-            break
+    lines = path.read_text().splitlines()
+    # Build entries with continuation lines
+    entries = []
+    for line in lines:
         s = line.strip()
         if not s or s.startswith("#") or s.startswith("<!--"):
             continue
-        if tag and not s.endswith(f"#{tag}"):
+        if line.startswith("  ") and entries:
+            # Continuation line — append to previous entry
+            entries[-1] += "\n" + s
+        else:
+            entries.append(s)
+
+    for entry in entries:
+        if limit and len(results) >= limit:
+            break
+        # Filter by tag (check first line for tag)
+        first_line = entry.split("\n")[0]
+        if tag and f"#{tag}" not in first_line:
             continue
-        if not _in_date_range(s, date_from, date_to, date_filter):
+        if not _in_date_range(first_line, date_from, date_to, date_filter):
             continue
-        if keywords and not _matches(s, keywords, any_mode):
+        if keywords and not _matches(entry, keywords, any_mode):
             continue
-        results.append(s)
+        results.append(entry)
     return results
 
 

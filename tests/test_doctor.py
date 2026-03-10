@@ -53,7 +53,7 @@ class TestCheckLogbook:
         path = doctor_env["proj"] / "testproj-logbook.md"
         today = date.today().isoformat()
         path.write_text(
-            f"# Logbook\n\n{today} Primera entrada #apunte\n"
+            f"# Logbook\n\n{today} 📝 Primera entrada #apunte\n"
             f"{today} 💡 Una idea #idea\n"
         )
         issues = _check_logbook("💻testproj", path)
@@ -77,13 +77,16 @@ class TestCheckLogbook:
         assert "no coincide" in issues[0].msg
         assert issues[0].fix is not None
 
-    def test_no_emoji_not_flagged(self, doctor_env):
-        """Entries without emoji should NOT be flagged (old format)."""
+    def test_missing_emoji_flagged_with_fix(self, doctor_env):
+        """Entries without emoji should be flagged with auto-fix."""
         path = doctor_env["proj"] / "testproj-logbook.md"
         today = date.today().isoformat()
         path.write_text(f"# Logbook\n\n{today} Nota sin emoji #apunte\n")
         issues = _check_logbook("💻testproj", path)
-        assert issues == []
+        assert len(issues) == 1
+        assert "Falta emoji" in issues[0].msg
+        assert issues[0].fix is not None
+        assert "📝" in issues[0].fix
 
     def test_invalid_date(self, doctor_env):
         path = doctor_env["proj"] / "testproj-logbook.md"
@@ -102,7 +105,7 @@ class TestCheckLogbook:
     def test_blank_and_header_lines_skipped(self, doctor_env):
         path = doctor_env["proj"] / "testproj-logbook.md"
         today = date.today().isoformat()
-        path.write_text(f"# Logbook\n\n<!-- comment -->\n\n{today} Ok #apunte\n")
+        path.write_text(f"# Logbook\n\n<!-- comment -->\n\n{today} 📝 Ok #apunte\n")
         issues = _check_logbook("💻testproj", path)
         assert issues == []
 
@@ -116,6 +119,38 @@ class TestCheckLogbook:
         path = doctor_env["proj"] / "nonexistent.md"
         issues = _check_logbook("💻testproj", path)
         assert issues == []
+
+    def test_multiline_continuation_valid(self, doctor_env):
+        """Indented continuation lines should not be flagged."""
+        path = doctor_env["proj"] / "testproj-logbook.md"
+        today = date.today().isoformat()
+        path.write_text(
+            f"# Logbook\n\n{today} 📝 Análisis largo #apunte\n"
+            f"  El fit converge con chi2 = 1.2.\n"
+            f"  Residuos OK en todos los canales.\n"
+        )
+        issues = _check_logbook("💻testproj", path)
+        assert issues == []
+
+    def test_loose_line_flagged_as_continuation(self, doctor_env):
+        """Non-indented line after entry should be flagged with indent fix."""
+        path = doctor_env["proj"] / "testproj-logbook.md"
+        today = date.today().isoformat()
+        path.write_text(
+            f"# Logbook\n\n{today} 📝 Análisis largo #apunte\n"
+            f"El fit converge.\n"
+        )
+        issues = _check_logbook("💻testproj", path)
+        assert len(issues) == 1
+        assert "continuación" in issues[0].msg
+        assert issues[0].fix == "  El fit converge."
+
+    def test_loose_line_not_after_entry(self, doctor_env):
+        """Non-indented line NOT after an entry — only flagged if looks like broken date."""
+        path = doctor_env["proj"] / "testproj-logbook.md"
+        path.write_text("# Logbook\n\nTexto suelto cualquiera\n")
+        issues = _check_logbook("💻testproj", path)
+        assert issues == []  # not after an entry, doesn't look like a date
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -294,7 +329,7 @@ class TestCheckProject:
         today = date.today().isoformat()
         proj = doctor_env["proj"]
         (proj / "testproj-logbook.md").write_text(
-            f"# Logbook\n\n{today} Nota #apunte\n"
+            f"# Logbook\n\n{today} 📝 Nota #apunte\n"
         )
         (proj / "testproj-agenda.md").write_text(
             "# Agenda\n\n## ✅ Tareas\n- [ ] Tarea\n"

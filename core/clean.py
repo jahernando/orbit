@@ -34,14 +34,24 @@ def _clean_logbook(project_dir: Path, cutoff: date, dry_run: bool) -> int:
     lines = logbook.read_text().splitlines()
     keep = []
     removed = 0
+    removing = False  # True while skipping an old entry + its continuation lines
 
     for line in lines:
+        # Continuation line (indented) — follows parent entry's fate
+        if line.startswith("  ") and line.strip():
+            if removing:
+                continue
+            keep.append(line)
+            continue
+
+        removing = False
         m = _DATE_RE.match(line.strip())
         if m:
             try:
                 d = date.fromisoformat(m.group(1))
                 if d < cutoff:
                     removed += 1
+                    removing = True
                     continue
             except ValueError:
                 pass
