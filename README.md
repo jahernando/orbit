@@ -132,7 +132,8 @@ orbit report [project...] [--from D] [--to D] [--open]
 
 ```bash
 orbit doctor [project] [--fix]     # validar sintaxis de ficheros
-orbit clean [project] [--months N] [--dry-run]  # limpiar entradas antiguas
+orbit clean [project] [--months N] [--dry-run] [--force]
+                                   # --agenda --logbook --notes para filtrar
 orbit gsync [--dry-run]            # sincronizar con Google Tasks/Calendar
 orbit commit ["mensaje"]           # commit + push interactivo
 ```
@@ -150,8 +151,10 @@ orbit help tutorial                # abre TUTORIAL.md en el editor
 ## Convenciones
 
 - `logbook.md` de cada proyecto — fuente de verdad del historial de trabajo (append-only).
+- Logbook multilínea: líneas indentadas con 2+ espacios son continuación de la entrada anterior.
 - `notes/` — notas libres, rastreadas opcionalmente en git.
 - `cmd.md` — fichero temporal de salida de comandos con `--open`.
+- `[G]` en agenda.md indica que el item está sincronizado con Google (IDs en `.gsync-ids.json`).
 - Las operaciones destructivas piden confirmación (defecto **No**) o requieren `--force`.
 - `--open [--editor E]` disponible en comandos de listado; abre `cmd.md` en el editor.
 - `--log PROJECT [--log-entry TYPE]` guarda el output como entrada en el logbook de un proyecto.
