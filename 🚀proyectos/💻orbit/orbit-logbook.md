@@ -67,3 +67,13 @@
 2026-03-10 📝 [completada] Tarea: test recur (recur: daily) → próxima: 2026-03-11 #apunte [O]
 
 2026-03-10 📝 [cancelada] Tarea: test recur #apunte [O]
+
+2026-03-10 📝 sincronizacion con Google - Orbit es la verdad #apunte
+
+2026-03-10 📝 revision de los comandos duplicados #apunte
+
+2026-03-10 📝 creado doctor #apunte
+
+2026-03-10 📝 secuencia de entradas: doctor, google, reminders, commit #apunte
+
+2026-03-10 📝 revision de la deuda técnica #apunte

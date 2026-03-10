@@ -1,7 +1,7 @@
 # Logbook — 📚fnyp
 
 2022-10-03 [ver nota](./notes/2022-10-03.md) #apunte
-2022-22-24 [ver nota](./notes/2022-22-24.md) #apunte
+2022-10-24 [ver nota](./notes/2022-22-24.md) #apunte
 2022-11-30 [ver nota](./notes/2022-11-30.md) #apunte
 2022-12-12 Raquel San Emeterio Lourés, Exposición oral #apunte
 2022-12-14 [ver nota](./notes/2022-12-14.md) #apunte

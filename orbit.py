@@ -16,7 +16,7 @@ from core.dateparse import parse_date
 from core.agenda_cmds import (
     run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list,
     run_ms_add, run_ms_done, run_ms_drop, run_ms_edit, run_ms_list,
-    run_ev_add, run_ev_drop, run_ev_list,
+    run_ev_add, run_ev_drop, run_ev_edit, run_ev_list,
 )
 from core.highlights import (
     run_hl_add, run_hl_drop, run_hl_edit, run_hl_list, VALID_TYPES as HL_TYPES,
@@ -245,6 +245,9 @@ def cmd_ms(args):
             project  = args.project,
             text     = args.text,
             date_val = _d(getattr(args, "date", None)),
+            recur    = getattr(args, "recur", None),
+            until    = _d(getattr(args, "until", None)),
+            ring     = getattr(args, "ring", None),
         )
     if action == "done":
         return run_ms_done(
@@ -259,10 +262,13 @@ def cmd_ms(args):
         )
     if action == "edit":
         return run_ms_edit(
-            project  = getattr(args, "project", None),
-            text     = getattr(args, "text", None),
-            new_text = getattr(args, "new_text", None),
-            new_date = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
+            project   = getattr(args, "project", None),
+            text      = getattr(args, "text", None),
+            new_text  = getattr(args, "new_text", None),
+            new_date  = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
+            new_recur = getattr(args, "new_recur", None),
+            new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
+            new_ring  = getattr(args, "new_ring", None),
         )
     return 1
 
@@ -276,13 +282,33 @@ def cmd_ev(args):
             project  = args.project,
             text     = args.text,
             date_val = args.date,
-            end_date = getattr(args, "end", None),
+            end_date = _d(getattr(args, "end", None)),
+            recur    = getattr(args, "recur", None),
+            until    = _d(getattr(args, "until", None)),
+            ring     = getattr(args, "ring", None),
         )
     if action == "drop":
         return run_ev_drop(
             project = getattr(args, "project", None),
             text    = getattr(args, "text", None),
             force   = getattr(args, "force", False),
+        )
+    if action == "edit":
+        return run_ev_edit(
+            project   = getattr(args, "project", None),
+            text      = getattr(args, "text", None),
+            new_text  = getattr(args, "new_text", None),
+            new_date  = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
+            new_end   = _d(getattr(args, "new_end", None)) or getattr(args, "new_end", None),
+            new_recur = getattr(args, "new_recur", None),
+            new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
+            new_ring  = getattr(args, "new_ring", None),
+        )
+    if action == "list":
+        return run_ev_list(
+            project     = getattr(args, "project", None),
+            period_from = _d(getattr(args, "from_date", None)),
+            period_to   = _d(getattr(args, "to_date", None)),
         )
     return 1
 
@@ -734,6 +760,9 @@ def main():
     ms_add.add_argument("project", help="Project name")
     ms_add.add_argument("text",    nargs="?", default=None, help="Milestone description")
     ms_add.add_argument("--date",  default=None, help="Target date YYYY-MM-DD")
+    ms_add.add_argument("--recur", default=None, help="Recurrence: daily, weekly, monthly, every 2 weeks, ...")
+    ms_add.add_argument("--until", default=None, help="End date for recurrence")
+    ms_add.add_argument("--ring",  default=None, help="Reminder: HH:MM, 1d, 2h, YYYY-MM-DD HH:MM")
 
     ms_done = ms_sub.add_parser("done", help="Mark milestone as reached")
     ms_done.add_argument("project", nargs="?", default=None)
@@ -747,8 +776,11 @@ def main():
     ms_edit = ms_sub.add_parser("edit", help="Edit a milestone")
     ms_edit.add_argument("project", nargs="?", default=None)
     ms_edit.add_argument("text",    nargs="?", default=None)
-    ms_edit.add_argument("--text",  dest="new_text", default=None)
-    ms_edit.add_argument("--date",  dest="new_date", default=None)
+    ms_edit.add_argument("--text",  dest="new_text",  default=None)
+    ms_edit.add_argument("--date",  dest="new_date",  default=None)
+    ms_edit.add_argument("--recur", dest="new_recur", default=None, help="Recurrence (or 'none')")
+    ms_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
+    ms_edit.add_argument("--ring",  dest="new_ring",  default=None, help="HH:MM, 1d, 2h, YYYY-MM-DD HH:MM, or none")
 
     # --- ev ---
     ev_p   = subparsers.add_parser("ev", help="Event commands (agenda.md)")
@@ -764,6 +796,18 @@ def main():
     ev_drop.add_argument("project", nargs="?", default=None)
     ev_drop.add_argument("text",    nargs="?", default=None)
     ev_drop.add_argument("--force", action="store_true", help="Skip confirmation")
+
+    ev_edit = ev_sub.add_parser("edit", help="Edit an event")
+    ev_edit.add_argument("project", nargs="?", default=None)
+    ev_edit.add_argument("text",    nargs="?", default=None)
+    ev_edit.add_argument("--text",  dest="new_text", default=None)
+    ev_edit.add_argument("--date",  dest="new_date", default=None)
+    ev_edit.add_argument("--end",   dest="new_end", default=None, help="End date or 'none'")
+
+    ev_list = ev_sub.add_parser("list", help="List events")
+    ev_list.add_argument("project", nargs="?", default=None)
+    ev_list.add_argument("--from",  dest="from_date", default=None)
+    ev_list.add_argument("--to",    dest="to_date", default=None)
 
     # --- hl ---
     hl_p   = subparsers.add_parser("hl", help="Highlights commands (highlights.md)")

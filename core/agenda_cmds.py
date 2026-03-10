@@ -30,6 +30,15 @@ from core.log import PROJECTS_DIR, add_orbit_entry, resolve_file
 
 VALID_RECUR = {"daily", "weekly", "monthly", "weekdays"}
 
+
+def _valid_date(val: str) -> bool:
+    """Check if a date string is a valid ISO date (YYYY-MM-DD)."""
+    try:
+        date.fromisoformat(val)
+        return True
+    except ValueError:
+        return False
+
 # Extended recurrence patterns (stored in [recur:...])
 _WEEKDAY_NAMES = {
     "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
@@ -145,24 +154,36 @@ def _format_task_line(task: dict) -> str:
 # ── Event line parsing ─────────────────────────────────────────────────────────
 
 def _parse_event_line(line: str) -> Optional[dict]:
-    """Parse YYYY-MM-DD — desc [end:YYYY-MM-DD] → dict."""
+    """Parse YYYY-MM-DD — desc [end:YYYY-MM-DD] [recur:...] [ring:...] → dict."""
     m = re.match(r"^(\d{4}-\d{2}-\d{2})\s+—\s+(.+)$", line)
     if not m:
         return None
     date_val = m.group(1)
     rest     = m.group(2)
-    end = gcal_id = None
+    end = recur = until = ring = gcal_id = None
     end_m = re.search(r"\[end:(\d{4}-\d{2}-\d{2})\]", rest)
     if end_m:
         end  = end_m.group(1)
+    recur_m = re.search(r"\[recur:([^\]]+)\]", rest)
+    if recur_m:
+        raw = recur_m.group(1)
+        if ":" in raw:
+            recur, until = raw.split(":", 1)
+        else:
+            recur = raw
+    ring_m = re.search(r"\[ring:([^\]]+)\]", rest)
+    if ring_m:
+        ring = ring_m.group(1)
     gcal_m = re.search(r"\[gcal:([^\]]+)\]", rest)
     if gcal_m:
         gcal_id = gcal_m.group(1)
     # Strip attribute tags from description
-    for pat in [r"\[end:[^\]]+\]", r"\[gcal:[^\]]+\]"]:
+    for pat in [r"\[end:[^\]]+\]", r"\[recur:[^\]]+\]",
+                r"\[ring:[^\]]+\]", r"\[gcal:[^\]]+\]"]:
         rest = re.sub(pat, "", rest)
     rest = rest.strip()
-    return {"date": date_val, "desc": rest, "end": end, "gcal_id": gcal_id}
+    return {"date": date_val, "desc": rest, "end": end,
+            "recur": recur, "until": until, "ring": ring, "gcal_id": gcal_id}
 
 
 def _format_event_line(ev: dict) -> str:
@@ -170,6 +191,13 @@ def _format_event_line(ev: dict) -> str:
     line = f"{ev['date']} — {ev['desc']}"
     if ev.get("end"):
         line += f" [end:{ev['end']}]"
+    if ev.get("recur"):
+        recur_tag = ev["recur"]
+        if ev.get("until"):
+            recur_tag += f":{ev['until']}"
+        line += f" [recur:{recur_tag}]"
+    if ev.get("ring"):
+        line += f" [ring:{ev['ring']}]"
     if ev.get("gcal_id"):
         line += f" [gcal:{ev['gcal_id']}]"
     return line
@@ -427,14 +455,25 @@ def _next_occurrence(due: Optional[str], recur: str, done_date: str) -> str:
 def run_task_add(project: str, text: str, date_val: Optional[str] = None,
                  recur: Optional[str] = None, until: Optional[str] = None,
                  ring: Optional[str] = None) -> int:
+    if date_val and not _valid_date(date_val):
+        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if until and not _valid_date(until):
+        print(f"⚠️  Fecha --until '{until}' no reconocida.")
+        return 1
     if recur:
         recur = _normalize_recur(recur)
         if not is_valid_recur(recur):
-            print(f"Error: recurrencia '{recur}' no válida.")
+            print(f"⚠️  Recurrencia '{recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
             return 1
     if until and not recur:
         print("Error: --until requiere --recur.")
         return 1
+    if ring:
+        from core.ring import _parse_ring
+        if _parse_ring(ring) is None:
+            print(f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, o YYYY-MM-DD HH:MM")
+            return 1
 
     project_dir = _find_new_project(project)
     if project_dir is None:
@@ -576,11 +615,22 @@ def run_task_edit(project: Optional[str], text: Optional[str],
         print("Error: especifica un proyecto")
         return 1
 
+    if new_date and new_date != "none" and not _valid_date(new_date):
+        print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if new_until and new_until != "none" and not _valid_date(new_until):
+        print(f"⚠️  Fecha --until '{new_until}' no reconocida.")
+        return 1
     if new_recur and new_recur != "none":
         new_recur = _normalize_recur(new_recur)
     if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
-        print(f"Error: recurrencia '{new_recur}' no válida.")
+        print(f"⚠️  Recurrencia '{new_recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
         return 1
+    if new_ring and new_ring != "none":
+        from core.ring import _parse_ring
+        if _parse_ring(new_ring) is None:
+            print(f"⚠️  Ring '{new_ring}' no válido. Usa: HH:MM, 1d, 2h, o YYYY-MM-DD HH:MM")
+            return 1
 
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
@@ -663,7 +713,29 @@ def run_task_list(projects: Optional[list] = None,
 
 # ── MILESTONE commands ─────────────────────────────────────────────────────────
 
-def run_ms_add(project: str, text: str, date_val: Optional[str] = None) -> int:
+def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
+               recur: Optional[str] = None, until: Optional[str] = None,
+               ring: Optional[str] = None) -> int:
+    if date_val and not _valid_date(date_val):
+        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if until and not _valid_date(until):
+        print(f"⚠️  Fecha --until '{until}' no reconocida.")
+        return 1
+    if recur:
+        recur = _normalize_recur(recur)
+        if not is_valid_recur(recur):
+            print(f"⚠️  Recurrencia '{recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
+            return 1
+    if until and not recur:
+        print("Error: --until requiere --recur.")
+        return 1
+    if ring:
+        from core.ring import _parse_ring
+        if _parse_ring(ring) is None:
+            print(f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, o YYYY-MM-DD HH:MM")
+            return 1
+
     project_dir = _find_new_project(project)
     if project_dir is None:
         return 1
@@ -671,12 +743,27 @@ def run_ms_add(project: str, text: str, date_val: Optional[str] = None) -> int:
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
     new_ms = {"status": "pending", "desc": text,
-              "date": date_val, "recur": None, "ring": None}
+              "date": date_val, "recur": recur, "until": until, "ring": ring}
     data["milestones"].append(new_ms)
     _write_agenda(agenda_path, data)
 
-    date_s = f" ({date_val})" if date_val else ""
-    print(f"✓ [{project_dir.name}] Hito: {text}{date_s}")
+    attrs = ""
+    if date_val: attrs += f" ({date_val})"
+    if recur:
+        recur_s = recur
+        if until: recur_s += f":{until}"
+        attrs += f" [recur:{recur_s}]"
+    if ring:     attrs += f" [ring:{ring}]"
+    print(f"✓ [{project_dir.name}] Hito: {text}{attrs}")
+
+    # Schedule reminder immediately if ring fires today
+    if ring and date_val:
+        from core.ring import resolve_ring_datetime, _schedule_reminder
+        ring_dt = resolve_ring_datetime(date_val, ring)
+        if ring_dt and ring_dt.date() == date.today():
+            ok = _schedule_reminder(text, project_dir.name, ring_dt)
+            if ok:
+                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
 
     from core.gsync import sync_item
     sync_item(project_dir, new_ms, "milestone")
@@ -758,7 +845,26 @@ def run_ms_drop(project: Optional[str], text: Optional[str],
 
 
 def run_ms_edit(project: Optional[str], text: Optional[str],
-                new_text: Optional[str] = None, new_date: Optional[str] = None) -> int:
+                new_text: Optional[str] = None, new_date: Optional[str] = None,
+                new_recur: Optional[str] = None, new_until: Optional[str] = None,
+                new_ring: Optional[str] = None) -> int:
+    if new_date and new_date != "none" and not _valid_date(new_date):
+        print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if new_until and new_until != "none" and not _valid_date(new_until):
+        print(f"⚠️  Fecha --until '{new_until}' no reconocida.")
+        return 1
+    if new_recur and new_recur != "none":
+        new_recur = _normalize_recur(new_recur)
+    if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
+        print(f"⚠️  Recurrencia '{new_recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
+        return 1
+    if new_ring and new_ring != "none":
+        from core.ring import _parse_ring
+        if _parse_ring(new_ring) is None:
+            print(f"⚠️  Ring '{new_ring}' no válido. Usa: HH:MM, 1d, 2h, o YYYY-MM-DD HH:MM")
+            return 1
+
     project_dir = _find_new_project(project) if project else None
     if project and project_dir is None:
         return 1
@@ -774,8 +880,11 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
         return 1
 
     ms = data["milestones"][idx]
-    if new_text: ms["desc"] = new_text
-    if new_date: ms["date"] = None if new_date == "none" else new_date
+    if new_text:  ms["desc"]  = new_text
+    if new_date:  ms["date"]  = None if new_date  == "none" else new_date
+    if new_recur: ms["recur"] = None if new_recur == "none" else new_recur
+    if new_until: ms["until"] = None if new_until == "none" else new_until
+    if new_ring:  ms["ring"]  = None if new_ring  == "none" else new_ring
 
     _write_agenda(agenda_path, data)
     print(f"✓ [{project_dir.name}] Hito actualizado: {ms['desc']}")
@@ -826,25 +935,59 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending")
 # ── EVENT commands ─────────────────────────────────────────────────────────────
 
 def run_ev_add(project: str, text: str, date_val: str,
-               end_date: Optional[str] = None) -> int:
+               end_date: Optional[str] = None, recur: Optional[str] = None,
+               until: Optional[str] = None, ring: Optional[str] = None) -> int:
+    if not _valid_date(date_val):
+        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if end_date and not _valid_date(end_date):
+        print(f"⚠️  Fecha --end '{end_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if until and not _valid_date(until):
+        print(f"⚠️  Fecha --until '{until}' no reconocida.")
+        return 1
+    if recur:
+        recur = _normalize_recur(recur)
+        if not is_valid_recur(recur):
+            print(f"⚠️  Recurrencia '{recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
+            return 1
+    if until and not recur:
+        print("Error: --until requiere --recur.")
+        return 1
+    if ring:
+        from core.ring import _parse_ring
+        if _parse_ring(ring) is None:
+            print(f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, o YYYY-MM-DD HH:MM")
+            return 1
+
     project_dir = _find_new_project(project)
     if project_dir is None:
         return 1
 
-    try:
-        date.fromisoformat(date_val)
-    except ValueError:
-        print(f"Error: fecha '{date_val}' inválida. Usa YYYY-MM-DD.")
-        return 1
-
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-    new_ev = {"date": date_val, "desc": text, "end": end_date}
+    new_ev = {"date": date_val, "desc": text, "end": end_date,
+              "recur": recur, "until": until, "ring": ring}
     data["events"].append(new_ev)
     _write_agenda(agenda_path, data)
 
-    end_s = f" → {end_date}" if end_date else ""
-    print(f"✓ [{project_dir.name}] Evento: {date_val} — {text}{end_s}")
+    attrs = ""
+    if end_date: attrs += f" → {end_date}"
+    if recur:
+        recur_s = recur
+        if until: recur_s += f":{until}"
+        attrs += f" [recur:{recur_s}]"
+    if ring: attrs += f" [ring:{ring}]"
+    print(f"✓ [{project_dir.name}] Evento: {date_val} — {text}{attrs}")
+
+    # Schedule reminder immediately if ring fires today
+    if ring:
+        from core.ring import resolve_ring_datetime, _schedule_reminder
+        ring_dt = resolve_ring_datetime(date_val, ring)
+        if ring_dt and ring_dt.date() == date.today():
+            ok = _schedule_reminder(text, project_dir.name, ring_dt)
+            if ok:
+                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
 
     from core.gsync import sync_item
     sync_item(project_dir, new_ev, "event")
@@ -893,6 +1036,61 @@ def run_ev_drop(project: Optional[str], text: Optional[str],
     if ev_removed.get("gcal_id"):
         from core.gsync import delete_gcal_event
         delete_gcal_event(project_dir, ev_removed)
+
+    return 0
+
+
+def run_ev_edit(project: Optional[str], text: Optional[str],
+                new_text: Optional[str] = None, new_date: Optional[str] = None,
+                new_end: Optional[str] = None, new_recur: Optional[str] = None,
+                new_until: Optional[str] = None, new_ring: Optional[str] = None) -> int:
+    if new_date and not _valid_date(new_date):
+        print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if new_end and new_end != "none" and not _valid_date(new_end):
+        print(f"⚠️  Fecha --end '{new_end}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if new_until and new_until != "none" and not _valid_date(new_until):
+        print(f"⚠️  Fecha --until '{new_until}' no reconocida.")
+        return 1
+    if new_recur and new_recur != "none":
+        new_recur = _normalize_recur(new_recur)
+    if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
+        print(f"⚠️  Recurrencia '{new_recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
+        return 1
+    if new_ring and new_ring != "none":
+        from core.ring import _parse_ring
+        if _parse_ring(new_ring) is None:
+            print(f"⚠️  Ring '{new_ring}' no válido. Usa: HH:MM, 1d, 2h, o YYYY-MM-DD HH:MM")
+            return 1
+
+    project_dir = _find_new_project(project) if project else None
+    if project and project_dir is None:
+        return 1
+    if project_dir is None:
+        print("Error: especifica un proyecto")
+        return 1
+
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+
+    idx = _select_event(data["events"], text)
+    if idx is None:
+        return 1
+
+    ev = data["events"][idx]
+    if new_text:  ev["desc"]  = new_text
+    if new_date:  ev["date"]  = new_date
+    if new_end:   ev["end"]   = None if new_end   == "none" else new_end
+    if new_recur: ev["recur"] = None if new_recur == "none" else new_recur
+    if new_until: ev["until"] = None if new_until == "none" else new_until
+    if new_ring:  ev["ring"]  = None if new_ring  == "none" else new_ring
+
+    _write_agenda(agenda_path, data)
+    print(f"✓ [{project_dir.name}] Evento actualizado: {ev['date']} — {ev['desc']}")
+
+    from core.gsync import sync_item
+    sync_item(project_dir, ev, "event")
 
     return 0
 

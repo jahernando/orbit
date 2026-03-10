@@ -68,6 +68,7 @@ Se aceptan días de la semana en inglés y español (`lunes`, `viernes`, etc.).
 |-------|------------|
 | `1d` | 1 día antes del deadline (a las 09:00) |
 | `2h` | 2 horas antes |
+| `HH:MM` | Hoy (o en la fecha de la tarea) a esa hora |
 | `YYYY-MM-DD HH:MM` | Fecha/hora exacta |
 | `none` | Eliminar ring (solo en `edit`) |
 
@@ -76,10 +77,10 @@ Se aceptan días de la semana en inglés y español (`lunes`, `viernes`, etc.).
 ## ms — hitos
 
 ```bash
-orbit ms add    <project> "<text>" [--date DATE]
+orbit ms add    <project> "<text>" [--date DATE] [--ring WHEN]
 orbit ms done   [<project>] ["<text>"]
 orbit ms drop   [<project>] ["<text>"] [--force]
-orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none]
+orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--ring WHEN|none]
 ```
 
 ---
@@ -89,6 +90,8 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none]
 ```bash
 orbit ev add  <project> "<text>" --date DATE [--end DATE]
 orbit ev drop [<project>] ["<text>"] [--force]
+orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none]
+orbit ev list [<project>] [--from DATE] [--to DATE]
 ```
 
 - `drop` pide confirmación (defecto **No**); `--force` la omite
