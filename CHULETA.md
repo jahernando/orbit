@@ -108,7 +108,7 @@ orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
 orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE]
 ```
 
-- `--type`: `refs` · `results` · `decisions` · `ideas` · `evals`
+- `--type`: `refs` · `results` · `decisions` · `ideas` · `evals` · `plans`
 - `drop` pide confirmación (defecto **No**); `--force` la omite
 
 ---
@@ -152,7 +152,7 @@ orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
              [--limit N] [--open] [--editor E]
 ```
 
-`--tag`: filtra por hashtag (`idea` · `referencia` · `tarea` · `problema` · `resultado` · `apunte` · `decision`)
+`--tag`: filtra por hashtag (`idea` · `referencia` · `tarea` · `problema` · `resultado` · `apunte` · `decision` · `plan`)
 `--in`: busca en un tipo de fichero específico (por defecto logbook)
 
 ---
@@ -201,7 +201,7 @@ Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untra
 ## agenda — vista temporal
 
 ```bash
-orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--dated] [--open] [--editor E]
+orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--dated] [--order project|date] [--open] [--editor E]
 ```
 
 - Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
@@ -215,6 +215,8 @@ orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--dated] 
   - Rojo: vencida
   - Invertido: hoy
 - `--dated`: solo muestra tareas/hitos que tienen fecha asignada
+- `--order project`: agrupa por proyecto (por defecto)
+- `--order date`: agrupa por día, con horas como sub-cabeceras; sin-fecha al final
 - Compatible con `--open` y `--log`
 
 ---

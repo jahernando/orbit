@@ -258,6 +258,7 @@ def run_agenda(
     show_calendar: bool = False,
     markdown: bool = False,
     dated_only: bool = False,
+    order: str = "project",
 ) -> int:
     """Print agenda (tasks/events/milestones) for a day or period."""
     if not PROJECTS_DIR.exists():
@@ -288,7 +289,11 @@ def run_agenda(
     lines = [header, "─" * 56]
 
     collected = _collect_data(dirs, start, end, dated_only=dated_only)
-    lines.extend(_format_detail_lines(collected, markdown=markdown))
+
+    if order == "date":
+        lines.extend(_format_by_date(collected, markdown=markdown, dated_only=dated_only))
+    else:
+        lines.extend(_format_detail_lines(collected, markdown=markdown))
 
     total_tasks = sum(len(t) for _, t, _, _ in collected)
     total_events = sum(len(e) for _, _, e, _ in collected)
@@ -396,6 +401,140 @@ def _week_overlaps(week, y, m, start, end):
         if day != 0 and start <= date(y, m, day) <= end:
             return True
     return False
+
+
+_DAY_NAMES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+
+
+def _item_time_key(item):
+    """Return a sort key: (has_time, time_str).  Items with time sort first."""
+    t = item.get("time") or ""
+    if t:
+        return (0, t.split("-")[0])   # start time for ranges like 09:00-10:00
+    return (1, "")
+
+
+def _format_item_line(kind, item, proj_name, markdown=False):
+    """Format a single item line with project tag for date-ordered view."""
+    today = date.today()
+    pfx = "- " if markdown else "  "
+    check = "☐" if markdown else "[ ]"
+
+    if kind == "event":
+        time_s = f" {item['time']}" if item.get("time") else ""
+        end_s = f" → {item['end']}" if item.get("end") else ""
+        recur_s = ""
+        if item.get("recur"):
+            recur_s = f" [recur:{item['recur']}"
+            if item.get("until"):
+                recur_s += f":{item['until']}"
+            recur_s += "]"
+        return f"{pfx}📅{time_s} — {item['desc']}{end_s}{recur_s}  [{proj_name}]"
+
+    elif kind == "milestone":
+        overdue = ""
+        if item.get("date"):
+            try:
+                if date.fromisoformat(item["date"]) < today:
+                    overdue = " ⚠️"
+            except ValueError:
+                pass
+        return f"{pfx}🏁 {item['desc']}{overdue}  [{proj_name}]"
+
+    else:  # task
+        overdue = ""
+        if item.get("date"):
+            try:
+                if date.fromisoformat(item["date"]) < today:
+                    overdue = " ⚠️"
+            except ValueError:
+                pass
+        recur_s = ""
+        if item.get("recur"):
+            recur_s = f" [recur:{item['recur']}"
+            if item.get("until"):
+                recur_s += f":{item['until']}"
+            recur_s += "]"
+        return f"{pfx}{check} {item['desc']}{recur_s}{overdue}  [{proj_name}]"
+
+
+def _format_by_date(collected, markdown=False, dated_only=False):
+    """Format agenda items grouped by date, then by hour within each date.
+
+    Order within each day: items with time first (sorted by time),
+    then items without time.  Within each time slot: milestones, events, tasks.
+    Undated items go in a final "Sin fecha" block (unless dated_only).
+    """
+    # Flatten all items with project info
+    # Each entry: (date_str|None, kind, item, proj_name)
+    all_items = []
+    for project_dir, tasks, events, milestones in collected:
+        proj = project_dir.name
+        for e in events:
+            all_items.append((e.get("date"), "event", e, proj))
+        for m in milestones:
+            all_items.append((m.get("date"), "milestone", m, proj))
+        for t in tasks:
+            all_items.append((t.get("date"), "task", t, proj))
+
+    # Split into dated and undated
+    dated = [(d, k, it, p) for d, k, it, p in all_items if d]
+    undated = [(d, k, it, p) for d, k, it, p in all_items if not d]
+
+    # Group dated items by date
+    by_date = {}
+    for d_str, kind, item, proj in dated:
+        by_date.setdefault(d_str, []).append((kind, item, proj))
+
+    # Kind priority: milestone=0, event=1, task=2
+    kind_order = {"milestone": 0, "event": 1, "task": 2}
+
+    lines = []
+    for d_str in sorted(by_date.keys()):
+        try:
+            d = date.fromisoformat(d_str)
+            day_name = _DAY_NAMES[d.weekday()]
+            day_label = f"{d_str} ({day_name})"
+        except ValueError:
+            day_label = d_str
+
+        lines.append("")
+        if markdown:
+            lines.append(f"**{day_label}**")
+        else:
+            lines.append(f"{_BOLD}{day_label}{_RESET}")
+
+        items = by_date[d_str]
+        # Sort: items with time first (by time), then without time; within group by kind
+        items.sort(key=lambda x: (
+            _item_time_key(x[1]),
+            kind_order.get(x[0], 9),
+        ))
+
+        # Group by hour for display
+        current_time = None
+        for kind, item, proj in items:
+            item_time = item.get("time")
+            if item_time and item_time != current_time:
+                current_time = item_time
+                hour_label = item_time.split("-")[0]  # show start time for ranges
+                lines.append(f"  {_DIM}{hour_label}{_RESET}" if not markdown else f"  *{hour_label}*")
+            lines.append(_format_item_line(kind, item, proj, markdown=markdown))
+
+    # Undated block
+    if undated and not dated_only:
+        lines.append("")
+        if markdown:
+            lines.append("**Sin fecha**")
+        else:
+            lines.append(f"{_BOLD}Sin fecha{_RESET}")
+
+        # Sort: milestones, events, tasks
+        undated.sort(key=lambda x: kind_order.get(x[1], 9))
+        for _, kind, item, proj in undated:
+            lines.append(_format_item_line(kind, item, proj, markdown=markdown))
+
+    return lines
 
 
 def _format_detail_lines(collected, markdown=False):

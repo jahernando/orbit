@@ -148,6 +148,9 @@ def _check_agenda(project_name: str, path: Path) -> list:
     lines = path.read_text().splitlines()
     section = None  # "tasks", "milestones", "events", or None
 
+    # Regex for non-zero-padded dates in parentheses, e.g. (2026-3-28) or (2026-03-1)
+    _LOOSE_DATE_RE = re.compile(r"\((\d{4})-(\d{1,2})-(\d{1,2})\)")
+
     for i, line in enumerate(lines):
         s = line.strip()
 
@@ -169,6 +172,17 @@ def _check_agenda(project_name: str, path: Path) -> list:
             continue
 
         if section in ("tasks", "milestones"):
+            # Check for non-zero-padded dates like (2026-3-28)
+            loose_m = _LOOSE_DATE_RE.search(s)
+            if loose_m:
+                y, m_str, d_str = loose_m.group(1), loose_m.group(2), loose_m.group(3)
+                if len(m_str) < 2 or len(d_str) < 2:
+                    fixed_date = f"({y}-{int(m_str):02d}-{int(d_str):02d})"
+                    fixed_line = s[:loose_m.start()] + fixed_date + s[loose_m.end():]
+                    issues.append(Issue(project_name, path.name, i + 1, line,
+                                        f"Fecha sin zero-padding: {loose_m.group(0)} → {fixed_date}",
+                                        fix=fixed_line))
+
             # Should be a task/milestone line
             if s.startswith("- "):
                 parsed = _parse_task_line(s)

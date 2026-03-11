@@ -425,6 +425,7 @@ def cmd_agenda(args):
         show_calendar=getattr(args, "calendar", False),
         markdown=bool(to_file),
         dated_only=getattr(args, "dated", False),
+        order=getattr(args, "order", "project"),
     )
     return _handle_output(args, fn, "agenda")
 
@@ -721,6 +722,8 @@ def main():
                       help="Show calendar grid with colored markers (max 3 months)")
     ag_p.add_argument("--dated",  action="store_true",
                       help="Only show tasks/milestones with a date")
+    ag_p.add_argument("--order", choices=["project", "date"], default="project",
+                      help="Order by project (default) or by date")
     ag_p.add_argument("--open",   action="store_true", help="Open in editor")
     ag_p.add_argument("--editor", default=None)
     _add_log_args(ag_p)
