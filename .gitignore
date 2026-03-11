@@ -1,0 +1,19 @@
+# Binarios y resultados locales
+**/references/
+**/results/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+
+# macOS
+.DS_Store
+
+# Google Calendar credentials (sensitive)
+credentials.json
+token.json
+
+# Temp output
+cmd.md
