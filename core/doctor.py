@@ -84,8 +84,8 @@ def _check_logbook(project_name: str, path: Path,
             last_was_entry = False
             continue
 
-        # Indented continuation line (2+ spaces) — valid multiline
-        if line.startswith("  ") and last_was_entry:
+        # Indented continuation line (2+ spaces or tab) — valid multiline
+        if (line.startswith("  ") or line.startswith("\t") or line.startswith("\u200b")) and last_was_entry:
             continue
 
         # Should be a dated entry

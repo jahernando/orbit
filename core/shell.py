@@ -88,8 +88,13 @@ def run_shell(editor: str = ""):
                 "import", "ls", "log", "search", "open", "report", "agenda",
                 "gsync", "doctor", "archive", "undo", "help", "project", "claude", "exit", "quit"]
 
+    # Shell commands allowed to run from the Orbit REPL
+    SHELL_COMMANDS = {"deliver", "ls", "git", "cat", "head", "tail", "pwd", "echo"}
+
+    all_completions = COMMANDS + sorted(SHELL_COMMANDS)
+
     def completer(text, state):
-        options = [c for c in COMMANDS if c.startswith(text)]
+        options = [c for c in all_completions if c.startswith(text)]
         return options[state] if state < len(options) else None
 
     readline.set_completer(completer)
@@ -133,6 +138,12 @@ def run_shell(editor: str = ""):
             tokens = shlex.split(line)
         except ValueError as e:
             print(f"Error al parsear: {e}")
+            continue
+
+        # Dispatch whitelisted shell commands directly
+        if tokens[0] in SHELL_COMMANDS:
+            import subprocess
+            subprocess.run(line, shell=True, cwd=ORBIT_DIR)
             continue
 
         from core.undo import commit_operation, discard_operation

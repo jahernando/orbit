@@ -2,6 +2,9 @@
 **/references/
 **/results/
 
+# Stamp files
+.last_ring
+
 # Python
 __pycache__/
 *.py[cod]
@@ -15,5 +18,36 @@ __pycache__/
 credentials.json
 token.json
 
-# Temp output
+# Google sync IDs (local state)
+.gsync-ids.json
+
+# Search results (ephemeral)
+☀️mision-log/search.md
+☀️mision-log/tasks.md
 cmd.md
+proyectos.md
+
+# Shell personal (contiene config local)
+orbit.sh
+
+# Auto-ignored by Orbit
+"\360\237\232\200proyectos/\360\237\222\273orbit/notes/valoracion_v0.6.1.md"
+
+# Auto-ignored by Orbit
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/igfae-agenda.md"
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/igfae-highlights.md"
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/igfae-logbook.md"
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/igfae-project.md"
+"\360\237\232\200proyectos/\360\237\214\200igfae/igfae-agenda.md"
+"\360\237\232\200proyectos/\360\237\214\200igfae/igfae-highlights.md"
+"\360\237\232\200proyectos/\360\237\214\200igfae/igfae-logbook.md"
+"\360\237\232\200proyectos/\360\237\214\200igfae/igfae-project.md"
+
+# Auto-ignored by Orbit
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/latex/propuesta_programa_estudiantes.aux"
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/latex/propuesta_programa_estudiantes.html"
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/latex/propuesta_programa_estudiantes.log"
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/latex/propuesta_programa_estudiantes.out"
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/latex/propuesta_programa_estudiantes.pdf"
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/latex/propuesta_programa_estudiantes.tex"
+"\360\237\232\200proyectos/\342\232\231\357\270\217igfae/pdfs/propuesta_programa_estudiantes.pdf"
