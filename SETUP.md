@@ -183,14 +183,26 @@ export ORBIT_EDITOR=typora    # o code, glow, etc.
 Editores con soporte integrado: `typora`, `glow`, `code`. Cualquier otro se ejecuta directamente.
 Si no se configura, usa `open` (macOS) o `xdg-open` (Linux).
 
-### ~/.config/deliver.conf — entrega de ficheros
+### ~/.config/deliver.conf — entrega de ficheros a la nube
 
-Mapea workspaces a directorios en la nube para el comando `deliver`:
+El comando `deliver` copia ficheros de un proyecto al directorio en la nube
+(OneDrive, Google Drive, etc.). Configuralo en `~/.config/deliver.conf`:
 
 ```
 ~/mi-workspace=/ruta/a/OneDrive/mi-workspace
 ~/otro-workspace=/ruta/a/GoogleDrive/otro-workspace
 ```
+
+Uso:
+
+```bash
+deliver proyecto fichero [fichero...]    # copia preservando estructura
+deliver proyecto notes/results.pdf       # → cloud/🌀proyectos/🌀proyecto/notes/results.pdf
+deliver --list                           # muestra el mapeo configurado
+```
+
+El comando vive en `~/orbit/bin/` y se anade al PATH automaticamente via `orbit.sh`.
+Funciona tanto desde el REPL de Orbit como desde la terminal.
 
 ### ANTHROPIC_API_KEY — integracion con Claude
 

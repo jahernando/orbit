@@ -12,6 +12,7 @@ Orbit separa **codigo** y **datos** en repositorios distintos:
 ~/orbit/              ← repo publico, solo codigo (este repo)
   orbit.py
   core/
+  bin/                ← comandos auxiliares (deliver, ...)
   📐templates/
   tests/
 
