@@ -1,0 +1,129 @@
+#!/bin/bash
+# deliver — copia ficheros de un proyecto Orbit al directorio en la nube
+#
+# Uso:
+#   deliver proyecto fichero [fichero...]
+#   deliver proyecto notes/nota.md
+#   deliver --list
+#
+# Lee ~/.config/deliver.conf para mapear el workspace actual a un
+# directorio en la nube (OneDrive, Google Drive, etc.).
+#
+# Formato de deliver.conf:
+#   /ruta/workspace=/ruta/cloud/destino
+#
+# El fichero se copia preservando la estructura de directorios relativa
+# al workspace. Por ejemplo:
+#   deliver next-kr notes/results.pdf
+#   → copia a /cloud/destino/🌀proyectos/🌀next-kr/notes/results.pdf
+
+set -euo pipefail
+
+CONF="$HOME/.config/deliver.conf"
+
+# ── Helpers ──────────────────────────────────────────────────────────────
+
+die()  { echo "❌ $*" >&2; exit 1; }
+info() { echo "📦 $*"; }
+
+usage() {
+    cat <<'EOF'
+Uso:
+  deliver proyecto fichero [fichero...]    copia ficheros a la nube
+  deliver --list                           muestra el mapeo configurado
+  deliver --help                           muestra esta ayuda
+
+Ejemplos:
+  deliver next-kr notes/results.pdf
+  deliver next-kr highlights.md agenda.md
+EOF
+    exit 0
+}
+
+# ── Config ───────────────────────────────────────────────────────────────
+
+[[ -f "$CONF" ]] || die "No existe $CONF — ver SETUP.md para configurar deliver"
+
+# Find the cloud root for the current workspace
+find_cloud_root() {
+    local ws="$1"
+    while IFS='=' read -r left right; do
+        # Skip comments and empty lines
+        [[ -z "$left" || "$left" == \#* ]] && continue
+        # Expand ~ in paths
+        left="${left/#\~/$HOME}"
+        right="${right/#\~/$HOME}"
+        # Match workspace
+        if [[ "$ws" == "$left" ]]; then
+            echo "$right"
+            return 0
+        fi
+    done < "$CONF"
+    return 1
+}
+
+# ── Commands ─────────────────────────────────────────────────────────────
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    usage
+fi
+
+if [[ "${1:-}" == "--list" ]]; then
+    echo "Configuración de deliver ($CONF):"
+    echo
+    while IFS='=' read -r left right; do
+        [[ -z "$left" || "$left" == \#* ]] && continue
+        left="${left/#\~/$HOME}"
+        right="${right/#\~/$HOME}"
+        if [[ -d "$left" ]]; then
+            echo "  ✓ $left → $right"
+        else
+            echo "  ✗ $left → $right  (workspace no encontrado)"
+        fi
+    done < "$CONF"
+    exit 0
+fi
+
+# ── Deliver files ────────────────────────────────────────────────────────
+
+[[ $# -ge 2 ]] || die "Uso: deliver proyecto fichero [fichero...]"
+
+PROJECT="$1"
+shift
+
+# Detect workspace root (ORBIT_HOME or cwd)
+WS="${ORBIT_HOME:-$PWD}"
+
+CLOUD_ROOT=$(find_cloud_root "$WS") || die "Workspace $WS no está en deliver.conf"
+
+# Find the project directory (search for emoji-prefixed match)
+PROJ_DIR=""
+for d in "$WS"/*proyectos/*"$PROJECT"; do
+    if [[ -d "$d" ]]; then
+        PROJ_DIR="$d"
+        break
+    fi
+done
+
+[[ -n "$PROJ_DIR" ]] || die "Proyecto '$PROJECT' no encontrado en $WS"
+
+# Relative path of project from workspace root
+PROJ_REL="${PROJ_DIR#$WS/}"
+
+copied=0
+for file in "$@"; do
+    src="$PROJ_DIR/$file"
+    [[ -f "$src" ]] || { echo "⚠️  No existe: $src" >&2; continue; }
+
+    dest="$CLOUD_ROOT/$PROJ_REL/$file"
+    mkdir -p "$(dirname "$dest")"
+    cp "$src" "$dest"
+    info "$PROJ_REL/$file → $(dirname "$dest")/"
+    copied=$((copied + 1))
+done
+
+if [[ $copied -eq 0 ]]; then
+    die "No se copió ningún fichero"
+else
+    echo "✅ $copied fichero(s) entregado(s)"
+fi
