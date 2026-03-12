@@ -10,7 +10,7 @@ from core.log import PROJECTS_DIR, find_logbook_file, find_proyecto_file, resolv
 from core.tasks import TYPE_MAP, PRIORITY_MAP, normalize
 from core.open import open_file
 
-from core.config import TEMPLATES_DIR, get_type_label
+from core.config import TEMPLATES_DIR, PROJECTS_DIR as _PROJECTS_DIR, get_type_label
 
 TYPE_LABEL = get_type_label()
 
@@ -330,7 +330,7 @@ def generate_proyectos_md() -> Path:
         lines.append("No hay proyectos.")
     else:
         for r in rows:
-            rel = f"🚀proyectos/{r['dir']}"
+            rel = f"{_PROJECTS_DIR.name}/{r['dir']}"
             project_link = f"[{r['name']}]({rel}/)" if not r["project_f"] \
                 else f"[{r['name']}]({rel}/{r['project_f'].name})"
             # Collect links to sections that exist

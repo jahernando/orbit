@@ -9,9 +9,18 @@ from pathlib import Path
 # Priority: ORBIT_HOME env var → parent of orbit.py (development mode)
 _default = Path(__file__).resolve().parent.parent
 ORBIT_HOME   = Path(os.environ.get("ORBIT_HOME", _default))
-ORBIT_PROMPT = os.environ.get("ORBIT_PROMPT", "🚀")
 
-PROJECTS_DIR  = ORBIT_HOME / "🚀proyectos"
+# Orbit emoji: from orbit.json → env var fallback → 🚀 default
+_ORBIT_JSON_PATH = ORBIT_HOME / "orbit.json"
+_orbit_emoji = "🚀"
+if _ORBIT_JSON_PATH.exists():
+    try:
+        _orbit_emoji = json.loads(_ORBIT_JSON_PATH.read_text()).get("emoji", "🚀")
+    except (json.JSONDecodeError, KeyError):
+        pass
+ORBIT_PROMPT = os.environ.get("ORBIT_PROMPT", _orbit_emoji)
+
+PROJECTS_DIR  = ORBIT_HOME / f"{_orbit_emoji}proyectos"
 TEMPLATES_DIR = ORBIT_HOME / "📐templates"
 CMD_MD        = ORBIT_HOME / "cmd.md"
 PROYECTOS_MD  = ORBIT_HOME / "proyectos.md"
@@ -20,7 +29,7 @@ HISTORY_MD    = ORBIT_HOME / "history.md"
 
 # ── Project types (from orbit.json) ──────────────────────────────────────────
 
-_ORBIT_JSON = ORBIT_HOME / "orbit.json"
+_ORBIT_JSON = _ORBIT_JSON_PATH
 
 _DEFAULT_TYPES = {
     "investigacion": "🌀",

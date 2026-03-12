@@ -26,7 +26,8 @@ from core.agenda_cmds import _read_agenda, _next_occurrence
 def _project_link(project_dir):
     """Build a markdown link to the project file: [name](relative/path)."""
     proj_file = find_proyecto_file(project_dir)
-    rel = f"🚀proyectos/{project_dir.name}"
+    from core.config import PROJECTS_DIR
+    rel = f"{PROJECTS_DIR.name}/{project_dir.name}"
     if proj_file:
         return f"[{project_dir.name}]({rel}/{proj_file.name})"
     return f"[{project_dir.name}]({rel}/)"

@@ -256,8 +256,13 @@ def _read_agenda(path: Path) -> dict:
 
     for line in lines:
         # Indented line → append to previous item's notes
-        if last_item is not None and line and (line.startswith("    ") or line.startswith("\t")):
-            last_item.setdefault("notes", []).append(line.strip())
+        # Accept 4+ spaces, tab, or zero-width space (Typora) as indentation
+        stripped_zw = line.lstrip("\u200b")
+        if last_item is not None and line and (
+            line.startswith("    ") or line.startswith("\t") or
+            stripped_zw.startswith("\t") or stripped_zw.startswith("    ")
+        ):
+            last_item.setdefault("notes", []).append(line.strip().strip("\u200b\t"))
             continue
 
         if section is None:
@@ -277,7 +282,7 @@ def _read_agenda(path: Path) -> dict:
         elif line == _EV_HEADER:
             section = "events"; last_item = None
         elif not line.strip():
-            continue   # skip blank lines inside sections
+            continue   # skip blank lines inside sections (keep last_item for notes)
         elif section == "tasks":
             t = _parse_task_line(line)
             if t:

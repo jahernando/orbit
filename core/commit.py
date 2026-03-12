@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from core.config import ORBIT_HOME as ORBIT_DIR
+from core.config import ORBIT_HOME as ORBIT_DIR, PROJECTS_DIR
 
 
 # ── Git helpers ────────────────────────────────────────────────────────────────
@@ -68,10 +68,10 @@ def _git_add_all_tracked() -> bool:
 
 
 def _git_untracked_in_projects() -> list:
-    """Return list of untracked file paths inside 🚀proyectos/."""
+    """Return list of untracked file paths inside the projects directory."""
     try:
         result = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard", "🚀proyectos/"],
+            ["git", "ls-files", "--others", "--exclude-standard", f"{PROJECTS_DIR.name}/"],
             capture_output=True, text=True, cwd=ORBIT_DIR,
         )
         if result.returncode != 0:

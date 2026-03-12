@@ -19,7 +19,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from core.config import ORBIT_HOME, normalize as _normalize
+from core.config import ORBIT_HOME, ORBIT_PROMPT, normalize as _normalize
 from core.log import PROJECTS_DIR, resolve_file
 from core.project import _find_new_project, _is_new_project, _read_project_meta
 from core.agenda_cmds import _read_agenda, _write_agenda
@@ -154,7 +154,9 @@ def _ensure_task_list(service, tipo: str, config: dict) -> Optional[str]:
         return list_id
 
     # Search existing lists
-    list_name = f"Orbit — {tipo.capitalize()}"
+    from core.config import get_type_map
+    type_emoji = get_type_map().get(tipo, "")
+    list_name = f"{ORBIT_PROMPT} {type_emoji}{tipo.capitalize()}"
     try:
         results = service.tasklists().list(maxResults=100).execute()
     except Exception as e:
