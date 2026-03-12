@@ -4,7 +4,7 @@ Startup flow:
   1. Doctor — validate data integrity, offer fixes
   2. Untracked files — prompt to stage new files
   3. Commit + push — offer to commit staged changes
-  4. Public sync — check for updates from public orbit repo
+  4. Code update — check for new code in orbit repo
   5. gsync in background (fire & forget) + schedule reminders
 """
 
@@ -14,7 +14,7 @@ import sys
 from datetime import date as _date
 from pathlib import Path
 
-from core.config import ORBIT_HOME as ORBIT_DIR, ORBIT_PROMPT
+from core.config import ORBIT_HOME as ORBIT_DIR, ORBIT_CODE, ORBIT_PROMPT
 
 
 # ── Startup sequence ─────────────────────────────────────────────────────────
@@ -61,9 +61,9 @@ def _run_startup():
     startup_commit_offer()
     print()
 
-    # 4. Public sync — check for updates from public orbit repo
-    from core.commit import startup_public_sync
-    startup_public_sync()
+    # 4. Code update check — pull new code from orbit repo
+    from core.commit import startup_code_update_check
+    startup_code_update_check()
 
     # 5. gsync in background (fire & forget) + schedule reminders
     from core.gsync import gsync_background
@@ -149,6 +149,8 @@ def run_shell(editor: str = ""):
         if tokens[0] in SHELL_COMMANDS:
             import subprocess
             orbit_sh = ORBIT_DIR / "orbit.sh"
+            if not orbit_sh.exists():
+                orbit_sh = ORBIT_CODE / "orbit.sh"
             if orbit_sh.exists():
                 subprocess.run(f"source '{orbit_sh}' && {line}", shell=True,
                                cwd=ORBIT_DIR, executable="/bin/zsh")

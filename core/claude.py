@@ -10,7 +10,7 @@ import os
 import sys
 from pathlib import Path
 
-from core.config import ORBIT_HOME
+from core.config import ORBIT_CODE
 
 _MODEL = "claude-haiku-4-5-20251001"
 _MAX_TOKENS = 1024
@@ -39,7 +39,7 @@ def _get_client():
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         return None, None
-    chuleta = ORBIT_HOME / "CHULETA.md"
+    chuleta = ORBIT_CODE / "CHULETA.md"
     if not chuleta.exists():
         return None, None
     try:

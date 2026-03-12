@@ -346,38 +346,36 @@ def _git_push() -> int:
         return 1
 
 
-# ── Public repo sync ─────────────────────────────────────────────────────────
+# ── Code update check ────────────────────────────────────────────────────────
 
-def _has_remote(name: str) -> bool:
-    """Check if a git remote exists."""
-    try:
-        result = subprocess.run(
-            ["git", "remote"],
-            capture_output=True, text=True, cwd=ORBIT_DIR,
-        )
-        return name in result.stdout.splitlines()
-    except FileNotFoundError:
-        return False
+def _code_commits_behind() -> int:
+    """Fetch origin in ORBIT_CODE and return how many commits we are behind.
 
-
-def _public_commits_behind() -> int:
-    """Fetch public remote and return how many commits we are behind public/main.
-
-    Returns 0 if up-to-date or on error.
+    Returns 0 if up-to-date, not a git repo, or on error.
     """
+    from core.config import ORBIT_CODE
+    code_dir = str(ORBIT_CODE)
     try:
-        # Fetch silently
+        # Check if ORBIT_CODE is a git repo
         rc = subprocess.run(
-            ["git", "fetch", "public", "--quiet"],
-            capture_output=True, cwd=ORBIT_DIR,
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True, cwd=code_dir,
         )
         if rc.returncode != 0:
             return 0
 
-        # Count commits in public/main that are not in HEAD
+        # Fetch silently
+        rc = subprocess.run(
+            ["git", "fetch", "origin", "--quiet"],
+            capture_output=True, cwd=code_dir,
+        )
+        if rc.returncode != 0:
+            return 0
+
+        # Count commits in origin/main that are not in HEAD
         result = subprocess.run(
-            ["git", "rev-list", "--count", "HEAD..public/main"],
-            capture_output=True, text=True, cwd=ORBIT_DIR,
+            ["git", "rev-list", "--count", "HEAD..origin/main"],
+            capture_output=True, text=True, cwd=code_dir,
         )
         if result.returncode != 0:
             return 0
@@ -386,22 +384,92 @@ def _public_commits_behind() -> int:
         return 0
 
 
-def startup_public_sync() -> None:
-    """Check for updates in the public orbit repo and offer to merge.
+def startup_code_update_check() -> None:
+    """Check for code updates in the orbit code repo and offer to pull.
 
-    Called after commit+push so the working tree is clean.
-    Only runs if the 'public' remote is configured.
+    Works in two modes:
+    - Separated: ORBIT_CODE != ORBIT_HOME → check origin in ORBIT_CODE
+    - Combined: ORBIT_CODE == ORBIT_HOME with 'public' remote → check public remote
     """
-    if not _has_remote("public"):
+    from core.config import ORBIT_CODE
+    code_dir = str(ORBIT_CODE)
+
+    # Separated mode: code repo is separate from data
+    if str(ORBIT_CODE) != str(ORBIT_DIR):
+        behind = _code_commits_behind()
+        if behind == 0:
+            return
+
+        print(f"  🔄 {behind} commit{'s' if behind != 1 else ''} nuevo{'s' if behind != 1 else ''} en orbit código")
+        try:
+            result = subprocess.run(
+                ["git", "log", "--oneline", "HEAD..origin/main"],
+                capture_output=True, text=True, cwd=code_dir,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                for line in result.stdout.strip().splitlines()[:5]:
+                    print(f"      {line}")
+                if behind > 5:
+                    print(f"      ... y {behind - 5} más")
+        except FileNotFoundError:
+            pass
+
+        print()
+        if not sys.stdin.isatty():
+            return
+
+        try:
+            ans = input("  ¿Actualizar código? [S/n]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+
+        if ans not in ("", "s", "si", "sí", "y", "yes"):
+            return
+
+        try:
+            result = subprocess.run(
+                ["git", "pull", "origin", "main"],
+                cwd=code_dir,
+            )
+            if result.returncode == 0:
+                print("  ✓ Código actualizado.")
+            else:
+                print("  ⚠️  Error en pull. Actualiza manualmente: cd ~/orbit && git pull")
+        except FileNotFoundError:
+            pass
         return
 
-    behind = _public_commits_behind()
+    # Combined mode: ORBIT_CODE == ORBIT_HOME, check 'public' remote
+    try:
+        result = subprocess.run(
+            ["git", "remote"],
+            capture_output=True, text=True, cwd=ORBIT_DIR,
+        )
+        if "public" not in result.stdout.splitlines():
+            return
+    except FileNotFoundError:
+        return
+
+    try:
+        subprocess.run(
+            ["git", "fetch", "public", "--quiet"],
+            capture_output=True, cwd=ORBIT_DIR,
+        )
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD..public/main"],
+            capture_output=True, text=True, cwd=ORBIT_DIR,
+        )
+        if result.returncode != 0:
+            return
+        behind = int(result.stdout.strip())
+    except (FileNotFoundError, ValueError):
+        return
+
     if behind == 0:
         return
 
     print(f"  🔄 {behind} commit{'s' if behind != 1 else ''} nuevo{'s' if behind != 1 else ''} en orbit público")
-
-    # Show what's new
     try:
         result = subprocess.run(
             ["git", "log", "--oneline", "HEAD..public/main"],
@@ -416,7 +484,6 @@ def startup_public_sync() -> None:
         pass
 
     print()
-
     if not sys.stdin.isatty():
         return
 
@@ -439,7 +506,7 @@ def startup_public_sync() -> None:
         else:
             print("  ⚠️  Error en merge. Resuelve conflictos manualmente.")
     except FileNotFoundError:
-        print("  ✗ Error: git no encontrado")
+        pass
 
 
 # ── Startup check ────────────────────────────────────────────────────────────

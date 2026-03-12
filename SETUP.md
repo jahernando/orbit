@@ -1,64 +1,100 @@
 # Orbit — Setup
 
-Guia para configurar un nuevo workspace de Orbit.
+Guia para configurar Orbit en tu maquina.
 
 ---
 
-## 1. Clonar y configurar git
+## Arquitectura
 
-```bash
-git clone https://github.com/jahernando/orbit.git ~/mi-orbit
-cd ~/mi-orbit
+Orbit separa codigo y datos en repositorios distintos:
+
+```
+~/orbit/          ← repo publico, solo codigo (git pull para actualizar)
+  orbit.py
+  core/
+  📐templates/
+
+~/orbit-ws/       ← repo privado, solo datos de trabajo
+  🚀proyectos/
+  orbit.json
+  history.md
+
+~/orbit-ps/       ← repo privado, solo datos personales
+  🌿proyectos/
+  orbit.json
+  history.md
 ```
 
-Para mantener un repositorio privado sincronizado con el publico:
+Puedes tener tantos workspaces como quieras. Todos comparten el mismo codigo.
+
+---
+
+## 1. Instalar el codigo
 
 ```bash
-git remote rename origin public                          # public = fuente de actualizaciones
-git remote add origin https://github.com/TU_USUARIO/mi-orbit.git
+git clone https://github.com/jahernando/orbit.git ~/orbit
+```
+
+Para actualizar el codigo en el futuro:
+
+```bash
+cd ~/orbit && git pull
+```
+
+Al iniciar la shell, Orbit comprueba automaticamente si hay actualizaciones.
+
+---
+
+## 2. Crear un workspace
+
+```bash
+mkdir ~/mi-workspace
+cd ~/mi-workspace
+git init
+```
+
+Si quieres respaldo en un repo privado:
+
+```bash
+git remote add origin https://github.com/TU_USUARIO/mi-workspace.git
 git push -u origin main
 ```
 
-Con esta configuracion:
-- `origin` es tu repo privado (commit + push)
-- `public` es el repo publico de Orbit (solo pull)
-- Al iniciar la shell, Orbit comprueba si hay actualizaciones en `public` y ofrece hacer merge
-
-Si no quieres un repo privado (solo local), desactiva el push al publico:
-
-```bash
-git remote set-url --push origin no-push
-```
-
 ---
 
-## 2. Shell — entry point
+## 3. Shell — entry point
 
 Anade a tu `~/.zshrc`:
 
 ```zsh
-export ORBIT_EDITOR=typora                          # tu editor de markdown
+source ~/orbit/orbit.sh
+```
 
-orbit() {
+O si prefieres definir el entry point manualmente:
+
+```zsh
+export ORBIT_EDITOR=typora
+
+mi_orbit() {
     if [[ "$1" == "claude" ]]; then
-        cd ~/mi-orbit && claude
+        cd ~/mi-workspace && claude
     elif [[ $# -eq 0 ]]; then
-        ORBIT_HOME=~/mi-orbit python3 ~/mi-orbit/orbit.py shell
+        ORBIT_HOME=~/mi-workspace python3 ~/orbit/orbit.py shell
     else
-        ORBIT_HOME=~/mi-orbit python3 ~/mi-orbit/orbit.py "$@"
+        ORBIT_HOME=~/mi-workspace python3 ~/orbit/orbit.py "$@"
     fi
 }
 ```
 
-Recarga con `source ~/.zshrc` y ejecuta `orbit` para entrar en la shell.
+Recarga con `source ~/.zshrc` y ejecuta `mi_orbit` para entrar en la shell.
 
 ---
 
-## 3. Items configurables
+## 4. Items configurables
 
 ### orbit.json — tipos de proyecto
 
-Define el emoji principal y los tipos de proyecto. Se crea automaticamente con valores por defecto al ejecutar `orbit project create`.
+Vive en el workspace (no en el codigo). Define el emoji principal y los tipos de proyecto. Se crea automaticamente con valores por defecto al ejecutar `orbit project create`.
 
 ```json
 {
@@ -90,7 +126,7 @@ Si no se configura, usa `open` (macOS) o `xdg-open` (Linux).
 
 ### google-sync.json — sincronizacion con Google
 
-Configura la conexion con Google Calendar y Google Tasks para `orbit gsync`.
+Vive en el workspace. Configura la conexion con Google Calendar y Google Tasks.
 
 ```json
 {
@@ -110,12 +146,12 @@ Configura la conexion con Google Calendar y Google Tasks para `orbit gsync`.
 
 ### credentials.json / token.json — Google API
 
-Necesarios para `orbit gsync`:
+Viven en el workspace. Necesarios para `orbit gsync`:
 
 1. Crea un proyecto en [Google Cloud Console](https://console.cloud.google.com/)
 2. Habilita las APIs de Google Calendar y Google Tasks
 3. Crea credenciales OAuth2 (tipo "Desktop app")
-4. Descarga como `credentials.json` en el directorio de Orbit
+4. Descarga como `credentials.json` en el directorio del workspace
 5. Ejecuta `orbit gsync` — se abrira el navegador para autorizar y generara `token.json`
 
 ### ~/.config/deliver.conf — entrega de ficheros
@@ -123,7 +159,8 @@ Necesarios para `orbit gsync`:
 Mapea workspaces de Orbit a directorios en la nube para el comando `deliver`:
 
 ```
-/ruta/a/mi-orbit=/ruta/a/OneDrive-o-GoogleDrive
+~/orbit-ws=/ruta/a/OneDrive
+~/orbit-ps=/ruta/a/GoogleDrive
 ```
 
 ### ANTHROPIC_API_KEY — integracion con Claude
@@ -138,7 +175,7 @@ Anadelo a `~/.zshrc`. Requiere `pip install anthropic`.
 
 ---
 
-## 4. Dependencias
+## 5. Dependencias
 
 **Requerido:** Python >= 3.9 (sin dependencias externas para uso basico)
 

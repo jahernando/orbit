@@ -5,10 +5,11 @@ import os
 import unicodedata
 from pathlib import Path
 
-# ORBIT_HOME: the user's workspace directory.
-# Priority: ORBIT_HOME env var → parent of orbit.py (development mode)
-_default = Path(__file__).resolve().parent.parent
-ORBIT_HOME   = Path(os.environ.get("ORBIT_HOME", _default))
+# ORBIT_CODE: where the code lives (always the directory containing orbit.py).
+# ORBIT_HOME: the user's data workspace (projects, config, history).
+# When ORBIT_HOME is not set, defaults to ORBIT_CODE (single-directory setup).
+ORBIT_CODE   = Path(__file__).resolve().parent.parent
+ORBIT_HOME   = Path(os.environ.get("ORBIT_HOME", ORBIT_CODE))
 
 # Orbit emoji: from orbit.json → env var fallback → 🚀 default
 _ORBIT_JSON_PATH = ORBIT_HOME / "orbit.json"
@@ -21,7 +22,7 @@ if _ORBIT_JSON_PATH.exists():
 ORBIT_PROMPT = os.environ.get("ORBIT_PROMPT", _orbit_emoji)
 
 PROJECTS_DIR  = ORBIT_HOME / f"{_orbit_emoji}proyectos"
-TEMPLATES_DIR = ORBIT_HOME / "📐templates"
+TEMPLATES_DIR = ORBIT_CODE / "📐templates"
 CMD_MD        = ORBIT_HOME / "cmd.md"
 PROYECTOS_MD  = ORBIT_HOME / "proyectos.md"
 HISTORY_MD    = ORBIT_HOME / "history.md"
