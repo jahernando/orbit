@@ -9,23 +9,22 @@ Guia para configurar Orbit en tu maquina.
 Orbit separa codigo y datos en repositorios distintos:
 
 ```
-~/orbit/          ← repo publico, solo codigo (git pull para actualizar)
+~/orbit/              ← repo publico, solo codigo (git pull para actualizar)
   orbit.py
   core/
   📐templates/
 
-~/orbit-ws/       ← repo privado, solo datos de trabajo
-  🚀proyectos/
-  orbit.json
-  history.md
-
-~/orbit-ps/       ← repo privado, solo datos personales
-  🌿proyectos/
-  orbit.json
+~/mi-workspace/       ← repo privado, tus proyectos y configuracion
+  {emoji}proyectos/
+  orbit.json          ← emoji y tipos de proyecto
+  google-sync.json    ← calendarios de Google por tipo
+  credentials.json    ← credenciales Google API (gitignored)
   history.md
 ```
 
 Puedes tener tantos workspaces como quieras. Todos comparten el mismo codigo.
+Cada workspace tiene su propia configuracion, sus propios proyectos y su propio
+repositorio git (privado).
 
 ---
 
@@ -51,11 +50,14 @@ Al iniciar la shell, Orbit comprueba automaticamente si hay actualizaciones.
 mkdir ~/mi-workspace
 cd ~/mi-workspace
 git init
+git config core.quotePath false
+git config core.precomposeunicode false
 ```
 
-Si quieres respaldo en un repo privado:
+Si quieres respaldo en un repo privado de GitHub:
 
 ```bash
+# Crea primero el repo en GitHub (privado)
 git remote add origin https://github.com/TU_USUARIO/mi-workspace.git
 git push -u origin main
 ```
@@ -64,37 +66,51 @@ git push -u origin main
 
 ## 3. Shell — entry point
 
-Anade a tu `~/.zshrc`:
+Crea un fichero `~/orbit/orbit.sh` con tus funciones de entrada:
+
+```zsh
+# orbit.sh — funciones shell para Orbit
+# Sourcear desde ~/.zshrc
+
+export ORBIT_EDITOR=typora
+
+ORBIT_CODE="$HOME/orbit"
+
+# Un entry point por workspace
+worbit() {
+    if [ "$1" = "claude" ]; then
+        cd "$HOME/mi-workspace" && claude
+    elif [ $# -eq 0 ]; then
+        ORBIT_HOME="$HOME/mi-workspace" python3 "$ORBIT_CODE/orbit.py" shell
+    else
+        ORBIT_HOME="$HOME/mi-workspace" python3 "$ORBIT_CODE/orbit.py" "$@"
+    fi
+}
+
+# Puedes anadir mas entry points para otros workspaces:
+# porbit() { ... ORBIT_HOME="$HOME/otro-workspace" ... }
+```
+
+Luego anade a tu `~/.zshrc`:
 
 ```zsh
 source ~/orbit/orbit.sh
 ```
 
-O si prefieres definir el entry point manualmente:
+Recarga con `source ~/.zshrc` y ejecuta `worbit` para entrar en la shell.
 
-```zsh
-export ORBIT_EDITOR=typora
-
-mi_orbit() {
-    if [[ "$1" == "claude" ]]; then
-        cd ~/mi-workspace && claude
-    elif [[ $# -eq 0 ]]; then
-        ORBIT_HOME=~/mi-workspace python3 ~/orbit/orbit.py shell
-    else
-        ORBIT_HOME=~/mi-workspace python3 ~/orbit/orbit.py "$@"
-    fi
-}
-```
-
-Recarga con `source ~/.zshrc` y ejecuta `mi_orbit` para entrar en la shell.
+> `orbit.sh` esta en `.gitignore` — es tu configuracion local, no se sube al repo.
 
 ---
 
-## 4. Items configurables
+## 4. Configuracion del workspace
+
+Todos estos ficheros viven en el workspace, no en el codigo.
 
 ### orbit.json — tipos de proyecto
 
-Vive en el workspace (no en el codigo). Define el emoji principal y los tipos de proyecto. Se crea automaticamente con valores por defecto al ejecutar `orbit project create`.
+Define el emoji principal y los tipos de proyecto del workspace. Se crea
+automaticamente con valores por defecto al ejecutar `orbit project create`.
 
 ```json
 {
@@ -110,23 +126,15 @@ Vive en el workspace (no en el codigo). Define el emoji principal y los tipos de
 }
 ```
 
-- `emoji` — emoji del directorio de proyectos y del prompt de la shell
-- `types` — mapa tipo → emoji (puedes anadir, quitar o renombrar tipos)
+- `emoji` — emoji del directorio de proyectos (`{emoji}proyectos/`) y del prompt
+- `types` — mapa tipo → emoji (puedes anadir, quitar o renombrar)
 
-### ORBIT_EDITOR — editor de markdown
-
-El editor que se abre con `orbit open`. Se configura como variable de entorno:
-
-```bash
-export ORBIT_EDITOR=typora    # o code, glow, etc.
-```
-
-Editores con soporte integrado: `typora`, `glow`, `code`. Cualquier otro se ejecuta directamente.
-Si no se configura, usa `open` (macOS) o `xdg-open` (Linux).
+Cada workspace puede tener tipos distintos. Por ejemplo, un workspace de trabajo
+podria usar 🚀 con tipos profesionales, y uno personal 🌿 con tipos de ocio.
 
 ### google-sync.json — sincronizacion con Google
 
-Vive en el workspace. Configura la conexion con Google Calendar y Google Tasks.
+Configura a que calendario de Google va cada tipo de proyecto.
 
 ```json
 {
@@ -136,7 +144,7 @@ Vive en el workspace. Configura la conexion con Google Calendar y Google Tasks.
     "default": "ID_DEL_CALENDARIO"
   },
   "task_lists": {},
-  "repo_url": "https://github.com/TU_USUARIO/tu-repo/blob/main"
+  "repo_url": "https://github.com/TU_USUARIO/mi-workspace/blob/main"
 }
 ```
 
@@ -144,23 +152,44 @@ Vive en el workspace. Configura la conexion con Google Calendar y Google Tasks.
 - `task_lists` — se llenan automaticamente al sincronizar por primera vez
 - `repo_url` — (opcional) URL base del repo para enlaces en las descripciones de Google
 
+Cada workspace puede sincronizar a calendarios distintos.
+
 ### credentials.json / token.json — Google API
 
-Viven en el workspace. Necesarios para `orbit gsync`:
+Necesarios para `orbit gsync`. Se comparten entre workspaces:
 
 1. Crea un proyecto en [Google Cloud Console](https://console.cloud.google.com/)
-2. Habilita las APIs de Google Calendar y Google Tasks
-3. Crea credenciales OAuth2 (tipo "Desktop app")
-4. Descarga como `credentials.json` en el directorio del workspace
-5. Ejecuta `orbit gsync` — se abrira el navegador para autorizar y generara `token.json`
+2. Habilita las APIs de **Google Calendar** y **Google Tasks**
+3. Crea credenciales: **APIs & Services → Credentials → + CREATE CREDENTIALS → OAuth client ID**
+4. Application type: **Desktop app** — dale un nombre y haz clic en **CREATE**
+5. Descarga el JSON y copialo al workspace:
+   ```bash
+   cp ~/Downloads/client_secret_*.json ~/mi-workspace/credentials.json
+   ```
+6. Ejecuta `worbit gsync` — se abrira el navegador para autorizar y generara `token.json`
+
+Para otros workspaces, copia el mismo `credentials.json` y ejecuta gsync de nuevo.
+
+> Ambos ficheros estan en `.gitignore` — nunca se suben al repo.
+
+### ORBIT_EDITOR — editor de markdown
+
+El editor que se abre con `orbit open`. Se configura en `orbit.sh`:
+
+```bash
+export ORBIT_EDITOR=typora    # o code, glow, etc.
+```
+
+Editores con soporte integrado: `typora`, `glow`, `code`. Cualquier otro se ejecuta directamente.
+Si no se configura, usa `open` (macOS) o `xdg-open` (Linux).
 
 ### ~/.config/deliver.conf — entrega de ficheros
 
-Mapea workspaces de Orbit a directorios en la nube para el comando `deliver`:
+Mapea workspaces a directorios en la nube para el comando `deliver`:
 
 ```
-~/orbit-ws=/ruta/a/OneDrive
-~/orbit-ps=/ruta/a/GoogleDrive
+~/mi-workspace=/ruta/a/OneDrive/mi-workspace
+~/otro-workspace=/ruta/a/GoogleDrive/otro-workspace
 ```
 
 ### ANTHROPIC_API_KEY — integracion con Claude
@@ -187,4 +216,35 @@ pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
 # Claude AI integration
 pip install anthropic
+```
+
+---
+
+## 6. Ejemplo completo
+
+```bash
+# 1. Codigo
+git clone https://github.com/jahernando/orbit.git ~/orbit
+
+# 2. Workspace de trabajo
+mkdir ~/orbit-ws && cd ~/orbit-ws
+git init && git config core.quotePath false && git config core.precomposeunicode false
+
+# 3. orbit.sh (editar con tus paths)
+cat > ~/orbit/orbit.sh << 'EOF'
+export ORBIT_EDITOR=typora
+ORBIT_CODE="$HOME/orbit"
+worbit() {
+    if [ "$1" = "claude" ]; then cd "$HOME/orbit-ws" && claude
+    elif [ $# -eq 0 ]; then ORBIT_HOME="$HOME/orbit-ws" python3 "$ORBIT_CODE/orbit.py" shell
+    else ORBIT_HOME="$HOME/orbit-ws" python3 "$ORBIT_CODE/orbit.py" "$@"; fi
+}
+EOF
+
+# 4. Activar
+echo 'source ~/orbit/orbit.sh' >> ~/.zshrc
+source ~/.zshrc
+
+# 5. Primer uso
+worbit
 ```
