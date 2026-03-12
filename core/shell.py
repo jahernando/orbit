@@ -89,7 +89,7 @@ def run_shell(editor: str = ""):
                 "gsync", "doctor", "archive", "undo", "help", "project", "claude", "exit", "quit"]
 
     # Shell commands allowed to run from the Orbit REPL
-    SHELL_COMMANDS = {"deliver", "ls", "git", "cat", "head", "tail", "pwd", "echo"}
+    SHELL_COMMANDS = {"deliver", "git", "cat", "head", "tail", "pwd", "echo"}
 
     all_completions = COMMANDS + sorted(SHELL_COMMANDS)
 
@@ -143,7 +143,12 @@ def run_shell(editor: str = ""):
         # Dispatch whitelisted shell commands directly
         if tokens[0] in SHELL_COMMANDS:
             import subprocess
-            subprocess.run(line, shell=True, cwd=ORBIT_DIR)
+            orbit_sh = ORBIT_DIR / "orbit.sh"
+            if orbit_sh.exists():
+                subprocess.run(f"source '{orbit_sh}' && {line}", shell=True,
+                               cwd=ORBIT_DIR, executable="/bin/zsh")
+            else:
+                subprocess.run(line, shell=True, cwd=ORBIT_DIR)
             continue
 
         from core.undo import commit_operation, discard_operation

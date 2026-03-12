@@ -4,7 +4,6 @@
 import argparse
 import re
 import sys
-from pathlib import Path
 
 from core.log import VALID_TYPES, add_entry, find_project, find_logbook_file, find_proyecto_file
 from core.search import run_search
@@ -406,7 +405,7 @@ def cmd_project(args):
         elif type_sub == "drop":
             from core.config import run_type_drop
             return run_type_drop(name=args.name)
-        else:
+        else:  # list or no subcommand
             from core.config import run_type_list
             return run_type_list()
     return 1
@@ -1079,6 +1078,7 @@ def main():
     # project type
     prt_p = prj_sub.add_parser("type", help="Manage project types")
     prt_sub = prt_p.add_subparsers(dest="type_sub")
+    prt_sub.add_parser("list", help="List configured project types")
     prt_add = prt_sub.add_parser("add", help="Add a new project type")
     prt_add.add_argument("name",  help="Type name (e.g. viajes)")
     prt_add.add_argument("emoji", help="Emoji for the type (e.g. ✈️)")

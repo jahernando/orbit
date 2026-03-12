@@ -185,15 +185,45 @@ def _load_enex(path: Path) -> Tuple[str, str, list, Dict]:
 
 
 def _split_sections(enml: str) -> List[Tuple[str, str]]:
-    """Split ENML by <h2> tags. Returns list of (original_title, html_content)."""
+    """Split ENML by <h2> tags or large bold spans (Evernote style headers).
+
+    Returns list of (original_title, html_content).
+    """
+    # Try <h2> first
     pattern = re.compile(
         r'<h2[^>]*>(.*?)</h2>(.*?)(?=<h2|</en-note>)',
         re.DOTALL | re.IGNORECASE,
     )
-    return [
+    results = [
         (_strip_tags(m.group(1)).strip(), m.group(2))
         for m in pattern.finditer(enml)
     ]
+    if results:
+        return results
+
+    # Fallback: bold spans with font-size >= 20px (common Evernote pattern)
+    header_re = re.compile(
+        r'<b><span[^>]*font-size:\s*(\d+)px[^>]*>(.*?)</span></b>',
+        re.DOTALL | re.IGNORECASE,
+    )
+    headers = []
+    for m in header_re.finditer(enml):
+        size = int(m.group(1))
+        title = _strip_tags(m.group(2)).strip()
+        if size >= 20 and title:
+            headers.append((m.start(), m.end(), title))
+
+    if not headers:
+        return []
+
+    results = []
+    for i, (start, end, title) in enumerate(headers):
+        next_start = headers[i + 1][0] if i + 1 < len(headers) else enml.find("</en-note>")
+        if next_start < 0:
+            next_start = len(enml)
+        content = enml[end:next_start]
+        results.append((title, content))
+    return results
 
 
 # ── Logbook parsing ────────────────────────────────────────────────────────────
@@ -409,18 +439,22 @@ def run_import(enex_path: str, project: str) -> int:
         if proyecto_path and proyecto_path.exists():
             md = proyecto_path.read_text()
             new_refs = "\n".join(ref_links)
-            # Replace empty placeholder or append after header
-            md = re.sub(
-                r"(## 📎 Referencias clave\n)-\n",
-                r"\1" + new_refs + "\n",
-                md,
-            )
-            if new_refs not in md:   # fallback: just append after header
+            if "## 📎 Referencias clave" in md:
+                # Replace empty placeholder or append after header
                 md = re.sub(
-                    r"(## 📎 Referencias clave\n)",
+                    r"(## 📎 Referencias clave\n)-\n",
                     r"\1" + new_refs + "\n",
                     md,
                 )
+                if new_refs not in md:
+                    md = re.sub(
+                        r"(## 📎 Referencias clave\n)",
+                        r"\1" + new_refs + "\n",
+                        md,
+                    )
+            else:
+                # Section doesn't exist — append it
+                md = md.rstrip() + "\n\n## 📎 Referencias clave\n" + new_refs + "\n"
             proyecto_path.write_text(md)
             print(f"✓ {len(ref_links)} referencia(s) añadidas a {proyecto_path.name}")
 
