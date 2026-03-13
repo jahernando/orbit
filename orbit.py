@@ -30,6 +30,7 @@ from core.ls import run_ls_files, run_ls_notes
 from core.gsync import run_gsync
 from core.history import log_history, run_history
 from core.claude import run_claude
+from core.deliver import run_deliver
 
 
 def _d(expr):
@@ -243,6 +244,14 @@ def cmd_note(args):
         file_str  = getattr(args, "file", None),
         open_after= not getattr(args, "no_open", False),
         editor    = getattr(args, "editor", None) or default_editor(),
+    )
+
+
+def cmd_deliver(args):
+    return run_deliver(
+        project=args.project, file=args.file, title=args.title,
+        log=args.log, hl=args.hl,
+        entry_type=args.entry, hl_type=args.type,
     )
 
 
@@ -1035,6 +1044,18 @@ def main():
     note_p.add_argument("--no-open", action="store_true")
     note_p.add_argument("--editor",  default=None)
 
+    # --- deliver ---
+    dlv_p = subparsers.add_parser("deliver", help="Deliver files to cloud, optionally log/highlight")
+    dlv_p.add_argument("project", help="Project name (partial match)")
+    dlv_p.add_argument("file",    help="File path relative to project (e.g. notes/results.pdf)")
+    dlv_p.add_argument("title",   help="Title for logbook/highlights entry")
+    dlv_p.add_argument("--log",   action="store_true", help="Create logbook entry")
+    dlv_p.add_argument("--hl",    action="store_true", help="Create highlights entry")
+    dlv_p.add_argument("--entry", default="apunte", choices=VALID_TYPES, metavar="ENTRY",
+                       help=f"Logbook entry type (default: apunte). Requires --log")
+    dlv_p.add_argument("--type",  default="refs", choices=HL_TYPES, metavar="TYPE",
+                       help=f"Highlights section type (default: refs). Requires --hl")
+
     # --- commit ---
     cmt_p = subparsers.add_parser("commit", help="Git commit with confirmation")
     cmt_p.add_argument("message", nargs="?", default=None,
@@ -1137,7 +1158,7 @@ def main():
         "task": cmd_task_new,
         "ms": cmd_ms, "ev": cmd_ev, "hl": cmd_hl,
         "view": cmd_view_new,
-        "note": cmd_note, "commit": cmd_commit,
+        "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver,
         "log": cmd_log, "search": cmd_search,
         "report": cmd_report, "open": cmd_open,
         "import": cmd_import,

@@ -76,6 +76,16 @@ def _run_startup():
         print()
 
 
+# ── Shutdown sequence ────────────────────────────────────────────────────────
+
+def _run_shutdown():
+    """Offer to commit + push pending changes before exiting the shell."""
+    from core.commit import startup_untracked_check, startup_commit_offer
+    print()
+    startup_untracked_check()
+    startup_commit_offer()
+
+
 # ── Shell REPL ───────────────────────────────────────────────────────────────
 
 def run_shell(editor: str = ""):
@@ -89,12 +99,12 @@ def run_shell(editor: str = ""):
         pass
     readline.set_history_length(500)
 
-    COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "migrate",
+    COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "deliver", "migrate",
                 "import", "ls", "log", "search", "open", "report", "agenda",
-                "gsync", "doctor", "archive", "undo", "help", "project", "claude", "exit", "quit"]
+                "gsync", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
 
     # Shell commands allowed to run from the Orbit REPL
-    SHELL_COMMANDS = {"deliver", "git", "cat", "head", "tail", "pwd", "echo"}
+    SHELL_COMMANDS = {"git", "cat", "head", "tail", "pwd", "echo"}
 
     all_completions = COMMANDS + sorted(SHELL_COMMANDS)
 
@@ -133,6 +143,9 @@ def run_shell(editor: str = ""):
         if not line or line.startswith("#"):
             continue
         if line in ("exit", "quit", "q"):
+            break
+        if line == "end":
+            _run_shutdown()
             break
         if line == "claude":
             import subprocess
