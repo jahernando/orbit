@@ -373,13 +373,16 @@ def run_agenda(
     date_str: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    show_calendar: bool = False,
+    no_cal: bool = False,
     markdown: bool = False,
     dated_only: bool = False,
     order: str = "date",
     summary: bool = False,
 ) -> int:
-    """Print agenda (tasks/events/milestones) for a day or period."""
+    """Print agenda (tasks/events/milestones) for a day or period.
+
+    Calendar grid is shown by default above the list.  Use no_cal=True to suppress.
+    """
     if not PROJECTS_DIR.exists():
         print(f"Error: directorio de proyectos no encontrado en {PROJECTS_DIR}")
         return 1
@@ -388,11 +391,6 @@ def run_agenda(
     dirs = _resolve_dirs(projects)
     if projects and not dirs:
         return 1
-
-    if show_calendar:
-        if markdown:
-            return _print_calendar_md(dirs, start, end, dated_only=dated_only)
-        return _print_calendar_ansi(dirs, start, end, dated_only=dated_only)
 
     if summary:
         return _print_summary(dirs, start, end, markdown=markdown)
@@ -408,12 +406,22 @@ def run_agenda(
         days = (end - start).days + 1
         header = f"AGENDA — {start.isoformat()} → {end.isoformat()}  ({days}d)"
 
+    # Calendar grid (default on, unless --no-cal)
+    if not no_cal:
+        cal_end = _cap_end(start, end)
+        if markdown:
+            _print_calendar_grid_md(dirs, start, cal_end)
+        else:
+            _print_calendar_grid_ansi(dirs, start, cal_end)
+
     lines = [header, "─" * 56]
 
     collected = _collect_data(dirs, start, end, dated_only=dated_only)
 
     if order == "date":
         lines.extend(_format_by_date(collected, markdown=markdown, dated_only=dated_only))
+    elif order == "type":
+        lines.extend(_format_by_type(collected, markdown=markdown, dated_only=dated_only))
     else:
         lines.extend(_format_detail_lines(collected, markdown=markdown))
 
@@ -662,6 +670,70 @@ def _format_by_date(collected, markdown=False, dated_only=False):
     return lines
 
 
+def _format_by_type(collected, markdown=False, dated_only=False):
+    """Format agenda items grouped by type (events, milestones, tasks),
+    within each type sorted by date.  Undated items go at the end of their group.
+    """
+    # Flatten all items
+    all_items = []
+    for project_dir, tasks, events, milestones in collected:
+        tag = _project_link(project_dir) if markdown else f"[{project_dir.name}]"
+        for e in events:
+            all_items.append(("event", e, tag))
+        for m in milestones:
+            all_items.append(("milestone", m, tag))
+        for t in tasks:
+            all_items.append(("task", t, tag))
+
+    type_groups = [
+        ("📅 Eventos",  [x for x in all_items if x[0] == "event"]),
+        ("🏁 Hitos",    [x for x in all_items if x[0] == "milestone"]),
+        ("[ ] Tareas",  [x for x in all_items if x[0] == "task"]),
+    ]
+
+    lines = []
+    for label, items in type_groups:
+        if not items:
+            continue
+
+        # Split dated / undated
+        dated = [(k, it, p) for k, it, p in items if it.get("date")]
+        undated = [(k, it, p) for k, it, p in items if not it.get("date")]
+
+        if dated_only and not dated:
+            continue
+
+        lines.append("")
+        if markdown:
+            lines.append(f"**{label}**")
+        else:
+            lines.append(f"{_BOLD}{label}{_RESET}")
+
+        # Dated items sorted by date then time
+        for kind, item, proj in sorted(dated, key=lambda x: (
+            x[1].get("date", ""), _item_time_key(x[1])
+        )):
+            d_str = item["date"]
+            try:
+                d = date.fromisoformat(d_str)
+                day_name = _DAY_NAMES[d.weekday()][:3]
+                date_prefix = f"{d_str} ({day_name})"
+            except ValueError:
+                date_prefix = d_str
+            time_s = f" {item['time']}" if item.get("time") else ""
+            line = _format_item_line(kind, item, proj, markdown=markdown)
+            # Prepend date for context
+            pfx = "- " if markdown else "  "
+            lines.append(f"{pfx}{date_prefix}{time_s}  {line.strip()}")
+
+        # Undated items
+        if undated and not dated_only:
+            for kind, item, proj in undated:
+                lines.append(_format_item_line(kind, item, proj, markdown=markdown))
+
+    return lines
+
+
 def _format_detail_lines(collected, markdown=False):
     """Format the detail list of tasks/events/milestones (shared by calendar views)."""
     today = date.today()
@@ -713,6 +785,149 @@ def _format_detail_lines(collected, markdown=False):
             lines.append(f"{pfx}{check} {t['desc']}{date_s}{recur_s}{overdue}")
 
     return lines
+
+
+def _print_calendar_grid_ansi(dirs: list, start: date, end: date) -> None:
+    """Print only the calendar grid (no detail list below). Used by run_agenda."""
+    today = date.today()
+    task_dates, event_dates, ms_dates, overdue_dates, overdue_items = \
+        _collect_calendar_dates(dirs, start, end)
+
+    lines = []
+    if overdue_items:
+        lines.append(f"  {_RED}{_BOLD}⚠️  Vencidas{_RESET}")
+        for proj_dir, kind, desc, d_str in sorted(overdue_items, key=lambda x: x[3]):
+            lines.append(f"  {_RED}{kind} {desc} ({d_str}) — {proj_dir.name}{_RESET}")
+        lines.append("")
+
+    current = date(start.year, start.month, 1)
+    while current <= end:
+        y, m = current.year, current.month
+        month_name = _MONTH_NAMES[m]
+        cal = _cal.Calendar(firstweekday=0)
+        weeks = [w for w in cal.monthdayscalendar(y, m)
+                 if _week_overlaps(w, y, m, start, end)]
+
+        if weeks:
+            lines.append("")
+            lines.append(f"  {_BOLD}{month_name} {y}{_RESET}")
+            lines.append(f"  {_BLUE}{_BOLD} Wk{_RESET}  {_DIM}Lu  Ma  Mi  Ju  Vi{_RESET}  Sa  Do")
+
+            for week in weeks:
+                first_day = next((d for d in week if d != 0), None)
+                if first_day is None:
+                    continue
+                wk_num = date(y, m, first_day).isocalendar()[1]
+                row = f"  {_BLUE}{_BOLD}W{wk_num:02d}{_RESET}  "
+
+                for day in week:
+                    if day == 0:
+                        row += "    "
+                        continue
+                    d = date(y, m, day)
+                    label = f"{day:>2}"
+                    in_range = start <= d <= end
+
+                    if not in_range:
+                        cell = f"{_DIM}{label}{_RESET}"
+                    elif d == today:
+                        cell = f"{_BG_TODAY}{_BOLD}{label}{_RESET}"
+                    elif d in overdue_dates:
+                        cell = f"{_RED}{_BOLD}{_UNDERLINE}{label}{_RESET}"
+                    elif d in ms_dates:
+                        cell = f"{_BG_WHITE}{_BOLD}{label}{_RESET}"
+                    elif d in event_dates:
+                        cell = f"{_BG_CYAN}{label}{_RESET}"
+                    elif d in task_dates:
+                        cell = f"{_BG_BLUE}{label}{_RESET}"
+                    else:
+                        cell = label
+                    row += cell + "  "
+
+                lines.append(row)
+
+        current = date(y, m + 1, 1) if m < 12 else date(y + 1, 1, 1)
+
+    lines.append("")
+    lines.append(
+        f"  {_BG_TODAY} hoy {_RESET}  "
+        f"{_BG_CYAN} evento {_RESET}  "
+        f"{_BG_BLUE} tarea {_RESET}  "
+        f"{_BG_WHITE}{_BOLD} hito {_RESET}  "
+        f"{_RED}{_BOLD}{_UNDERLINE} vencida {_RESET}"
+    )
+    lines.append("")
+    print("\n".join(lines))
+
+
+def _print_calendar_grid_md(dirs: list, start: date, end: date) -> None:
+    """Print only the calendar grid in markdown (no detail list). Used by run_agenda."""
+    today = date.today()
+    task_dates, event_dates, ms_dates, overdue_dates, overdue_items = \
+        _collect_calendar_dates(dirs, start, end)
+
+    lines = []
+    if overdue_items:
+        lines.append("### ⚠️ Vencidas")
+        lines.append("")
+        for proj_dir, kind, desc, d_str in sorted(overdue_items, key=lambda x: x[3]):
+            display_kind = "☐" if kind == "[ ]" else kind
+            proj_tag = _project_link(proj_dir)
+            lines.append(f"- {display_kind} {desc} ({d_str}) — {proj_tag}")
+        lines.append("")
+
+    current = date(start.year, start.month, 1)
+    while current <= end:
+        y, m = current.year, current.month
+        month_name = _MONTH_NAMES[m]
+        cal = _cal.Calendar(firstweekday=0)
+        weeks = [w for w in cal.monthdayscalendar(y, m)
+                 if _week_overlaps(w, y, m, start, end)]
+
+        if weeks:
+            lines.append(f"### {month_name} {y}")
+            lines.append("")
+            lines.append("| Wk | Lu | Ma | Mi | Ju | Vi | Sa | Do |")
+            lines.append("|---:|---:|---:|---:|---:|---:|---:|---:|")
+
+            for week in weeks:
+                first_day = next((d for d in week if d != 0), None)
+                if first_day is None:
+                    continue
+                wk_num = date(y, m, first_day).isocalendar()[1]
+                cells = [f"**W{wk_num:02d}**"]
+
+                for day in week:
+                    if day == 0:
+                        cells.append("")
+                        continue
+                    d = date(y, m, day)
+                    in_range = start <= d <= end
+
+                    if not in_range:
+                        cells.append(f"~~{day}~~")
+                    elif d == today:
+                        cells.append(f"**[{day}]**")
+                    elif d in overdue_dates:
+                        cells.append(f"⚠️{day}")
+                    elif d in ms_dates:
+                        cells.append(f"🏁{day}")
+                    elif d in event_dates:
+                        cells.append(f"📅{day}")
+                    elif d in task_dates:
+                        cells.append(f"✅{day}")
+                    else:
+                        cells.append(str(day))
+
+                lines.append("| " + " | ".join(cells) + " |")
+
+            lines.append("")
+
+        current = date(y, m + 1, 1) if m < 12 else date(y + 1, 1, 1)
+
+    lines.append("**[N]** hoy · 📅 evento · ✅ tarea · 🏁 hito · ⚠️ vencida")
+    lines.append("")
+    print("\n".join(lines))
 
 
 def _print_calendar_ansi(dirs: list, start: date, end: date, dated_only: bool = False) -> int:

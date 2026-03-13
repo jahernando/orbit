@@ -876,19 +876,21 @@ class TestDatedFlag:
         run_task_add("test-project", "Dated task", date_val="2026-03-10")
         run_task_add("test-project", "Undated task")
         capsys.readouterr()
-        av.run_agenda(date_str="2026-03-10", dated_only=True)
+        av.run_agenda(date_str="2026-03-10", dated_only=True, no_cal=True)
         out = capsys.readouterr().out
         assert "Dated task" in out
         assert "Undated task" not in out
 
     def test_agenda_default_shows_undated(self, proj, projects_dir, capsys):
+        from datetime import date as _date
         from core.agenda_cmds import run_task_add
         import core.agenda_view as av
         av.PROJECTS_DIR = projects_dir
-        run_task_add("test-project", "Dated task", date_val="2026-03-10")
+        today = _date.today().isoformat()
+        run_task_add("test-project", "Dated task", date_val=today)
         run_task_add("test-project", "Undated task")
         capsys.readouterr()
-        av.run_agenda(date_str="2026-03-10", dated_only=False)
+        av.run_agenda(date_str=today, dated_only=False, no_cal=True)
         out = capsys.readouterr().out
         assert "Dated task" in out
         assert "Undated task" in out
@@ -1051,8 +1053,7 @@ class TestEventRecurrence:
         run_ev_add("test-project", "Monthly review", "2026-03-15",
                    recur="monthly")
         capsys.readouterr()
-        av.run_agenda(date_from="2026-03-01", date_to="2026-05-31",
-                      show_calendar=True)
+        av.run_agenda(date_from="2026-03-01", date_to="2026-05-31")
         out = capsys.readouterr().out
         # Should appear in detail section multiple times
         assert out.count("Monthly review") >= 3  # Mar, Apr, May
@@ -1090,7 +1091,7 @@ class TestEventRecurrence:
         run_task_add("test-project", "Dated task", date_val="2026-03-15")
         run_task_add("test-project", "Undated task")
         capsys.readouterr()
-        av.run_agenda(date_str="2026-03", show_calendar=True, dated_only=True)
+        av.run_agenda(date_str="2026-03", dated_only=True)
         out = capsys.readouterr().out
         assert "Dated task" in out
         assert "Undated task" not in out

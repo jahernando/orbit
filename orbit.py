@@ -470,10 +470,10 @@ def cmd_agenda(args):
         date_str=_d(getattr(args, "date", None)),
         date_from=_d(getattr(args, "date_from", None)),
         date_to=_d(getattr(args, "date_to", None)),
-        show_calendar=getattr(args, "calendar", False),
+        no_cal=getattr(args, "no_cal", False),
         markdown=bool(to_file),
         dated_only=getattr(args, "dated", False),
-        order=getattr(args, "order", "project"),
+        order=getattr(args, "order", "date"),
         summary=getattr(args, "summary", False),
     )
     return _handle_output(args, fn, "agenda")
@@ -799,12 +799,14 @@ def main():
                       help="Period start")
     ag_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
                       help="Period end")
-    ag_p.add_argument("--calendar", action="store_true",
-                      help="Show calendar grid with colored markers (max 3 months)")
+    ag_p.add_argument("--calendar", action="store_true", default=None,
+                      help="Show calendar grid (default; kept for backwards compat)")
+    ag_p.add_argument("--no-cal", action="store_true", dest="no_cal",
+                      help="Suppress calendar grid, show only the list")
     ag_p.add_argument("--dated",  action="store_true",
                       help="Only show tasks/milestones with a date")
-    ag_p.add_argument("--order", choices=["project", "date"], default="date",
-                      help="Order by project (default) or by date")
+    ag_p.add_argument("--order", choices=["project", "date", "type"], default="date",
+                      help="Order by date (default), project, or type (events/milestones/tasks)")
     ag_p.add_argument("--summary", action="store_true",
                       help="Per-project summary table (counts and date range)")
     ag_p.add_argument("--open",   action="store_true", help="Open in editor")
