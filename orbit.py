@@ -440,23 +440,24 @@ def cmd_migrate(args):
 
 def cmd_help(args):
     import subprocess
+    from core.config import ORBIT_CODE
     topic = getattr(args, "topic", None)
     editor = getattr(args, "editor", None) or default_editor()
     if topic in (None, "chuleta"):
         if topic is None:
             # Print in terminal (paged)
             try:
-                text = (ORBIT_DIR / "CHULETA.md").read_text()
+                text = (ORBIT_CODE / "CHULETA.md").read_text()
                 pager = subprocess.Popen(["less", "-R"], stdin=subprocess.PIPE)
                 pager.communicate(input=text.encode())
             except Exception:
-                print((ORBIT_DIR / "CHULETA.md").read_text())
+                print((ORBIT_CODE / "CHULETA.md").read_text())
         else:
-            open_file(ORBIT_DIR / "CHULETA.md", editor)
+            open_file(ORBIT_CODE / "CHULETA.md", editor)
     elif topic == "tutorial":
-        open_file(ORBIT_DIR / "TUTORIAL.md", editor)
+        open_file(ORBIT_CODE / "TUTORIAL.md", editor)
     elif topic == "about":
-        open_file(ORBIT_DIR / "README.md", editor)
+        open_file(ORBIT_CODE / "README.md", editor)
     return 0
 
 
