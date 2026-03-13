@@ -354,8 +354,19 @@ def _sync_one_event(service, calendar_id: str, ev: dict,
             print(f"  ~ actualizar: 📅 {start_date} — {summary}")
             return gcal_id
         try:
-            service.events().patch(
-                calendarId=calendar_id, eventId=gcal_id, body=body
+            # Use update (PUT) instead of patch: Google Calendar rejects patch
+            # when switching between all-day (date) and timed (dateTime) because
+            # the old start/end fields linger. update replaces the full resource
+            # so we fetch first, then overwrite start/end completely.
+            existing = service.events().get(
+                calendarId=calendar_id, eventId=gcal_id
+            ).execute()
+            existing["summary"] = body["summary"]
+            existing["description"] = body["description"]
+            existing["start"] = body["start"]
+            existing["end"] = body["end"]
+            service.events().update(
+                calendarId=calendar_id, eventId=gcal_id, body=existing
             ).execute()
             return gcal_id
         except Exception as e:
