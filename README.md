@@ -154,6 +154,13 @@ orbit agenda [--date D] [--from D] [--to D] [--calendar] [--dated] [--open]
 orbit report [project...] [--from D] [--to D] [--open]
 ```
 
+### Deliver — entregar ficheros a la nube
+
+```bash
+orbit deliver next-kr notes/results.pdf "Resultados Q1" --log
+orbit deliver next-kr img/fig.png "Figura calibracion" --log --hl --entry resultado --type results
+```
+
 ### Mantenimiento
 
 ```bash

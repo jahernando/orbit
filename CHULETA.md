@@ -8,8 +8,8 @@ orbit shell        # equivalente explícito
 orbit claude       # abre Claude Code en el directorio Orbit
 ```
 
-Al entrar: `¡Hola! ¡Bienvenido!`
-Al salir: `¡Hasta pronto!`
+Al entrar: `¡Hola! ¡Bienvenido!` + startup (doctor, untracked, commit+push, gsync)
+Al salir: `exit`/`quit` (directo) o `end` (ofrece commit+push antes de salir)
 
 ---
 
@@ -177,6 +177,26 @@ orbit undo
 - Restaura el estado anterior de todos los ficheros afectados
 - Stack de hasta 20 operaciones (en memoria, durante la sesión del shell)
 - Si se creó un fichero nuevo, lo elimina; si se borró, lo restaura
+
+---
+
+## deliver — entregar ficheros a la nube
+
+```bash
+orbit deliver <project> <file> "<título>"                              # solo copia a cloud
+orbit deliver <project> <file> "<título>" --log                        # copia + logbook (#apunte)
+orbit deliver <project> <file> "<título>" --log --entry resultado      # copia + logbook (#resultado)
+orbit deliver <project> <file> "<título>" --hl                         # copia + highlights (refs)
+orbit deliver <project> <file> "<título>" --hl --type results          # copia + highlights (results)
+orbit deliver <project> <file> "<título>" --log --hl                   # copia + ambos
+```
+
+- `<file>`: ruta relativa al proyecto (e.g. `notes/results.pdf`, `img/grafico.png`)
+- `--log`: crea entrada en logbook con link al fichero; imágenes usan sintaxis `![](path)`
+- `--hl`: crea entrada en highlights con link al fichero
+- `--entry TIPO`: tipo de entrada en logbook (defecto: `apunte`). Solo con `--log`
+- `--type TIPO`: sección de highlights (defecto: `refs`). Solo con `--hl`
+- Internamente usa `bin/deliver` para la copia a cloud (configurado en `~/.config/deliver.conf`)
 
 ---
 
