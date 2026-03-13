@@ -284,15 +284,16 @@ def run_commit(message: Optional[str] = None) -> int:
     if message:
         final_msg = message
     else:
+        default_msg = f"sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         if sys.stdin.isatty():
             try:
-                raw = input("Mensaje del commit (intro para auto-generar): ").strip()
+                raw = input(f"Mensaje del commit [Enter=\"{default_msg}\"]: ").strip()
             except (EOFError, KeyboardInterrupt):
                 print()
                 return 1
-            final_msg = raw if raw else _auto_message(status)
+            final_msg = raw if raw else default_msg
         else:
-            final_msg = _auto_message(status)
+            final_msg = default_msg
 
     print(f"Mensaje: \"{final_msg}\"")
 

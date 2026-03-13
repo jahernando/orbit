@@ -16,7 +16,7 @@ from core.dateparse import parse_date
 from core.agenda_cmds import (
     run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list,
     run_ms_add, run_ms_done, run_ms_drop, run_ms_edit, run_ms_list,
-    run_ev_add, run_ev_drop, run_ev_edit, run_ev_list,
+    run_ev_add, run_ev_drop, run_ev_edit, run_ev_list, run_ev_log,
 )
 from core.highlights import (
     run_hl_add, run_hl_drop, run_hl_edit, run_hl_list, VALID_TYPES as HL_TYPES,
@@ -381,6 +381,11 @@ def cmd_ev(args):
             project     = getattr(args, "project", None),
             period_from = _d(getattr(args, "from_date", None)),
             period_to   = _d(getattr(args, "to_date", None)),
+        )
+    if action == "log":
+        return run_ev_log(
+            project = getattr(args, "project", None),
+            text    = getattr(args, "text", None),
         )
     return 1
 
@@ -967,6 +972,11 @@ def main():
     ev_list.add_argument("project", nargs="?", default=None)
     ev_list.add_argument("--from",  dest="from_date", default=None)
     ev_list.add_argument("--to",    dest="to_date", default=None)
+
+    ev_log = ev_sub.add_parser("log", help="Create logbook entry from an event")
+    ev_log.add_argument("project", nargs="?", default=None)
+    ev_log.add_argument("text",    nargs="?", default=None,
+                        help="Event name (partial match; omit for interactive)")
 
     # --- hl ---
     hl_p   = subparsers.add_parser("hl", help="Highlights commands (highlights.md)")

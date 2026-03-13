@@ -903,7 +903,7 @@ def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
     ms["status"] = "done"
 
     _write_agenda(agenda_path, data)
-    add_orbit_entry(project_dir, f"[alcanzado] Hito: {ms_desc}", "apunte")
+    add_orbit_entry(project_dir, f"[alcanzado] Hito: {ms_desc}", "resultado")
     print(f"✓ [{project_dir.name}] [alcanzado] {ms_desc}")
 
     from core.gsync import sync_item
@@ -1264,6 +1264,32 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
     sync_item(project_dir, ev, "event")
 
     return 0
+
+
+def run_ev_log(project: Optional[str], text: Optional[str]) -> int:
+    """Create a logbook entry (#evento) from an existing event."""
+    project_dir = _find_new_project(project) if project else None
+    if project and project_dir is None:
+        return 1
+    if project_dir is None:
+        print("Error: especifica un proyecto")
+        return 1
+
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+
+    idx = _select_item(data["events"], "Eventos", text)
+    if idx is None:
+        return 1
+
+    ev = data["events"][idx]
+    ev_desc = ev["desc"]
+    ev_date = ev.get("date")
+
+    from core.log import add_entry
+    return add_entry(
+        project, ev_desc, "evento", None, ev_date,
+    )
 
 
 def run_ev_list(project: Optional[str] = None,
