@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.config import ORBIT_HOME as ORBIT_DIR
-from core.log import find_project, add_entry, VALID_TYPES
+from core.log import find_project, add_entry, find_logbook_file, VALID_TYPES
 from core.highlights import run_hl_add, VALID_TYPES as HL_TYPES
 
 
@@ -100,13 +100,15 @@ def run_deliver(project: str, file: str, title: str,
     # Logbook entry
     if log:
         ext = src.suffix.lower()
-        if ext in IMAGE_EXTS:
-            path_str = f"![]({cloud_link})"
-        else:
-            path_str = cloud_link
-        rc = add_entry(project, title, entry_type, path_str, None)
+        rc = add_entry(project, title, entry_type, cloud_link, None)
         if rc != 0:
             return rc
+        if ext in IMAGE_EXTS:
+            # Append image preview as indented line under the entry
+            logbook = find_logbook_file(project_dir)
+            if logbook and logbook.exists():
+                with open(logbook, "a") as f:
+                    f.write(f"  ![img]({cloud_link})\n")
 
     # Highlights entry
     if hl:
