@@ -156,7 +156,7 @@ def _ensure_task_list(service, tipo: str, config: dict) -> Optional[str]:
     # Search existing lists
     from core.config import get_type_map
     type_emoji = get_type_map().get(tipo, "")
-    list_name = f"{ORBIT_PROMPT} {type_emoji}{tipo.capitalize()}"
+    list_name = f"{ORBIT_PROMPT}[{type_emoji}{tipo.capitalize()}]"
     try:
         results = service.tasklists().list(maxResults=100).execute()
     except Exception as e:
@@ -187,7 +187,7 @@ def _sync_one_task(service, tasklist_id: str, item: dict,
     """Sync a single task/milestone to Google Tasks. Returns Google Task ID."""
     prefix = "🏁 " if is_milestone else ""
     suffix = " 🔄" if item.get("recur") else ""
-    title = f"{project_name} — {prefix}{item['desc']}{suffix}"
+    title = f"{ORBIT_PROMPT}[{project_name}] {prefix}{item['desc']}{suffix}"
     notes = _item_description(item, description)
 
     # Build due date (Google Tasks uses RFC 3339)
@@ -307,7 +307,7 @@ def _sync_one_event(service, calendar_id: str, ev: dict,
                     dry_run: bool) -> Optional[str]:
     """Sync a single event to Google Calendar. Returns Google Calendar event ID."""
     suffix = " 🔄" if ev.get("recur") else ""
-    summary = f"{project_name} — {ev['desc']}{suffix}"
+    summary = f"{ORBIT_PROMPT}[{project_name}] {ev['desc']}{suffix}"
 
     start_date = ev["date"]
     from datetime import timedelta
