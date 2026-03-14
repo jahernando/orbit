@@ -9,11 +9,11 @@ evaluations for a project, organized in optional sections.
   hl list [<project>] [--type TYPE]
 
 Sections (--type values):
-  refs       → ## 📚 Referencias
-  results    → ## 🔬 Resultados
-  decisions  → ## 🏛️ Decisiones
+  refs       → ## 📎 Referencias
+  results    → ## 📊 Resultados
+  decisions  → ## 📌 Decisiones
   ideas      → ## 💡 Ideas
-  evals      → ## 📊 Evaluaciones
+  evals      → ## 🔍 Evaluaciones
 
 Format of an item line:
   - [Title](url) — optional note
@@ -31,11 +31,11 @@ from core.open import open_file
 # ── Section mapping ────────────────────────────────────────────────────────────
 
 SECTION_MAP = {
-    "refs":      "## 📚 Referencias",
-    "results":   "## 🔬 Resultados",
-    "decisions": "## 🏛️ Decisiones",
+    "refs":      "## 📎 Referencias",
+    "results":   "## 📊 Resultados",
+    "decisions": "## 📌 Decisiones",
     "ideas":     "## 💡 Ideas",
-    "evals":     "## 📊 Evaluaciones",
+    "evals":     "## 🔍 Evaluaciones",
     "plans":     "## 🗓️ Planes",
 }
 

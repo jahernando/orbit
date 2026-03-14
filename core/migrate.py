@@ -317,18 +317,18 @@ def _build_highlights_md(meta: dict) -> str:
             f"- [{t}]({u})" if u else f"- {t}"
             for t, u in meta["refs"]
         )
-        sections.append(f"## 📚 Referencias\n{items}")
+        sections.append(f"## 📎 Referencias\n{items}")
 
     if meta["resultados"]:
         items = "\n".join(
             f"- [{t}]({u})" if u else f"- {t}"
             for t, u in meta["resultados"]
         )
-        sections.append(f"## 🔬 Resultados\n{items}")
+        sections.append(f"## 📊 Resultados\n{items}")
 
     if meta["decisiones"]:
         items = "\n".join(f"- {d}" for d in meta["decisiones"])
-        sections.append(f"## 🏛️ Decisiones\n{items}")
+        sections.append(f"## 📌 Decisiones\n{items}")
 
     if meta["ideas"]:
         items = "\n".join(f"- {i}" for i in meta["ideas"])

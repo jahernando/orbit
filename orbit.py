@@ -491,6 +491,7 @@ def cmd_report(args):
         date_str=_d(getattr(args, "date", None)),
         date_from=_d(getattr(args, "date_from", None)),
         date_to=_d(getattr(args, "date_to", None)),
+        summary=getattr(args, "summary", False),
     )
     return _handle_output(args, fn, "report")
 
@@ -791,6 +792,9 @@ def main():
                        help="Period start")
     rep_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
                        help="Period end")
+    rep_p.add_argument("--summary", nargs="?", const="", default=None,
+                       metavar="SECTION",
+                       help="Summary table: logbook, agenda, highlights, all (default: logbook+agenda)")
     rep_p.add_argument("--open", action="store_true", help="Open in editor")
     rep_p.add_argument("--editor", default=None)
     _add_log_args(rep_p)

@@ -4,7 +4,8 @@ from typing import Optional
 
 from core.config import PROJECTS_DIR
 
-VALID_TYPES = ["idea", "referencia", "apunte", "problema", "resultado", "decision", "evaluacion",
+VALID_TYPES = ["idea", "referencia", "apunte", "problema", "solucion", "resultado",
+               "decision", "evaluacion",
                "plan", "tarea", "evento"]   # tarea/evento kept for backwards compat
 
 
@@ -139,6 +140,7 @@ TAG_EMOJI = {
     "referencia":  "📎",
     "apunte":      "📝",
     "problema":    "⚠️",
+    "solucion":    "✔️",
     "resultado":   "📊",
     "decision":    "📌",
     "evaluacion":  "🔍",
@@ -188,7 +190,7 @@ def log_to_mission(message: str, tipo: str) -> None:
 def init_logbook(logbook_path: Path, project_name: str) -> None:
     logbook_path.write_text(
         f"# Logbook — {project_name}\n\n"
-        "<!-- Tipos: #idea #referencia #tarea #problema #resultado #apunte #decision #plan -->\n\n"
+        "<!-- Tipos: #idea #referencia #apunte #problema #solucion #resultado #decision #evaluacion #plan -->\n\n"
     )
 
 

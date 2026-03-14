@@ -94,12 +94,19 @@ def log_cmd_output(content: str, project: str, entry_type: str = "apunte",
     label = cmd_label or "output"
     summary = f"[{label}] {n} líneas"
 
-    # Entry: summary line + code block with content
+    # Entry: summary line + content block
     date_str = date.today().isoformat()
     from core.log import TAG_EMOJI
     emoji = TAG_EMOJI.get(entry_type, "")
     block = content.strip()
-    entry = f"{date_str} {emoji} {summary} #{entry_type} [O]\n\n```\n{block}\n```\n"
+
+    # If content contains markdown tables, insert as-is so renderers
+    # (e.g. Typora) display them properly; otherwise wrap in code block.
+    has_md_table = any(l.startswith("|") for l in block.splitlines())
+    if has_md_table:
+        entry = f"{date_str} {emoji} {summary} #{entry_type} [O]\n\n{block}\n\n"
+    else:
+        entry = f"{date_str} {emoji} {summary} #{entry_type} [O]\n\n```\n{block}\n```\n"
     _append_entry(logbook, entry)
     print(f"✓ [{project_dir.name}] {summary} #{entry_type}")
     return 0

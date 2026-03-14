@@ -36,9 +36,9 @@ def logbook_env(tmp_path, monkeypatch):
     (proj / "testproj-logbook.md").write_text("# Logbook — 💻testproj\n\n")
     (proj / "testproj-highlights.md").write_text(
         "# Highlights — 💻testproj\n\n"
-        "## 📚 Referencias\n"
+        "## 📎 Referencias\n"
         "- [González 2024](./refs/g24.pdf) — calibración relativa\n\n"
-        "## 🔬 Resultados\n"
+        "## 📊 Resultados\n"
         "- [Presentación JINST](./results/jinst.pdf) — primera presentación\n"
     )
     (proj / "testproj-agenda.md").write_text(

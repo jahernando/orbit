@@ -85,7 +85,7 @@ class TestItemParsing:
 
     def test_non_item_returns_none(self):
         from core.highlights import _parse_item_line
-        assert _parse_item_line("## 📚 Referencias") is None
+        assert _parse_item_line("## 📎 Referencias") is None
         assert _parse_item_line("") is None
         assert _parse_item_line("# Title") is None
 
@@ -153,9 +153,9 @@ class TestHighlightsIO:
         data["sections"]["decisions"].append({"text": "Decision C", "link": None, "note": None})
         _write_highlights(proj / "test-project-highlights.md", data)
         text = _hl_text(proj)
-        assert "## 📚 Referencias" in text
-        assert "## 🔬 Resultados"  in text
-        assert "## 🏛️ Decisiones"  in text
+        assert "## 📎 Referencias" in text
+        assert "## 📊 Resultados"  in text
+        assert "## 📌 Decisiones"  in text
 
     def test_sections_ordered_by_map(self, proj):
         """Sections appear in SECTION_MAP order, not insertion order."""

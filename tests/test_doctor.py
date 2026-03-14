@@ -265,7 +265,7 @@ class TestCheckHighlights:
         path = doctor_env["proj"] / "testproj-highlights.md"
         path.write_text(
             "# Highlights\n\n"
-            "## 📚 Referencias\n"
+            "## 📎 Referencias\n"
             "- [Artículo](https://example.com) — Muy bueno\n"
             "- Texto simple\n\n"
             "## 💡 Ideas\n"
@@ -289,7 +289,7 @@ class TestCheckHighlights:
         path = doctor_env["proj"] / "testproj-highlights.md"
         path.write_text(
             "# Highlights\n\n"
-            "## 📚 Referencias\n"
+            "## 📎 Referencias\n"
             "Texto sin guión\n"
         )
         issues = _check_highlights("💻testproj", path)
@@ -300,7 +300,7 @@ class TestCheckHighlights:
         path = doctor_env["proj"] / "testproj-highlights.md"
         path.write_text(
             "# Highlights\n\n"
-            "## 📚 Referencias\n"
+            "## 📎 Referencias\n"
             "- [Link roto](https://example.com\n"
         )
         issues = _check_highlights("💻testproj", path)
@@ -335,7 +335,7 @@ class TestCheckProject:
             "# Agenda\n\n## ✅ Tareas\n- [ ] Tarea\n"
         )
         (proj / "testproj-highlights.md").write_text(
-            "# Highlights\n\n## 📚 Referencias\n- Ref\n"
+            "# Highlights\n\n## 📎 Referencias\n- Ref\n"
         )
         issues = check_project(proj)
         assert issues == []
@@ -349,7 +349,7 @@ class TestCheckProject:
             "# Agenda\n\n## 📅 Eventos\n2026-04-01 - Guión malo\n"
         )
         (proj / "testproj-highlights.md").write_text(
-            "# Highlights\n\n## 📚 Referencias\nSin guión\n"
+            "# Highlights\n\n## 📎 Referencias\nSin guión\n"
         )
         issues = check_project(proj)
         assert len(issues) == 3
