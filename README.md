@@ -73,6 +73,7 @@ Los tipos se definen en `orbit.json` de cada workspace. Ejemplo:
 | `#referencia` | 📎 | Paper, link o recurso |
 | `#apunte` | 📝 | Nota general |
 | `#problema` | ⚠️ | Problema encontrado |
+| `#solucion` | ✔️ | Solución a un problema |
 | `#resultado` | 📊 | Resultado obtenido |
 | `#decision` | 📌 | Decision tomada |
 | `#evaluacion` | 🔍 | Evaluacion parcial |

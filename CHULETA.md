@@ -113,7 +113,7 @@ orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
 orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE]
 ```
 
-- `--type`: `refs` · `results` · `decisions` · `ideas` · `evals` · `plans`
+- `--type`: `refs` (📎) · `results` (📊) · `decisions` (📌) · `ideas` (💡) · `evals` (🔍) · `plans` (🗓️)
 - `--date`: añade fecha al final del texto — `--date` (hoy), `--date tomorrow`, `--date 2026-04-15`
 - `drop` pide confirmación (defecto **No**); `--force` la omite
 
@@ -160,7 +160,7 @@ orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
              [--limit N] [--open] [--editor E]
 ```
 
-`--tag`: filtra por hashtag (`idea` · `referencia` · `tarea` · `problema` · `resultado` · `apunte` · `decision` · `plan`)
+`--tag`: filtra por hashtag (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
 `--in`: busca en un tipo de fichero específico (por defecto logbook)
 
 ---
@@ -192,7 +192,7 @@ orbit deliver <project> <file> "<título>" --log --hl                   # copia 
 ```
 
 - `<file>`: ruta relativa al proyecto (e.g. `notes/results.pdf`, `img/grafico.png`)
-- `--log`: crea entrada en logbook con link al fichero; imágenes usan sintaxis `![](path)`
+- `--log`: crea entrada en logbook con link al fichero; imágenes añaden `![img](path)` indentado para renderizar en Typora
 - `--hl`: crea entrada en highlights con link al fichero
 - `--entry TIPO`: tipo de entrada en logbook (defecto: `apunte`). Solo con `--log`
 - `--type TIPO`: sección de highlights (defecto: `refs`). Solo con `--hl`
@@ -256,13 +256,20 @@ orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--summary
 
 ```bash
 orbit report [project...] [--date D] [--from D] [--to D] [--open] [--editor E]
+orbit report --summary [logbook|agenda|highlights|all] [--date D] [--from D] [--to D]
 ```
 
 - Sin proyecto: muestra informe de todos los proyectos activos
 - Con proyecto(s): informe solo de esos proyectos
 - Sin fechas: últimos 30 días
 - Muestra: entradas de logbook, highlights, tareas completadas/pendientes/vencidas, hitos, eventos
-- Compatible con `--log`: redirige el informe al logbook de otro proyecto
+- `--summary`: tabla markdown ordenada por actividad descendente
+  - Sin valor: logbook + agenda (las secciones con datos filtrados por periodo)
+  - `logbook`: solo tabla de entradas por tipo
+  - `agenda`: solo tabla de tareas/hitos/eventos
+  - `highlights`: solo tabla de highlights (snapshot actual, sin filtro de periodo)
+  - `all`: las tres tablas
+- Compatible con `--log`: redirige el informe al logbook de otro proyecto (tablas markdown se insertan sin code block)
 
 ---
 
@@ -274,8 +281,9 @@ orbit gsync --dry-run          # preview sin escribir
 orbit gsync --list-calendars   # muestra calendarios disponibles
 ```
 
-- Tareas e hitos → Google Tasks (una lista por tipo de proyecto)
+- Tareas e hitos → Google Tasks (una lista por tipo: `🚀[📚Docencia]`, `🚀[🌀Investigacion]`, etc.)
 - Eventos → Google Calendar (un calendario por tipo, configurable en `google-sync.json`)
+- Títulos en Google: `🚀[proyecto] descripción` (eventos y tareas)
 - Sincronización automática: al iniciar la shell + al añadir/completar/editar/eliminar items
 - IDs de sincronización en `.gsync-ids.json` por proyecto (no en agenda.md)
 - Items sincronizados muestran `[G]` en agenda.md

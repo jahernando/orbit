@@ -96,12 +96,14 @@ El logbook es el registro cronológico de cada proyecto. Cada entrada tiene un t
 
 | Tipo | Uso |
 |------|-----|
-| `resultado` | Resultado obtenido |
-| `idea` | Idea nueva |
-| `problema` | Problema encontrado |
-| `decision` | Decisión tomada |
-| `referencia` | Paper, enlace o recurso |
-| `apunte` | Nota general |
+| `apunte` 📝 | Nota general |
+| `idea` 💡 | Idea nueva |
+| `referencia` 📎 | Paper, enlace o recurso |
+| `problema` ⚠️ | Problema encontrado |
+| `solucion` ✔️ | Solución a un problema |
+| `resultado` 📊 | Resultado obtenido |
+| `decision` 📌 | Decisión tomada |
+| `evaluacion` 🔍 | Evaluación parcial |
 
 ```bash
 log next-kr "σ/E = 2.3% @ 1 MeV con N=500" --entry resultado
@@ -208,8 +210,13 @@ entradas de logbook, tareas completadas/pendientes/vencidas, hitos y eventos.
 
 ```bash
 report next-kr --from 2026-03-01 --to 2026-03-09
+report --summary             # tabla resumen: logbook + agenda
+report --summary logbook     # solo tabla de entradas por tipo
+report --summary agenda      # solo tareas/hitos/eventos
+report --summary highlights  # snapshot actual de highlights
+report --summary all         # las tres tablas
 report --open                # abre el informe en el editor
-report --log mission         # guarda el informe en el logbook de mission
+report --summary --log mission   # tabla markdown en el logbook de mission
 ```
 
 Guardar el report en el logbook de `mission` es útil para tomar decisiones de gestión: al revisarlo puedes añadir una evaluación como highlight:

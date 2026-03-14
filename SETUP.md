@@ -149,10 +149,11 @@ Configura a que calendario de Google va cada tipo de proyecto.
 ```
 
 - `calendars` — mapa tipo → ID de Google Calendar (usa `orbit gsync --list-calendars` para ver IDs)
-- `task_lists` — se llenan automaticamente al sincronizar por primera vez
+- `task_lists` — se llenan automaticamente al sincronizar por primera vez; listas nombradas como `🚀[📚Docencia]`
 - `repo_url` — (opcional) URL base del repo para enlaces en las descripciones de Google
+- Títulos en Google Calendar/Tasks: `🚀[proyecto] descripción`
 
-Cada workspace puede sincronizar a calendarios distintos.
+Cada workspace puede sincronizar a calendarios distintos (ej. calendario `orbit-ws` y `orbit-ps`).
 
 ### credentials.json / token.json — Google API
 
