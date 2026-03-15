@@ -215,9 +215,26 @@ def _select_highlight(data: dict, hl_type: Optional[str],
 
 # ── Commands ───────────────────────────────────────────────────────────────────
 
+def _is_url(ref: str) -> bool:
+    return ref.startswith("http://") or ref.startswith("https://")
+
+
+def _ask_deliver() -> bool:
+    """Ask user interactively whether to deliver file to cloud."""
+    if not sys.stdin.isatty():
+        return False
+    try:
+        ans = input("  📦 ¿Entregar fichero a cloud? [s/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return ans in ("s", "si", "sí", "y", "yes")
+
+
 def run_hl_add(project: str, text: str, hl_type: str,
                link: Optional[str] = None,
-               date_str: Optional[str] = None) -> int:
+               date_str: Optional[str] = None,
+               deliver: bool = False) -> int:
     if hl_type not in SECTION_MAP:
         print(f"Error: tipo '{hl_type}' no válido. Opciones: {', '.join(VALID_TYPES)}")
         return 1
@@ -234,6 +251,34 @@ def run_hl_add(project: str, text: str, hl_type: str,
             print(f"Error: fecha no reconocida: '{date_str}'")
             return 1
         text = f"{text} ({resolved})"
+
+    # Handle file/URL/deliver logic for link argument
+    if link:
+        if _is_url(link):
+            pass  # keep as-is
+        else:
+            from core.deliver import deliver_file, IMAGE_EXTS, encode_cloud_link
+            src = Path(link).expanduser()
+            if not src.is_absolute():
+                from core.log import find_project
+                pd = find_project(project)
+                if pd:
+                    candidate = pd / link
+                    src = candidate if candidate.exists() else Path.cwd() / link
+
+            if src.exists():
+                should_deliver = deliver or _ask_deliver()
+                if should_deliver:
+                    dest = deliver_file(project_dir, src, subdir="hls")
+                    if not dest:
+                        return 1
+                    link = encode_cloud_link(str(dest))
+                else:
+                    link = str(src)
+            elif deliver:
+                print(f"Error: no existe {src}")
+                return 1
+            # else: keep link as-is (relative path or manual reference)
 
     hl_path = resolve_file(project_dir, "highlights")
     data    = _read_highlights(hl_path)

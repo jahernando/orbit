@@ -11,14 +11,18 @@ from pathlib import Path
 ORBIT_CODE   = Path(__file__).resolve().parent.parent
 ORBIT_HOME   = Path(os.environ.get("ORBIT_HOME", ORBIT_CODE))
 
-# Orbit emoji: from orbit.json → env var fallback → 🚀 default
+# Orbit config: from orbit.json → fallbacks
 _ORBIT_JSON_PATH = ORBIT_HOME / "orbit.json"
+_orbit_space = ORBIT_HOME.name
 _orbit_emoji = "🚀"
 if _ORBIT_JSON_PATH.exists():
     try:
-        _orbit_emoji = json.loads(_ORBIT_JSON_PATH.read_text()).get("emoji", "🚀")
+        _cfg = json.loads(_ORBIT_JSON_PATH.read_text())
+        _orbit_space = _cfg.get("space", _orbit_space)
+        _orbit_emoji = _cfg.get("emoji", "🚀")
     except (json.JSONDecodeError, KeyError):
         pass
+ORBIT_SPACE   = _orbit_space
 ORBIT_PROMPT = os.environ.get("ORBIT_PROMPT", _orbit_emoji)
 
 PROJECTS_DIR  = ORBIT_HOME / f"{_orbit_emoji}proyectos"
@@ -99,6 +103,11 @@ def get_type_label() -> dict:
 def get_type_emojis() -> tuple:
     """Return tuple of all type emojis (for field detection in project files)."""
     return tuple(set(_load_types().values()))
+
+
+def get_reverse_type_map() -> dict:
+    """Return {emoji: type_name} for looking up type name from emoji."""
+    return {emoji: key for key, emoji in _load_types().items()}
 
 
 # ── Type management commands ──────────────────────────────────────────────────

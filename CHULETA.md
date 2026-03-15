@@ -108,11 +108,13 @@ orbit ev list [<project>] [--from DATE] [--to DATE]
 ## hl — highlights
 
 ```bash
-orbit hl add  <project> "<text>" --type TYPE [--link URL] [--date [FECHA]]
+orbit hl add  <project> "<text>" [<file|url>] --type TYPE [--deliver] [--date [FECHA]]
 orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
 orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE]
 ```
 
+- `<file|url>`: argumento posicional opcional. Si es URL, enlaza el texto. Si es fichero local, enlaza y pregunta si quieres entregarlo a cloud
+- `--deliver`: entrega el fichero directamente a cloud sin preguntar (copia a `hls/`, sin prefijo de fecha)
 - `--type`: `refs` (📎) · `results` (📊) · `decisions` (📌) · `ideas` (💡) · `evals` (🔍) · `plans` (🗓️)
 - `--date`: añade fecha al final del texto — `--date` (hoy), `--date tomorrow`, `--date 2026-04-15`
 - `drop` pide confirmación (defecto **No**); `--force` la omite
@@ -153,15 +155,18 @@ orbit open  <project> [logbook|highlights|agenda|notes|project] [--editor E] [--
 ## log y search
 
 ```bash
-orbit log <project> <msg> [--entry TIPO] [--path RUTA] [--date D] [--open] [--editor E]
+orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--deliver] [--date D] [--open] [--editor E]
 
 orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
              [--in logbook|highlights|agenda] [--any] [--notes]
              [--limit N] [--open] [--editor E]
 ```
 
-`--tag`: filtra por hashtag (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
-`--in`: busca en un tipo de fichero específico (por defecto logbook)
+- `<file|url>`: argumento posicional opcional. Si es URL, enlaza el título. Si es fichero local, enlaza al fichero y pregunta si quieres entregarlo a cloud
+- `--deliver`: entrega el fichero directamente a cloud sin preguntar (copia a `logs/` con prefijo `YYYY-MM-DD_`)
+- Si el fichero es imagen (png, jpg, svg...), se inserta `![título](link)` en la línea siguiente de la entrada
+- `--tag`: filtra por hashtag (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
+- `--in`: busca en un tipo de fichero específico (por defecto logbook)
 
 ---
 
@@ -183,20 +188,39 @@ orbit undo
 ## deliver — entregar ficheros a la nube
 
 ```bash
-orbit deliver <project> <file> "<título>"                              # solo copia a cloud
-orbit deliver <project> <file> "<título>" --log                        # copia + logbook (#apunte)
-orbit deliver <project> <file> "<título>" --log --entry resultado      # copia + logbook (#resultado)
-orbit deliver <project> <file> "<título>" --hl                         # copia + highlights (refs)
-orbit deliver <project> <file> "<título>" --hl --type results          # copia + highlights (results)
-orbit deliver <project> <file> "<título>" --log --hl                   # copia + ambos
+orbit deliver <project> <file>
 ```
 
-- `<file>`: ruta relativa al proyecto (e.g. `notes/results.pdf`, `img/grafico.png`)
-- `--log`: crea entrada en logbook con link al fichero; imágenes añaden `![img](path)` indentado para renderizar en Typora
-- `--hl`: crea entrada en highlights con link al fichero
-- `--entry TIPO`: tipo de entrada en logbook (defecto: `apunte`). Solo con `--log`
-- `--type TIPO`: sección de highlights (defecto: `refs`). Solo con `--hl`
-- Internamente usa `bin/deliver` para la copia a cloud (configurado en `~/.config/deliver.conf`)
+- Copia el fichero al directorio cloud del proyecto y deja la ruta en el portapapeles
+- Para entregar un fichero y crear entrada de logbook o highlight, usa `--deliver` en `log` o `hl add`
+
+### Estructura cloud
+
+```
+cloud_root/                         ← definido en orbit.json ("cloud_root")
+  {type_emoji}{type_name}/          ← ej. ⚙️gestion
+    {project_dir}/                  ← ej. ⚙️catedra
+      logs/                         ← ficheros entregados desde log (con prefijo YYYY-MM-DD_)
+      hls/                          ← ficheros entregados desde hl
+      ...                           ← otros ficheros manuales
+```
+
+### Configuracion cloud en orbit.json
+
+Cada workspace necesita `cloud_root` en su `orbit.json`:
+
+```json
+{
+  "space": "orbit-ws",
+  "emoji": "🚀",
+  "cloud_root": "~/Library/CloudStorage/OneDrive-.../🚀orbit-ws",
+  "types": { ... }
+}
+```
+
+El directorio cloud raiz deberia llamarse `{emoji}{space}` (ej. `🚀orbit-ws`, `🌿orbit-ps`) para identificarlo visualmente en el servicio de nube.
+
+Cada proyecto tiene un link `[cloud]` en su `project.md` que apunta a su directorio en cloud.
 
 ---
 

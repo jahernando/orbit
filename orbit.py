@@ -5,7 +5,7 @@ import argparse
 import re
 import sys
 
-from core.log import VALID_TYPES, add_entry, find_project, find_logbook_file, find_proyecto_file
+from core.log import VALID_TYPES, add_entry, add_entry_with_ref, find_project, find_logbook_file, find_proyecto_file
 from core.search import run_search
 from core.stats import run_report
 from core.project import (run_project_create, run_project_list,
@@ -120,12 +120,13 @@ def cmd_log(args):
     if not args.project:
         print("Error: especifica un proyecto → orbit log <proyecto> \"mensaje\"")
         return 1
-    rc = add_entry(
+    rc = add_entry_with_ref(
         project=args.project,
+        ref=args.ref,
         message=args.message,
         tipo=args.entry,
-        path=args.path,
         fecha=_d(args.date),
+        deliver=getattr(args, "deliver", False),
     )
     if rc == 0 and args.open:
         project_dir = find_project(args.project)
@@ -195,8 +196,9 @@ def cmd_hl(args):
             project = args.project,
             text    = args.text,
             hl_type = args.type,
-            link    = getattr(args, "link", None),
+            link    = getattr(args, "ref", None),
             date_str = getattr(args, "date", None),
+            deliver = getattr(args, "deliver", False),
         )
     if action == "drop":
         return run_hl_drop(
@@ -248,11 +250,7 @@ def cmd_note(args):
 
 
 def cmd_deliver(args):
-    return run_deliver(
-        project=args.project, file=args.file, title=args.title,
-        log=args.log, hl=args.hl,
-        entry_type=args.entry, hl_type=args.type,
-    )
+    return run_deliver(project=args.project, file=args.file)
 
 
 def cmd_commit(args):
@@ -652,7 +650,8 @@ def main():
     # --- log ---
     log_p = subparsers.add_parser("log", help="Add an entry to a project logbook")
     log_p.add_argument("project", help="Project name (partial match)")
-    log_p.add_argument("message", help="Entry message")
+    log_p.add_argument("message", help="Entry message / title")
+    log_p.add_argument("ref",     nargs="?", default=None, help="File path or URL (optional)")
     log_p.add_argument(
         "--entry",
         default="apunte",
@@ -660,7 +659,7 @@ def main():
         metavar="ENTRY",
         help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
     )
-    log_p.add_argument("--path", default=None, help="Optional file path — formats entry as a markdown link")
+    log_p.add_argument("--deliver", action="store_true", help="Deliver file to cloud (logs/ with date prefix)")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
     log_p.add_argument("--open", action="store_true", help="Open the logbook in editor after logging")
     log_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
@@ -989,9 +988,10 @@ def main():
     hl_add = hl_sub.add_parser("add", help="Add a highlight")
     hl_add.add_argument("project", help="Project name (partial match)")
     hl_add.add_argument("text",    help="Highlight text or title")
+    hl_add.add_argument("ref",     nargs="?", default=None, help="File path or URL (optional)")
     hl_add.add_argument("--type",  required=True, choices=HL_TYPES,
                         help="Section type: refs, results, decisions, ideas, evals")
-    hl_add.add_argument("--link",  default=None, help="URL or file path to link")
+    hl_add.add_argument("--deliver", action="store_true", help="Deliver file to cloud (hls/)")
     hl_add.add_argument("--date",  nargs="?", const="today", default=None,
                         help="Prefix date (today, tomorrow, YYYY-MM-DD)")
 
@@ -1062,16 +1062,9 @@ def main():
     note_p.add_argument("--editor",  default=None)
 
     # --- deliver ---
-    dlv_p = subparsers.add_parser("deliver", help="Deliver files to cloud, optionally log/highlight")
+    dlv_p = subparsers.add_parser("deliver", help="Deliver file to cloud (copy + clipboard)")
     dlv_p.add_argument("project", help="Project name (partial match)")
-    dlv_p.add_argument("file",    help="File path relative to project (e.g. notes/results.pdf)")
-    dlv_p.add_argument("title",   help="Title for logbook/highlights entry")
-    dlv_p.add_argument("--log",   action="store_true", help="Create logbook entry")
-    dlv_p.add_argument("--hl",    action="store_true", help="Create highlights entry")
-    dlv_p.add_argument("--entry", default="apunte", choices=VALID_TYPES, metavar="ENTRY",
-                       help=f"Logbook entry type (default: apunte). Requires --log")
-    dlv_p.add_argument("--type",  default="refs", choices=HL_TYPES, metavar="TYPE",
-                       help=f"Highlights section type (default: refs). Requires --hl")
+    dlv_p.add_argument("file",    help="File path to deliver")
 
     # --- commit ---
     cmt_p = subparsers.add_parser("commit", help="Git commit with confirmation")

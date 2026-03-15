@@ -1,3 +1,4 @@
+import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -236,6 +237,83 @@ def add_entry(project: str, message: str, tipo: str, path: Optional[str],
             if "en marcha" not in meta["estado_raw"] and "completado" not in meta["estado_raw"]:
                 update_proyecto_field(proyecto_path, "estado", "en marcha")
                 print(f"  → estado: en marcha")
+
+    return 0
+
+
+def _is_url(ref: str) -> bool:
+    return ref.startswith("http://") or ref.startswith("https://")
+
+
+def _ask_deliver() -> bool:
+    """Ask user interactively whether to deliver file to cloud."""
+    if not sys.stdin.isatty():
+        return False
+    try:
+        ans = input("  📦 ¿Entregar fichero a cloud? [s/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return ans in ("s", "si", "sí", "y", "yes")
+
+
+def add_entry_with_ref(project: str, ref: Optional[str], message: str,
+                       tipo: str, fecha: Optional[str],
+                       deliver: bool = False, orbit: bool = False) -> int:
+    """Add a logbook entry, handling URL/file/deliver logic.
+
+    - ref is URL → link title to URL
+    - ref is file + --deliver → copy to cloud/logs/ with date prefix, link to cloud
+    - ref is file (no --deliver) → link to local file, ask if deliver
+    - ref is None → plain entry
+    """
+    from core.deliver import deliver_file, IMAGE_EXTS, encode_cloud_link
+
+    project_dir = find_project(project)
+    if not project_dir:
+        return 1
+
+    link = None
+    is_image = False
+
+    if ref:
+        if _is_url(ref):
+            link = ref
+        else:
+            src = Path(ref).expanduser()
+            if not src.is_absolute():
+                candidate = project_dir / ref
+                if candidate.exists():
+                    src = candidate
+                else:
+                    src = Path.cwd() / ref
+            if src.exists():
+                is_image = src.suffix.lower() in IMAGE_EXTS
+                should_deliver = deliver or _ask_deliver()
+
+                if should_deliver:
+                    dest = deliver_file(project_dir, src, subdir="logs", date_prefix=True)
+                    if not dest:
+                        return 1
+                    link = encode_cloud_link(str(dest))
+                else:
+                    link = str(src)
+            elif deliver:
+                print(f"Error: no existe {src}")
+                return 1
+            else:
+                link = ref  # keep as-is (relative path or manual reference)
+
+    rc = add_entry(project, message, tipo, link, fecha, orbit=orbit)
+    if rc != 0:
+        return rc
+
+    # Append image preview if delivered image
+    if is_image and link:
+        logbook = find_logbook_file(project_dir)
+        if logbook and logbook.exists():
+            with open(logbook, "a") as f:
+                f.write(f"  ![{message}]({link})\n")
 
     return 0
 

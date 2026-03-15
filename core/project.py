@@ -194,6 +194,15 @@ def run_project_create(name: str, tipo: str, prioridad: str) -> int:
 
     base = _base_name(project_dir)
 
+    # Compute cloud directory for this project
+    from core.deliver import _find_cloud_root, _project_cloud_dir, encode_cloud_link
+    cloud_root = _find_cloud_root()
+    cloud_dir_str = ""
+    if cloud_root:
+        cd = _project_cloud_dir(project_dir, cloud_root)
+        if cd:
+            cloud_dir_str = encode_cloud_link(str(cd))
+
     subs = {
         "{{PROJECT_NAME}}":    dir_name,
         "{{BASE_NAME}}":       base,
@@ -202,6 +211,7 @@ def run_project_create(name: str, tipo: str, prioridad: str) -> int:
         "{{PRIORITY_EMOJI}}":  prio_emoji,
         "{{PRIORITY_LABEL}}":  prio_label,
         "{{OBJECTIVE}}":       objetivo or "Descripción breve del objetivo.",
+        "{{CLOUD_DIR}}":       cloud_dir_str,
     }
 
     for kind in ["project", "logbook", "highlights", "agenda"]:

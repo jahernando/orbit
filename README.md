@@ -18,7 +18,7 @@ Orbit separa **codigo** y **datos** en repositorios distintos:
 
 ~/mi-workspace/       ← repo privado, tus datos de trabajo
   {emoji}proyectos/
-  orbit.json          ← tipos de proyecto y emoji
+  orbit.json          ← space, emoji, cloud_root, tipos de proyecto
   google-sync.json    ← sincronizacion con Google
   credentials.json    ← Google API (gitignored)
   history.md
@@ -36,12 +36,12 @@ Ver [SETUP.md](SETUP.md) para instrucciones de instalacion.
 mi-workspace/
 ├── {emoji}proyectos/
 │   └── {emoji}nombre-proyecto/
-│       ├── project.md        ← metadatos: tipo, estado, prioridad, objetivo
+│       ├── project.md        ← metadatos: tipo, estado, prioridad, objetivo + link a cloud
 │       ├── logbook.md        ← registro permanente (append-only)
 │       ├── highlights.md     ← indice curado: refs, resultados, decisiones, ideas
 │       ├── agenda.md         ← tareas, hitos y eventos
 │       └── notes/            ← notas libres del usuario (.md)
-├── orbit.json                ← configuracion del workspace
+├── orbit.json                ← configuracion del workspace (space, emoji, cloud_root, tipos)
 ├── google-sync.json          ← mapa tipo → calendario de Google
 ├── history.md                ← historial de sesiones
 └── cmd.md                    ← salida temporal de comandos --open
@@ -50,6 +50,21 @@ mi-workspace/
 ---
 
 ## Tipos de proyecto
+
+Cada workspace se configura en `orbit.json`:
+
+```json
+{
+  "space": "orbit-ws",
+  "emoji": "🚀",
+  "cloud_root": "~/Library/CloudStorage/OneDrive-.../🚀orbit-ws",
+  "types": { "investigacion": "🌀", "docencia": "📚", ... }
+}
+```
+
+- `space`: nombre del espacio (aparece en la ruta cloud)
+- `emoji`: emoji del espacio (prefijo de `proyectos/` y del directorio cloud raiz)
+- `cloud_root`: ruta al directorio raiz en el servicio de nube (OneDrive, Google Drive, etc.)
 
 Los tipos se definen en `orbit.json` de cada workspace. Ejemplo:
 
@@ -125,7 +140,7 @@ orbit ev list next-kr [--open]
 ### Highlights y notas
 
 ```bash
-orbit hl add next-kr "Gonzalez 2024" --type refs --link ./refs/g2024.pdf
+orbit hl add next-kr "Gonzalez 2024" ./refs/g2024.pdf --type refs --deliver
 orbit hl list next-kr [--open]
 
 orbit note next-kr "Analisis de calibracion"
@@ -136,6 +151,7 @@ orbit note list next-kr [--open]
 
 ```bash
 orbit log next-kr "El fit converge" --entry resultado
+orbit log next-kr "Resultados Q1" results.pdf --entry resultado --deliver
 orbit search "calibracion" --entry resultado
 orbit search --project next-kr --from 2026-03-01 [--open]
 ```
@@ -158,8 +174,19 @@ orbit report [project...] [--from D] [--to D] [--open]
 ### Deliver — entregar ficheros a la nube
 
 ```bash
-orbit deliver next-kr notes/results.pdf "Resultados Q1" --log
-orbit deliver next-kr img/fig.png "Figura calibracion" --log --hl --entry resultado --type results
+orbit deliver next-kr notes/results.pdf                                          # copia a cloud + portapapeles
+orbit log next-kr "Resultados Q1" results.pdf --entry resultado --deliver        # log + entrega a cloud/logs/
+orbit hl add next-kr "Paper calibracion" paper.pdf --type refs --deliver         # highlight + entrega a cloud/hls/
+```
+
+Cada workspace define su `cloud_root` en `orbit.json`. La estructura cloud:
+
+```
+{emoji}{space}/                     ← ej. 🚀orbit-ws en OneDrive
+  {type_emoji}{type}/               ← ej. ⚙️gestion
+    {project}/                      ← ej. ⚙️catedra
+      logs/                         ← ficheros de log (prefijo YYYY-MM-DD_)
+      hls/                          ← ficheros de highlights
 ```
 
 ### Mantenimiento

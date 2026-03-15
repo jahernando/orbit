@@ -114,7 +114,21 @@ log next-kr "Usaremos calibración relativa" --entry decision
 Para añadir una referencia con enlace a un fichero local:
 
 ```bash
-log next-kr "González 2024 — calibración" --entry referencia --path ./refs/gonzalez2024.pdf
+log next-kr "González 2024 — calibración" ./refs/gonzalez2024.pdf --entry referencia
+```
+
+Orbit preguntará si quieres entregar el fichero a cloud. Para entregarlo directamente:
+
+```bash
+log next-kr "González 2024 — calibración" ./refs/gonzalez2024.pdf --entry referencia --deliver
+```
+
+El fichero se copia a `logs/` en cloud con prefijo de fecha (`2026-03-15_gonzalez2024.pdf`) y la entrada enlaza al fichero en cloud. Si el fichero es una imagen, se inserta como figura en la línea siguiente.
+
+Para enlazar a una URL:
+
+```bash
+log next-kr "Paper interesante" https://arxiv.org/abs/2401.12345 --entry referencia
 ```
 
 ---
@@ -165,7 +179,9 @@ Los eventos recurrentes se expanden automáticamente en la agenda y el calendari
 Los highlights son el índice permanente de lo más relevante: referencias clave, resultados importantes, decisiones fundamentales.
 
 ```bash
-hl add next-kr "González 2024 — calibración relativa" --type refs --link ./refs/g2024.pdf
+hl add next-kr "González 2024 — calibración relativa" ./refs/g2024.pdf --type refs
+hl add next-kr "González 2024" ./refs/g2024.pdf --type refs --deliver   # entrega a cloud (hls/)
+hl add next-kr "Paper relevante" https://arxiv.org/... --type refs      # con URL
 hl add next-kr "σ/E = 2.3% @ 1 MeV" --type results
 hl add next-kr "Calibración relativa como estándar" --type decisions
 hl list next-kr
@@ -239,6 +255,7 @@ orbit
   # Trabajar y anotar:
   log next-kr "σ/E = 2.1% @ 511 keV" --entry resultado
   log next-kr "Probar con diferentes ROI" --entry idea
+  log next-kr "Espectro calibrado" spectrum.png --entry resultado --deliver
   task add next-kr "Preparar presentación" --date "next thursday"
   hl add next-kr "Resolución validada a 511 keV" --type results
 
