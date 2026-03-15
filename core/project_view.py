@@ -12,8 +12,8 @@ from typing import Optional
 
 from core.project import (
     _find_new_project, _is_new_project, _read_project_meta, _resolve_status,
-    PROJECTS_DIR,
 )
+from core.config import iter_project_dirs
 from core.agenda_cmds import _read_agenda
 from core.highlights import _read_highlights, SECTION_MAP
 from core.log import find_logbook_file, resolve_file
@@ -163,8 +163,7 @@ def _build_summary_md(project_dir: Path) -> str:
 
 def _pick_project() -> Optional[Path]:
     """Show numbered list of new-format projects; return selected dir or None."""
-    dirs = sorted(d for d in PROJECTS_DIR.iterdir()
-                  if d.is_dir() and _is_new_project(d))
+    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
     if not dirs:
         print("No hay proyectos (nuevo modelo) disponibles.")
         return None

@@ -18,9 +18,11 @@ from core.archive import (
 
 def _make_project(tmp_path, name="test-proj", logbook="", agenda="", notes=None):
     """Create a minimal project structure and return project_dir."""
-    proj = tmp_path / "🚀proyectos" / name
-    proj.mkdir(parents=True)
-    (proj / "project.md").write_text("# Test\n- Estado: active\n- Tipo: 💻dev\n- Prioridad: media\n")
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir(exist_ok=True)
+    proj = type_dir / name
+    proj.mkdir(parents=True, exist_ok=True)
+    (proj / f"{name}-project.md").write_text("# Test\n- Estado: active\n- Tipo: 💻dev\n- Prioridad: media\n")
     if logbook:
         (proj / f"{name}-logbook.md").write_text(logbook)
     if agenda:
@@ -252,10 +254,11 @@ class TestDeleteNotes:
 class TestRunArchive:
     def test_single_project_dry_run(self, tmp_path):
         logbook = "2025-01-01 📝 vieja #apunte\n2026-03-01 📝 nueva #apunte\n"
-        _make_project(tmp_path, name="myproj", logbook=logbook)
+        proj = _make_project(tmp_path, name="myproj", logbook=logbook)
 
-        with patch("core.archive.PROJECTS_DIR", tmp_path / "🚀proyectos"), \
-             patch("core.archive._find_new_project", return_value=tmp_path / "🚀proyectos" / "myproj"):
+        with patch("core.config.ORBIT_HOME", tmp_path), \
+             patch("core.config._ORBIT_JSON", tmp_path / "orbit.json"), \
+             patch("core.archive._find_new_project", return_value=proj):
             ret = run_archive(project="myproj", months=6, dry_run=True)
 
         assert ret == 0
@@ -264,7 +267,8 @@ class TestRunArchive:
         logbook = "2025-01-01 📝 vieja #apunte\n2026-03-01 📝 nueva #apunte\n"
         proj = _make_project(tmp_path, name="myproj", logbook=logbook)
 
-        with patch("core.archive.PROJECTS_DIR", tmp_path / "🚀proyectos"), \
+        with patch("core.config.ORBIT_HOME", tmp_path), \
+             patch("core.config._ORBIT_JSON", tmp_path / "orbit.json"), \
              patch("core.archive._find_new_project", return_value=proj):
             ret = run_archive(project="myproj", months=6, force=True)
 
@@ -284,7 +288,8 @@ class TestRunArchive:
         )
         proj = _make_project(tmp_path, name="myproj", logbook=logbook, agenda=agenda)
 
-        with patch("core.archive.PROJECTS_DIR", tmp_path / "🚀proyectos"), \
+        with patch("core.config.ORBIT_HOME", tmp_path), \
+             patch("core.config._ORBIT_JSON", tmp_path / "orbit.json"), \
              patch("core.archive._find_new_project", return_value=proj):
             ret = run_archive(project="myproj", months=6, force=True, do_agenda=True)
 
@@ -304,15 +309,17 @@ class TestRunArchive:
         assert ret == 1
 
     def test_no_projects_dir(self, tmp_path):
-        with patch("core.archive.PROJECTS_DIR", tmp_path / "nonexistent"):
+        with patch("core.config.ORBIT_HOME", tmp_path / "nonexistent"), \
+             patch("core.config._ORBIT_JSON", tmp_path / "nonexistent" / "orbit.json"):
             ret = run_archive()
         assert ret == 0
 
     def test_nothing_to_clean(self, tmp_path):
         logbook = "2026-03-01 📝 reciente #apunte\n"
-        _make_project(tmp_path, name="fresh", logbook=logbook)
+        proj = _make_project(tmp_path, name="fresh", logbook=logbook)
 
-        with patch("core.archive.PROJECTS_DIR", tmp_path / "🚀proyectos"), \
-             patch("core.archive._find_new_project", return_value=tmp_path / "🚀proyectos" / "fresh"):
+        with patch("core.config.ORBIT_HOME", tmp_path), \
+             patch("core.config._ORBIT_JSON", tmp_path / "orbit.json"), \
+             patch("core.archive._find_new_project", return_value=proj):
             ret = run_archive(project="fresh", months=6, force=True)
         assert ret == 0

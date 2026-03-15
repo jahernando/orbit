@@ -15,17 +15,17 @@ def _base_name(name: str) -> str:
     return re.sub(r'^[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]+', '', name)
 
 
-def _make_project(pdir: Path, name: str = "💻test-project") -> Path:
+def _make_project(type_dir: Path, name: str = "💻test-project") -> Path:
     base = _base_name(name)
-    project_dir = pdir / name
-    project_dir.mkdir()
+    project_dir = type_dir / name
+    project_dir.mkdir(parents=True, exist_ok=True)
     (project_dir / f"{base}-project.md").write_text(
         f"# {name}\n- Tipo: 💻 Software\n- Estado: [auto]\n- Prioridad: media\n"
     )
     (project_dir / f"{base}-logbook.md").write_text(f"# Logbook — {name}\n\n")
     (project_dir / f"{base}-highlights.md").write_text(f"# Highlights — {name}\n\n")
     (project_dir / f"{base}-agenda.md").write_text(f"# Agenda — {name}\n\n")
-    (project_dir / "notes").mkdir()
+    (project_dir / "notes").mkdir(exist_ok=True)
     return project_dir
 
 
@@ -38,16 +38,14 @@ def _log_text(project_dir: Path) -> str:
 
 @pytest.fixture()
 def projects_dir(tmp_path, monkeypatch):
-    pdir = tmp_path / "proyectos"
-    pdir.mkdir()
-    import core.notes as nt
-    import core.project as cp
-    import core.log as cl
-    monkeypatch.setattr(nt, "ORBIT_HOME", tmp_path)
-    monkeypatch.setattr(nt, "TEMPLATES_DIR", tmp_path / "📐templates")
-    monkeypatch.setattr(cp, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(cl, "PROJECTS_DIR", pdir)
-    return pdir
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.notes.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.notes.TEMPLATES_DIR", tmp_path / "📐templates")
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+    return type_dir
 
 
 @pytest.fixture()
@@ -290,7 +288,7 @@ class TestRunNoteDrop:
 class TestAutoMessage:
     def test_logbook_changes(self):
         from core.commit import _auto_message
-        status = [("M", "🚀proyectos/💻mission/mission-logbook.md")]
+        status = [("M", "💻software/💻mission/mission-logbook.md")]
         msg = _auto_message(status)
         assert "logbook" in msg
         assert "orbit:" in msg
@@ -298,9 +296,9 @@ class TestAutoMessage:
     def test_multiple_file_types(self):
         from core.commit import _auto_message
         status = [
-            ("M", "🚀proyectos/💻mission/mission-logbook.md"),
-            ("M", "🚀proyectos/💻mission/mission-agenda.md"),
-            ("A", "🚀proyectos/💻mission/notes/my_note.md"),
+            ("M", "💻software/💻mission/mission-logbook.md"),
+            ("M", "💻software/💻mission/mission-agenda.md"),
+            ("A", "💻software/💻mission/notes/my_note.md"),
         ]
         msg = _auto_message(status)
         assert "logbook" in msg
@@ -315,7 +313,7 @@ class TestAutoMessage:
 
     def test_project_name_included(self):
         from core.commit import _auto_message
-        status = [("M", "🚀proyectos/💻my-project/my-project-logbook.md")]
+        status = [("M", "💻software/💻my-project/my-project-logbook.md")]
         msg = _auto_message(status)
         assert "my-project" in msg
 
@@ -365,14 +363,14 @@ class TestRunCommit:
         committed = []
         monkeypatch.setattr("core.commit._git_add_all_tracked", lambda: True)
         monkeypatch.setattr("core.commit._git_status",
-                            lambda: [("M", "🚀proyectos/💻proj/proj-logbook.md")])
+                            lambda: [("M", "💻software/💻proj/proj-logbook.md")])
         monkeypatch.setattr("core.commit._git_commit",
                             lambda m: committed.append(m) or 0)
         # Simulate non-tty so auto-message is generated without prompt
         monkeypatch.setattr(sys, "stdin", open("/dev/null"))
         run_commit()   # no message → auto-generate
         assert len(committed) == 1
-        assert "orbit:" in committed[0]
+        assert "sync" in committed[0]
 
     def test_git_commit_called_with_message(self, monkeypatch, capsys):
         from core.commit import run_commit

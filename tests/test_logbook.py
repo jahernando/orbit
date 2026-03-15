@@ -25,10 +25,10 @@ from core.search import run_search
 @pytest.fixture
 def logbook_env(tmp_path, monkeypatch):
     """Isolated environment with one new-format project."""
-    projects_dir = tmp_path / "🚀proyectos"
-    projects_dir.mkdir()
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
 
-    proj = projects_dir / "💻testproj"
+    proj = type_dir / "💻testproj"
     proj.mkdir()
     (proj / "testproj-project.md").write_text(
         "# 💻testproj\n- Tipo: 💻 Software\n- Estado: [auto]\n- Prioridad: alta\n"
@@ -48,11 +48,12 @@ def logbook_env(tmp_path, monkeypatch):
     )
     (proj / "notes").mkdir()
 
-    monkeypatch.setattr("core.log.PROJECTS_DIR",          projects_dir)
-    monkeypatch.setattr("core.list_entries.PROJECTS_DIR", projects_dir)
-    monkeypatch.setattr("core.search.PROJECTS_DIR",       projects_dir)
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr("core.list_entries.PROJECTS_DIR", tmp_path)
 
-    return {"projects_dir": projects_dir, "proj": proj}
+    return {"projects_dir": type_dir, "proj": proj}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

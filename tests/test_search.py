@@ -147,9 +147,9 @@ class TestSearchFile:
 
 class TestRunSearch:
 
-    def _make_project(self, projects_dir: Path, name: str) -> Path:
-        proj = projects_dir / name
-        proj.mkdir()
+    def _make_project(self, type_dir: Path, name: str) -> Path:
+        proj = type_dir / name
+        proj.mkdir(parents=True, exist_ok=True)
         base = name.lstrip("💻⚙️🌀📚📖🌿☀️")
         (proj / f"{base}-project.md").write_text(
             f"# {name}\n\n"
@@ -164,15 +164,17 @@ class TestRunSearch:
         )
         return proj
 
-    def _patch(self, monkeypatch, projects_dir):
-        monkeypatch.setattr("core.search.PROJECTS_DIR", projects_dir)
-        monkeypatch.setattr("core.log.PROJECTS_DIR",    projects_dir)
+    def _patch(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+        monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+        monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+        monkeypatch.setattr("core.list_entries.PROJECTS_DIR", tmp_path)
 
     def test_finds_keyword_in_logbook(self, tmp_path, monkeypatch, capsys):
-        projects_dir = tmp_path / "🚀proyectos"
-        projects_dir.mkdir()
-        self._make_project(projects_dir, "💻testproj")
-        self._patch(monkeypatch, projects_dir)
+        type_dir = tmp_path / "💻software"
+        type_dir.mkdir()
+        self._make_project(type_dir, "💻testproj")
+        self._patch(monkeypatch, tmp_path)
 
         rc = run_search(query="calibración")
         assert rc == 0
@@ -180,20 +182,20 @@ class TestRunSearch:
         assert "1 resultado" in out or "testproj" in out
 
     def test_tag_filter_restricts_results(self, tmp_path, monkeypatch, capsys):
-        projects_dir = tmp_path / "🚀proyectos"
-        projects_dir.mkdir()
-        self._make_project(projects_dir, "💻testproj")
-        self._patch(monkeypatch, projects_dir)
+        type_dir = tmp_path / "💻software"
+        type_dir.mkdir()
+        self._make_project(type_dir, "💻testproj")
+        self._patch(monkeypatch, tmp_path)
 
         run_search(None, tag="problema")
         out = capsys.readouterr().out
         assert "converge" in out or "problema" in out
 
     def test_no_match_returns_zero(self, tmp_path, monkeypatch, capsys):
-        projects_dir = tmp_path / "🚀proyectos"
-        projects_dir.mkdir()
-        self._make_project(projects_dir, "💻testproj")
-        self._patch(monkeypatch, projects_dir)
+        type_dir = tmp_path / "💻software"
+        type_dir.mkdir()
+        self._make_project(type_dir, "💻testproj")
+        self._patch(monkeypatch, tmp_path)
 
         rc = run_search(query="xyzinexistente99")
         assert rc == 0
@@ -201,11 +203,11 @@ class TestRunSearch:
         assert "calibración" not in out.lower()
 
     def test_open_writes_to_cmd_md(self, tmp_path, monkeypatch):
-        projects_dir = tmp_path / "🚀proyectos"
-        projects_dir.mkdir()
-        self._make_project(projects_dir, "💻testproj")
+        type_dir = tmp_path / "💻software"
+        type_dir.mkdir()
+        self._make_project(type_dir, "💻testproj")
         cmd_file = tmp_path / "cmd.md"
-        self._patch(monkeypatch, projects_dir)
+        self._patch(monkeypatch, tmp_path)
         monkeypatch.setattr("core.open.CMD_MD",      cmd_file)
         monkeypatch.setattr("core.open.open_file",   lambda p, e: 0)
 
@@ -213,9 +215,12 @@ class TestRunSearch:
         assert cmd_file.exists()
         assert "calibración" in cmd_file.read_text().lower()
 
-    def test_missing_projects_dir_returns_error(self, tmp_path, monkeypatch, capsys):
+    def test_missing_projects_dir_returns_zero_results(self, tmp_path, monkeypatch, capsys):
         missing = tmp_path / "nonexistent"
-        monkeypatch.setattr("core.search.PROJECTS_DIR", missing)
-        monkeypatch.setattr("core.log.PROJECTS_DIR",    missing)
+        monkeypatch.setattr("core.config.ORBIT_HOME", missing)
+        monkeypatch.setattr("core.config._ORBIT_JSON", missing / "orbit.json")
+        monkeypatch.setattr("core.log.PROJECTS_DIR", missing)
+        monkeypatch.setattr("core.list_entries.PROJECTS_DIR", missing)
         rc = run_search(query="algo")
-        assert rc == 1
+        assert rc == 0
+        assert "0 resultados" in capsys.readouterr().out

@@ -11,7 +11,8 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, TAG_EMOJI, VALID_TYPES, resolve_file
+from core.log import TAG_EMOJI, VALID_TYPES, resolve_file
+from core.config import iter_project_dirs
 from core.project import _find_new_project, _is_new_project
 from core.agenda_cmds import (
     _parse_task_line, _parse_event_line,
@@ -365,11 +366,9 @@ def check_project(project_dir: Path, max_logbook_lines: int = 200) -> list:
 
 def check_all_projects(max_logbook_lines: int = 200) -> list:
     """Run checks on all new-format projects."""
-    if not PROJECTS_DIR.exists():
-        return []
     issues = []
-    for d in sorted(PROJECTS_DIR.iterdir()):
-        if d.is_dir() and _is_new_project(d):
+    for d in iter_project_dirs():
+        if _is_new_project(d):
             issues.extend(check_project(d, max_logbook_lines))
     return issues
 
@@ -380,13 +379,13 @@ def _apply_fix(issue: Issue) -> bool:
     """Apply a single fix by replacing the line in the file."""
     if not issue.fix:
         return False
-    path = PROJECTS_DIR
-    # Find the actual file
-    for d in PROJECTS_DIR.iterdir():
-        if d.is_dir() and d.name == issue.project:
+    path = None
+    # Find the actual file across type dirs
+    for d in iter_project_dirs():
+        if d.name == issue.project:
             path = d
             break
-    else:
+    if path is None:
         return False
 
     file_path = path / issue.file

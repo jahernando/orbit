@@ -18,12 +18,12 @@ from core.project import run_project_priority, run_project_list
 
 # ── Reuse _make_new_project from test_project ────────────────────────────────
 
-def _make_new_project(projects_dir: Path, name: str,
+def _make_new_project(type_dir: Path, name: str,
                       tipo_emoji: str = "💻", tipo_label: str = "Software",
                       prioridad: str = "alta",
                       estado: str = "[auto]") -> Path:
-    proj_dir = projects_dir / f"{tipo_emoji}{name}"
-    proj_dir.mkdir()
+    proj_dir = type_dir / f"{tipo_emoji}{name}"
+    proj_dir.mkdir(parents=True, exist_ok=True)
     (proj_dir / f"{name}-project.md").write_text(
         f"# {tipo_emoji}{name}\n\n"
         f"- Tipo: {tipo_emoji} {tipo_label}\n"
@@ -36,17 +36,18 @@ def _make_new_project(projects_dir: Path, name: str,
     (proj_dir / f"{name}-logbook.md").write_text(f"# Logbook — {tipo_emoji}{name}\n\n")
     (proj_dir / f"{name}-highlights.md").write_text(f"# Highlights — {tipo_emoji}{name}\n\n")
     (proj_dir / f"{name}-agenda.md").write_text(f"# Agenda — {tipo_emoji}{name}\n\n")
-    (proj_dir / "notes").mkdir()
+    (proj_dir / "notes").mkdir(exist_ok=True)
     return proj_dir
 
 
 @pytest.fixture
 def project_env(tmp_path, monkeypatch):
-    projects_dir = tmp_path / "🚀proyectos"
-    projects_dir.mkdir()
-    monkeypatch.setattr("core.project.PROJECTS_DIR", projects_dir)
-    monkeypatch.setattr("core.log.PROJECTS_DIR", projects_dir)
-    return {"projects_dir": projects_dir}
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+    return {"projects_dir": type_dir}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -182,7 +183,7 @@ class TestAutoMessage:
 
     def test_logbook_changes(self):
         from core.commit import _auto_message
-        status = [("M", "🚀proyectos/💻orbit/orbit-logbook.md")]
+        status = [("M", "💻software/💻orbit/orbit-logbook.md")]
         msg = _auto_message(status)
         assert "logbook" in msg
         assert "orbit" in msg
@@ -190,8 +191,8 @@ class TestAutoMessage:
     def test_multiple_file_types(self):
         from core.commit import _auto_message
         status = [
-            ("M", "🚀proyectos/💻orbit/orbit-logbook.md"),
-            ("M", "🚀proyectos/💻orbit/orbit-agenda.md"),
+            ("M", "💻software/💻orbit/orbit-logbook.md"),
+            ("M", "💻software/💻orbit/orbit-agenda.md"),
         ]
         msg = _auto_message(status)
         assert "logbook" in msg
@@ -206,8 +207,8 @@ class TestAutoMessage:
     def test_multiple_projects(self):
         from core.commit import _auto_message
         status = [
-            ("M", "🚀proyectos/💻orbit/orbit-logbook.md"),
-            ("M", "🚀proyectos/🌀mission/mission-logbook.md"),
+            ("M", "💻software/💻orbit/orbit-logbook.md"),
+            ("M", "🌀investigacion/🌀mission/mission-logbook.md"),
         ]
         msg = _auto_message(status)
         assert "orbit" in msg.lower() or "mission" in msg.lower()

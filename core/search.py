@@ -4,8 +4,9 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from core.log import (PROJECTS_DIR, find_project, find_logbook_file,
+from core.log import (find_project, find_logbook_file,
                       find_highlights_file, find_agenda_file)
+from core.config import iter_project_dirs
 from core.open import open_file, open_cmd_output
 from core.project import _is_new_project, _read_project_meta
 
@@ -122,10 +123,6 @@ def run_search(
     editor: str = "",
     in_filter: Optional[str] = None,
 ) -> int:
-    if not PROJECTS_DIR.exists():
-        print(f"Error: directorio de proyectos no encontrado en {PROJECTS_DIR}")
-        return 1
-
     keywords = query.split() if query else []
     logbooks_only = bool(tag)
 
@@ -147,7 +144,7 @@ def run_search(
         if not project_dirs:
             return 1
     else:
-        project_dirs = sorted([d for d in PROJECTS_DIR.iterdir() if d.is_dir()])
+        project_dirs = list(iter_project_dirs())
 
     for project_dir in project_dirs:
         if limit and total >= limit:

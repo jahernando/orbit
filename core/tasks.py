@@ -3,7 +3,8 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, find_proyecto_file
+from core.log import find_proyecto_file
+from core.config import iter_project_dirs
 from core.open import open_file
 from core.config import normalize
 
@@ -221,15 +222,11 @@ def list_tasks(
     open_after: bool = False,
     editor: str = "",
 ) -> int:
-    if not PROJECTS_DIR.exists():
-        print(f"Error: projects directory not found at {PROJECTS_DIR}")
-        return 1
-
     today = date.today()
     header = f"{'RECORDATORIOS' if ring_only else 'TAREAS PENDIENTES'} — {today.isoformat()}"
     lines_out = [header, "=" * 42, ""]
 
-    project_dirs = sorted([d for d in PROJECTS_DIR.iterdir() if d.is_dir()])
+    project_dirs = list(iter_project_dirs())
 
     found_any = False
 

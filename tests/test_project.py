@@ -48,29 +48,33 @@ _AGENDA_TPL = "# Agenda — {{PROJECT_NAME}}\n\n"
 @pytest.fixture
 def project_env(tmp_path, monkeypatch):
     """Isolated environment for project tests."""
-    projects_dir  = tmp_path / "🚀proyectos"
     templates_dir = tmp_path / "📐templates"
-    projects_dir.mkdir()
     templates_dir.mkdir()
+
+    # Create default type dir so iter_project_dirs finds projects
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
 
     (templates_dir / "project.md").write_text(_PROJECT_TPL)
     (templates_dir / "logbook.md").write_text(_LOGBOOK_TPL)
     (templates_dir / "highlights.md").write_text(_HIGHLIGHTS_TPL)
     (templates_dir / "agenda.md").write_text(_AGENDA_TPL)
 
-    monkeypatch.setattr("core.project.PROJECTS_DIR",  projects_dir)
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
     monkeypatch.setattr("core.project.TEMPLATES_DIR", templates_dir)
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
 
-    return {"projects_dir": projects_dir, "templates_dir": templates_dir}
+    return {"projects_dir": type_dir, "templates_dir": templates_dir, "tmp": tmp_path}
 
 
-def _make_new_project(projects_dir: Path, name: str,
+def _make_new_project(type_dir: Path, name: str,
                       tipo_emoji: str = "💻", tipo_label: str = "Software",
                       prioridad: str = "alta",
                       estado: str = "[auto]") -> Path:
     """Helper: create a minimal new-format project directory."""
-    proj_dir = projects_dir / f"{tipo_emoji}{name}"
-    proj_dir.mkdir()
+    proj_dir = type_dir / f"{tipo_emoji}{name}"
+    proj_dir.mkdir(parents=True, exist_ok=True)
     (proj_dir / f"{name}-project.md").write_text(
         f"# {tipo_emoji}{name}\n\n"
         f"- Tipo: {tipo_emoji} {tipo_label}\n"
@@ -83,7 +87,7 @@ def _make_new_project(projects_dir: Path, name: str,
     (proj_dir / f"{name}-logbook.md").write_text(f"# Logbook — {tipo_emoji}{name}\n\n")
     (proj_dir / f"{name}-highlights.md").write_text(f"# Highlights — {tipo_emoji}{name}\n\n")
     (proj_dir / f"{name}-agenda.md").write_text(f"# Agenda — {tipo_emoji}{name}\n\n")
-    (proj_dir / "notes").mkdir()
+    (proj_dir / "notes").mkdir(exist_ok=True)
     return proj_dir
 
 
@@ -299,7 +303,7 @@ class TestRunProjectCreate:
     def test_substitutes_placeholders(self, project_env, monkeypatch):
         monkeypatch.setattr("builtins.input", lambda _: "Test objetivo")
         run_project_create("calibra", "investigacion", "media")
-        proj    = project_env["projects_dir"] / "🌀calibra"
+        proj    = project_env["tmp"] / "🌀investigacion" / "🌀calibra"
         content = (proj / "calibra-project.md").read_text()
         assert "{{PROJECT_NAME}}" not in content
         assert "🌀calibra" in content
@@ -318,7 +322,7 @@ class TestRunProjectCreate:
     def test_empty_objective_uses_default(self, project_env, monkeypatch):
         monkeypatch.setattr("builtins.input", lambda _: "")
         run_project_create("defaultobj", "personal", "baja")
-        proj    = project_env["projects_dir"] / "🌿defaultobj"
+        proj    = project_env["tmp"] / "🌿personal" / "🌿defaultobj"
         content = (proj / "defaultobj-project.md").read_text()
         assert "Descripción breve del objetivo." in content
 
@@ -348,6 +352,7 @@ class TestRunProjectCreate:
 
     def test_type_variants_accepted(self, project_env, monkeypatch):
         monkeypatch.setattr("builtins.input", lambda _: "")
+        from core.config import type_dir_path
         for tipo, emoji in [
             ("investigacion", "🌀"), ("docencia", "📚"),
             ("gestion", "⚙️"),       ("formacion", "📖"),
@@ -355,7 +360,7 @@ class TestRunProjectCreate:
         ]:
             rc = run_project_create(f"proj-{tipo}", tipo, "media")
             assert rc == 0, f"tipo '{tipo}' failed"
-            assert (project_env["projects_dir"] / f"{emoji}proj-{tipo}").exists()
+            assert (type_dir_path(tipo) / f"{emoji}proj-{tipo}").exists()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -505,7 +510,6 @@ class TestLogCmdOutput:
     def test_logs_output_to_logbook(self, project_env, monkeypatch, capsys):
         from core.open import log_cmd_output
         proj = _make_new_project(project_env["projects_dir"], "logtest")
-        monkeypatch.setattr("core.log.PROJECTS_DIR", project_env["projects_dir"])
 
         content = "  line1\n  line2\n  line3\n"
         rc = log_cmd_output(content, "logtest", "apunte", "test cmd")
@@ -519,7 +523,6 @@ class TestLogCmdOutput:
     def test_logs_with_entry_type(self, project_env, monkeypatch, capsys):
         from core.open import log_cmd_output
         proj = _make_new_project(project_env["projects_dir"], "logtest2")
-        monkeypatch.setattr("core.log.PROJECTS_DIR", project_env["projects_dir"])
 
         rc = log_cmd_output("data", "logtest2", "evaluacion", "status")
         assert rc == 0

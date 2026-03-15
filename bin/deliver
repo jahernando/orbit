@@ -6,11 +6,7 @@
 #   deliver proyecto notes/nota.md
 #   deliver --list
 #
-# Lee ~/.config/deliver.conf para mapear el workspace actual a un
-# directorio en la nube (OneDrive, Google Drive, etc.).
-#
-# Formato de deliver.conf:
-#   /ruta/workspace=/ruta/cloud/destino
+# Lee orbit.json (cloud_root) del workspace para determinar el destino cloud.
 #
 # El fichero se copia preservando la estructura de directorios relativa
 # al workspace. Por ejemplo:
@@ -18,8 +14,6 @@
 #   → copia a /cloud/destino/🌀proyectos/🌀next-kr/notes/results.pdf
 
 set -euo pipefail
-
-CONF="$HOME/.config/deliver.conf"
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -42,23 +36,18 @@ EOF
 
 # ── Config ───────────────────────────────────────────────────────────────
 
-[[ -f "$CONF" ]] || die "No existe $CONF — ver SETUP.md para configurar deliver"
-
-# Find the cloud root for the current workspace
+# Find the cloud root from orbit.json in the workspace
 find_cloud_root() {
     local ws="$1"
-    while IFS='=' read -r left right; do
-        # Skip comments and empty lines
-        [[ -z "$left" || "$left" == \#* ]] && continue
-        # Expand ~ in paths
-        left="${left/#\~/$HOME}"
-        right="${right/#\~/$HOME}"
-        # Match workspace
-        if [[ "$ws" == "$left" ]]; then
-            echo "$right"
+    local orbit_json="$ws/orbit.json"
+    if [[ -f "$orbit_json" ]]; then
+        local cr
+        cr=$(python3 -c "import json,sys; d=json.load(open('$orbit_json')); v=d.get('cloud_root',''); print(v)" 2>/dev/null)
+        if [[ -n "$cr" ]]; then
+            echo "${cr/#\~/$HOME}"
             return 0
         fi
-    done < "$CONF"
+    fi
     return 1
 }
 
@@ -69,18 +58,12 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 fi
 
 if [[ "${1:-}" == "--list" ]]; then
-    echo "Configuración de deliver ($CONF):"
+    WS="${ORBIT_HOME:-$PWD}"
+    echo "Configuración de deliver:"
     echo
-    while IFS='=' read -r left right; do
-        [[ -z "$left" || "$left" == \#* ]] && continue
-        left="${left/#\~/$HOME}"
-        right="${right/#\~/$HOME}"
-        if [[ -d "$left" ]]; then
-            echo "  ✓ $left → $right"
-        else
-            echo "  ✗ $left → $right  (workspace no encontrado)"
-        fi
-    done < "$CONF"
+    cr=$(find_cloud_root "$WS" 2>/dev/null) && \
+        echo "  ✓ $WS → $cr" || \
+        echo "  ✗ $WS → no configurado (añadir cloud_root a orbit.json)"
     exit 0
 fi
 
@@ -94,7 +77,7 @@ shift
 # Detect workspace root (ORBIT_HOME or cwd)
 WS="${ORBIT_HOME:-$PWD}"
 
-CLOUD_ROOT=$(find_cloud_root "$WS") || die "Workspace $WS no está en deliver.conf"
+CLOUD_ROOT=$(find_cloud_root "$WS") || die "No existe cloud_root en $WS/orbit.json"
 
 # Find the project directory (search for emoji-prefixed match)
 PROJ_DIR=""

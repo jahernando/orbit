@@ -27,8 +27,6 @@ def orbit_env(tmp_path, monkeypatch):
     # Workspace
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    projects_dir = workspace / "🚀proyectos"
-    projects_dir.mkdir()
 
     # Cloud root
     cloud_root = tmp_path / "cloud" / "🚀test-ws"
@@ -48,8 +46,12 @@ def orbit_env(tmp_path, monkeypatch):
     }
     (workspace / "orbit.json").write_text(json.dumps(config, ensure_ascii=False))
 
-    # Create a project
-    proj = projects_dir / "⚙️catedra"
+    # Type dir for gestion projects
+    gestion_dir = workspace / "⚙️gestion"
+    gestion_dir.mkdir()
+
+    # Create a project inside its type dir
+    proj = gestion_dir / "⚙️catedra"
     proj.mkdir()
     (proj / "catedra-project.md").write_text(
         "# ⚙️catedra\n- Tipo: ⚙️ Gestión\n- Estado: [auto]\n- Prioridad: media\n"
@@ -73,15 +75,15 @@ def orbit_env(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cfg, "ORBIT_HOME", workspace)
     monkeypatch.setattr(cfg, "_ORBIT_JSON", workspace / "orbit.json")
-    monkeypatch.setattr(cfg, "PROJECTS_DIR", projects_dir)
+    monkeypatch.setattr(cfg, "PROJECTS_DIR", workspace)
     monkeypatch.setattr(cfg, "_orbit_emoji", "🚀")
     monkeypatch.setattr(cfg, "ORBIT_SPACE", "test-ws")
-    monkeypatch.setattr(cl, "PROJECTS_DIR", projects_dir)
+    monkeypatch.setattr(cl, "PROJECTS_DIR", workspace)
     monkeypatch.setattr(dlv, "ORBIT_DIR", workspace)
 
     return {
         "workspace": workspace,
-        "projects_dir": projects_dir,
+        "projects_dir": gestion_dir,
         "cloud_root": cloud_root,
         "proj": proj,
         "src_file": src_file,

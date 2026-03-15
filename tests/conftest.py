@@ -41,25 +41,28 @@ Proyecto de prueba para tests.
 @pytest.fixture
 def orbit_env(tmp_path, monkeypatch):
     """Set up an isolated Orbit environment with one test project."""
-    projects_dir  = tmp_path / "🚀proyectos"
     templates_dir = tmp_path / "📐templates"
-
-    projects_dir.mkdir()
     templates_dir.mkdir()
 
-    # Test project: 💻testproj
-    proj_dir = projects_dir / "💻testproj"
+    # Type dir for software projects
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
+
+    # Test project: 💻testproj inside type dir
+    proj_dir = type_dir / "💻testproj"
     proj_dir.mkdir()
     proyecto_path = proj_dir / "💻testproj.md"
     proyecto_path.write_text(_PROYECTO_TEMPLATE.format(name="testproj"))
     (proj_dir / "📓testproj.md").write_text("# Logbook\n")
 
-    # Patch all module-level path constants
-    monkeypatch.setattr("core.log.PROJECTS_DIR", projects_dir)
+    # Patch ORBIT_HOME so iter_project_dirs() finds type dirs under tmp_path
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
 
     return {
         "tmp":           tmp_path,
-        "projects_dir":  projects_dir,
+        "projects_dir":  type_dir,
         "templates_dir": templates_dir,
         "proj_dir":      proj_dir,
         "proyecto_path": proyecto_path,

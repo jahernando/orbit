@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Optional
 
 from core.config import ORBIT_HOME, ORBIT_PROMPT, normalize as _normalize
-from core.log import PROJECTS_DIR, resolve_file
+from core.log import resolve_file
+from core.config import iter_project_dirs
 from core.project import _find_new_project, _is_new_project, _read_project_meta
 from core.agenda_cmds import _read_agenda, _write_agenda
 
@@ -459,10 +460,6 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
     if list_calendars:
         return run_list_calendars()
 
-    if not PROJECTS_DIR.exists():
-        print(f"Error: directorio de proyectos no encontrado en {PROJECTS_DIR}")
-        return 1
-
     config = _load_config()
 
     # Check if calendars are configured
@@ -484,8 +481,7 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
     print(f"Sincronizando Orbit → Google{label}")
     print("─" * 50)
 
-    dirs = sorted(d for d in PROJECTS_DIR.iterdir()
-                  if d.is_dir() and _is_new_project(d))
+    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
 
     total_created = total_updated = total_skipped = 0
     events_created = events_updated = events_skipped = 0
@@ -687,12 +683,10 @@ def migrate_sync_ids() -> int:
     and rewrites agenda.md with [G] markers instead of raw IDs.
     """
     import re
-    if not PROJECTS_DIR.exists():
-        return 0
 
     migrated = 0
-    for project_dir in sorted(PROJECTS_DIR.iterdir()):
-        if not project_dir.is_dir() or not _is_new_project(project_dir):
+    for project_dir in iter_project_dirs():
+        if not _is_new_project(project_dir):
             continue
 
         agenda_path = resolve_file(project_dir, "agenda")
@@ -768,8 +762,7 @@ def gsync_background() -> "threading.Thread | None":
             if not tasks_service:
                 return
 
-            dirs = sorted(d for d in PROJECTS_DIR.iterdir()
-                          if d.is_dir() and _is_new_project(d))
+            dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
 
             total = 0
             for project_dir in dirs:

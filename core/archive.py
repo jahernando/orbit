@@ -17,7 +17,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
-from core.project import _find_new_project, _is_new_project, PROJECTS_DIR
+from core.project import _find_new_project, _is_new_project
+from core.config import iter_project_dirs
 from core.log import find_logbook_file, resolve_file
 
 
@@ -236,11 +237,10 @@ def run_archive(project: Optional[str] = None, months: int = 6,
             return 1
         dirs = [project_dir]
     else:
-        if not PROJECTS_DIR.exists():
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+        if not dirs:
             print("No hay proyectos.")
             return 0
-        dirs = sorted(d for d in PROJECTS_DIR.iterdir()
-                      if d.is_dir() and _is_new_project(d))
 
     prefix = "(dry-run) " if dry_run else ""
     print(f"\n  {prefix}Archivado anterior a {cutoff.isoformat()} ({label}):\n")

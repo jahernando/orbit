@@ -7,7 +7,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, find_proyecto_file
+from core.log import find_proyecto_file
+from core.config import iter_project_dirs
 from core.tasks import parse_task
 
 REMINDERS_LIST = "Orbit"
@@ -165,13 +166,9 @@ def schedule_today_reminders(target: Optional[date] = None) -> list:
     Returns list of scheduled reminder dicts.
     """
     target = target or date.today()
-    if not PROJECTS_DIR.exists():
-        return []
 
     scheduled = []
-    for project_dir in sorted(PROJECTS_DIR.iterdir()):
-        if not project_dir.is_dir():
-            continue
+    for project_dir in iter_project_dirs():
         proyecto_path = find_proyecto_file(project_dir)
         if not proyecto_path or not proyecto_path.exists():
             continue

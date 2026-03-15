@@ -15,9 +15,9 @@ def _base_name(dirname: str) -> str:
     return re.sub(r'^[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]+', '', dirname).lstrip()
 
 
-def _make_project(pdir: Path, name: str = "💻test-project") -> Path:
-    project_dir = pdir / name
-    project_dir.mkdir()
+def _make_project(type_dir: Path, name: str = "💻test-project") -> Path:
+    project_dir = type_dir / name
+    project_dir.mkdir(parents=True, exist_ok=True)
     base = _base_name(name)
     (project_dir / f"{base}-project.md").write_text(
         f"# {name}\n- Tipo: 💻 Software\n- Estado: [auto]\n- Prioridad: media\n"
@@ -27,7 +27,7 @@ def _make_project(pdir: Path, name: str = "💻test-project") -> Path:
         f"# Highlights — {name}\n\n<!-- Secciones disponibles ... -->\n"
     )
     (project_dir / f"{base}-agenda.md").write_text(f"# Agenda — {name}\n\n")
-    (project_dir / "notes").mkdir()
+    (project_dir / "notes").mkdir(exist_ok=True)
     return project_dir
 
 
@@ -45,15 +45,12 @@ def _log_text(project_dir: Path) -> str:
 
 @pytest.fixture()
 def projects_dir(tmp_path, monkeypatch):
-    pdir = tmp_path / "proyectos"
-    pdir.mkdir()
-    import core.highlights as hl
-    import core.project as cp
-    import core.log as cl
-    monkeypatch.setattr(hl, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(cp, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(cl, "PROJECTS_DIR", pdir)
-    return pdir
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+    return type_dir
 
 
 @pytest.fixture()

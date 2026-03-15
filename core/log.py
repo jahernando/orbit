@@ -3,7 +3,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from core.config import PROJECTS_DIR
+from core.config import PROJECTS_DIR, iter_project_dirs
 
 VALID_TYPES = ["idea", "referencia", "apunte", "problema", "solucion", "resultado",
                "decision", "evaluacion",
@@ -117,11 +117,7 @@ def resolve_file(project_dir: Path, kind: str) -> Path:
 
 
 def find_project(name: str) -> Optional[Path]:
-    if not PROJECTS_DIR.exists():
-        print(f"Error: projects directory not found at {PROJECTS_DIR}")
-        return None
-
-    matches = [d for d in PROJECTS_DIR.iterdir() if d.is_dir() and name.lower() in d.name.lower()]
+    matches = [d for d in iter_project_dirs() if name.lower() in d.name.lower()]
 
     if not matches:
         print(f"Error: no project found matching '{name}'")
@@ -175,7 +171,7 @@ def _append_entry(logbook_path: Path, entry: str) -> None:
 def log_to_mission(message: str, tipo: str) -> None:
     """Append a logbook entry to the mission project (silently skips if not found)."""
     mission_dir = next(
-        (d for d in PROJECTS_DIR.iterdir() if d.is_dir() and "mission" in d.name.lower()),
+        (d for d in iter_project_dirs() if "mission" in d.name.lower()),
         None,
     )
     if not mission_dir:

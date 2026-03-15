@@ -277,7 +277,7 @@ class TestScheduleTodayReminders:
 
     def test_schedules_and_marks(self, orbit_env, monkeypatch):
         self._setup_ring(orbit_env, TARGET)
-        monkeypatch.setattr("core.reminders.PROJECTS_DIR", orbit_env["projects_dir"])
+        # ORBIT_HOME already patched via orbit_env fixture
         monkeypatch.setattr("core.reminders._schedule_via_applescript", lambda **kw: True)
 
         result = schedule_today_reminders(TARGET)
@@ -289,7 +289,7 @@ class TestScheduleTodayReminders:
 
     def test_failed_applescript_not_added(self, orbit_env, monkeypatch):
         self._setup_ring(orbit_env, TARGET)
-        monkeypatch.setattr("core.reminders.PROJECTS_DIR", orbit_env["projects_dir"])
+        # ORBIT_HOME already patched via orbit_env fixture
         monkeypatch.setattr("core.reminders._schedule_via_applescript", lambda **kw: False)
 
         result = schedule_today_reminders(TARGET)
@@ -300,7 +300,7 @@ class TestScheduleTodayReminders:
 
     def test_recurring_advances_date(self, orbit_env, monkeypatch):
         self._setup_ring(orbit_env, TARGET, recur="@weekly")
-        monkeypatch.setattr("core.reminders.PROJECTS_DIR", orbit_env["projects_dir"])
+        # ORBIT_HOME already patched via orbit_env fixture
         monkeypatch.setattr("core.reminders._schedule_via_applescript", lambda **kw: True)
 
         schedule_today_reminders(TARGET)
@@ -312,7 +312,7 @@ class TestScheduleTodayReminders:
     def test_no_ring_for_target_returns_empty(self, orbit_env, monkeypatch):
         p = orbit_env["proyecto_path"]
         _write_proyecto(p, "- [ ] Tarea sin ring (2026-03-08)\n")
-        monkeypatch.setattr("core.reminders.PROJECTS_DIR", orbit_env["projects_dir"])
+        # ORBIT_HOME already patched via orbit_env fixture
         monkeypatch.setattr("core.reminders._schedule_via_applescript", lambda **kw: True)
 
         assert schedule_today_reminders(TARGET) == []

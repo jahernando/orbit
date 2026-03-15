@@ -9,9 +9,9 @@ import pytest
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _make_project(pdir: Path, name: str = "💻test-project") -> Path:
-    project_dir = pdir / name
-    project_dir.mkdir()
+def _make_project(type_dir: Path, name: str = "💻test-project") -> Path:
+    project_dir = type_dir / name
+    project_dir.mkdir(parents=True, exist_ok=True)
     import re
     base = re.sub(r'^[^\w]+', '', name)  # strip emoji prefix
     (project_dir / f"{base}-project.md").write_text(
@@ -23,7 +23,7 @@ def _make_project(pdir: Path, name: str = "💻test-project") -> Path:
     )
     (project_dir / f"{base}-highlights.md").write_text(f"# Highlights — {name}\n\n")
     (project_dir / f"{base}-agenda.md").write_text(f"# Agenda — {name}\n\n")
-    (project_dir / "notes").mkdir()
+    (project_dir / "notes").mkdir(exist_ok=True)
     return project_dir
 
 
@@ -66,17 +66,12 @@ def _add_event(project_dir: Path, desc: str, event_date: str):
 
 @pytest.fixture()
 def projects_dir(tmp_path, monkeypatch):
-    pdir = tmp_path / "proyectos"
-    pdir.mkdir()
-    import core.project_view as pv
-    import core.project as cp
-    import core.log as cl
-    import core.agenda_cmds as ac
-    monkeypatch.setattr(pv, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(cp, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(cl, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(ac, "PROJECTS_DIR", pdir)
-    return pdir
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+    return type_dir
 
 
 @pytest.fixture()

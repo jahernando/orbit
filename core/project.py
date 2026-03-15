@@ -6,11 +6,12 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, find_logbook_file, find_proyecto_file, resolve_file
+from core.log import find_logbook_file, find_proyecto_file, resolve_file
 from core.tasks import TYPE_MAP, PRIORITY_MAP, normalize
 from core.open import open_file
 
-from core.config import TEMPLATES_DIR, PROJECTS_DIR as _PROJECTS_DIR, get_type_label
+from core.config import (TEMPLATES_DIR, get_type_label,
+                         iter_project_dirs, type_dir_path)
 
 TYPE_LABEL = get_type_label()
 
@@ -168,7 +169,7 @@ def run_project_create(name: str, tipo: str, prioridad: str) -> int:
     prio_label = prio_key.capitalize()
 
     dir_name    = f"{tipo_emoji}{name.lower()}"
-    project_dir = PROJECTS_DIR / dir_name
+    project_dir = type_dir_path(tipo_key) / dir_name
 
     if project_dir.exists():
         print(f"Error: ya existe el proyecto en {project_dir}")
@@ -240,9 +241,7 @@ def run_project_list(status_filter: Optional[str] = None,
                      sort_by:       Optional[str] = None) -> int:
     """List projects with emoji-only columns for tipo, estado, prioridad."""
     rows = []
-    for d in sorted(PROJECTS_DIR.iterdir()):
-        if not d.is_dir():
-            continue
+    for d in iter_project_dirs():
         if not _is_new_project(d):
             continue
 
@@ -320,8 +319,8 @@ def generate_proyectos_md() -> Path:
     lines = ["# Proyectos", ""]
 
     rows = []
-    for d in sorted(PROJECTS_DIR.iterdir()):
-        if not d.is_dir() or not _is_new_project(d):
+    for d in iter_project_dirs():
+        if not _is_new_project(d):
             continue
         meta = _read_project_meta(d)
         status, _, _ = _resolve_status(meta, d)
@@ -329,6 +328,7 @@ def generate_proyectos_md() -> Path:
         rows.append({
             "name":       meta["name"],
             "dir":        d.name,
+            "type_dir":   d.parent.name,
             "path":       d,
             "tipo_emoji": meta["tipo_emoji"] or "❓",
             "status":     _STATUS_EMOJI.get(status, "❓"),
@@ -340,7 +340,7 @@ def generate_proyectos_md() -> Path:
         lines.append("No hay proyectos.")
     else:
         for r in rows:
-            rel = f"{_PROJECTS_DIR.name}/{r['dir']}"
+            rel = f"{r['type_dir']}/{r['dir']}"
             project_link = f"[{r['name']}]({rel}/)" if not r["project_f"] \
                 else f"[{r['name']}]({rel}/{r['project_f'].name})"
             # Collect links to sections that exist
@@ -468,8 +468,8 @@ def _find_new_project(name: str) -> Optional[Path]:
     Exact match (case-insensitive) takes priority over partial matches."""
     name_low = name.lower()
     candidates = [
-        d for d in PROJECTS_DIR.iterdir()
-        if d.is_dir() and _is_new_project(d)
+        d for d in iter_project_dirs()
+        if _is_new_project(d)
     ]
     # Prefer exact match
     exact = [d for d in candidates if d.name.lower() == name_low]

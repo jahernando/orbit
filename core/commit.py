@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from core.config import ORBIT_HOME as ORBIT_DIR, PROJECTS_DIR
+from core.config import ORBIT_HOME as ORBIT_DIR, get_type_emojis
 
 
 # ── Git helpers ────────────────────────────────────────────────────────────────
@@ -68,17 +68,25 @@ def _git_add_all_tracked() -> bool:
 
 
 def _git_untracked_in_projects() -> list:
-    """Return list of untracked file paths inside the projects directory."""
+    """Return list of untracked file paths inside all type directories."""
+    all_untracked = []
+    type_emojis = get_type_emojis()
     try:
-        result = subprocess.run(
-            ["git", "-c", "core.quotePath=false", "ls-files", "--others", "--exclude-standard", f"{PROJECTS_DIR.name}/"],
-            capture_output=True, text=True, cwd=ORBIT_DIR,
-        )
-        if result.returncode != 0:
-            return []
-        return [p.strip() for p in result.stdout.splitlines() if p.strip()]
+        for child in sorted(ORBIT_DIR.iterdir()):
+            if not child.is_dir():
+                continue
+            if not any(child.name.startswith(e) for e in type_emojis):
+                continue
+            result = subprocess.run(
+                ["git", "-c", "core.quotePath=false", "ls-files", "--others",
+                 "--exclude-standard", f"{child.name}/"],
+                capture_output=True, text=True, cwd=ORBIT_DIR,
+            )
+            if result.returncode == 0:
+                all_untracked.extend(p.strip() for p in result.stdout.splitlines() if p.strip())
     except FileNotFoundError:
-        return []
+        pass
+    return all_untracked
 
 
 def _git_add_files(files: list) -> bool:
@@ -219,12 +227,12 @@ def _auto_message(status_lines: list) -> str:
     projects  = set()
     n_logbook = n_agenda = n_highlights = n_notes = n_other = 0
 
+    type_emojis = get_type_emojis()
     for _, path in status_lines:
         parts = Path(path).parts
-        # Check if inside a project
-        if len(parts) >= 2 and "proyectos" in parts[0]:
-            if len(parts) >= 2:
-                projects.add(parts[1])
+        # Check if inside a type_dir/project_dir
+        if len(parts) >= 2 and any(parts[0].startswith(e) for e in type_emojis):
+            projects.add(parts[1])
         fname = Path(path).name
         if fname.endswith("-logbook.md") or fname == "logbook.md":
             n_logbook += 1

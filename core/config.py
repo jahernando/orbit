@@ -4,6 +4,7 @@ import json
 import os
 import unicodedata
 from pathlib import Path
+from typing import Iterator
 
 # ORBIT_CODE: where the code lives (always the directory containing orbit.py).
 # ORBIT_HOME: the user's data workspace (projects, config, history).
@@ -25,7 +26,8 @@ if _ORBIT_JSON_PATH.exists():
 ORBIT_SPACE   = _orbit_space
 ORBIT_PROMPT = os.environ.get("ORBIT_PROMPT", _orbit_emoji)
 
-PROJECTS_DIR  = ORBIT_HOME / f"{_orbit_emoji}proyectos"
+# Legacy alias — points to ORBIT_HOME itself (projects are now under type dirs).
+PROJECTS_DIR  = ORBIT_HOME
 TEMPLATES_DIR = ORBIT_CODE / "📐templates"
 CMD_MD        = ORBIT_HOME / "cmd.md"
 PROYECTOS_MD  = ORBIT_HOME / "proyectos.md"
@@ -100,6 +102,38 @@ def get_type_label() -> dict:
     return result
 
 
+def type_dir_path(tipo_key: str) -> Path:
+    """Return path for a type directory, e.g. ORBIT_HOME / '🌀investigacion'."""
+    types = _load_types()
+    norm = normalize(tipo_key)
+    emoji = types.get(norm, "")
+    return ORBIT_HOME / f"{emoji}{norm}"
+
+
+def iter_project_dirs() -> Iterator[Path]:
+    """Yield all project directories across all type dirs, sorted by name.
+
+    Scans ORBIT_HOME for directories whose name starts with a type emoji,
+    then yields project subdirectories within each.
+    """
+    type_emojis = set(_load_types().values())
+    if not type_emojis or not ORBIT_HOME.exists():
+        return
+    seen = set()
+    for child in sorted(ORBIT_HOME.iterdir()):
+        if not child.is_dir():
+            continue
+        # Check if this directory starts with a type emoji
+        name = child.name
+        is_type_dir = any(name.startswith(e) for e in type_emojis)
+        if not is_type_dir:
+            continue
+        for project in sorted(child.iterdir()):
+            if project.is_dir() and project not in seen:
+                seen.add(project)
+                yield project
+
+
 def get_type_emojis() -> tuple:
     """Return tuple of all type emojis (for field detection in project files)."""
     return tuple(set(_load_types().values()))
@@ -131,10 +165,8 @@ def run_type_list() -> int:
 
 def _projects_with_emoji(emoji: str) -> list:
     """Return list of project dir names whose folder starts with this emoji."""
-    if not PROJECTS_DIR.exists():
-        return []
-    return [d.name for d in PROJECTS_DIR.iterdir()
-            if d.is_dir() and d.name.startswith(emoji)]
+    return [d.name for d in iter_project_dirs()
+            if d.name.startswith(emoji)]
 
 
 def run_type_add(name: str, emoji: str) -> int:

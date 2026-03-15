@@ -22,10 +22,10 @@ def _strip_emoji(name: str) -> str:
     return name[i:]
 
 
-def _make_project(tmp_path: Path, name: str = "test-project") -> Path:
-    """Create a minimal new-format project directory."""
-    project_dir = tmp_path / name
-    project_dir.mkdir()
+def _make_project(type_dir: Path, name: str = "test-project") -> Path:
+    """Create a minimal new-format project directory inside a type dir."""
+    project_dir = type_dir / name
+    project_dir.mkdir(parents=True, exist_ok=True)
     base = _strip_emoji(name)
     (project_dir / f"{base}-project.md").write_text(
         f"# {name}\n- Tipo: 💻 Software\n- Estado: [auto]\n- Prioridad: media\n"
@@ -33,7 +33,7 @@ def _make_project(tmp_path: Path, name: str = "test-project") -> Path:
     (project_dir / f"{base}-logbook.md").write_text(f"# Logbook — {name}\n\n")
     (project_dir / f"{base}-agenda.md").write_text(f"# Agenda — {name}\n\n<!-- ... -->\n")
     (project_dir / f"{base}-highlights.md").write_text(f"# Highlights — {name}\n\n")
-    (project_dir / "notes").mkdir()
+    (project_dir / "notes").mkdir(exist_ok=True)
     return project_dir
 
 
@@ -51,16 +51,13 @@ def _logbook_text(project_dir: Path) -> str:
 
 @pytest.fixture()
 def projects_dir(tmp_path, monkeypatch):
-    """Patch PROJECTS_DIR to an isolated tmp directory."""
-    pdir = tmp_path / "proyectos"
-    pdir.mkdir()
-    import core.agenda_cmds as ac
-    import core.project as cp
-    import core.log as cl
-    monkeypatch.setattr(ac, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(cp, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(cl, "PROJECTS_DIR", pdir)
-    return pdir
+    """Patch ORBIT_HOME so iter_project_dirs() scans tmp_path for type dirs."""
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+    return type_dir
 
 
 @pytest.fixture()
@@ -872,7 +869,7 @@ class TestDatedFlag:
     def test_agenda_dated_excludes_undated(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_task_add, run_ms_add
         import core.agenda_view as av
-        av.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         run_task_add("test-project", "Dated task", date_val="2026-03-10")
         run_task_add("test-project", "Undated task")
         capsys.readouterr()
@@ -885,7 +882,7 @@ class TestDatedFlag:
         from datetime import date as _date
         from core.agenda_cmds import run_task_add
         import core.agenda_view as av
-        av.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         today = _date.today().isoformat()
         run_task_add("test-project", "Dated task", date_val=today)
         run_task_add("test-project", "Undated task")
@@ -1037,7 +1034,7 @@ class TestEventRecurrence:
     def test_recurring_event_expands_in_agenda(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_ev_add
         import core.agenda_view as av
-        av.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         run_ev_add("test-project", "Weekly sync", "2026-03-10",
                    recur="weekly")
         capsys.readouterr()
@@ -1049,7 +1046,7 @@ class TestEventRecurrence:
     def test_recurring_event_in_calendar(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_ev_add
         import core.agenda_view as av
-        av.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         run_ev_add("test-project", "Monthly review", "2026-03-15",
                    recur="monthly")
         capsys.readouterr()
@@ -1061,7 +1058,7 @@ class TestEventRecurrence:
     def test_recurring_event_with_time_in_agenda(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_ev_add
         import core.agenda_view as av
-        av.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         run_ev_add("test-project", "Standup", "2026-03-10",
                    time_val="09:00-09:30", recur="weekly")
         capsys.readouterr()
@@ -1087,7 +1084,7 @@ class TestEventRecurrence:
         """--dated with --calendar should exclude undated tasks."""
         from core.agenda_cmds import run_task_add
         import core.agenda_view as av
-        av.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         run_task_add("test-project", "Dated task", date_val="2026-03-15")
         run_task_add("test-project", "Undated task")
         capsys.readouterr()

@@ -24,8 +24,10 @@ from core.config import (
 def config_env(tmp_path, monkeypatch):
     """Isolated config env with orbit.json."""
     orbit_json = tmp_path / "orbit.json"
-    projects_dir = tmp_path / "🚀proyectos"
-    projects_dir.mkdir()
+
+    # Create a type dir for the "rejects if projects exist" test
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
 
     types = {
         "software": "💻",
@@ -34,10 +36,11 @@ def config_env(tmp_path, monkeypatch):
     }
     orbit_json.write_text(json.dumps({"types": types}, ensure_ascii=False))
 
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
     monkeypatch.setattr("core.config._ORBIT_JSON", orbit_json)
-    monkeypatch.setattr("core.config.PROJECTS_DIR", projects_dir)
+    monkeypatch.setattr("core.config.PROJECTS_DIR", tmp_path)
 
-    return {"orbit_json": orbit_json, "projects_dir": projects_dir}
+    return {"orbit_json": orbit_json, "projects_dir": type_dir}
 
 
 class TestNormalize:

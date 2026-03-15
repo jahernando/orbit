@@ -204,9 +204,9 @@ def _strip_emoji(name: str) -> str:
     return name[i:]
 
 
-def _make_project(tmp_path: Path, name: str = "test-project") -> Path:
-    project_dir = tmp_path / name
-    project_dir.mkdir()
+def _make_project(type_dir: Path, name: str = "test-project") -> Path:
+    project_dir = type_dir / name
+    project_dir.mkdir(parents=True, exist_ok=True)
     base = _strip_emoji(name)
     (project_dir / f"{base}-project.md").write_text(
         f"# {name}\n- Tipo: 💻 Software\n- Estado: [auto]\n- Prioridad: media\n"
@@ -214,21 +214,18 @@ def _make_project(tmp_path: Path, name: str = "test-project") -> Path:
     (project_dir / f"{base}-logbook.md").write_text(f"# Logbook — {name}\n\n")
     (project_dir / f"{base}-agenda.md").write_text(f"# Agenda — {name}\n\n<!-- ... -->\n")
     (project_dir / f"{base}-highlights.md").write_text(f"# Highlights — {name}\n\n")
-    (project_dir / "notes").mkdir()
+    (project_dir / "notes").mkdir(exist_ok=True)
     return project_dir
 
 
 @pytest.fixture()
 def projects_dir(tmp_path, monkeypatch):
-    pdir = tmp_path / "proyectos"
-    pdir.mkdir()
-    import core.agenda_cmds as ac
-    import core.project as cp
-    import core.log as cl
-    monkeypatch.setattr(ac, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(cp, "PROJECTS_DIR", pdir)
-    monkeypatch.setattr(cl, "PROJECTS_DIR", pdir)
-    return pdir
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+    return type_dir
 
 
 @pytest.fixture()
@@ -297,7 +294,7 @@ class TestUndoHighlight:
         from core.highlights import run_hl_add, _read_highlights
         from core.undo import commit_operation, run_undo
         import core.highlights as hl
-        hl.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         run_hl_add("test-project", "Key result", hl_type="results")
         commit_operation("hl add")
         data = _read_highlights(proj / "test-project-highlights.md")
@@ -355,7 +352,7 @@ class TestUndoNote:
         monkeypatch.setattr(sys, "stdin", open("/dev/null"))
         from core.notes import run_note_create
         import core.notes as nm
-        nm.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         from core.undo import commit_operation, run_undo
         run_note_create("test-project", "My note", open_after=False)
         commit_operation("note create")
@@ -370,7 +367,7 @@ class TestUndoNote:
         monkeypatch.setattr(sys, "stdin", open("/dev/null"))
         from core.notes import run_note_create, run_note_drop
         import core.notes as nm
-        nm.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         from core.undo import commit_operation, run_undo
         run_note_create("test-project", "Temp note", open_after=False)
         commit_operation("note create")
@@ -411,7 +408,7 @@ class TestUndoChain:
         from core.agenda_cmds import run_task_add, run_ev_add, _read_agenda
         from core.highlights import run_hl_add, _read_highlights
         import core.highlights as hl
-        hl.PROJECTS_DIR = projects_dir
+        # ORBIT_HOME already patched via projects_dir fixture
         from core.undo import commit_operation, run_undo, can_undo
 
         run_task_add("test-project", "Task A")

@@ -18,7 +18,8 @@ _MONTH_NAMES = [
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
 
-from core.log import PROJECTS_DIR, resolve_file, find_proyecto_file
+from core.log import resolve_file, find_proyecto_file
+from core.config import iter_project_dirs
 from core.project import _find_new_project, _is_new_project
 from core.agenda_cmds import _read_agenda, _next_occurrence
 
@@ -26,8 +27,7 @@ from core.agenda_cmds import _read_agenda, _next_occurrence
 def _project_link(project_dir):
     """Build a markdown link to the project file: [name](relative/path)."""
     proj_file = find_proyecto_file(project_dir)
-    from core.config import PROJECTS_DIR
-    rel = f"{PROJECTS_DIR.name}/{project_dir.name}"
+    rel = f"{project_dir.parent.name}/{project_dir.name}"
     if proj_file:
         return f"[{project_dir.name}]({rel}/{proj_file.name})"
     return f"[{project_dir.name}]({rel}/)"
@@ -99,8 +99,7 @@ def _resolve_dirs(projects: Optional[list]) -> list:
             if d:
                 dirs.append(d)
         return dirs
-    return sorted(d for d in PROJECTS_DIR.iterdir()
-                  if d.is_dir() and _is_new_project(d))
+    return [d for d in iter_project_dirs() if _is_new_project(d)]
 
 
 def _in_range(d_str: Optional[str], start: date, end: date) -> bool:
@@ -383,10 +382,6 @@ def run_agenda(
 
     Calendar grid is shown by default above the list.  Use no_cal=True to suppress.
     """
-    if not PROJECTS_DIR.exists():
-        print(f"Error: directorio de proyectos no encontrado en {PROJECTS_DIR}")
-        return 1
-
     start, end = _parse_period(date_str, date_from, date_to)
     dirs = _resolve_dirs(projects)
     if projects and not dirs:

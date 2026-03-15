@@ -11,7 +11,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR, VALID_TYPES, TAG_EMOJI, find_logbook_file, resolve_file
+from core.log import VALID_TYPES, TAG_EMOJI, find_logbook_file, resolve_file
+from core.config import iter_project_dirs
 from core.project import _find_new_project, _is_new_project
 
 
@@ -169,10 +170,6 @@ def run_report(
     summary: Optional[str] = None,
 ) -> int:
     """Print activity report for project(s) in a time period."""
-    if not PROJECTS_DIR.exists():
-        print(f"Error: directorio de proyectos no encontrado en {PROJECTS_DIR}")
-        return 1
-
     start, end = _parse_period(date_str, date_from, date_to)
     period_days = (end - start).days + 1
 
@@ -186,8 +183,7 @@ def run_report(
         if not dirs:
             return 1
     else:
-        dirs = sorted(d for d in PROJECTS_DIR.iterdir()
-                      if d.is_dir() and _is_new_project(d))
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
 
     # ── Collect data for all projects ──
     project_data = []

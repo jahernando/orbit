@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from core.log import PROJECTS_DIR
+from core.config import iter_project_dirs
 from core.project import _find_new_project, _is_new_project
 
 from core.config import ORBIT_HOME as ORBIT_DIR
@@ -73,8 +73,7 @@ def _collect_project_dirs(project: Optional[str] = None) -> list:
     if project:
         d = _find_new_project(project)
         return [d] if d else []
-    return sorted(d for d in PROJECTS_DIR.iterdir()
-                  if d.is_dir() and _is_new_project(d))
+    return [d for d in iter_project_dirs() if _is_new_project(d)]
 
 
 # ── ls files ──────────────────────────────────────────────────────────────────

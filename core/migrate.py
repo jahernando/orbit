@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.log import PROJECTS_DIR, project_file_path
+from core.config import iter_project_dirs
 
 from core.config import TEMPLATES_DIR
 
@@ -406,13 +407,13 @@ def run_migrate(name: str, dry_run: bool = False, force: bool = False) -> int:
     # Find project directory
     name_low = name.lower()
     candidates = [
-        d for d in PROJECTS_DIR.iterdir()
-        if d.is_dir() and _is_old_project(d)
+        d for d in iter_project_dirs()
+        if _is_old_project(d)
         and name_low in d.name.lower()
     ]
     if not candidates:
         # Maybe already migrated or not found
-        all_dirs = [d for d in PROJECTS_DIR.iterdir() if d.is_dir()]
+        all_dirs = list(iter_project_dirs())
         match = [d for d in all_dirs if name_low in d.name.lower()]
         if match and ((match[0] / "project.md").exists() or project_file_path(match[0], "project").exists()):
             print(f"El proyecto '{name}' ya está en el nuevo formato.")
@@ -512,8 +513,8 @@ def _preview_logbook(entries: list) -> None:
 def run_migrate_all(dry_run: bool = False, force: bool = False) -> int:
     """Migrate all old-format projects in PROJECTS_DIR."""
     old_projects = [
-        d for d in sorted(PROJECTS_DIR.iterdir())
-        if d.is_dir() and _is_old_project(d)
+        d for d in iter_project_dirs()
+        if _is_old_project(d)
     ]
     if not old_projects:
         print("No se encontraron proyectos en formato antiguo.")

@@ -18,7 +18,8 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
 
-from core.project import _is_new_project, PROJECTS_DIR
+from core.project import _is_new_project
+from core.config import iter_project_dirs
 from core.agenda_cmds import _read_agenda, _write_agenda
 from core.log import resolve_file
 
@@ -189,8 +190,6 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
     """
     target = target or date.today()
     now = datetime.now()
-    if not PROJECTS_DIR.exists():
-        return []
 
     # Avoid duplicate scheduling: check stamp file
     stamp = ORBIT_DIR / ".last_ring"
@@ -203,8 +202,8 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             pass
 
     scheduled = []
-    for project_dir in sorted(PROJECTS_DIR.iterdir()):
-        if not project_dir.is_dir() or not _is_new_project(project_dir):
+    for project_dir in iter_project_dirs():
+        if not _is_new_project(project_dir):
             continue
 
         tasks = _tasks_ringing_on(project_dir, target)

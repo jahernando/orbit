@@ -23,9 +23,9 @@ from core.doctor import (
 @pytest.fixture
 def doctor_env(tmp_path, monkeypatch):
     """Isolated project env for doctor tests."""
-    projects_dir = tmp_path / "🚀proyectos"
-    projects_dir.mkdir()
-    proj = projects_dir / "💻testproj"
+    type_dir = tmp_path / "💻software"
+    type_dir.mkdir()
+    proj = type_dir / "💻testproj"
     proj.mkdir()
 
     # Minimal project.md so _is_new_project returns True
@@ -37,10 +37,11 @@ def doctor_env(tmp_path, monkeypatch):
     (proj / "testproj-highlights.md").write_text("# Highlights\n\n")
     (proj / "notes").mkdir()
 
-    monkeypatch.setattr("core.log.PROJECTS_DIR", projects_dir)
-    monkeypatch.setattr("core.doctor.PROJECTS_DIR", projects_dir)
+    monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
 
-    return {"projects_dir": projects_dir, "proj": proj}
+    return {"projects_dir": type_dir, "proj": proj}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -9,10 +9,10 @@ import pytest
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
-def _make_project(tmp_path: Path, name: str = "alpha") -> Path:
-    """Create a minimal new-format project directory."""
-    d = tmp_path / name
-    d.mkdir()
+def _make_project(type_dir: Path, name: str = "alpha") -> Path:
+    """Create a minimal new-format project directory inside a type dir."""
+    d = type_dir / name
+    d.mkdir(parents=True, exist_ok=True)
     (d / f"{name}-project.md").write_text(f"# {name}\n")
     (d / f"{name}-logbook.md").write_text("")
     (d / f"{name}-highlights.md").write_text("")
@@ -243,7 +243,13 @@ from core.ring import schedule_new_format_reminders
 
 class TestScheduleNewFormatReminders:
     def _patch_projects(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(ring_mod, "PROJECTS_DIR", tmp_path)
+        monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+        monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+        monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+        monkeypatch.setattr(ring_mod, "ORBIT_DIR", tmp_path)
+        type_dir = tmp_path / "💻software"
+        type_dir.mkdir(exist_ok=True)
+        return type_dir
 
     def test_no_projects_returns_empty(self, tmp_path, monkeypatch):
         self._patch_projects(tmp_path, monkeypatch)
@@ -251,8 +257,8 @@ class TestScheduleNewFormatReminders:
         assert result == []
 
     def test_schedules_ringing_task(self, tmp_path, monkeypatch, capsys):
-        self._patch_projects(tmp_path, monkeypatch)
-        pd = _make_project(tmp_path, "alpha")
+        type_dir = self._patch_projects(tmp_path, monkeypatch)
+        pd = _make_project(type_dir, "alpha")
         (pd / "alpha-agenda.md").write_text(
             "## ✅ Tareas\n"
             "- [ ] Revisar datos (2026-04-05) [ring:1d]\n"
@@ -266,8 +272,8 @@ class TestScheduleNewFormatReminders:
         assert scheduled[0]["project"] == "alpha"
 
     def test_clears_ring_on_one_shot_task(self, tmp_path, monkeypatch):
-        self._patch_projects(tmp_path, monkeypatch)
-        pd = _make_project(tmp_path, "alpha")
+        type_dir = self._patch_projects(tmp_path, monkeypatch)
+        pd = _make_project(type_dir, "alpha")
         (pd / "alpha-agenda.md").write_text(
             "## ✅ Tareas\n"
             "- [ ] Revisar datos (2026-04-05) [ring:1d]\n"
@@ -281,8 +287,8 @@ class TestScheduleNewFormatReminders:
         assert data["tasks"][0]["ring"] is None
 
     def test_keeps_ring_on_recurring_task(self, tmp_path, monkeypatch):
-        self._patch_projects(tmp_path, monkeypatch)
-        pd = _make_project(tmp_path, "alpha")
+        type_dir = self._patch_projects(tmp_path, monkeypatch)
+        pd = _make_project(type_dir, "alpha")
         (pd / "alpha-agenda.md").write_text(
             "## ✅ Tareas\n"
             "- [ ] Revisar (2026-04-05) [recur:weekly] [ring:1d]\n"
@@ -296,8 +302,8 @@ class TestScheduleNewFormatReminders:
         assert data["tasks"][0]["ring"] == "1d"
 
     def test_skips_reminder_on_failure(self, tmp_path, monkeypatch, capsys):
-        self._patch_projects(tmp_path, monkeypatch)
-        pd = _make_project(tmp_path, "alpha")
+        type_dir = self._patch_projects(tmp_path, monkeypatch)
+        pd = _make_project(type_dir, "alpha")
         (pd / "alpha-agenda.md").write_text(
             "## ✅ Tareas\n"
             "- [ ] Revisar datos (2026-04-05) [ring:1d]\n"
@@ -312,8 +318,8 @@ class TestScheduleNewFormatReminders:
 
     def test_non_new_format_project_ignored(self, tmp_path, monkeypatch):
         """Old-format projects (no {name}-agenda.md) must be skipped."""
-        self._patch_projects(tmp_path, monkeypatch)
-        old = tmp_path / "old-project"
+        type_dir = self._patch_projects(tmp_path, monkeypatch)
+        old = type_dir / "old-project"
         old.mkdir()
         (old / "old-project-logbook.md").write_text("")
         # no old-project-agenda.md → not a new-format project
@@ -325,9 +331,9 @@ class TestScheduleNewFormatReminders:
         mock.assert_not_called()
 
     def test_multiple_projects(self, tmp_path, monkeypatch):
-        self._patch_projects(tmp_path, monkeypatch)
+        type_dir = self._patch_projects(tmp_path, monkeypatch)
         for name in ("alpha", "beta"):
-            pd = _make_project(tmp_path, name)
+            pd = _make_project(type_dir, name)
             (pd / f"{name}-agenda.md").write_text(
                 "## ✅ Tareas\n"
                 "- [ ] Tarea (2026-04-05) [ring:1d]\n"
@@ -431,17 +437,17 @@ class TestSyncEventsToLogbooks:
     """Integration-style tests for the routing logic."""
 
     def _patch(self, monkeypatch, tmp_path):
-        """Patch PROJECTS_DIR in relevant modules."""
-        import core.project as proj_mod
-        monkeypatch.setattr(proj_mod, "PROJECTS_DIR", tmp_path)
-        # _find_new_project uses core.project.PROJECTS_DIR
-        # find_project uses core.log.PROJECTS_DIR
-        import core.log as log_mod
-        monkeypatch.setattr(log_mod, "PROJECTS_DIR", tmp_path)
+        """Patch ORBIT_HOME so iter_project_dirs() finds type dirs."""
+        monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+        monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+        monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+        type_dir = tmp_path / "💻software"
+        type_dir.mkdir(exist_ok=True)
+        return type_dir
 
     def test_new_format_routed_to_agenda(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, tmp_path)
-        pd = _make_project(tmp_path, "alpha")
+        type_dir = self._patch(monkeypatch, tmp_path)
+        pd = _make_project(type_dir, "alpha")
 
         events = [{"title": "Conf", "description": "proyecto: alpha",
                    "project_name": "alpha", "start_time": "10:00"}]
@@ -478,8 +484,8 @@ class TestSyncEventsToLogbooks:
         assert synced == 0
 
     def test_duplicate_event_increments_skipped(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, tmp_path)
-        pd = _make_project(tmp_path, "alpha")
+        type_dir = self._patch(monkeypatch, tmp_path)
+        pd = _make_project(type_dir, "alpha")
 
         events = [{"title": "Conf", "description": "proyecto: alpha",
                    "project_name": "alpha", "start_time": "10:00"}]
@@ -493,8 +499,8 @@ class TestSyncEventsToLogbooks:
         assert skipped == 1
 
     def test_dry_run_does_not_persist(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, tmp_path)
-        pd = _make_project(tmp_path, "alpha")
+        type_dir = self._patch(monkeypatch, tmp_path)
+        pd = _make_project(type_dir, "alpha")
         original = (pd / "alpha-agenda.md").read_text()
 
         events = [{"title": "Conf", "description": "proyecto: alpha",
