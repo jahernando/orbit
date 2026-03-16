@@ -208,10 +208,9 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
 
         tasks = _tasks_ringing_on(project_dir, target)
         for t in tasks:
-            # Skip reminders whose time has already passed
-            if t["ring_dt"] < now:
-                continue
-            ok = _schedule_reminder(t["desc"], project_dir.name, t["ring_dt"])
+            # Schedule even if time has passed — Reminders.app will fire immediately
+            ring_dt = t["ring_dt"] if t["ring_dt"] > now else now + timedelta(minutes=1)
+            ok = _schedule_reminder(t["desc"], project_dir.name, ring_dt)
             if ok:
                 print(f"  ⏰ {project_dir.name}  "
                       f"{t['ring_dt'].strftime('%H:%M')}  {t['desc']}")
