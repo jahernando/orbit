@@ -6,7 +6,7 @@ Copies a file (from any location) to the project's cloud directory and
 leaves the cloud path in the clipboard.
 
 Cloud structure:
-  cloud_root/{emoji}{space_name}/{type_emoji}{type_name}/{project_dir}/
+  cloud_root/{type_emoji}{type_name}/{project_dir}/cloud/{subdir}/
 """
 import shutil
 import subprocess
@@ -21,6 +21,8 @@ from core.log import find_project
 
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".tiff"}
+
+CLOUD_SUBDIR = "cloud"
 
 
 def encode_cloud_link(path: str) -> str:
@@ -77,14 +79,45 @@ def _is_url(ref: str) -> bool:
     return ref.startswith("http://") or ref.startswith("https://")
 
 
+def ensure_project_cloud_symlink(project_dir: Path) -> bool:
+    """Ensure project_dir/cloud → cloud_root/.../project/cloud symlink.
+
+    Returns True if the symlink exists (or was created), False on error.
+    """
+    link_path = project_dir / CLOUD_SUBDIR
+    if link_path.is_symlink():
+        return True
+    if link_path.exists():
+        return True  # real directory, don't touch
+
+    cloud_root = _find_cloud_root()
+    if not cloud_root:
+        return False
+
+    cloud_dir = _project_cloud_dir(project_dir, cloud_root)
+    if not cloud_dir:
+        return False
+
+    target = cloud_dir / CLOUD_SUBDIR
+    if not target.exists():
+        target.mkdir(parents=True, exist_ok=True)
+
+    link_path.symlink_to(target)
+    return True
+
+
 def deliver_file(project_dir: Path, src: Path, subdir: str = "",
                  date_prefix: bool = False) -> Optional[Path]:
     """Copy a file to the project's cloud directory.
 
+    Files are placed under cloud_project_dir/cloud/{subdir}/ so that
+    relative links (./cloud/logs/file.pdf) work both locally (through
+    the per-project symlink) and from mobile (in the cloud filesystem).
+
     Args:
         project_dir: local project directory
         src: source file path
-        subdir: subdirectory under cloud project dir ("logs", "hls", or "")
+        subdir: subdirectory under cloud/ ("logs", "hls", or "")
         date_prefix: if True, prefix filename with YYYY-MM-DD_
 
     Returns the cloud destination path, or None on error.
@@ -97,14 +130,29 @@ def deliver_file(project_dir: Path, src: Path, subdir: str = "",
     if not cloud_dir:
         return None
 
-    dest_dir = cloud_dir / subdir if subdir else cloud_dir
+    # Place files inside cloud/ subdirectory
+    cloud_base = cloud_dir / CLOUD_SUBDIR
+    dest_dir = cloud_base / subdir if subdir else cloud_base
     filename = f"{date.today().isoformat()}_{src.name}" if date_prefix else src.name
     dest = dest_dir / filename
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(str(src), str(dest))
     print(f"  📦 {src.name} → {dest.parent}/")
+
+    # Ensure per-project cloud symlink
+    ensure_project_cloud_symlink(project_dir)
+
     return dest
+
+
+def relative_cloud_link(subdir: str, filename: str) -> str:
+    """Return a relative markdown link path for a delivered file.
+
+    E.g. relative_cloud_link("logs", "2026-03-12_file.pdf")
+         → "./cloud/logs/2026-03-12_file.pdf"
+    """
+    return encode_cloud_link(f"./{CLOUD_SUBDIR}/{subdir}/{filename}")
 
 
 def run_deliver(project: str, file: str) -> int:

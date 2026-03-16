@@ -319,6 +319,10 @@ def run_commit(message: Optional[str] = None) -> int:
     rc = _git_commit(final_msg)
     if rc == 0:
         print("\n✓ Commit realizado.")
+        from core.cloudsync import sync_to_cloud
+        n = sync_to_cloud()
+        if n:
+            print(f"  ☁️  {n} fichero{'s' if n != 1 else ''} sincronizado{'s' if n != 1 else ''} al cloud.")
     else:
         print("\n✗ Error al hacer el commit.")
     return rc
@@ -571,6 +575,11 @@ def startup_commit_offer() -> None:
         return
 
     print(f"  ✓ Commit: \"{msg}\"")
+
+    from core.cloudsync import sync_to_cloud
+    n = sync_to_cloud()
+    if n:
+        print(f"  ☁️  {n} fichero{'s' if n != 1 else ''} sincronizado{'s' if n != 1 else ''} al cloud.")
 
     if can_push:
         rc = _git_push()

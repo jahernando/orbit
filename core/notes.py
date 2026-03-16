@@ -129,14 +129,39 @@ def _pick_note(notes_dir: Path, text: Optional[str]) -> Optional[Path]:
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def run_note_create(project: str, title: str, file_str: Optional[str] = None,
-                    open_after: bool = True, editor: str = "") -> int:
-    """Create a new note or import an existing .md into project notes/."""
+                    open_after: bool = True, editor: str = "",
+                    no_log: bool = False, entry: str = "apunte",
+                    hl_type: Optional[str] = None) -> int:
+    """Create a new note or import an existing .md into project notes/.
+
+    By default registers in logbook (with date prefix in filename).
+    With --hl <type>: registers in highlights instead (no date prefix).
+    With --no-log: no registration anywhere.
+
+    Args:
+        file_str: if given and exists as file, imports it; otherwise title only.
+        no_log: skip logbook/highlights registration.
+        entry: logbook entry type (default: apunte).
+        hl_type: if set, register in highlights under this section instead of logbook.
+    """
     project_dir = _find_new_project(project)
     if project_dir is None:
         return 1
 
     notes_dir = project_dir / "notes"
     notes_dir.mkdir(exist_ok=True)
+
+    # Decide filename: date prefix for logbook entries, plain for highlights
+    use_date_prefix = not hl_type and not no_log
+    base_name = _title_to_filename(title)
+    if use_date_prefix:
+        note_name = f"{date.today().isoformat()}_{base_name}"
+    else:
+        note_name = base_name
+
+    dest = notes_dir / note_name
+
+    from core.undo import save_snapshot
 
     if file_str:
         src = Path(file_str).expanduser().resolve()
@@ -146,18 +171,12 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
         if src.suffix.lower() != ".md":
             print(f"Error: solo se pueden importar ficheros .md (recibido: {src.name})")
             return 1
-        dest = notes_dir / src.name
-        from core.undo import save_snapshot
         save_snapshot(dest)
         shutil.copy2(src, dest)
-        note_name = dest.name
         print(f"✓ [{project_dir.name}] Nota importada: {note_name}")
     else:
-        note_name = _title_to_filename(title)
-        dest      = notes_dir / note_name
         if dest.exists():
             print(f"⚠️  La nota ya existe: {note_name} (se sobreescribirá)")
-        from core.undo import save_snapshot
         save_snapshot(dest)
         dest.write_text(_note_template(title, project_dir.name, project_dir))
         print(f"✓ [{project_dir.name}] Nota creada: {note_name}")
@@ -175,8 +194,20 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
             else:
                 print(f"  ⚠️  No se pudo añadir a git")
 
-    add_orbit_entry(project_dir,
-                    f"[nota creada] {note_name} — \"{title}\"", "apunte")
+    # Register in logbook or highlights
+    note_link = f"./notes/{note_name}"
+
+    if hl_type:
+        from core.highlights import run_hl_add
+        run_hl_add(project=project, text=title, hl_type=hl_type,
+                   link=note_link)
+    elif not no_log:
+        from core.log import add_entry
+        add_entry(project=project, message=title,
+                  tipo=entry, path=note_link, fecha=None)
+    else:
+        add_orbit_entry(project_dir,
+                        f"[nota creada] {note_name} — \"{title}\"", "apunte")
 
     if open_after:
         open_file(dest, editor)

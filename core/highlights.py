@@ -255,10 +255,10 @@ def run_hl_add(project: str, text: str, hl_type: str,
 
     # Handle file/URL/deliver logic for link argument
     if link:
-        if _is_url(link):
-            pass  # keep as-is
+        if _is_url(link) or link.startswith("./"):
+            pass  # keep as-is (URL or relative link)
         else:
-            from core.deliver import deliver_file, IMAGE_EXTS, encode_cloud_link
+            from core.deliver import deliver_file, IMAGE_EXTS, relative_cloud_link
             src = Path(link).expanduser()
             if not src.is_absolute():
                 from core.log import find_project
@@ -273,7 +273,7 @@ def run_hl_add(project: str, text: str, hl_type: str,
                     dest = deliver_file(project_dir, src, subdir="hls")
                     if not dest:
                         return 1
-                    link = encode_cloud_link(str(dest))
+                    link = relative_cloud_link("hls", dest.name)
                 else:
                     link = str(src)
             elif deliver:

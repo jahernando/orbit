@@ -263,7 +263,7 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
     - ref is file (no --deliver) → link to local file, ask if deliver
     - ref is None → plain entry
     """
-    from core.deliver import deliver_file, IMAGE_EXTS, encode_cloud_link
+    from core.deliver import deliver_file, IMAGE_EXTS, relative_cloud_link
 
     project_dir = find_project(project)
     if not project_dir:
@@ -291,7 +291,7 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                     dest = deliver_file(project_dir, src, subdir="logs", date_prefix=True)
                     if not dest:
                         return 1
-                    link = encode_cloud_link(str(dest))
+                    link = relative_cloud_link("logs", dest.name)
                 else:
                     link = str(src)
             elif deliver:

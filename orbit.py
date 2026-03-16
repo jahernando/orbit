@@ -31,6 +31,7 @@ from core.gsync import run_gsync
 from core.history import log_history, run_history
 from core.claude import run_claude
 from core.deliver import run_deliver
+from core.recloud import run_recloud
 
 
 def _d(expr):
@@ -100,12 +101,18 @@ _VERB_ENTITY_SWAP = {
     "priority": {"project"},
 }
 
+_NOTE_SUBCOMMANDS = {"create", "open", "list", "drop"}
+
 def _fix_argv(argv: list) -> list:
     """Normalize argv: fix single-dash options, swap verb-entity order."""
     # Swap "add task ..." → "task add ..." etc.
     if len(argv) >= 2 and argv[0] in _VERB_ENTITY_SWAP:
         if argv[1] in _VERB_ENTITY_SWAP[argv[0]]:
             argv = [argv[1], argv[0]] + argv[2:]
+
+    # Shorthand: "note <project> ..." → "note create <project> ..."
+    if len(argv) >= 2 and argv[0] == "note" and argv[1] not in _NOTE_SUBCOMMANDS:
+        argv = ["note", "create"] + argv[1:]
 
     fixed = []
     for token in argv:
@@ -238,19 +245,27 @@ def cmd_note(args):
         return run_note_drop(project=project,
                              file_str=getattr(args, "file", None),
                              force=getattr(args, "force", False))
-    # default: create (shorthand uses _project/_title)
+    # default: create (shorthand uses _project/_title/_file)
     title = getattr(args, "title", None) or getattr(args, "_title", "") or ""
+    file_str = getattr(args, "file", None) or getattr(args, "_file", None)
     return run_note_create(
         project   = project,
         title     = title,
-        file_str  = getattr(args, "file", None),
+        file_str  = file_str,
         open_after= not getattr(args, "no_open", False),
         editor    = getattr(args, "editor", None) or default_editor(),
+        no_log    = getattr(args, "no_log", False),
+        entry     = getattr(args, "entry", None) or "apunte",
+        hl_type   = getattr(args, "hl", None),
     )
 
 
 def cmd_deliver(args):
     return run_deliver(project=args.project, file=args.file)
+
+
+def cmd_recloud(args):
+    return run_recloud(dry_run=args.dry_run)
 
 
 def cmd_commit(args):
@@ -1028,10 +1043,16 @@ def main():
     nt_create = note_sub.add_parser("create", help="Create or import a note")
     nt_create.add_argument("project", help="Project name (partial match)")
     nt_create.add_argument("title",   help="Note title")
-    nt_create.add_argument("--file",    default=None,
-                           help="Import an existing .md file instead of creating a new one")
+    nt_create.add_argument("file",    nargs="?", default=None,
+                           help="File to import (omit to create new)")
     nt_create.add_argument("--no-open", action="store_true",
                            help="Do not open the note after creating")
+    nt_create.add_argument("--no-log",  action="store_true",
+                           help="Do not register in logbook or highlights")
+    nt_create.add_argument("--entry",   default="apunte",
+                           help="Logbook entry type (default: apunte)")
+    nt_create.add_argument("--hl",      default=None, metavar="TYPE",
+                           help="Register in highlights instead of logbook (e.g. referencia)")
     nt_create.add_argument("--editor",  default=None)
 
     nt_open = note_sub.add_parser("open", help="Open note (create if missing)")
@@ -1054,17 +1075,24 @@ def main():
                          help="Filename or partial name (omit for interactive selection)")
     nt_drop.add_argument("--force", action="store_true", help="Skip confirmation")
 
-    # Also accept:  note <project> <title>  (without 'create' subcommand)
+    # Also accept:  note <project> <title> [file]  (without 'create' subcommand)
     note_p.add_argument("_project", nargs="?", default=None)
     note_p.add_argument("_title",   nargs="?", default=None)
-    note_p.add_argument("--file",    default=None)
+    note_p.add_argument("_file",    nargs="?", default=None)
     note_p.add_argument("--no-open", action="store_true")
+    note_p.add_argument("--no-log",  action="store_true")
+    note_p.add_argument("--entry",   default="apunte")
+    note_p.add_argument("--hl",      default=None, metavar="TYPE")
     note_p.add_argument("--editor",  default=None)
 
     # --- deliver ---
     dlv_p = subparsers.add_parser("deliver", help="Deliver file to cloud (copy + clipboard)")
     dlv_p.add_argument("project", help="Project name (partial match)")
     dlv_p.add_argument("file",    help="File path to deliver")
+
+    # --- recloud ---
+    rcl_p = subparsers.add_parser("recloud", help="Migrate cloud links to use symlink")
+    rcl_p.add_argument("--dry-run", action="store_true", help="Show changes without applying")
 
     # --- commit ---
     cmt_p = subparsers.add_parser("commit", help="Git commit with confirmation")
@@ -1168,7 +1196,7 @@ def main():
         "task": cmd_task_new,
         "ms": cmd_ms, "ev": cmd_ev, "hl": cmd_hl,
         "view": cmd_view_new,
-        "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver,
+        "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "recloud": cmd_recloud,
         "log": cmd_log, "search": cmd_search,
         "report": cmd_report, "open": cmd_open,
         "import": cmd_import,

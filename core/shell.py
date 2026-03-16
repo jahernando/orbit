@@ -53,19 +53,23 @@ def _run_startup():
             print(f"  {len(unfixable)} problema{'s' if len(unfixable) != 1 else ''} requiere{'n' if len(unfixable) != 1 else ''} corrección manual.")
             print()
 
-    # 2. Untracked files — prompt to stage new files
+    # 2. Inbox — check cloud inboxes for mobile captures
+    from core.inbox import startup_inbox_check
+    startup_inbox_check()
+
+    # 3. Untracked files — prompt to stage new files
     from core.commit import startup_untracked_check, startup_commit_offer
     startup_untracked_check()
 
-    # 3. Commit + push — offer to commit staged changes
+    # 4. Commit + push — offer to commit staged changes
     startup_commit_offer()
     print()
 
-    # 4. Code update check — pull new code from orbit repo
+    # 5. Code update check — pull new code from orbit repo
     from core.commit import startup_code_update_check
     startup_code_update_check()
 
-    # 5. gsync in background (fire & forget) + schedule reminders
+    # 6. gsync in background (fire & forget) + schedule reminders
     from core.gsync import gsync_background
     from core.ring import schedule_new_format_reminders
 
@@ -99,7 +103,7 @@ def run_shell(editor: str = ""):
         pass
     readline.set_history_length(500)
 
-    COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "deliver", "migrate",
+    COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "deliver", "recloud", "migrate",
                 "import", "ls", "log", "search", "open", "report", "agenda",
                 "gsync", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
 
