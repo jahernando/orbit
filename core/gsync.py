@@ -9,7 +9,9 @@ Architecture:
   - Events → Google Calendar Events API (one calendar per project type)
   - Orbit is the source of truth (one-directional sync)
   - Sync IDs stored in .gsync-ids.json per project (not in agenda.md)
-  - Synced items show [G] marker in agenda.md
+  - Synced items show ☁️ marker in agenda.md
+  - Recurring events use RRULE in Google Calendar
+  - Snapshots stored in .gsync-ids.json for drift detection
 
 Config file: google-sync.json in ORBIT_HOME
 """
@@ -51,6 +53,32 @@ def _save_ids(project_dir: Path, ids: dict) -> None:
 def _item_key(item: dict) -> str:
     """Build a unique key for an item: desc::date."""
     return f"{item.get('desc', '')}::{item.get('date', '')}"
+
+
+_SNAPSHOT_FIELDS = ("desc", "date", "end", "time", "recur", "until", "ring", "status")
+
+
+def _make_snapshot(item: dict) -> dict:
+    """Extract serializable fields for drift detection."""
+    return {k: item[k] for k in _SNAPSHOT_FIELDS if item.get(k)}
+
+
+def _diff_snapshot(current: dict, saved: dict) -> list:
+    """Compare current item state to saved snapshot. Returns list of change descriptions."""
+    if not saved:
+        return []
+    diffs = []
+    for k in _SNAPSHOT_FIELDS:
+        old = saved.get(k)
+        new = current.get(k)
+        if old != new:
+            if old and new:
+                diffs.append(f"{k}: {old} → {new}")
+            elif new:
+                diffs.append(f"{k}: (vacío) → {new}")
+            elif old:
+                diffs.append(f"{k}: {old} → (eliminado)")
+    return diffs
 
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -264,12 +292,15 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
                                     project_name, False, description, dry_run)
             if new_id and not t.get("_gtask_id"):
                 ids.setdefault(key, {})["gtask_id"] = new_id
+                ids[key]["snapshot"] = _make_snapshot(t)
                 t["synced"] = True
                 created += 1
                 changed = True
                 ids_changed = True
             elif t.get("_gtask_id"):
+                ids.setdefault(key, {})["snapshot"] = _make_snapshot(t)
                 updated += 1
+                ids_changed = True
             else:
                 skipped += 1
         t.pop("_gtask_id", None)
@@ -283,12 +314,15 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
                                     project_name, True, description, dry_run)
             if new_id and not m.get("_gtask_id"):
                 ids.setdefault(key, {})["gtask_id"] = new_id
+                ids[key]["snapshot"] = _make_snapshot(m)
                 m["synced"] = True
                 created += 1
                 changed = True
                 ids_changed = True
             elif m.get("_gtask_id"):
+                ids.setdefault(key, {})["snapshot"] = _make_snapshot(m)
                 updated += 1
+                ids_changed = True
             else:
                 skipped += 1
         m.pop("_gtask_id", None)
@@ -301,14 +335,60 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
     return created, updated, skipped
 
 
+# ── RRULE mapping ──────────────────────────────────────────────────────────
+
+import re as _re
+
+_RRULE_WEEKDAY = {
+    "monday": "MO", "tuesday": "TU", "wednesday": "WE", "thursday": "TH",
+    "friday": "FR", "saturday": "SA", "sunday": "SU",
+    "lunes": "MO", "martes": "TU", "miercoles": "WE", "jueves": "TH",
+    "viernes": "FR", "sabado": "SA", "domingo": "SU",
+}
+
+_RRULE_EVERY_RE = _re.compile(r"^every-(\d+)-(day|week|month)s?$")
+_RRULE_POS_RE = _re.compile(r"^(first|last)-(\w+)$")
+
+
+def _recur_to_rrule(recur: str, until: str = None) -> list:
+    """Convert orbit recurrence pattern to Google Calendar RRULE list."""
+    rule = None
+    if recur == "daily":
+        rule = "RRULE:FREQ=DAILY"
+    elif recur == "weekly":
+        rule = "RRULE:FREQ=WEEKLY"
+    elif recur == "monthly":
+        rule = "RRULE:FREQ=MONTHLY"
+    elif recur == "weekdays":
+        rule = "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+    else:
+        em = _RRULE_EVERY_RE.match(recur)
+        if em:
+            n = int(em.group(1))
+            unit = em.group(2).upper()
+            freq = {"DAY": "DAILY", "WEEK": "WEEKLY", "MONTH": "MONTHLY"}[unit]
+            rule = f"RRULE:FREQ={freq};INTERVAL={n}"
+        else:
+            pm = _RRULE_POS_RE.match(recur)
+            if pm:
+                pos = 1 if pm.group(1) == "first" else -1
+                wd = _RRULE_WEEKDAY.get(pm.group(2))
+                if wd:
+                    rule = f"RRULE:FREQ=MONTHLY;BYDAY={pos}{wd}"
+    if not rule:
+        return []
+    if until:
+        rule += f";UNTIL={until.replace('-', '')}T235959Z"
+    return [rule]
+
+
 # ── Event sync ──────────────────────────────────────────────────────────────
 
 def _sync_one_event(service, calendar_id: str, ev: dict,
                     project_name: str, description: str,
                     dry_run: bool) -> Optional[str]:
     """Sync a single event to Google Calendar. Returns Google Calendar event ID."""
-    suffix = " 🔄" if ev.get("recur") else ""
-    summary = f"{ORBIT_PROMPT}[{project_name}] {ev['desc']}{suffix}"
+    summary = f"{ORBIT_PROMPT}[{project_name}] {ev['desc']}"
 
     start_date = ev["date"]
     from datetime import timedelta
@@ -349,6 +429,12 @@ def _sync_one_event(service, calendar_id: str, ev: dict,
         "end": gcal_end,
     }
 
+    # Add RRULE for recurring events
+    if ev.get("recur"):
+        rrule = _recur_to_rrule(ev["recur"], ev.get("until"))
+        if rrule:
+            body["recurrence"] = rrule
+
     gcal_id = ev.get("_gcal_id")  # looked up from .gsync-ids.json
     if gcal_id:
         if dry_run:
@@ -366,6 +452,11 @@ def _sync_one_event(service, calendar_id: str, ev: dict,
             existing["description"] = body["description"]
             existing["start"] = body["start"]
             existing["end"] = body["end"]
+            # Update recurrence (add, change, or remove)
+            if "recurrence" in body:
+                existing["recurrence"] = body["recurrence"]
+            else:
+                existing.pop("recurrence", None)
             service.events().update(
                 calendarId=calendar_id, eventId=gcal_id, body=existing
             ).execute()
@@ -414,12 +505,15 @@ def _sync_events_for_project(cal_service, project_dir: Path,
                                  project_name, description, dry_run)
         if new_id and not ev.get("_gcal_id"):
             ids.setdefault(key, {})["gcal_id"] = new_id
+            ids[key]["snapshot"] = _make_snapshot(ev)
             ev["synced"] = True
             created += 1
             changed = True
             ids_changed = True
         elif ev.get("_gcal_id"):
+            ids.setdefault(key, {})["snapshot"] = _make_snapshot(ev)
             updated += 1
+            ids_changed = True
         else:
             skipped += 1
         ev.pop("_gcal_id", None)
@@ -433,6 +527,35 @@ def _sync_events_for_project(cal_service, project_dir: Path,
 
 
 # ── List calendars ──────────────────────────────────────────────────────────
+
+def check_gsync_drift() -> list:
+    """Check all synced items for drift (changes since last gsync).
+
+    Returns list of (project_name, item_desc, diffs) tuples.
+    """
+    results = []
+    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+    for project_dir in dirs:
+        ids = _load_ids(project_dir)
+        if not ids:
+            continue
+        agenda_path = resolve_file(project_dir, "agenda")
+        data = _read_agenda(agenda_path)
+        all_items = (
+            [(t, "tarea") for t in data["tasks"]]
+            + [(m, "hito") for m in data["milestones"]]
+            + [(e, "evento") for e in data["events"]]
+        )
+        for item, kind in all_items:
+            key = _item_key(item)
+            saved = ids.get(key, {}).get("snapshot")
+            if not saved:
+                continue
+            diffs = _diff_snapshot(item, saved)
+            if diffs:
+                results.append((project_dir.name, kind, item.get("desc", "?"), diffs))
+    return results
+
 
 def run_list_calendars() -> int:
     """List available Google Calendars with their IDs."""

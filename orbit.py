@@ -17,6 +17,7 @@ from core.agenda_cmds import (
     run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list,
     run_ms_add, run_ms_done, run_ms_drop, run_ms_edit, run_ms_list,
     run_ev_add, run_ev_drop, run_ev_edit, run_ev_list, run_ev_log,
+    run_reminder_add, run_reminder_cancel, run_reminder_list,
 )
 from core.highlights import (
     run_hl_add, run_hl_drop, run_hl_edit, run_hl_list, VALID_TYPES as HL_TYPES,
@@ -399,6 +400,31 @@ def cmd_ev(args):
         return run_ev_log(
             project = getattr(args, "project", None),
             text    = getattr(args, "text", None),
+        )
+    return 1
+
+
+def cmd_reminder(args):
+    """Reminder subcommand dispatcher."""
+    action = getattr(args, "action", None) or "list"
+
+    if action == "add":
+        return run_reminder_add(
+            project  = args.project,
+            text     = args.text,
+            date_val = _d(args.date),
+            time_val = args.time,
+            recur    = getattr(args, "recur", None),
+            until    = _d(getattr(args, "until", None)),
+        )
+    if action == "cancel":
+        return run_reminder_cancel(
+            project = getattr(args, "project", None),
+            text    = getattr(args, "text", None),
+        )
+    if action == "list":
+        return run_reminder_list(
+            project = getattr(args, "project", None),
         )
     return 1
 
@@ -1019,6 +1045,25 @@ def main():
     ev_log.add_argument("text",    nargs="?", default=None,
                         help="Event name (partial match; omit for interactive)")
 
+    # --- reminder ---
+    rem_p   = subparsers.add_parser("reminder", help="Reminder commands (agenda.md 💬)")
+    rem_sub = rem_p.add_subparsers(dest="action")
+
+    rem_add = rem_sub.add_parser("add", help="Add a reminder")
+    rem_add.add_argument("project",  help="Project name")
+    rem_add.add_argument("text",     help="Reminder text")
+    rem_add.add_argument("--date",   required=True, help="Date: YYYY-MM-DD, today, tomorrow...")
+    rem_add.add_argument("--time",   required=True, help="Time: HH:MM")
+    rem_add.add_argument("--recur",  default=None, help="Recurrence: daily, weekly, monthly, ...")
+    rem_add.add_argument("--until",  default=None, help="End date for recurrence")
+
+    rem_cancel = rem_sub.add_parser("cancel", help="Cancel a reminder")
+    rem_cancel.add_argument("project", nargs="?", default=None)
+    rem_cancel.add_argument("text",    nargs="?", default=None)
+
+    rem_list = rem_sub.add_parser("list", help="List active reminders")
+    rem_list.add_argument("project", nargs="?", default=None)
+
     # --- hl ---
     hl_p   = subparsers.add_parser("hl", help="Highlights commands (highlights.md)")
     hl_sub = hl_p.add_subparsers(dest="action")
@@ -1217,7 +1262,7 @@ def main():
     # Simple commands: one function, no subcommand required
     _simple = {
         "task": cmd_task_new,
-        "ms": cmd_ms, "ev": cmd_ev, "hl": cmd_hl,
+        "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "hl": cmd_hl,
         "view": cmd_view_new,
         "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "recloud": cmd_recloud,
         "log": cmd_log, "search": cmd_search,

@@ -179,10 +179,43 @@ def _clear_ring(project_dir: Path, task_index: int) -> None:
         _write_agenda(resolve_file(project_dir, "agenda"), data)
 
 
+# ── Reminder collection ───────────────────────────────────────────────────────
+
+def _reminders_on(project_dir: Path, target: date) -> list:
+    """Return list of active reminders from agenda.md firing on *target* date."""
+    data = _read_agenda(resolve_file(project_dir, "agenda"))
+    results = []
+
+    for i, rem in enumerate(data.get("reminders", [])):
+        if rem.get("cancelled"):
+            continue
+        if not rem.get("date") or not rem.get("time"):
+            continue
+        try:
+            rem_date = date.fromisoformat(rem["date"])
+        except ValueError:
+            continue
+        if rem_date != target:
+            continue
+
+        fire_dt = datetime.fromisoformat(f"{rem['date']}T{rem['time']}:00")
+        results.append({
+            "index":   i,
+            "desc":    rem["desc"],
+            "due":     rem["date"],
+            "time":    rem["time"],
+            "recur":   rem.get("recur"),
+            "ring_dt": fire_dt,
+            "is_reminder": True,
+        })
+
+    return results
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def schedule_new_format_reminders(target: Optional[date] = None) -> list:
-    """Scan all new-format projects for ring tasks firing on *target*.
+    """Scan all new-format projects for ring tasks and reminders firing on *target*.
 
     Schedules each via Reminders.app and clears the ring attribute on
     non-recurring tasks.  Returns list of scheduled task dicts.
@@ -206,20 +239,31 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
         if not _is_new_project(project_dir):
             continue
 
+        # Schedule ring tasks
         tasks = _tasks_ringing_on(project_dir, target)
         for t in tasks:
-            # Schedule even if time has passed — Reminders.app will fire immediately
             ring_dt = t["ring_dt"] if t["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(t["desc"], project_dir.name, ring_dt)
             if ok:
                 print(f"  ⏰ {project_dir.name}  "
                       f"{t['ring_dt'].strftime('%H:%M')}  {t['desc']}")
-                # Clear ring on one-shot tasks; keep it for recurring tasks
                 if not t.get("recur"):
                     _clear_ring(project_dir, t["index"])
                 scheduled.append({**t, "project": project_dir.name})
             else:
                 print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {t['desc']}")
+
+        # Schedule reminders (💬)
+        reminders = _reminders_on(project_dir, target)
+        for r in reminders:
+            ring_dt = r["ring_dt"] if r["ring_dt"] > now else now + timedelta(minutes=1)
+            ok = _schedule_reminder(f"💬 {r['desc']}", project_dir.name, ring_dt)
+            if ok:
+                print(f"  💬 {project_dir.name}  "
+                      f"{r['ring_dt'].strftime('%H:%M')}  {r['desc']}")
+                scheduled.append({**r, "project": project_dir.name})
+            else:
+                print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {r['desc']}")
 
     # Write stamp so we don't re-schedule on subsequent shell starts today
     stamp.write_text(target.isoformat())

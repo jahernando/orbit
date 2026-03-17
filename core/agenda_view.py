@@ -40,6 +40,7 @@ _RESET   = "\033[0m"
 _BOLD    = "\033[1m"
 _DIM     = "\033[2m"
 _UNDERLINE = "\033[4m"
+_STRIKE  = "\033[9m"
 _BLUE    = "\033[34m"
 _CYAN    = "\033[36m"
 _YELLOW  = "\033[33m"
@@ -603,7 +604,7 @@ def _plain_calendar_ansi(start: date, end: date) -> None:
                     in_range = start <= d <= end
 
                     if not in_range:
-                        cell = f"{_DIM}{label}{_RESET}"
+                        cell = f"{_DIM}{_STRIKE}{label}{_RESET}"
                     elif d == today:
                         cell = f"{_BG_TODAY}{_BOLD}{label}{_RESET}"
                     else:
@@ -712,10 +713,9 @@ def _format_item_line(kind, item, proj_tag, markdown=False):
         end_s = f" → {item['end']}" if item.get("end") else ""
         recur_s = ""
         if item.get("recur"):
-            recur_s = f" [recur:{item['recur']}"
+            recur_s = f" 🔄{item['recur']}"
             if item.get("until"):
                 recur_s += f":{item['until']}"
-            recur_s += "]"
         return f"{pfx}📅{time_s} — {item['desc']}{end_s}{recur_s}  {proj_tag}"
 
     elif kind == "milestone":
@@ -738,10 +738,9 @@ def _format_item_line(kind, item, proj_tag, markdown=False):
                 pass
         recur_s = ""
         if item.get("recur"):
-            recur_s = f" [recur:{item['recur']}"
+            recur_s = f" 🔄{item['recur']}"
             if item.get("until"):
                 recur_s += f":{item['until']}"
-            recur_s += "]"
         return f"{pfx}{check} {item['desc']}{recur_s}{overdue}  {proj_tag}"
 
 
@@ -903,10 +902,9 @@ def _format_detail_lines(collected, markdown=False):
             end_s = f" → {e['end']}" if e.get("end") else ""
             recur_s = ""
             if e.get("recur"):
-                recur_s = f" [recur:{e['recur']}"
+                recur_s = f" 🔄{e['recur']}"
                 if e.get("until"):
                     recur_s += f":{e['until']}"
-                recur_s += "]"
             lines.append(f"{pfx}📅 {e['date']}{time_s} — {e['desc']}{end_s}{recur_s}")
 
         for m in milestones:
@@ -932,10 +930,9 @@ def _format_detail_lines(collected, markdown=False):
                     pass
             recur_s = ""
             if t.get("recur"):
-                recur_s = f" [recur:{t['recur']}"
+                recur_s = f" 🔄{t['recur']}"
                 if t.get("until"):
                     recur_s += f":{t['until']}"
-                recur_s += "]"
             lines.append(f"{pfx}{check} {t['desc']}{date_s}{recur_s}{overdue}")
 
     return lines

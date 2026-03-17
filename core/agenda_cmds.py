@@ -111,6 +111,7 @@ def is_valid_recur(raw: str) -> bool:
 _TASK_HEADER = "## ✅ Tareas"
 _MS_HEADER   = "## 🏁 Hitos"
 _EV_HEADER   = "## 📅 Eventos"
+_REM_HEADER  = "## 💬 Recordatorios"
 
 # ── Task/milestone line parsing ────────────────────────────────────────────────
 
@@ -127,30 +128,33 @@ def _parse_task_line(line: str) -> Optional[dict]:
     date_m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", rest)
     if date_m:
         date_val = date_m.group(1)
-    recur_m = re.search(r"\[recur:([^\]]+)\]", rest)
+    # Recur: emoji 🔄 or legacy [recur:]
+    recur_m = re.search(r"🔄(\S+)", rest) or re.search(r"\[recur:([^\]]+)\]", rest)
     if recur_m:
         raw = recur_m.group(1)
-        # Format: freq or freq:YYYY-MM-DD (with until date)
         if ":" in raw:
             recur, until = raw.split(":", 1)
         else:
             recur = raw
-    ring_m = re.search(r"\[ring:([^\]]+)\]", rest)
+    # Ring: emoji 🔔 or legacy [ring:]
+    ring_m = re.search(r"🔔(\S+)", rest) or re.search(r"\[ring:([^\]]+)\]", rest)
     if ring_m:
         ring = ring_m.group(1)
-    time_m = re.search(r"\[time:([^\]]+)\]", rest)
+    # Time: emoji ⏰ or legacy [time:]
+    time_m = re.search(r"⏰(\S+)", rest) or re.search(r"\[time:([^\]]+)\]", rest)
     if time_m:
         time_val = time_m.group(1)
-    if re.search(r"\[G\]", rest):
-        synced = True
-    # Legacy: parse old [gtask:...] as synced
-    if re.search(r"\[gtask:[^\]]+\]", rest):
+    # Synced: emoji ☁️ or legacy [G] or [gtask:]
+    if re.search(r"☁️", rest) or re.search(r"\[G\]", rest) or re.search(r"\[gtask:[^\]]+\]", rest):
         synced = True
 
-    # Description = rest minus attribute patterns
+    # Description = rest minus attribute patterns (both emoji and legacy)
     desc = rest
-    for pat in [r"\(\d{4}-\d{2}-\d{2}\)", r"\[recur:[^\]]+\]",
-                r"\[ring:[^\]]+\]", r"\[time:[^\]]+\]", r"\[gtask:[^\]]+\]", r"\[G\]"]:
+    for pat in [r"\(\d{4}-\d{2}-\d{2}\)",
+                r"🔄\S+", r"\[recur:[^\]]+\]",
+                r"🔔\S+", r"\[ring:[^\]]+\]",
+                r"⏰\S+", r"\[time:[^\]]+\]",
+                r"☁️", r"\[G\]", r"\[gtask:[^\]]+\]"]:
         desc = re.sub(pat, "", desc)
     desc = desc.strip()
 
@@ -166,16 +170,16 @@ def _format_task_line(task: dict) -> str:
     if task.get("date"):
         parts.append(f"({task['date']})")
     if task.get("time"):
-        parts.append(f"[time:{task['time']}]")
+        parts.append(f"⏰{task['time']}")
     if task.get("recur"):
         recur_tag = task["recur"]
         if task.get("until"):
             recur_tag += f":{task['until']}"
-        parts.append(f"[recur:{recur_tag}]")
+        parts.append(f"🔄{recur_tag}")
     if task.get("ring"):
-        parts.append(f"[ring:{task['ring']}]")
+        parts.append(f"🔔{task['ring']}")
     if task.get("synced"):
-        parts.append("[G]")
+        parts.append("☁️")
     return f"- [{char}] {' '.join(parts)}"
 
 
@@ -190,30 +194,35 @@ def _parse_event_line(line: str) -> Optional[dict]:
     rest     = m.group(2)
     end = recur = until = ring = time_val = None
     synced = False
-    end_m = re.search(r"\[end:(\d{4}-\d{2}-\d{2})\]", rest)
+    # End: emoji →YYYY-MM-DD or legacy [end:]
+    end_m = re.search(r"→(\d{4}-\d{2}-\d{2})", rest) or re.search(r"\[end:(\d{4}-\d{2}-\d{2})\]", rest)
     if end_m:
         end  = end_m.group(1)
-    time_m = re.search(r"\[time:([^\]]+)\]", rest)
+    # Time: emoji ⏰ or legacy [time:]
+    time_m = re.search(r"⏰(\S+)", rest) or re.search(r"\[time:([^\]]+)\]", rest)
     if time_m:
         time_val = time_m.group(1)
-    recur_m = re.search(r"\[recur:([^\]]+)\]", rest)
+    # Recur: emoji 🔄 or legacy [recur:]
+    recur_m = re.search(r"🔄(\S+)", rest) or re.search(r"\[recur:([^\]]+)\]", rest)
     if recur_m:
         raw = recur_m.group(1)
         if ":" in raw:
             recur, until = raw.split(":", 1)
         else:
             recur = raw
-    ring_m = re.search(r"\[ring:([^\]]+)\]", rest)
+    # Ring: emoji 🔔 or legacy [ring:]
+    ring_m = re.search(r"🔔(\S+)", rest) or re.search(r"\[ring:([^\]]+)\]", rest)
     if ring_m:
         ring = ring_m.group(1)
-    if re.search(r"\[G\]", rest):
+    # Synced: emoji ☁️ or legacy [G] or [gcal:]
+    if re.search(r"☁️", rest) or re.search(r"\[G\]", rest) or re.search(r"\[gcal:[^\]]+\]", rest):
         synced = True
-    # Legacy: parse old [gcal:...] as synced
-    if re.search(r"\[gcal:[^\]]+\]", rest):
-        synced = True
-    # Strip attribute tags from description
-    for pat in [r"\[end:[^\]]+\]", r"\[time:[^\]]+\]", r"\[recur:[^\]]+\]",
-                r"\[ring:[^\]]+\]", r"\[gcal:[^\]]+\]", r"\[G\]"]:
+    # Strip attribute tags from description (both emoji and legacy)
+    for pat in [r"→\d{4}-\d{2}-\d{2}", r"\[end:[^\]]+\]",
+                r"⏰\S+", r"\[time:[^\]]+\]",
+                r"🔄\S+", r"\[recur:[^\]]+\]",
+                r"🔔\S+", r"\[ring:[^\]]+\]",
+                r"☁️", r"\[G\]", r"\[gcal:[^\]]+\]"]:
         rest = re.sub(pat, "", rest)
     rest = rest.strip()
     return {"date": date_val, "desc": rest, "end": end, "time": time_val,
@@ -224,35 +233,91 @@ def _format_event_line(ev: dict) -> str:
     """Serialize an event dict → markdown line."""
     line = f"{ev['date']} — {ev['desc']}"
     if ev.get("end"):
-        line += f" [end:{ev['end']}]"
+        line += f" →{ev['end']}"
     if ev.get("time"):
-        line += f" [time:{ev['time']}]"
+        line += f" ⏰{ev['time']}"
     if ev.get("recur"):
         recur_tag = ev["recur"]
         if ev.get("until"):
             recur_tag += f":{ev['until']}"
-        line += f" [recur:{recur_tag}]"
+        line += f" 🔄{recur_tag}"
     if ev.get("ring"):
-        line += f" [ring:{ev['ring']}]"
+        line += f" 🔔{ev['ring']}"
     if ev.get("synced"):
-        line += " [G]"
+        line += " ☁️"
     return line
+
+
+# ── Reminder line parsing ──────────────────────────────────────────────────────
+
+def _parse_reminder_line(line: str) -> Optional[dict]:
+    """Parse - / [-] reminder line → dict with desc/date/time/recur."""
+    m = re.match(r"^- (?:\[-\] )?(.+)$", line)
+    if not m:
+        return None
+    rest = m.group(0)
+    cancelled = rest.startswith("- [-]")
+    rest = m.group(1)
+
+    date_val = recur = until = time_val = None
+    date_m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", rest)
+    if date_m:
+        date_val = date_m.group(1)
+    time_m = re.search(r"⏰(\S+)", rest) or re.search(r"\[time:([^\]]+)\]", rest)
+    if time_m:
+        time_val = time_m.group(1)
+    recur_m = re.search(r"🔄(\S+)", rest) or re.search(r"\[recur:([^\]]+)\]", rest)
+    if recur_m:
+        raw = recur_m.group(1)
+        if ":" in raw:
+            recur, until = raw.split(":", 1)
+        else:
+            recur = raw
+
+    desc = rest
+    for pat in [r"\(\d{4}-\d{2}-\d{2}\)", r"⏰\S+", r"\[time:[^\]]+\]",
+                r"🔄\S+", r"\[recur:[^\]]+\]"]:
+        desc = re.sub(pat, "", desc)
+    desc = desc.strip()
+
+    if not date_val or not time_val:
+        return None  # recordatorios require both date and time
+
+    return {"desc": desc, "date": date_val, "time": time_val,
+            "recur": recur, "until": until,
+            "cancelled": cancelled}
+
+
+def _format_reminder_line(rem: dict) -> str:
+    """Serialize a reminder dict → markdown line."""
+    prefix = "- [-] " if rem.get("cancelled") else "- "
+    parts = [rem["desc"]]
+    if rem.get("date"):
+        parts.append(f"({rem['date']})")
+    if rem.get("time"):
+        parts.append(f"⏰{rem['time']}")
+    if rem.get("recur"):
+        recur_tag = rem["recur"]
+        if rem.get("until"):
+            recur_tag += f":{rem['until']}"
+        parts.append(f"🔄{recur_tag}")
+    return f"{prefix}{' '.join(parts)}"
 
 
 # ── Agenda file I/O ────────────────────────────────────────────────────────────
 
 def _read_agenda(path: Path) -> dict:
-    """Parse agenda.md → {header, tasks, milestones, events}.
+    """Parse agenda.md → {header, tasks, milestones, events, reminders}.
 
     Indented lines (4+ spaces or tab) after an item are collected as
     ``notes`` (list of strings, without the leading whitespace).
     """
     if not path.exists():
-        return {"header": ["# Agenda"], "tasks": [], "milestones": [], "events": []}
+        return {"header": ["# Agenda"], "tasks": [], "milestones": [], "events": [], "reminders": []}
 
     lines   = path.read_text().splitlines()
-    result  = {"header": [], "tasks": [], "milestones": [], "events": []}
-    section = None   # "tasks" | "milestones" | "events" | None
+    result  = {"header": [], "tasks": [], "milestones": [], "events": [], "reminders": []}
+    section = None   # "tasks" | "milestones" | "events" | "reminders" | None
     last_item = None  # reference to last parsed item dict (for notes)
 
     for line in lines:
@@ -274,6 +339,8 @@ def _read_agenda(path: Path) -> dict:
                 section = "milestones"; last_item = None
             elif line == _EV_HEADER:
                 section = "events"; last_item = None
+            elif line == _REM_HEADER:
+                section = "reminders"; last_item = None
             else:
                 result["header"].append(line)
         elif line == _TASK_HEADER:
@@ -282,6 +349,8 @@ def _read_agenda(path: Path) -> dict:
             section = "milestones"; last_item = None
         elif line == _EV_HEADER:
             section = "events"; last_item = None
+        elif line == _REM_HEADER:
+            section = "reminders"; last_item = None
         elif not line.strip():
             continue   # skip blank lines inside sections (keep last_item for notes)
         elif section == "tasks":
@@ -299,6 +368,11 @@ def _read_agenda(path: Path) -> dict:
             if e:
                 result["events"].append(e)
                 last_item = e
+        elif section == "reminders":
+            r = _parse_reminder_line(line)
+            if r:
+                result["reminders"].append(r)
+                last_item = r
 
     return result
 
@@ -334,6 +408,12 @@ def _write_agenda(path: Path, data: dict) -> None:
             out.append(_format_event_line(ev))
             for note in ev.get("notes") or []:
                 out.append(f"    {note}")
+        out.append("")
+
+    if data.get("reminders"):
+        out.append(_REM_HEADER)
+        for rem in sorted(data["reminders"], key=lambda r: (r["date"], r["time"])):
+            out.append(_format_reminder_line(rem))
         out.append("")
 
     from core.undo import save_snapshot
@@ -562,13 +642,13 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
 
     attrs = ""
     if date_val: attrs += f" ({date_val})"
-    if time_val: attrs += f" [time:{time_val}]"
+    if time_val: attrs += f" ⏰{time_val}"
     if recur:
         recur_s = recur
         if until:
             recur_s += f":{until}"
-        attrs += f" [recur:{recur_s}]"
-    if ring:     attrs += f" [ring:{ring}]"
+        attrs += f" 🔄{recur_s}"
+    if ring:     attrs += f" 🔔{ring}"
     print(f"✓ [{project_dir.name}] Tarea: {text}{attrs}")
 
     # Schedule reminder immediately if ring fires today
@@ -794,11 +874,10 @@ def run_task_list(projects: Optional[list] = None,
             date_s   = f" ({t['date']})" if t.get("date") else ""
             recur_s = ""
             if t.get("recur"):
-                recur_s = f" [recur:{t['recur']}"
+                recur_s = f" 🔄{t['recur']}"
                 if t.get("until"):
                     recur_s += f":{t['until']}"
-                recur_s += "]"
-            ring_s   = f" [ring:{t['ring']}]"   if t.get("ring")  else ""
+            ring_s   = f" 🔔{t['ring']}"   if t.get("ring")  else ""
             print(f"  {status_s} {t['desc']}{date_s}{recur_s}{ring_s}")
             total += 1
 
@@ -860,12 +939,12 @@ def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
 
     attrs = ""
     if date_val: attrs += f" ({date_val})"
-    if time_val: attrs += f" [time:{time_val}]"
+    if time_val: attrs += f" ⏰{time_val}"
     if recur:
         recur_s = recur
         if until: recur_s += f":{until}"
-        attrs += f" [recur:{recur_s}]"
-    if ring:     attrs += f" [ring:{ring}]"
+        attrs += f" 🔄{recur_s}"
+    if ring:     attrs += f" 🔔{ring}"
     print(f"✓ [{project_dir.name}] Hito: {text}{attrs}")
 
     # Schedule reminder immediately if ring fires today
@@ -1117,13 +1196,13 @@ def run_ev_add(project: str, text: str, date_val: str,
     _write_agenda(agenda_path, data)
 
     attrs = ""
-    if time_val: attrs += f" {time_val}"
-    if end_date: attrs += f" → {end_date}"
+    if time_val: attrs += f" ⏰{time_val}"
+    if end_date: attrs += f" →{end_date}"
     if recur:
         recur_s = recur
         if until: recur_s += f":{until}"
-        attrs += f" [recur:{recur_s}]"
-    if ring: attrs += f" [ring:{ring}]"
+        attrs += f" 🔄{recur_s}"
+    if ring: attrs += f" 🔔{ring}"
     print(f"✓ [{project_dir.name}] Evento: {date_val} — {text}{attrs}")
 
     # Schedule reminder immediately if ring fires today
@@ -1321,6 +1400,150 @@ def run_ev_list(project: Optional[str] = None,
 
     if not total:
         print("No hay eventos.")
+    else:
+        print()
+    return 0
+
+
+# ── Reminder commands ─────────────────────────────────────────────────────────
+
+def run_reminder_add(project: str, text: str, date_val: str,
+                     time_val: str,
+                     recur: Optional[str] = None,
+                     until: Optional[str] = None) -> int:
+    """Add a reminder to a project's agenda."""
+    project_dir = _find_new_project(project)
+    if project_dir is None:
+        return 1
+
+    if recur:
+        recur = _normalize_recur(recur)
+        if not _is_valid_recur(recur):
+            print(f"⚠️  Recurrencia no válida: {recur}")
+            return 1
+
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    new_rem = {"desc": text, "date": date_val, "time": time_val,
+               "recur": recur, "until": until, "cancelled": False}
+    data.setdefault("reminders", []).append(new_rem)
+    _write_agenda(agenda_path, data)
+
+    attrs = f"({date_val}) ⏰{time_val}"
+    if recur:
+        recur_s = recur
+        if until:
+            recur_s += f":{until}"
+        attrs += f" 🔄{recur_s}"
+    print(f"✓ [{project_dir.name}] Recordatorio: {text} {attrs}")
+
+    # Schedule notification immediately if it fires today
+    from datetime import date as _date
+    if date_val == _date.today().isoformat():
+        from core.ring import resolve_ring_datetime, _schedule_reminder
+        from datetime import datetime
+        fire_dt = datetime.fromisoformat(f"{date_val}T{time_val}:00")
+        if fire_dt > datetime.now():
+            ok = _schedule_reminder(f"💬 {text}", project_dir.name, fire_dt)
+            if ok:
+                print(f"  🔔 Notificación programada para hoy a las {time_val}")
+
+    return 0
+
+
+def run_reminder_cancel(project: Optional[str], text: Optional[str]) -> int:
+    """Cancel a reminder (mark as [-])."""
+    if project:
+        project_dir = _find_new_project(project)
+        if project_dir is None:
+            return 1
+        dirs = [project_dir]
+    else:
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+
+    for project_dir in dirs:
+        agenda_path = resolve_file(project_dir, "agenda")
+        data = _read_agenda(agenda_path)
+        reminders = [r for r in data.get("reminders", []) if not r.get("cancelled")]
+        if not reminders:
+            continue
+
+        idx = _select_item_reminder(reminders, text)
+        if idx is None:
+            continue
+
+        rem = reminders[idx]
+        # Find in original list and cancel
+        for r in data["reminders"]:
+            if r is rem:
+                r["cancelled"] = True
+                break
+
+        _write_agenda(agenda_path, data)
+        print(f"✓ [{project_dir.name}] Recordatorio cancelado: {rem['desc']}")
+        return 0
+
+    print("No se encontró el recordatorio.")
+    return 1
+
+
+def _select_item_reminder(items: list, text: Optional[str]) -> Optional[int]:
+    """Select a reminder by partial match or interactive list."""
+    if text:
+        from core.config import normalize
+        norm = normalize(text)
+        matches = [(i, r) for i, r in enumerate(items)
+                   if norm in normalize(r["desc"])]
+        if len(matches) == 1:
+            return matches[0][0]
+        if len(matches) > 1:
+            print(f"⚠️  Múltiples coincidencias para '{text}':")
+            for i, r in matches:
+                print(f"  [{i+1}] {r['desc']} ({r['date']}) ⏰{r['time']}")
+            return None
+        print(f"⚠️  No se encontró recordatorio con '{text}'")
+        return None
+    # Interactive
+    import sys
+    if not sys.stdin.isatty():
+        return None
+    for i, r in enumerate(items):
+        print(f"  [{i+1}] {r['desc']} ({r['date']}) ⏰{r['time']}")
+    try:
+        choice = input("Selecciona (#): ").strip()
+        idx = int(choice) - 1
+        if 0 <= idx < len(items):
+            return idx
+    except (ValueError, EOFError, KeyboardInterrupt):
+        pass
+    return None
+
+
+def run_reminder_list(project: Optional[str] = None) -> int:
+    """List active reminders."""
+    if project:
+        project_dir = _find_new_project(project)
+        if project_dir is None:
+            return 1
+        dirs = [project_dir]
+    else:
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+
+    total = 0
+    for project_dir in dirs:
+        data = _read_agenda(resolve_file(project_dir, "agenda"))
+        reminders = [r for r in data.get("reminders", []) if not r.get("cancelled")]
+        if not reminders:
+            continue
+
+        print(f"\n[{project_dir.name}]")
+        for r in sorted(reminders, key=lambda x: (x["date"], x["time"])):
+            recur_s = f" 🔄{r['recur']}" if r.get("recur") else ""
+            print(f"  💬 {r['desc']} ({r['date']}) ⏰{r['time']}{recur_s}")
+            total += 1
+
+    if not total:
+        print("No hay recordatorios activos.")
     else:
         print()
     return 0

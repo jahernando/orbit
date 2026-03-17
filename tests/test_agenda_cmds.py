@@ -111,7 +111,7 @@ class TestParseTaskLine:
         from core.agenda_cmds import _parse_task_line, _format_task_line
         line = "- [ ] My task (2026-04-01) [recur:monthly] [ring:2h]"
         t = _parse_task_line(line)
-        assert _format_task_line(t) == line
+        assert _format_task_line(t) == "- [ ] My task (2026-04-01) 🔄monthly 🔔2h"
 
     def test_format_pending_no_date(self):
         from core.agenda_cmds import _format_task_line
@@ -150,7 +150,7 @@ class TestParseEventLine:
     def test_roundtrip(self):
         from core.agenda_cmds import _parse_event_line, _format_event_line
         line = "2026-06-01 — Summer school [end:2026-06-05]"
-        assert _format_event_line(_parse_event_line(line)) == line
+        assert _format_event_line(_parse_event_line(line)) == "2026-06-01 — Summer school →2026-06-05"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -940,7 +940,7 @@ class TestEventTime:
               "time": "10:00-11:30", "recur": None, "until": None,
               "ring": None, "synced": False}
         line = _format_event_line(ev)
-        assert "[time:10:00-11:30]" in line
+        assert "⏰10:00-11:30" in line
 
     def test_format_event_without_time(self):
         from core.agenda_cmds import _format_event_line
@@ -948,7 +948,7 @@ class TestEventTime:
               "time": None, "recur": None, "until": None,
               "ring": None, "synced": False}
         line = _format_event_line(ev)
-        assert "[time:" not in line
+        assert "⏰" not in line
 
     def test_roundtrip_event_with_time(self):
         from core.agenda_cmds import _parse_event_line, _format_event_line
@@ -957,8 +957,8 @@ class TestEventTime:
         assert ev["time"] == "10:00-11:30"
         assert ev["recur"] == "weekly"
         formatted = _format_event_line(ev)
-        assert "[time:10:00-11:30]" in formatted
-        assert "[recur:weekly]" in formatted
+        assert "⏰10:00-11:30" in formatted
+        assert "🔄weekly" in formatted
 
     def test_roundtrip_all_fields(self):
         from core.agenda_cmds import _parse_event_line, _format_event_line
@@ -970,8 +970,8 @@ class TestEventTime:
         assert ev["ring"] == "1d"
         assert ev["synced"] is True
         formatted = _format_event_line(ev)
-        assert "[time:09:00]" in formatted
-        assert "[end:2026-03-17]" in formatted
+        assert "⏰09:00" in formatted
+        assert "→2026-03-17" in formatted
 
     def test_add_event_with_time(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_ev_add, _read_agenda

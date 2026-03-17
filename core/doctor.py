@@ -418,6 +418,23 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     else:
         issues = check_all_projects()
 
+    # Check gsync drift (items changed since last sync)
+    try:
+        from core.gsync import check_gsync_drift
+        drift = check_gsync_drift()
+        if drift:
+            print(f"  ☁️  {len(drift)} item{'s' if len(drift) != 1 else ''} modificado{'s' if len(drift) != 1 else ''} desde último gsync:")
+            print()
+            for proj, kind, desc, diffs in drift:
+                print(f"  ⚠️  [{proj}] {kind}: {desc}")
+                for d in diffs:
+                    print(f"      {d}")
+                print()
+            print("  → Ejecuta `orbit gsync` para sincronizar los cambios con Google.")
+            print()
+    except Exception:
+        pass  # gsync not configured or not available
+
     if not issues:
         print("✓ Todo en orden — no se encontraron problemas.")
         return 0
