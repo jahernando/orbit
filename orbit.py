@@ -25,7 +25,7 @@ from core.project_view import run_new_view, run_new_open
 from core.notes import run_note_create, run_note_open, run_note_list, run_note_drop
 from core.commit import run_commit
 from core.migrate import run_migrate, run_migrate_all
-from core.agenda_view import run_agenda
+from core.agenda_view import run_agenda, run_cal
 from core.ls import run_ls_files, run_ls_notes
 from core.gsync import run_gsync
 from core.history import log_history, run_history
@@ -498,6 +498,17 @@ def cmd_agenda(args):
     return _handle_output(args, fn, "agenda")
 
 
+def cmd_cal(args):
+    to_file = getattr(args, "open", False) or getattr(args, "log", None)
+    fn = lambda: run_cal(
+        date_str=_d(getattr(args, "date", None)),
+        date_from=_d(getattr(args, "date_from", None)),
+        date_to=_d(getattr(args, "date_to", None)),
+        markdown=bool(to_file),
+    )
+    return _handle_output(args, fn, "cal")
+
+
 def cmd_report(args):
     fn = lambda: run_report(
         projects=getattr(args, "projects", None) or None,
@@ -836,6 +847,18 @@ def main():
     ag_p.add_argument("--open",   action="store_true", help="Open in editor")
     ag_p.add_argument("--editor", default=None)
     _add_log_args(ag_p)
+
+    # --- cal ---
+    cal_p = subparsers.add_parser("cal",
+                                  help="Show a plain calendar grid (no agenda data)")
+    cal_p.add_argument("--date", default=None, help="Date: YYYY-MM-DD, YYYY-MM, YYYY-Wnn...")
+    cal_p.add_argument("--from", dest="date_from", default=None, metavar="DATE",
+                       help="Period start (default: 1st of current month)")
+    cal_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
+                       help="Period end (default: last day of current month)")
+    cal_p.add_argument("--open", action="store_true", help="Open in editor")
+    cal_p.add_argument("--editor", default=None)
+    _add_log_args(cal_p)
 
     # --- gsync ---
     gsync_p = subparsers.add_parser("gsync",
@@ -1201,7 +1224,7 @@ def main():
         "report": cmd_report, "open": cmd_open,
         "import": cmd_import,
         "project": cmd_project, "migrate": cmd_migrate,
-        "ls": cmd_ls, "agenda": cmd_agenda, "gsync": cmd_gsync,
+        "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync,
         "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
         "history": cmd_history, "claude": cmd_claude,
     }

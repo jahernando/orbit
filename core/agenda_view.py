@@ -528,6 +528,165 @@ def _week_overlaps(week, y, m, start, end):
     return False
 
 
+# ── Plain calendar (no agenda data) ──────────────────────────────────────────
+
+def _parse_cal_period(date_str, date_from, date_to):
+    """Return (start, end) for `cal`.  Default is the current month."""
+    today = date.today()
+
+    def _start(s):
+        if "W" in s:
+            y, w = int(s[:4]), int(s.split("W")[1])
+            return date.fromisocalendar(y, w, 1)
+        if len(s) == 7:
+            y, m = int(s[:4]), int(s[5:7])
+            return date(y, m, 1)
+        return date.fromisoformat(s)
+
+    def _end(s):
+        if "W" in s:
+            y, w = int(s[:4]), int(s.split("W")[1])
+            return date.fromisocalendar(y, w, 7)
+        if len(s) == 7:
+            y, m = int(s[:4]), int(s[5:7])
+            return date(y, m, _cal.monthrange(y, m)[1])
+        return date.fromisoformat(s)
+
+    if date_from or date_to:
+        s = _start(date_from) if date_from else date(today.year, today.month, 1)
+        e = _end(date_to) if date_to else date(today.year, today.month, _cal.monthrange(today.year, today.month)[1])
+        return s, e
+    if date_str:
+        if "W" in date_str:
+            return _start(date_str), _end(date_str)
+        if len(date_str) == 7:
+            y, m = int(date_str[:4]), int(date_str[5:7])
+            return date(y, m, 1), date(y, m, _cal.monthrange(y, m)[1])
+        d = date.fromisoformat(date_str)
+        return d, d
+    # default: current month
+    return date(today.year, today.month, 1), date(today.year, today.month, _cal.monthrange(today.year, today.month)[1])
+
+
+def _plain_calendar_ansi(start: date, end: date) -> None:
+    """Print a plain calendar grid (no agenda data) using ANSI codes."""
+    today = date.today()
+    end = _cap_end(start, end)
+    lines = []
+
+    current = date(start.year, start.month, 1)
+    while current <= end:
+        y, m = current.year, current.month
+        month_name = _MONTH_NAMES[m]
+        cal = _cal.Calendar(firstweekday=0)
+        weeks = [w for w in cal.monthdayscalendar(y, m)
+                 if _week_overlaps(w, y, m, start, end)]
+
+        if weeks:
+            lines.append("")
+            lines.append(f"  {_BOLD}{month_name} {y}{_RESET}")
+            lines.append(f"  {_BLUE}{_BOLD} Wk{_RESET}  {_DIM}Lu  Ma  Mi  Ju  Vi{_RESET}  Sa  Do")
+
+            for week in weeks:
+                first_day = next((d for d in week if d != 0), None)
+                if first_day is None:
+                    continue
+                wk_num = date(y, m, first_day).isocalendar()[1]
+                row = f"  {_BLUE}{_BOLD}W{wk_num:02d}{_RESET}  "
+
+                for day in week:
+                    if day == 0:
+                        row += "    "
+                        continue
+                    d = date(y, m, day)
+                    label = f"{day:>2}"
+                    in_range = start <= d <= end
+
+                    if not in_range:
+                        cell = f"{_DIM}{label}{_RESET}"
+                    elif d == today:
+                        cell = f"{_BG_TODAY}{_BOLD}{label}{_RESET}"
+                    else:
+                        cell = label
+                    row += cell + "  "
+
+                lines.append(row)
+
+        current = date(y, m + 1, 1) if m < 12 else date(y + 1, 1, 1)
+
+    lines.append("")
+    lines.append(f"  {_BG_TODAY} hoy {_RESET}")
+    lines.append("")
+    print("\n".join(lines))
+
+
+def _plain_calendar_md(start: date, end: date) -> None:
+    """Print a plain calendar grid in markdown (no agenda data)."""
+    today = date.today()
+    end = _cap_end(start, end)
+    lines = []
+
+    current = date(start.year, start.month, 1)
+    while current <= end:
+        y, m = current.year, current.month
+        month_name = _MONTH_NAMES[m]
+        cal = _cal.Calendar(firstweekday=0)
+        weeks = [w for w in cal.monthdayscalendar(y, m)
+                 if _week_overlaps(w, y, m, start, end)]
+
+        if weeks:
+            lines.append(f"### {month_name} {y}")
+            lines.append("")
+            lines.append("| Wk | Lu | Ma | Mi | Ju | Vi | Sa | Do |")
+            lines.append("|---:|---:|---:|---:|---:|---:|---:|---:|")
+
+            for week in weeks:
+                first_day = next((d for d in week if d != 0), None)
+                if first_day is None:
+                    continue
+                wk_num = date(y, m, first_day).isocalendar()[1]
+                cells = [f"**W{wk_num:02d}**"]
+
+                for day in week:
+                    if day == 0:
+                        cells.append("")
+                        continue
+                    d = date(y, m, day)
+                    in_range = start <= d <= end
+
+                    if not in_range:
+                        cells.append(f"~~{day}~~")
+                    elif d == today:
+                        cells.append(f"**[{day}]**")
+                    else:
+                        cells.append(str(day))
+
+                lines.append("| " + " | ".join(cells) + " |")
+
+            lines.append("")
+
+        current = date(y, m + 1, 1) if m < 12 else date(y + 1, 1, 1)
+
+    lines.append("**[N]** hoy")
+    lines.append("")
+    print("\n".join(lines))
+
+
+def run_cal(
+    date_str: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    markdown: bool = False,
+) -> int:
+    """Print a plain calendar grid (no agenda data)."""
+    start, end = _parse_cal_period(date_str, date_from, date_to)
+    if markdown:
+        _plain_calendar_md(start, end)
+    else:
+        _plain_calendar_ansi(start, end)
+    return 0
+
+
 _DAY_NAMES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 
