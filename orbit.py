@@ -17,7 +17,7 @@ from core.agenda_cmds import (
     run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list,
     run_ms_add, run_ms_done, run_ms_drop, run_ms_edit, run_ms_list,
     run_ev_add, run_ev_drop, run_ev_edit, run_ev_list, run_ev_log,
-    run_reminder_add, run_reminder_drop, run_reminder_list,
+    run_reminder_add, run_reminder_drop, run_reminder_edit, run_reminder_list,
 )
 from core.highlights import (
     run_hl_add, run_hl_drop, run_hl_edit, run_hl_list, VALID_TYPES as HL_TYPES,
@@ -430,6 +430,16 @@ def cmd_reminder(args):
             force      = getattr(args, "force", False),
             occurrence = getattr(args, "occurrence", False),
             series     = getattr(args, "series", False),
+        )
+    if action == "edit":
+        return run_reminder_edit(
+            project   = getattr(args, "project", None),
+            text      = getattr(args, "text", None),
+            new_text  = getattr(args, "new_text", None),
+            new_date  = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
+            new_time  = getattr(args, "new_time", None),
+            new_recur = getattr(args, "new_recur", None),
+            new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
         )
     if action == "list":
         return run_reminder_list(
@@ -1084,6 +1094,15 @@ def main():
     rem_drop.add_argument("--force", action="store_true", help="Skip confirmation")
     rem_drop.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only (advance to next)")
     rem_drop.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
+
+    rem_edit = rem_sub.add_parser("edit", help="Edit a reminder")
+    rem_edit.add_argument("project", nargs="?", default=None)
+    rem_edit.add_argument("text",    nargs="?", default=None)
+    rem_edit.add_argument("--text",  dest="new_text",  default=None, help="New description")
+    rem_edit.add_argument("--date",  dest="new_date",  default=None, help="New date (or 'none')")
+    rem_edit.add_argument("--time",  dest="new_time",  default=None, help="New time HH:MM (or 'none')")
+    rem_edit.add_argument("--recur", dest="new_recur", default=None, help="New recurrence (or 'none')")
+    rem_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
 
     rem_list = rem_sub.add_parser("list", help="List active reminders")
     rem_list.add_argument("project", nargs="?", default=None)

@@ -859,6 +859,14 @@ def run_task_drop(project: Optional[str], text: Optional[str],
         add_orbit_entry(project_dir, f"[cancelada] Tarea: {task_desc}{next_info}", "apunte")
         print(f"✓ [{project_dir.name}] [cancelada] {task_desc}{next_info}")
 
+    # Delete Mac reminder if ring was firing today
+    if task.get("ring") and task.get("date"):
+        from core.ring import resolve_ring_datetime, _delete_reminder
+        ring_dt = resolve_ring_datetime(task["date"], task["ring"],
+                                        due_time=task.get("time"))
+        if ring_dt and ring_dt.date() == date.today():
+            _delete_reminder(task_desc, project_dir.name)
+
     # Sync cancelled task to Google
     from core.gsync import sync_item
     sync_item(project_dir, task, "task")
@@ -906,6 +914,7 @@ def run_task_edit(project: Optional[str], text: Optional[str],
         return 1
 
     task = data["tasks"][idx]
+    old_desc = task["desc"]
     if new_text:  task["desc"]  = new_text
     if new_date:
         task["date"]  = None if new_date == "none" else new_date
@@ -922,6 +931,18 @@ def run_task_edit(project: Optional[str], text: Optional[str],
 
     _write_agenda(agenda_path, data)
     print(f"✓ [{project_dir.name}] Tarea actualizada: {task['desc']}")
+
+    # Update Mac reminder if ring fires today
+    if task.get("ring") and task.get("date"):
+        from core.ring import resolve_ring_datetime, _schedule_reminder, _delete_reminder
+        ring_dt = resolve_ring_datetime(task["date"], task["ring"],
+                                        due_time=task.get("time"))
+        if ring_dt and ring_dt.date() == date.today():
+            if new_text or new_time or new_ring:
+                _delete_reminder(old_desc, project_dir.name)
+            ok = _schedule_reminder(task["desc"], project_dir.name, ring_dt)
+            if ok:
+                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
 
     # Sync updated task to Google
     from core.gsync import sync_item
@@ -1166,6 +1187,14 @@ def run_ms_drop(project: Optional[str], text: Optional[str],
         add_orbit_entry(project_dir, f"[cancelado] Hito: {ms_desc}{next_info}", "apunte")
         print(f"✓ [{project_dir.name}] [cancelado] {ms_desc}{next_info}")
 
+    # Delete Mac reminder if ring was firing today
+    if ms.get("ring") and ms.get("date"):
+        from core.ring import resolve_ring_datetime, _delete_reminder
+        ring_dt = resolve_ring_datetime(ms["date"], ms["ring"],
+                                        due_time=ms.get("time"))
+        if ring_dt and ring_dt.date() == date.today():
+            _delete_reminder(ms_desc, project_dir.name)
+
     from core.gsync import sync_item
     sync_item(project_dir, ms, "milestone")
 
@@ -1212,6 +1241,7 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
         return 1
 
     ms = data["milestones"][idx]
+    old_desc = ms["desc"]
     if new_text:  ms["desc"]  = new_text
     if new_date:  ms["date"]  = None if new_date  == "none" else new_date
     if new_recur: ms["recur"] = None if new_recur == "none" else new_recur
@@ -1223,6 +1253,18 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
 
     _write_agenda(agenda_path, data)
     print(f"✓ [{project_dir.name}] Hito actualizado: {ms['desc']}")
+
+    # Update Mac reminder if ring fires today
+    if ms.get("ring") and ms.get("date"):
+        from core.ring import resolve_ring_datetime, _schedule_reminder, _delete_reminder
+        ring_dt = resolve_ring_datetime(ms["date"], ms["ring"],
+                                        due_time=ms.get("time"))
+        if ring_dt and ring_dt.date() == date.today():
+            if new_text or new_time or new_ring:
+                _delete_reminder(old_desc, project_dir.name)
+            ok = _schedule_reminder(ms["desc"], project_dir.name, ring_dt)
+            if ok:
+                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
 
     from core.gsync import sync_item
     sync_item(project_dir, ms, "milestone")
@@ -1436,6 +1478,15 @@ def run_ev_drop(project: Optional[str], text: Optional[str],
             from core.gsync import delete_gcal_event
             delete_gcal_event(project_dir, ev_removed)
 
+    # Delete Mac reminder if ring was firing today
+    if ev_removed.get("ring") and ev_removed.get("date"):
+        from core.ring import resolve_ring_datetime, _delete_reminder
+        ev_time = ev_removed.get("time", "").split("-")[0] if ev_removed.get("time") else None
+        ring_dt = resolve_ring_datetime(ev_removed["date"], ev_removed["ring"],
+                                        due_time=ev_time)
+        if ring_dt and ring_dt.date() == date.today():
+            _delete_reminder(ev_removed["desc"], project_dir.name)
+
     return 0
 
 
@@ -1483,6 +1534,7 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
         return 1
 
     ev = data["events"][idx]
+    old_desc = ev["desc"]
     if new_text:  ev["desc"]  = new_text
     if new_date:  ev["date"]  = new_date
     if new_end:   ev["end"]   = None if new_end   == "none" else new_end
@@ -1495,6 +1547,18 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
 
     _write_agenda(agenda_path, data)
     print(f"✓ [{project_dir.name}] Evento actualizado: {ev['date']} — {ev['desc']}")
+
+    # Update Mac reminder if ring fires today
+    if ev.get("ring") and ev.get("date"):
+        from core.ring import resolve_ring_datetime, _schedule_reminder, _delete_reminder
+        ev_time = ev.get("time", "").split("-")[0] if ev.get("time") else None
+        ring_dt = resolve_ring_datetime(ev["date"], ev["ring"], due_time=ev_time)
+        if ring_dt and ring_dt.date() == date.today():
+            if new_text or new_time or new_ring:
+                _delete_reminder(old_desc, project_dir.name)
+            ok = _schedule_reminder(ev["desc"], project_dir.name, ring_dt)
+            if ok:
+                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
 
     from core.gsync import sync_item
     sync_item(project_dir, ev, "event")
@@ -1686,6 +1750,10 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
                         r["date"] = next_due
                         break
                 _write_agenda(agenda_path, data)
+                # Delete Mac reminder if it was for today
+                if rem.get("date") == date.today().isoformat() or rem.get("date") == today_str:
+                    from core.ring import _delete_reminder
+                    _delete_reminder(f"💬 {rem['desc']}", project_dir.name)
                 print(f"✓ [{project_dir.name}] Recordatorio avanzado: {rem['desc']} → {next_due}")
                 return 0
 
@@ -1696,10 +1764,84 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
                 break
 
         _write_agenda(agenda_path, data)
+        # Delete Mac reminder if it was for today
+        if rem.get("date") == date.today().isoformat():
+            from core.ring import _delete_reminder
+            _delete_reminder(f"💬 {rem['desc']}", project_dir.name)
         if drop_series:
             print(f"✓ [{project_dir.name}] Serie eliminada: {rem['desc']} ({rem['recur']})")
         else:
             print(f"✓ [{project_dir.name}] Recordatorio eliminado: {rem['desc']}{next_info}")
+        return 0
+
+    print("No se encontró el recordatorio.")
+    return 1
+
+
+def run_reminder_edit(project: Optional[str], text: Optional[str],
+                      new_text: Optional[str] = None, new_date: Optional[str] = None,
+                      new_time: Optional[str] = None, new_recur: Optional[str] = None,
+                      new_until: Optional[str] = None) -> int:
+    """Edit an existing reminder."""
+    if new_date and new_date != "none" and not _valid_date(new_date):
+        print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    if new_until and new_until != "none" and not _valid_date(new_until):
+        print(f"⚠️  Fecha --until '{new_until}' no reconocida.")
+        return 1
+    if new_recur and new_recur != "none":
+        new_recur = _normalize_recur(new_recur)
+    if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
+        print(f"⚠️  Recurrencia '{new_recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, ...")
+        return 1
+    if new_time and new_time != "none" and not re.match(r"^\d{2}:\d{2}$", new_time):
+        print(f"⚠️  Hora '{new_time}' no válida. Usa: HH:MM (ej. 15:00)")
+        return 1
+
+    if project:
+        project_dir = _find_new_project(project)
+        if project_dir is None:
+            return 1
+        dirs = [project_dir]
+    else:
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+
+    for project_dir in dirs:
+        agenda_path = resolve_file(project_dir, "agenda")
+        data = _read_agenda(agenda_path)
+        reminders = [r for r in data.get("reminders", []) if not r.get("cancelled")]
+        if not reminders:
+            continue
+
+        idx = _select_item_reminder(reminders, text)
+        if idx is None:
+            continue
+
+        rem = reminders[idx]
+        old_desc = rem["desc"]
+        if new_text:   rem["desc"]  = new_text
+        if new_date:   rem["date"]  = None if new_date == "none" else new_date
+        if new_time:   rem["time"]  = None if new_time == "none" else new_time
+        if new_recur:  rem["recur"] = None if new_recur == "none" else new_recur
+        if new_until:  rem["until"] = None if new_until == "none" else new_until
+
+        _write_agenda(agenda_path, data)
+        attrs = f"({rem.get('date', '?')}) ⏰{rem.get('time', '?')}"
+        if rem.get("recur"):
+            attrs += f" 🔄{rem['recur']}"
+        print(f"✓ [{project_dir.name}] Recordatorio actualizado: {rem['desc']} {attrs}")
+
+        # Update Mac reminder if fires today
+        if rem.get("date") and rem.get("time") and rem["date"] == date.today().isoformat():
+            from core.ring import _schedule_reminder, _delete_reminder
+            from datetime import datetime as _dt
+            fire_dt = _dt.combine(date.today(), time.fromisoformat(rem["time"]))
+            if new_text or new_time:
+                _delete_reminder(f"💬 {old_desc}", project_dir.name)
+            ok = _schedule_reminder(f"💬 {rem['desc']}", project_dir.name, fire_dt)
+            if ok:
+                print(f"  🔔 Notificación actualizada: {rem['time']}")
+
         return 0
 
     print("No se encontró el recordatorio.")

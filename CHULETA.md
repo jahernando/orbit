@@ -113,6 +113,7 @@ orbit ev list [<project>] [--from DATE] [--to DATE]
 ```bash
 orbit reminder add  <project> "<text>" --date DATE --time HH:MM [--recur FREQ] [--until DATE]
 orbit reminder drop [<project>] ["<text>"] [--force] [-o] [-s]
+orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none]
 orbit reminder list [<project>]
 ```
 

@@ -139,6 +139,31 @@ end tell
         return False
 
 
+def _delete_reminder(title: str, project: str) -> bool:
+    """Delete a reminder from macOS Reminders.app by title. Returns True on success."""
+    full_title = f"[{project}] {title}"
+    # Escape quotes for AppleScript
+    escaped = full_title.replace('"', '\\"')
+    script = f"""
+tell application "Reminders"
+    if (exists list "{REMINDERS_LIST}") then
+        tell list "{REMINDERS_LIST}"
+            set matchingReminders to (every reminder whose name is "{escaped}" and completed is false)
+            repeat with r in matchingReminders
+                delete r
+            end repeat
+        end tell
+    end if
+end tell
+"""
+    try:
+        result = subprocess.run(["osascript", "-e", script],
+                                capture_output=True, text=True)
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
 # ── Task ring collection ───────────────────────────────────────────────────────
 
 def _tasks_ringing_on(project_dir: Path, target: date) -> list:

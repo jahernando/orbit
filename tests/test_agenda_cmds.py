@@ -1331,3 +1331,67 @@ class TestAmbiguousSelectReminder:
         active = [r for r in data["reminders"] if not r.get("cancelled")]
         assert len(active) == 1
         assert active[0]["desc"] == "Llamar a Juan"  # Pedro (option 2) was dropped
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# run_reminder_edit
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestReminderEdit:
+    def test_edit_text(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_edit, _read_agenda
+        run_reminder_add("test-project", "Old title", date_val="2026-03-20",
+                         time_val="10:00")
+        rc = run_reminder_edit("test-project", "Old title", new_text="New title")
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["reminders"][0]["desc"] == "New title"
+        out = capsys.readouterr().out
+        assert "actualizado" in out
+
+    def test_edit_date(self, proj, projects_dir):
+        from core.agenda_cmds import run_reminder_add, run_reminder_edit, _read_agenda
+        run_reminder_add("test-project", "Move me", date_val="2026-03-20",
+                         time_val="10:00")
+        run_reminder_edit("test-project", "Move me", new_date="2026-04-01")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["reminders"][0]["date"] == "2026-04-01"
+
+    def test_edit_time(self, proj, projects_dir):
+        from core.agenda_cmds import run_reminder_add, run_reminder_edit, _read_agenda
+        run_reminder_add("test-project", "Change time", date_val="2026-03-20",
+                         time_val="10:00")
+        run_reminder_edit("test-project", "Change time", new_time="15:00")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["reminders"][0]["time"] == "15:00"
+
+    def test_edit_recur(self, proj, projects_dir):
+        from core.agenda_cmds import run_reminder_add, run_reminder_edit, _read_agenda
+        run_reminder_add("test-project", "Make recur", date_val="2026-03-20",
+                         time_val="10:00")
+        run_reminder_edit("test-project", "Make recur", new_recur="weekly")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["reminders"][0]["recur"] == "weekly"
+
+    def test_edit_remove_recur(self, proj, projects_dir):
+        from core.agenda_cmds import run_reminder_add, run_reminder_edit, _read_agenda
+        run_reminder_add("test-project", "Stop recur", date_val="2026-03-20",
+                         time_val="10:00", recur="daily")
+        run_reminder_edit("test-project", "Stop recur", new_recur="none")
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["reminders"][0]["recur"] is None
+
+    def test_edit_not_found(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_edit
+        run_reminder_add("test-project", "Exists", date_val="2026-03-20",
+                         time_val="10:00")
+        rc = run_reminder_edit("test-project", "Ghost")
+        assert rc == 1
+
+    def test_edit_invalid_time(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_edit
+        run_reminder_add("test-project", "Bad time", date_val="2026-03-20",
+                         time_val="10:00")
+        rc = run_reminder_edit("test-project", "Bad time", new_time="not-a-time")
+        assert rc == 1
+        assert "no válida" in capsys.readouterr().out

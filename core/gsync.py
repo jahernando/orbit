@@ -51,7 +51,13 @@ def _save_ids(project_dir: Path, ids: dict) -> None:
 
 
 def _item_key(item: dict) -> str:
-    """Build a unique key for an item: desc::date."""
+    """Build a unique key for an item.
+
+    Recurring events use desc::🔄{recur} (stable across date changes).
+    Non-recurring events use desc::date.
+    """
+    if item.get("recur"):
+        return f"{item.get('desc', '')}::🔄{item['recur']}"
     return f"{item.get('desc', '')}::{item.get('date', '')}"
 
 
@@ -279,13 +285,31 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
         return 0, 0, 0
 
     ids = _load_ids(project_dir)
+
+    # Migrate old recurring keys (desc::date → desc::🔄recur) for tasks/milestones
+    for item in data["tasks"] + data["milestones"]:
+        if not item.get("recur"):
+            continue
+        new_key = _item_key(item)
+        if new_key in ids:
+            continue
+        old_key = f"{item.get('desc', '')}::{item.get('date', '')}"
+        if old_key in ids:
+            ids[new_key] = ids.pop(old_key)
+
     created = updated = skipped = 0
     changed = False
     ids_changed = False
+    seen_recur_keys = set()
 
     # Sync tasks
     for t in data["tasks"]:
         key = _item_key(t)
+        if t.get("recur"):
+            if key in seen_recur_keys:
+                skipped += 1
+                continue
+            seen_recur_keys.add(key)
         t["_gtask_id"] = ids.get(key, {}).get("gtask_id")
         if t["status"] == "pending" or t.get("_gtask_id"):
             new_id = _sync_one_task(tasks_service, tasklist_id, t,
@@ -308,6 +332,11 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
     # Sync milestones
     for m in data["milestones"]:
         key = _item_key(m)
+        if m.get("recur"):
+            if key in seen_recur_keys:
+                skipped += 1
+                continue
+            seen_recur_keys.add(key)
         m["_gtask_id"] = ids.get(key, {}).get("gtask_id")
         if m["status"] == "pending" or m.get("_gtask_id"):
             new_id = _sync_one_task(tasks_service, tasklist_id, m,
@@ -494,15 +523,43 @@ def _sync_events_for_project(cal_service, project_dir: Path,
     description = _project_description(project_dir, config, html=True)
 
     ids = _load_ids(project_dir)
+
+    # Migrate old recurring keys (desc::date → desc::🔄recur)
+    for ev in data["events"]:
+        if not ev.get("recur"):
+            continue
+        new_key = _item_key(ev)
+        if new_key in ids:
+            continue
+        old_key = f"{ev.get('desc', '')}::{ev.get('date', '')}"
+        if old_key in ids:
+            ids[new_key] = ids.pop(old_key)
+
     created = updated = skipped = 0
     changed = False
     ids_changed = False
+    seen_recur_keys = set()
 
     for ev in data["events"]:
         key = _item_key(ev)
+
+        # Deduplicate recurring events: sync only the first occurrence
+        if ev.get("recur"):
+            if key in seen_recur_keys:
+                skipped += 1
+                continue
+            seen_recur_keys.add(key)
+
         ev["_gcal_id"] = ids.get(key, {}).get("gcal_id")
-        new_id = _sync_one_event(cal_service, calendar_id, ev,
-                                 project_name, description, dry_run)
+        try:
+            new_id = _sync_one_event(cal_service, calendar_id, ev,
+                                     project_name, description, dry_run)
+        except Exception as exc:
+            print(f"  ⚠️  Error sincronizando evento '{ev.get('desc', '?')}' "
+                  f"({ev.get('date', '?')}): {exc}")
+            ev.pop("_gcal_id", None)
+            skipped += 1
+            continue
         if new_id and not ev.get("_gcal_id"):
             ids.setdefault(key, {})["gcal_id"] = new_id
             ids[key]["snapshot"] = _make_snapshot(ev)
@@ -527,6 +584,83 @@ def _sync_events_for_project(cal_service, project_dir: Path,
 
 
 # ── List calendars ──────────────────────────────────────────────────────────
+
+def run_gsync_migrate_recurring(dry_run: bool = False) -> int:
+    """One-time migration: mark old single-event recurring items in Google Calendar
+    with ⚠️ ANTIGUO prefix and clear their gcal_id so gsync re-creates them as RRULE series.
+    """
+    config = _load_config()
+    cal_service = _get_calendar_service()
+    if not cal_service:
+        print("⚠️  No se pudo conectar con Google Calendar.")
+        return 1
+
+    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+    total = 0
+
+    for project_dir in dirs:
+        ids = _load_ids(project_dir)
+        if not ids:
+            continue
+
+        agenda_path = resolve_file(project_dir, "agenda")
+        data = _read_agenda(agenda_path)
+        ids_changed = False
+
+        for ev in data["events"]:
+            if not ev.get("recur"):
+                continue
+            key = _item_key(ev)
+            entry = ids.get(key, {})
+            gcal_id = entry.get("gcal_id")
+            if not gcal_id:
+                continue
+
+            # Mark old event in Google Calendar
+            label = f"[{project_dir.name}] {ev['desc']}"
+            if dry_run:
+                print(f"  ~ marcar: ⚠️ ANTIGUO: {label}")
+            else:
+                try:
+                    existing = cal_service.events().get(
+                        calendarId=_get_calendar_id(config, project_dir),
+                        eventId=gcal_id
+                    ).execute()
+                    existing["summary"] = f"⚠️ ANTIGUO: {existing.get('summary', label)}"
+                    cal_service.events().update(
+                        calendarId=_get_calendar_id(config, project_dir),
+                        eventId=gcal_id, body=existing
+                    ).execute()
+                    print(f"  ⚠️ Marcado: {label}")
+                except Exception as e:
+                    print(f"  ⚠️ Error marcando '{label}': {e}")
+
+            # Clear gcal_id so gsync creates a new RRULE series
+            entry.pop("gcal_id", None)
+            entry.pop("snapshot", None)
+            ev["synced"] = False
+            ids_changed = True
+            total += 1
+
+        if ids_changed and not dry_run:
+            _save_ids(project_dir, ids)
+            _write_agenda(agenda_path, data)
+
+    label = "  [dry-run]" if dry_run else ""
+    print(f"\n{total} evento{'s' if total != 1 else ''} recurrente{'s' if total != 1 else ''} migrado{'s' if total != 1 else ''}.{label}")
+    if total and not dry_run:
+        print("Ejecuta `orbit gsync` para crear las nuevas series RRULE.")
+    return 0
+
+
+def _get_calendar_id(config: dict, project_dir) -> str:
+    """Get the calendar ID for a project."""
+    tipo = _get_project_tipo(project_dir)
+    cal_id = config.get("calendars", {}).get(tipo)
+    if not cal_id:
+        cal_id = config.get("calendars", {}).get("default")
+    return cal_id
+
 
 def check_gsync_drift() -> list:
     """Check all synced items for drift (changes since last gsync).

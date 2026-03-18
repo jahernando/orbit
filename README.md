@@ -142,6 +142,7 @@ orbit ev list next-kr [--open]
 ```bash
 orbit reminder add mission "¡Revisa el correo!" --date 2026-03-18 --time 17:00
 orbit reminder add next-kr "Backup" --date 2026-03-20 --time 09:00 --recur weekly
+orbit reminder edit mission "correo" --text "Nuevo título" --time 18:00
 orbit reminder drop mission "correo"
 orbit reminder list [project]
 ```
