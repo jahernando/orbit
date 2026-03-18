@@ -1872,3 +1872,31 @@ def run_reminder_list(project: Optional[str] = None) -> int:
     else:
         print()
     return 0
+
+
+def run_reminder_log(project: Optional[str], text: Optional[str]) -> int:
+    """Create a logbook entry (#apunte) from an existing reminder."""
+    if project:
+        project_dir = _find_new_project(project)
+        if project_dir is None:
+            return 1
+        dirs = [project_dir]
+    else:
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+
+    for project_dir in dirs:
+        data = _read_agenda(resolve_file(project_dir, "agenda"))
+        reminders = [r for r in data.get("reminders", []) if not r.get("cancelled")]
+        if not reminders:
+            continue
+
+        idx = _select_item_reminder(reminders, text)
+        if idx is None:
+            continue
+
+        rem = reminders[idx]
+        from core.log import add_entry
+        return add_entry(project or project_dir.name, rem["desc"], "apunte", None, rem.get("date"))
+
+    print("No se encontró el recordatorio.")
+    return 1

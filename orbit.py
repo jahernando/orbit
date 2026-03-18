@@ -17,7 +17,7 @@ from core.agenda_cmds import (
     run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list, run_task_log,
     run_ms_add, run_ms_done, run_ms_drop, run_ms_edit, run_ms_list, run_ms_log,
     run_ev_add, run_ev_drop, run_ev_edit, run_ev_list, run_ev_log,
-    run_reminder_add, run_reminder_drop, run_reminder_edit, run_reminder_list,
+    run_reminder_add, run_reminder_drop, run_reminder_edit, run_reminder_list, run_reminder_log,
 )
 from core.highlights import (
     run_hl_add, run_hl_drop, run_hl_edit, run_hl_list, VALID_TYPES as HL_TYPES,
@@ -374,6 +374,7 @@ def cmd_reminder(args):
             new_recur=_ga(args, "new_recur"),
             new_until=_d(_ga(args, "new_until")) or _ga(args, "new_until"),
             new_desc=_ga(args, "new_desc"))
+    if action == "log":    return run_reminder_log(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "list":   return run_reminder_list(project=_ga(args, "project"))
     return 1
 
@@ -1054,6 +1055,10 @@ def main():
     rem_edit.add_argument("--recur", dest="new_recur", default=None, help="New recurrence (or 'none')")
     rem_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
     rem_edit.add_argument("--desc",  dest="new_desc",  default=None, help="Description (or 'none')")
+
+    rem_log = rem_sub.add_parser("log", help="Create logbook entry from a reminder")
+    rem_log.add_argument("project", nargs="?", default=None)
+    rem_log.add_argument("text",    nargs="?", default=None)
 
     rem_list = rem_sub.add_parser("list", help="List active reminders")
     rem_list.add_argument("project", nargs="?", default=None)
