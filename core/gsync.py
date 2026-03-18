@@ -555,7 +555,7 @@ def _sync_events_for_project(cal_service, project_dir: Path,
             new_id = _sync_one_event(cal_service, calendar_id, ev,
                                      project_name, description, dry_run)
         except Exception as exc:
-            print(f"  ⚠️  Error sincronizando evento '{ev.get('desc', '?')}' "
+            print(f"  ⚠️  [{project_name}] Error sincronizando evento '{ev.get('desc', '?')}' "
                   f"({ev.get('date', '?')}): {exc}")
             ev.pop("_gcal_id", None)
             skipped += 1
