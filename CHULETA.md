@@ -38,6 +38,7 @@ orbit project type drop <name>              # elimina tipo
 orbit task add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
 orbit task done   [<project>] ["<text>"]
 orbit task drop   [<project>] ["<text>"] [--force] [-o] [-s]
+orbit task log    [<project>] ["<text>"]
 orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
 ```
 
@@ -45,6 +46,7 @@ orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--
 - Si el texto coincide con varias citas, se muestra una lista numerada para elegir (aplica a task, ms, ev y reminder)
 - `done` en tarea recurrente: avanza a la siguiente ocurrencia automáticamente
 - `drop` en tarea recurrente: pregunta si quitar solo esta ocurrencia o toda la serie; `-o` avanza al próximo, `-s` elimina la serie (sin prompt); `--force` avanza al próximo (seguro por defecto)
+- `log`: crea una entrada en el logbook del proyecto a partir de una cita (task→#apunte, ms→#resultado, ev→#evento)
 - `--open`: escribe el resultado en `cmd.md` y lo abre en el editor
 
 ### Recurrencia (`--recur`)
@@ -88,6 +90,7 @@ Si al crear una tarea, hito o evento con `--time` no se indica `--ring`, Orbit p
 orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
 orbit ms done   [<project>] ["<text>"]
 orbit ms drop   [<project>] ["<text>"] [--force] [-o] [-s]
+orbit ms log    [<project>] ["<text>"]
 orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
 ```
 

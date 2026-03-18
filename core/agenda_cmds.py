@@ -982,6 +982,25 @@ def run_task_list(projects: Optional[list] = None,
     return 0
 
 
+def run_task_log(project: Optional[str], text: Optional[str]) -> int:
+    """Create a logbook entry (#apunte) from an existing task."""
+    project_dir = _find_new_project(project) if project else None
+    if project and project_dir is None:
+        return 1
+    if project_dir is None:
+        print("Error: especifica un proyecto")
+        return 1
+
+    data = _read_agenda(resolve_file(project_dir, "agenda"))
+    idx = _select_item(data["tasks"], "Tareas pendientes", text)
+    if idx is None:
+        return 1
+
+    task = data["tasks"][idx]
+    from core.log import add_entry
+    return add_entry(project, task["desc"], "apunte", None, task.get("date"))
+
+
 # ── MILESTONE commands ─────────────────────────────────────────────────────────
 
 def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
@@ -1268,6 +1287,25 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
     else:
         print()
     return 0
+
+
+def run_ms_log(project: Optional[str], text: Optional[str]) -> int:
+    """Create a logbook entry (#resultado) from an existing milestone."""
+    project_dir = _find_new_project(project) if project else None
+    if project and project_dir is None:
+        return 1
+    if project_dir is None:
+        print("Error: especifica un proyecto")
+        return 1
+
+    data = _read_agenda(resolve_file(project_dir, "agenda"))
+    idx = _select_item(data["milestones"], "Hitos pendientes", text)
+    if idx is None:
+        return 1
+
+    ms = data["milestones"][idx]
+    from core.log import add_entry
+    return add_entry(project, ms["desc"], "resultado", None, ms.get("date"))
 
 
 # ── EVENT commands ─────────────────────────────────────────────────────────────

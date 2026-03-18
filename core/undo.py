@@ -66,6 +66,27 @@ def discard_operation() -> None:
     _current = {}
 
 
+class track_operation:
+    """Context manager for undo tracking.
+
+    Usage::
+        with track_operation("task add ..."):
+            run_command(tokens)
+    """
+    def __init__(self, label: str = ""):
+        self.label = label
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None or exc_type is SystemExit:
+            commit_operation(label=self.label)
+        else:
+            discard_operation()
+        return False  # don't suppress exceptions
+
+
 # ── Undo ──────────────────────────────────────────────────────────────────────
 
 def _file_count(entry: dict) -> int:

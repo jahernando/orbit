@@ -129,7 +129,7 @@ def run_shell(editor: str = ""):
     shell_start_date = _date.today()
 
     # Lazy import to avoid circular dependency
-    from orbit import main
+    from orbit import run_command
 
     while True:
         # Midnight check
@@ -177,58 +177,40 @@ def run_shell(editor: str = ""):
                 subprocess.run(line, shell=True, cwd=ORBIT_DIR)
             continue
 
-        from core.undo import commit_operation, discard_operation
+        from core.undo import track_operation
 
-        old_argv = sys.argv
-        sys.argv  = ["orbit"] + tokens
+        import io
         exit_code = 0
         captured_err = ""
+        old_stderr = sys.stderr
+        sys.stderr = io.StringIO()
         try:
-            # Capture stderr to detect errors for suggestions
-            import io
-            old_stderr = sys.stderr
-            sys.stderr = io.StringIO()
-            try:
-                main()
-            finally:
-                captured_err = sys.stderr.getvalue()
-                sys.stderr = old_stderr
-                if captured_err:
-                    sys.stdout.write(captured_err)
-                    sys.stdout.flush()
-            commit_operation(label=line)
+            with track_operation(line):
+                exit_code = run_command(tokens)
         except SystemExit as e:
             exit_code = e.code if isinstance(e.code, int) else 1
-            commit_operation(label=line)
-        except Exception:
-            discard_operation()
-            raise
         finally:
-            sys.argv = old_argv
+            captured_err = sys.stderr.getvalue()
+            sys.stderr = old_stderr
+            if captured_err:
+                sys.stdout.write(captured_err)
+                sys.stdout.flush()
 
         # On error, offer Claude suggestions
         if exit_code != 0 and captured_err:
             from core.claude import suggest_on_error
             chosen = suggest_on_error(tokens, captured_err.strip())
             if chosen:
-                # Strip "orbit " prefix if present and execute
                 cmd = chosen.removeprefix("orbit ")
                 try:
                     new_tokens = shlex.split(cmd)
                 except ValueError:
                     continue
-                old_argv = sys.argv
-                sys.argv = ["orbit"] + new_tokens
-                try:
-                    main()
-                    commit_operation(label=cmd)
-                except SystemExit:
-                    commit_operation(label=cmd)
-                except Exception:
-                    discard_operation()
-                    raise
-                finally:
-                    sys.argv = old_argv
+                with track_operation(cmd):
+                    try:
+                        run_command(new_tokens)
+                    except SystemExit:
+                        pass
 
     readline.write_history_file(history_file)
 

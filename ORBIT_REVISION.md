@@ -72,7 +72,7 @@ Las 4 citas (task, ms, ev, reminder) deberían tener la misma interfaz. Estado a
 - `ms log` — registrar un hito alcanzado con más detalle en logbook
 
 **Propuesta:**
-- [ ] Evaluar si añadir `task log` y `ms log` (bajo prioridad)
+- [x] `task log` (crea #apunte) y `ms log` (crea #resultado) implementados
 
 ### A7. Abreviatura `ls rem` en vez de `ls reminders`
 
@@ -132,15 +132,15 @@ finally: sys.argv = old_argv
 ```
 
 **Propuesta:**
-- [ ] Extraer `run_command(argv: list) -> int` que recibe argv sin manipular global
-- [ ] El shell llama a `run_command()` en vez de `main()`
+- [x] Extraer `run_command(argv: list) -> int` que recibe argv sin manipular global
+- [x] El shell llama a `run_command()` en vez de `main()`
 
 ### B6. Undo tracking manual (commit/discard)
 
 Cada comando en el shell necesita `commit_operation()` / `discard_operation()` explícito.
 
 **Propuesta:**
-- [ ] Context manager: `with track_operation("task add..."): main()`
+- [x] Context manager: `with track_operation("task add..."): run_command(tokens)`
 
 ### B7. Estructura de datos de reminders difiere de task/ms
 
@@ -183,8 +183,8 @@ El try/except por item se añadió para eventos pero no para tasks/milestones.
 9. ~~**A2** — Unificar args posicionales en `ls`~~
 10. ~~**A1** — `--desc` para reminders~~
 
-### Arquitectural (largo plazo)
-11. **B5** — `run_command()` en vez de sys.argv
-12. **B6** — Context manager para undo
-13. **B8** — Limpiar `_d()` y el patrón "none"
-14. **A6** — `task log` / `ms log`
+### Arquitectural — ✅ completados (excepto B8)
+11. ~~**B5** — `run_command()` en vez de sys.argv~~
+12. ~~**B6** — Context manager para undo~~
+13. **B8** — Limpiar `_d()` y el patrón "none" (descartado: funciona bien en la práctica)
+14. ~~**A6** — `task log` / `ms log`~~

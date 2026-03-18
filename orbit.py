@@ -14,8 +14,8 @@ from core.importer import run_import
 from core.open import open_file, capture_output, open_cmd_output, log_cmd_output, default_editor
 from core.dateparse import parse_date
 from core.agenda_cmds import (
-    run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list,
-    run_ms_add, run_ms_done, run_ms_drop, run_ms_edit, run_ms_list,
+    run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list, run_task_log,
+    run_ms_add, run_ms_done, run_ms_drop, run_ms_edit, run_ms_list, run_ms_log,
     run_ev_add, run_ev_drop, run_ev_edit, run_ev_list, run_ev_log,
     run_reminder_add, run_reminder_drop, run_reminder_edit, run_reminder_list,
 )
@@ -319,6 +319,7 @@ def cmd_task_new(args):
     if action == "done":   return run_task_done(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "drop":   return run_task_drop(**_drop_args(args))
     if action == "edit":   return run_task_edit(**_edit_args(args))
+    if action == "log":    return run_task_log(project=_ga(args, "project"), text=_ga(args, "text"))
     return 1
 
 
@@ -329,6 +330,7 @@ def cmd_ms(args):
     if action == "done":   return run_ms_done(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "drop":   return run_ms_drop(**_drop_args(args))
     if action == "edit":   return run_ms_edit(**_edit_args(args))
+    if action == "log":    return run_ms_log(project=_ga(args, "project"), text=_ga(args, "text"))
     return 1
 
 
@@ -936,6 +938,9 @@ def main():
     tn_edit.add_argument("--desc",  dest="new_desc",  default=None,
                          help="New description (or 'none' to clear)")
 
+    tn_log = tsknew_sub.add_parser("log", help="Create logbook entry from a task")
+    _task_project_text(tn_log, project_required=False)
+
     # --- ms ---
     ms_p   = subparsers.add_parser("ms", help="Milestone commands (agenda.md)")
     ms_sub = ms_p.add_subparsers(dest="action")
@@ -971,6 +976,10 @@ def main():
     ms_edit.add_argument("--ring",  dest="new_ring",  default=None, help="HH:MM, 1d, 2h, YYYY-MM-DD HH:MM, or none")
     ms_edit.add_argument("--time",  dest="new_time",  default=None, help="New time HH:MM (or 'none')")
     ms_edit.add_argument("--desc",  dest="new_desc",  default=None, help="New description (or 'none' to clear)")
+
+    ms_log = ms_sub.add_parser("log", help="Create logbook entry from a milestone")
+    ms_log.add_argument("project", nargs="?", default=None)
+    ms_log.add_argument("text",    nargs="?", default=None)
 
     # --- ev ---
     ev_p   = subparsers.add_parser("ev", help="Event commands (agenda.md)")
@@ -1242,36 +1251,48 @@ def main():
         _p = hlp_sub.add_parser(_name, help=_help)
         _p.add_argument("--editor", default=None)
 
-    args = parser.parse_args(_fix_argv(sys.argv[1:]))
+    return parser
 
-    # Simple commands: one function, no subcommand required
-    _simple = {
-        "task": cmd_task_new,
-        "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
-        "view": cmd_view_new,
-        "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "recloud": cmd_recloud,
-        "log": cmd_log, "search": cmd_search,
-        "report": cmd_report, "open": cmd_open,
-        "import": cmd_import,
-        "project": cmd_project, "migrate": cmd_migrate,
-        "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync,
-        "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
-        "history": cmd_history, "claude": cmd_claude,
-    }
 
-    # Log state-changing commands to history
-    log_history(sys.argv[1:])
+# Command dispatch table
+_COMMANDS = {
+    "task": cmd_task_new,
+    "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
+    "view": cmd_view_new,
+    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "recloud": cmd_recloud,
+    "log": cmd_log, "search": cmd_search,
+    "report": cmd_report, "open": cmd_open,
+    "import": cmd_import,
+    "project": cmd_project, "migrate": cmd_migrate,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync,
+    "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
+    "history": cmd_history, "claude": cmd_claude,
+}
+
+
+def run_command(argv: list) -> int:
+    """Execute an orbit command from a list of arguments. Returns exit code."""
+    parser = _build_parser()
+    args = parser.parse_args(_fix_argv(argv))
+
+    log_history(argv)
 
     if args.command is None:
         run_shell()
-    elif args.command in _simple:
-        sys.exit(_simple[args.command](args))
-    elif args.command == "shell":
+        return 0
+    if args.command in _COMMANDS:
+        return _COMMANDS[args.command](args) or 0
+    if args.command == "shell":
         run_shell(editor=getattr(args, "editor", None) or default_editor())
-    elif args.command == "help":
-        sys.exit(cmd_help(args))
-    else:
-        parser.print_help()
+        return 0
+    if args.command == "help":
+        return cmd_help(args) or 0
+    parser.print_help()
+    return 1
+
+
+def main():
+    sys.exit(run_command(sys.argv[1:]))
 
 
 def run_shell(editor: str = ""):
