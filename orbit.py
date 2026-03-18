@@ -653,6 +653,11 @@ def cmd_ls(args):
             period_to=_d(getattr(args, "period_to", None)))
         return _handle_output(args, fn, "ls ev")
 
+    if what == "reminders":
+        fn = lambda: run_reminder_list(
+            project=getattr(args, "project_name", None))
+        return _handle_output(args, fn, "ls reminders")
+
     if what == "hl":
         fn = lambda: run_hl_list(
             project=getattr(args, "project_name", None),
@@ -808,6 +813,13 @@ def main():
     ls_ev.add_argument("--open",   action="store_true")
     ls_ev.add_argument("--editor", default=None)
     _add_log_args(ls_ev)
+
+    # ls reminders [project]
+    ls_rem = ls_sub.add_parser("reminders", help="List active reminders")
+    ls_rem.add_argument("project_name", nargs="?", default=None, help="Project")
+    ls_rem.add_argument("--open",   action="store_true")
+    ls_rem.add_argument("--editor", default=None)
+    _add_log_args(ls_rem)
 
     # ls hl [project]
     ls_hl = ls_sub.add_parser("hl", help="List highlights")

@@ -265,8 +265,9 @@ orbit ls                              # lista proyectos (por defecto)
 orbit ls projects [--status S] [--type T] [--sort type|status|priority]
 orbit ls tasks    [project...] [--status pending|done|all] [--date D] [--dated]
 orbit ls ms       [project...] [--status pending|done|all] [--dated]
-orbit ls ev       [project]    [--from D] [--to D]
-orbit ls hl       [project]    [--type T]
+orbit ls ev        [project]    [--from D] [--to D]
+orbit ls reminders [project]    # recordatorios activos
+orbit ls hl        [project]    [--type T]
 orbit ls files    [project]    # ficheros md del proyecto con estado git
 orbit ls notes    [project]    # notas con estado git
 ```
