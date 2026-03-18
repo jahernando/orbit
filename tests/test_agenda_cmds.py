@@ -1001,6 +1001,14 @@ class TestEventTime:
         assert data["events"][0]["time"] == "14:00-15:30"
         assert data["events"][0]["desc"] == "Meeting"
 
+    def test_edit_event_text(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Old meeting", "2026-03-15")
+        rc = run_ev_edit("test-project", "Old meeting", new_text="New meeting")
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"][0]["desc"] == "New meeting"
+
     def test_edit_event_add_time(self, proj, projects_dir):
         from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
         run_ev_add("test-project", "Meeting", "2026-03-15")
