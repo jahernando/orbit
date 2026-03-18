@@ -17,7 +17,7 @@ from core.agenda_cmds import (
     run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list,
     run_ms_add, run_ms_done, run_ms_drop, run_ms_edit, run_ms_list,
     run_ev_add, run_ev_drop, run_ev_edit, run_ev_list, run_ev_log,
-    run_reminder_add, run_reminder_cancel, run_reminder_list,
+    run_reminder_add, run_reminder_drop, run_reminder_list,
 )
 from core.highlights import (
     run_hl_add, run_hl_drop, run_hl_edit, run_hl_list, VALID_TYPES as HL_TYPES,
@@ -28,7 +28,7 @@ from core.commit import run_commit
 from core.migrate import run_migrate, run_migrate_all
 from core.agenda_view import run_agenda, run_cal
 from core.ls import run_ls_files, run_ls_notes
-from core.gsync import run_gsync
+from core.gsync import run_gsync, run_gsync_migrate_recurring
 from core.history import log_history, run_history
 from core.claude import run_claude
 from core.deliver import run_deliver
@@ -295,9 +295,11 @@ def cmd_task_new(args):
         )
     if action == "drop":
         return run_task_drop(
-            project = getattr(args, "project", None),
-            text    = getattr(args, "text", None),
-            force   = getattr(args, "force", False),
+            project    = getattr(args, "project", None),
+            text       = getattr(args, "text", None),
+            force      = getattr(args, "force", False),
+            occurrence = getattr(args, "occurrence", False),
+            series     = getattr(args, "series", False),
         )
     if action == "edit":
         return run_task_edit(
@@ -336,9 +338,11 @@ def cmd_ms(args):
         )
     if action == "drop":
         return run_ms_drop(
-            project = getattr(args, "project", None),
-            text    = getattr(args, "text", None),
-            force   = getattr(args, "force", False),
+            project    = getattr(args, "project", None),
+            text       = getattr(args, "text", None),
+            force      = getattr(args, "force", False),
+            occurrence = getattr(args, "occurrence", False),
+            series     = getattr(args, "series", False),
         )
     if action == "edit":
         return run_ms_edit(
@@ -373,9 +377,11 @@ def cmd_ev(args):
         )
     if action == "drop":
         return run_ev_drop(
-            project = getattr(args, "project", None),
-            text    = getattr(args, "text", None),
-            force   = getattr(args, "force", False),
+            project    = getattr(args, "project", None),
+            text       = getattr(args, "text", None),
+            force      = getattr(args, "force", False),
+            occurrence = getattr(args, "occurrence", False),
+            series     = getattr(args, "series", False),
         )
     if action == "edit":
         return run_ev_edit(
@@ -417,10 +423,13 @@ def cmd_reminder(args):
             recur    = getattr(args, "recur", None),
             until    = _d(getattr(args, "until", None)),
         )
-    if action == "cancel":
-        return run_reminder_cancel(
-            project = getattr(args, "project", None),
-            text    = getattr(args, "text", None),
+    if action == "drop":
+        return run_reminder_drop(
+            project    = getattr(args, "project", None),
+            text       = getattr(args, "text", None),
+            force      = getattr(args, "force", False),
+            occurrence = getattr(args, "occurrence", False),
+            series     = getattr(args, "series", False),
         )
     if action == "list":
         return run_reminder_list(
@@ -547,6 +556,10 @@ def cmd_report(args):
 
 
 def cmd_gsync(args):
+    if getattr(args, "migrate_recurring", False):
+        return run_gsync_migrate_recurring(
+            dry_run=getattr(args, "dry_run", False),
+        )
     return run_gsync(
         dry_run=getattr(args, "dry_run", False),
         list_calendars=getattr(args, "list_calendars", False),
@@ -893,6 +906,8 @@ def main():
                          help="Preview sync without writing to Google")
     gsync_p.add_argument("--list-calendars", action="store_true", dest="list_calendars",
                          help="List available Google Calendars with IDs")
+    gsync_p.add_argument("--migrate-recurring", action="store_true", dest="migrate_recurring",
+                         help="One-time: mark old recurring events with ⚠️ and reset for RRULE re-creation")
 
     # --- doctor ---
     doc_p = subparsers.add_parser("doctor",
@@ -953,6 +968,8 @@ def main():
     tn_drop = tsknew_sub.add_parser("drop", help="Cancel a pending task")
     _task_project_text(tn_drop, project_required=False)
     tn_drop.add_argument("--force", action="store_true", help="Skip confirmation")
+    tn_drop.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only (advance to next)")
+    tn_drop.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
 
     tn_edit = tsknew_sub.add_parser("edit", help="Edit a pending task")
     _task_project_text(tn_edit, project_required=False)
@@ -991,6 +1008,8 @@ def main():
     ms_drop.add_argument("project", nargs="?", default=None)
     ms_drop.add_argument("text",    nargs="?", default=None)
     ms_drop.add_argument("--force", action="store_true", help="Skip confirmation")
+    ms_drop.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only (advance to next)")
+    ms_drop.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
 
     ms_edit = ms_sub.add_parser("edit", help="Edit a milestone")
     ms_edit.add_argument("project", nargs="?", default=None)
@@ -1022,6 +1041,8 @@ def main():
     ev_drop.add_argument("project", nargs="?", default=None)
     ev_drop.add_argument("text",    nargs="?", default=None)
     ev_drop.add_argument("--force", action="store_true", help="Skip confirmation")
+    ev_drop.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only (advance to next)")
+    ev_drop.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
 
     ev_edit = ev_sub.add_parser("edit", help="Edit an event")
     ev_edit.add_argument("project", nargs="?", default=None)
@@ -1057,9 +1078,12 @@ def main():
     rem_add.add_argument("--recur",  default=None, help="Recurrence: daily, weekly, monthly, ...")
     rem_add.add_argument("--until",  default=None, help="End date for recurrence")
 
-    rem_cancel = rem_sub.add_parser("cancel", help="Cancel a reminder")
-    rem_cancel.add_argument("project", nargs="?", default=None)
-    rem_cancel.add_argument("text",    nargs="?", default=None)
+    rem_drop = rem_sub.add_parser("drop", help="Remove a reminder")
+    rem_drop.add_argument("project", nargs="?", default=None)
+    rem_drop.add_argument("text",    nargs="?", default=None)
+    rem_drop.add_argument("--force", action="store_true", help="Skip confirmation")
+    rem_drop.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only (advance to next)")
+    rem_drop.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
 
     rem_list = rem_sub.add_parser("list", help="List active reminders")
     rem_list.add_argument("project", nargs="?", default=None)

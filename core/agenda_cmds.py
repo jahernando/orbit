@@ -715,7 +715,8 @@ def run_task_done(project: Optional[str], text: Optional[str]) -> int:
 
 
 def run_task_drop(project: Optional[str], text: Optional[str],
-                  force: bool = False) -> int:
+                  force: bool = False, occurrence: bool = False,
+                  series: bool = False) -> int:
     project_dir = _find_new_project(project) if project else None
     if project and project_dir is None:
         return 1
@@ -730,26 +731,50 @@ def run_task_drop(project: Optional[str], text: Optional[str],
     if idx is None:
         return 1
 
-    task_desc = data["tasks"][idx]["desc"]
+    task = data["tasks"][idx]
+    task_desc = task["desc"]
+    drop_series = series
 
-    if not force:
+    if occurrence or series:
+        # Explicit flag — skip interactive prompt
+        pass
+    elif not force:
         if not sys.stdin.isatty():
             print("Error: usa --force para confirmar en modo no interactivo.")
             return 1
-        try:
-            ans = input(f"¿Cancelar tarea \"{task_desc}\"? [s/N]: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return 1
-        if ans not in ("s", "si", "sí", "y", "yes"):
-            print("Cancelado.")
-            return 0
+        if task.get("recur"):
+            try:
+                ans = input(
+                    f"\"{task_desc}\" es recurrente ({task['recur']}).\n"
+                    f"  [o] Quitar esta ocurrencia (avanzar al próximo)\n"
+                    f"  [s] Eliminar toda la serie\n"
+                    f"  [c] Cancelar\n"
+                    f"  ¿Qué hacer? [o/s/C]: "
+                ).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 1
+            if ans in ("s", "serie"):
+                drop_series = True
+            elif ans in ("o", "ocurrencia"):
+                drop_series = False
+            else:
+                print("Cancelado.")
+                return 0
+        else:
+            try:
+                ans = input(f"¿Cancelar tarea \"{task_desc}\"? [s/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 1
+            if ans not in ("s", "si", "sí", "y", "yes"):
+                print("Cancelado.")
+                return 0
 
-    task = data["tasks"][idx]
     task["status"] = "cancelled"
 
     next_info = ""
-    if task.get("recur"):
+    if task.get("recur") and not drop_series:
         today_str = date.today().isoformat()
         next_due = _next_occurrence(task.get("date"), task["recur"], today_str)
         until = task.get("until")
@@ -763,8 +788,13 @@ def run_task_drop(project: Optional[str], text: Optional[str],
             next_info = f" (recur: {task['recur']}) → próxima: {next_due}"
 
     _write_agenda(agenda_path, data)
-    add_orbit_entry(project_dir, f"[cancelada] Tarea: {task_desc}{next_info}", "apunte")
-    print(f"✓ [{project_dir.name}] [cancelada] {task_desc}{next_info}")
+
+    if drop_series:
+        add_orbit_entry(project_dir, f"[serie cancelada] Tarea: {task_desc} ({task['recur']})", "apunte")
+        print(f"✓ [{project_dir.name}] [serie cancelada] {task_desc} ({task['recur']})")
+    else:
+        add_orbit_entry(project_dir, f"[cancelada] Tarea: {task_desc}{next_info}", "apunte")
+        print(f"✓ [{project_dir.name}] [cancelada] {task_desc}{next_info}")
 
     # Sync cancelled task to Google
     from core.gsync import sync_item
@@ -992,7 +1022,8 @@ def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
 
 
 def run_ms_drop(project: Optional[str], text: Optional[str],
-                force: bool = False) -> int:
+                force: bool = False, occurrence: bool = False,
+                series: bool = False) -> int:
     project_dir = _find_new_project(project) if project else None
     if project and project_dir is None:
         return 1
@@ -1007,26 +1038,50 @@ def run_ms_drop(project: Optional[str], text: Optional[str],
     if idx is None:
         return 1
 
-    ms_desc = data["milestones"][idx]["desc"]
+    ms = data["milestones"][idx]
+    ms_desc = ms["desc"]
+    drop_series = series
 
-    if not force:
+    if occurrence or series:
+        # Explicit flag — skip interactive prompt
+        pass
+    elif not force:
         if not sys.stdin.isatty():
             print("Error: usa --force para confirmar en modo no interactivo.")
             return 1
-        try:
-            ans = input(f"¿Cancelar hito \"{ms_desc}\"? [s/N]: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return 1
-        if ans not in ("s", "si", "sí", "y", "yes"):
-            print("Cancelado.")
-            return 0
+        if ms.get("recur"):
+            try:
+                ans = input(
+                    f"\"{ms_desc}\" es recurrente ({ms['recur']}).\n"
+                    f"  [o] Quitar esta ocurrencia (avanzar al próximo)\n"
+                    f"  [s] Eliminar toda la serie\n"
+                    f"  [c] Cancelar\n"
+                    f"  ¿Qué hacer? [o/s/C]: "
+                ).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 1
+            if ans in ("s", "serie"):
+                drop_series = True
+            elif ans in ("o", "ocurrencia"):
+                drop_series = False
+            else:
+                print("Cancelado.")
+                return 0
+        else:
+            try:
+                ans = input(f"¿Cancelar hito \"{ms_desc}\"? [s/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 1
+            if ans not in ("s", "si", "sí", "y", "yes"):
+                print("Cancelado.")
+                return 0
 
-    ms = data["milestones"][idx]
     ms["status"] = "cancelled"
 
     next_info = ""
-    if ms.get("recur"):
+    if ms.get("recur") and not drop_series:
         today_str = date.today().isoformat()
         next_due = _next_occurrence(ms.get("date"), ms["recur"], today_str)
         until = ms.get("until")
@@ -1040,8 +1095,13 @@ def run_ms_drop(project: Optional[str], text: Optional[str],
             next_info = f" (recur: {ms['recur']}) → próximo: {next_due}"
 
     _write_agenda(agenda_path, data)
-    add_orbit_entry(project_dir, f"[cancelado] Hito: {ms_desc}{next_info}", "apunte")
-    print(f"✓ [{project_dir.name}] [cancelado] {ms_desc}{next_info}")
+
+    if drop_series:
+        add_orbit_entry(project_dir, f"[serie cancelada] Hito: {ms_desc} ({ms['recur']})", "apunte")
+        print(f"✓ [{project_dir.name}] [serie cancelada] {ms_desc} ({ms['recur']})")
+    else:
+        add_orbit_entry(project_dir, f"[cancelado] Hito: {ms_desc}{next_info}", "apunte")
+        print(f"✓ [{project_dir.name}] [cancelado] {ms_desc}{next_info}")
 
     from core.gsync import sync_item
     sync_item(project_dir, ms, "milestone")
@@ -1223,7 +1283,8 @@ def run_ev_add(project: str, text: str, date_val: str,
 
 
 def run_ev_drop(project: Optional[str], text: Optional[str],
-                force: bool = False) -> int:
+                force: bool = False, occurrence: bool = False,
+                series: bool = False) -> int:
     import sys
     project_dir = _find_new_project(project) if project else None
     if project and project_dir is None:
@@ -1242,23 +1303,49 @@ def run_ev_drop(project: Optional[str], text: Optional[str],
     ev = data["events"][idx]
     display = f"{ev['date']} — {ev['desc']}"
 
-    if not force:
+    drop_series = series  # For recurring: drop whole series?
+
+    if occurrence or series:
+        # Explicit flag — skip interactive prompt
+        pass
+    elif not force:
         if not sys.stdin.isatty():
             print("Error: usa --force para confirmar el borrado en modo no interactivo.")
             return 1
-        try:
-            ans = input(f"¿Seguro que quieres eliminar \"{display}\"? [s/N]: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return 1
-        if ans not in ("s", "si", "sí", "y", "yes"):
-            print("Cancelado.")
-            return 0
+        if ev.get("recur"):
+            # Recurring event: ask whether to drop occurrence or whole series
+            try:
+                ans = input(
+                    f"\"{display}\" es recurrente ({ev['recur']}).\n"
+                    f"  [o] Quitar esta ocurrencia (avanzar al próximo)\n"
+                    f"  [s] Eliminar toda la serie\n"
+                    f"  [c] Cancelar\n"
+                    f"  ¿Qué hacer? [o/s/C]: "
+                ).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 1
+            if ans in ("s", "serie"):
+                drop_series = True
+            elif ans in ("o", "ocurrencia"):
+                drop_series = False
+            else:
+                print("Cancelado.")
+                return 0
+        else:
+            try:
+                ans = input(f"¿Seguro que quieres eliminar \"{display}\"? [s/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 1
+            if ans not in ("s", "si", "sí", "y", "yes"):
+                print("Cancelado.")
+                return 0
 
     ev_removed = data["events"].pop(idx)
 
     next_info = ""
-    if ev_removed.get("recur"):
+    if ev_removed.get("recur") and not drop_series:
         today_str = date.today().isoformat()
         next_due = _next_occurrence(ev_removed.get("date"), ev_removed["recur"], today_str)
         until = ev_removed.get("until")
@@ -1271,12 +1358,20 @@ def run_ev_drop(project: Optional[str], text: Optional[str],
             next_info = f" (recur: {ev_removed['recur']}) → próximo: {next_due}"
 
     _write_agenda(agenda_path, data)
-    print(f"✓ [{project_dir.name}] Evento eliminado: {display}{next_info}")
 
-    # Delete from Google Calendar if synced
-    if ev_removed.get("synced"):
-        from core.gsync import delete_gcal_event
-        delete_gcal_event(project_dir, ev_removed)
+    if drop_series:
+        print(f"✓ [{project_dir.name}] Serie eliminada: {display} ({ev_removed['recur']})")
+        # Delete whole series from Google Calendar
+        if ev_removed.get("synced"):
+            from core.gsync import delete_gcal_event
+            delete_gcal_event(project_dir, ev_removed)
+    else:
+        print(f"✓ [{project_dir.name}] Evento eliminado: {display}{next_info}")
+        # Recurring: don't delete Google series (gsync will update start date)
+        # Non-recurring: delete from Google Calendar
+        if not ev_removed.get("recur") and ev_removed.get("synced"):
+            from core.gsync import delete_gcal_event
+            delete_gcal_event(project_dir, ev_removed)
 
     return 0
 
@@ -1418,7 +1513,7 @@ def run_reminder_add(project: str, text: str, date_val: str,
 
     if recur:
         recur = _normalize_recur(recur)
-        if not _is_valid_recur(recur):
+        if not is_valid_recur(recur):
             print(f"⚠️  Recurrencia no válida: {recur}")
             return 1
 
@@ -1451,8 +1546,11 @@ def run_reminder_add(project: str, text: str, date_val: str,
     return 0
 
 
-def run_reminder_cancel(project: Optional[str], text: Optional[str]) -> int:
-    """Cancel a reminder (mark as [-])."""
+def run_reminder_drop(project: Optional[str], text: Optional[str],
+                      force: bool = False, occurrence: bool = False,
+                      series: bool = False) -> int:
+    """Drop a reminder: remove or advance to next occurrence."""
+    import sys
     if project:
         project_dir = _find_new_project(project)
         if project_dir is None:
@@ -1473,14 +1571,72 @@ def run_reminder_cancel(project: Optional[str], text: Optional[str]) -> int:
             continue
 
         rem = reminders[idx]
-        # Find in original list and cancel
+        drop_series = series
+
+        if occurrence or series:
+            # Explicit flag — skip interactive prompt
+            pass
+        elif not force:
+            if not sys.stdin.isatty():
+                print("Error: usa --force para confirmar en modo no interactivo.")
+                return 1
+            if rem.get("recur"):
+                try:
+                    ans = input(
+                        f"\"{rem['desc']}\" es recurrente ({rem['recur']}).\n"
+                        f"  [o] Quitar esta ocurrencia (avanzar al próximo)\n"
+                        f"  [s] Eliminar toda la serie\n"
+                        f"  [c] Cancelar\n"
+                        f"  ¿Qué hacer? [o/s/C]: "
+                    ).strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    return 1
+                if ans in ("s", "serie"):
+                    drop_series = True
+                elif ans in ("o", "ocurrencia"):
+                    drop_series = False
+                else:
+                    print("Cancelado.")
+                    return 0
+            else:
+                try:
+                    ans = input(f"¿Eliminar recordatorio \"{rem['desc']}\"? [s/N]: ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    return 1
+                if ans not in ("s", "si", "sí", "y", "yes"):
+                    print("Cancelado.")
+                    return 0
+
+        next_info = ""
+        if rem.get("recur") and not drop_series:
+            today_str = date.today().isoformat()
+            next_due = _next_occurrence(rem.get("date"), rem["recur"], today_str)
+            until = rem.get("until")
+            if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+                next_info = f" (recur: {rem['recur']}) — serie finalizada ({until})"
+            else:
+                # Advance to next occurrence
+                for r in data["reminders"]:
+                    if r is rem:
+                        r["date"] = next_due
+                        break
+                _write_agenda(agenda_path, data)
+                print(f"✓ [{project_dir.name}] Recordatorio avanzado: {rem['desc']} → {next_due}")
+                return 0
+
+        # Cancel (mark [-]) or remove
         for r in data["reminders"]:
             if r is rem:
                 r["cancelled"] = True
                 break
 
         _write_agenda(agenda_path, data)
-        print(f"✓ [{project_dir.name}] Recordatorio cancelado: {rem['desc']}")
+        if drop_series:
+            print(f"✓ [{project_dir.name}] Serie eliminada: {rem['desc']} ({rem['recur']})")
+        else:
+            print(f"✓ [{project_dir.name}] Recordatorio eliminado: {rem['desc']}{next_info}")
         return 0
 
     print("No se encontró el recordatorio.")

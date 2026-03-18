@@ -1092,3 +1092,132 @@ class TestEventRecurrence:
         out = capsys.readouterr().out
         assert "Dated task" in out
         assert "Undated task" not in out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# drop -o / -s flags for task, ms, ev
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestDropOccurrenceSeriesTask:
+    def test_drop_o_advances_recurring(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_drop, _read_agenda
+        run_task_add("test-project", "Weekly sync", date_val="2026-03-09", recur="weekly")
+        rc = run_task_drop("test-project", "Weekly sync", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [t for t in data["tasks"] if t["status"] == "pending"]
+        assert len(pending) == 1
+        assert pending[0]["date"] > "2026-03-09"
+        assert pending[0]["recur"] == "weekly"
+
+    def test_drop_s_removes_series(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_drop, _read_agenda
+        run_task_add("test-project", "Weekly sync", date_val="2026-03-09", recur="weekly")
+        rc = run_task_drop("test-project", "Weekly sync", series=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [t for t in data["tasks"] if t["status"] == "pending"]
+        assert len(pending) == 0
+        out = capsys.readouterr().out
+        assert "serie cancelada" in out
+
+    def test_drop_o_nonrecurring_still_works(self, proj, projects_dir):
+        """'-o' on a non-recurring task should just cancel it (no crash)."""
+        from core.agenda_cmds import run_task_add, run_task_drop, _read_agenda
+        run_task_add("test-project", "One-off", date_val="2026-03-09")
+        rc = run_task_drop("test-project", "One-off", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["tasks"][0]["status"] == "cancelled"
+
+
+class TestDropOccurrenceSeriesMs:
+    def test_drop_o_advances_recurring(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_drop, _read_agenda
+        run_ms_add("test-project", "Monthly review", date_val="2026-03-01", recur="monthly")
+        rc = run_ms_drop("test-project", "Monthly review", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [m for m in data["milestones"] if m["status"] == "pending"]
+        assert len(pending) == 1
+        assert pending[0]["date"] == "2026-04-01"
+
+    def test_drop_s_removes_series(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_drop, _read_agenda
+        run_ms_add("test-project", "Monthly review", date_val="2026-03-01", recur="monthly")
+        rc = run_ms_drop("test-project", "Monthly review", series=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [m for m in data["milestones"] if m["status"] == "pending"]
+        assert len(pending) == 0
+        out = capsys.readouterr().out
+        assert "serie cancelada" in out
+
+
+class TestDropOccurrenceSeriesEv:
+    def test_drop_o_advances_recurring(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_drop, _read_agenda
+        run_ev_add("test-project", "Weekly standup", "2026-03-09", recur="weekly")
+        rc = run_ev_drop("test-project", "Weekly standup", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert len(data["events"]) == 1
+        assert data["events"][0]["date"] == "2026-03-16"
+
+    def test_drop_s_removes_series(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_drop, _read_agenda
+        run_ev_add("test-project", "Weekly standup", "2026-03-09", recur="weekly")
+        rc = run_ev_drop("test-project", "Weekly standup", series=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert data["events"] == []
+        out = capsys.readouterr().out
+        assert "Serie eliminada" in out
+
+
+class TestDropOccurrenceSeriesReminder:
+    def test_drop_o_advances_recurring(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_drop, _read_agenda
+        run_reminder_add("test-project", "Daily standup", date_val="2026-03-09",
+                         time_val="09:00", recur="daily")
+        rc = run_reminder_drop("test-project", "standup", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        active = [r for r in data["reminders"] if not r.get("cancelled")]
+        assert len(active) == 1
+        assert active[0]["date"] > "2026-03-09"
+        assert active[0]["recur"] == "daily"
+        out = capsys.readouterr().out
+        assert "avanzado" in out
+
+    def test_drop_s_cancels_series(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_drop, _read_agenda
+        run_reminder_add("test-project", "Daily standup", date_val="2026-03-09",
+                         time_val="09:00", recur="daily")
+        rc = run_reminder_drop("test-project", "standup", series=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        active = [r for r in data["reminders"] if not r.get("cancelled")]
+        assert len(active) == 0
+        out = capsys.readouterr().out
+        assert "Serie eliminada" in out
+
+    def test_drop_nonrecurring(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_drop, _read_agenda
+        run_reminder_add("test-project", "One-off reminder", date_val="2026-03-20",
+                         time_val="17:00")
+        rc = run_reminder_drop("test-project", "One-off", force=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        active = [r for r in data["reminders"] if not r.get("cancelled")]
+        assert len(active) == 0
+
+    def test_drop_requires_force_in_noninteractive(self, proj, projects_dir):
+        from core.agenda_cmds import run_reminder_add, run_reminder_drop, _read_agenda
+        run_reminder_add("test-project", "Keep me", date_val="2026-03-20",
+                         time_val="10:00")
+        rc = run_reminder_drop("test-project", "Keep me")
+        assert rc == 1
+        data = _read_agenda(proj / "test-project-agenda.md")
+        active = [r for r in data["reminders"] if not r.get("cancelled")]
+        assert len(active) == 1

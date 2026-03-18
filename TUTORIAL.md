@@ -172,6 +172,23 @@ Las tareas y hitos recurrentes avanzan automáticamente al completarlas.
 Los eventos recurrentes se expanden automáticamente en la agenda y el calendario.
 `--ring` programa una alarma en Reminders.app de macOS.
 
+### Recordatorios
+
+Los recordatorios son notificaciones simples: tienen fecha, hora y texto, pero no tienen estado (no se completan ni vencen). Orbit los programa en Reminders.app de macOS para que te llegue la notificación.
+
+```bash
+reminder add mission "¡Revisa el correo!" --date 2026-03-18 --time 17:00
+reminder add next-kr "Llamar al laboratorio" --date tomorrow --time 10:00
+reminder add next-kr "Backup semanal" --date 2026-03-20 --time 09:00 --recur weekly
+reminder add next-kr "Gym" --date 2026-03-20 --time 07:00 --recur daily --until 2026-06-30
+reminder drop mission "correo"      # elimina por match parcial
+reminder drop mission "Backup" -o  # solo esta ocurrencia (avanza al próximo)
+reminder drop mission "Gym" -s     # elimina toda la serie
+reminder list                       # lista recordatorios activos de todos los proyectos
+```
+
+Se guardan en la sección `## 💬 Recordatorios` del `agenda.md`. Al iniciar la shell, los recordatorios del día se programan automáticamente en Reminders.app.
+
 ---
 
 ## 7. Highlights — índice curado

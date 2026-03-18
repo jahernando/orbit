@@ -37,12 +37,13 @@ orbit project type drop <name>              # elimina tipo
 ```bash
 orbit task add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
 orbit task done   [<project>] ["<text>"]
-orbit task drop   [<project>] ["<text>"] [--force]
+orbit task drop   [<project>] ["<text>"] [--force] [-o] [-s]
 orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
 ```
 
 - `done` y `drop`: interactivos si no se especifica texto; `drop` pide confirmación
 - `done` en tarea recurrente: avanza a la siguiente ocurrencia automáticamente
+- `drop` en tarea recurrente: pregunta si quitar solo esta ocurrencia o toda la serie; `-o` avanza al próximo, `-s` elimina la serie (sin prompt); `--force` avanza al próximo (seguro por defecto)
 - `--open`: escribe el resultado en `cmd.md` y lo abre en el editor
 
 ### Recurrencia (`--recur`)
@@ -83,7 +84,7 @@ Sin `--time`, se usa 09:00 como ancla por defecto.
 ```bash
 orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
 orbit ms done   [<project>] ["<text>"]
-orbit ms drop   [<project>] ["<text>"] [--force]
+orbit ms drop   [<project>] ["<text>"] [--force] [-o] [-s]
 orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
 ```
 
@@ -93,15 +94,35 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--ti
 
 ```bash
 orbit ev add  <project> "<text>" --date DATE [--end DATE] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
-orbit ev drop [<project>] ["<text>"] [--force]
+orbit ev drop [<project>] ["<text>"] [--force] [-o] [-s]
 orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
 orbit ev list [<project>] [--from DATE] [--to DATE]
 ```
 
 - `--time`: hora del evento. `HH:MM` (solo inicio, 1h por defecto) o `HH:MM-HH:MM` (inicio-fin)
 - Sin `--time`: evento de día completo
+- `drop` en evento recurrente: pregunta si quitar solo esta ocurrencia o toda la serie; `-o` avanza al próximo, `-s` elimina la serie (sin prompt); `--force` avanza al próximo (seguro por defecto)
 - `drop` pide confirmación (defecto **No**); `--force` la omite
 - `--desc`: descripción (enlaces, notas). Se guarda como líneas indentadas en agenda.md y se propaga a Google Calendar/Tasks. No se muestra en `ls`/`agenda` — solo en el fichero. Aplica también a `task` y `ms`
+
+---
+
+## reminder — recordatorios
+
+```bash
+orbit reminder add  <project> "<text>" --date DATE --time HH:MM [--recur FREQ] [--until DATE]
+orbit reminder drop [<project>] ["<text>"] [--force] [-o] [-s]
+orbit reminder list [<project>]
+```
+
+- Los recordatorios son notificaciones programadas: no tienen estado (done/pending), solo se disparan en la fecha/hora indicada
+- Se guardan en la sección `## 💬 Recordatorios` del `agenda.md` del proyecto
+- Formato en agenda.md: `- texto (YYYY-MM-DD) ⏰HH:MM [🔄recur[:until]]`
+- `drop` en recurrente: pregunta ocurrencia o serie (como task/ev); `-o` avanza al próximo, `-s` elimina toda la serie
+- `drop` pide confirmación (defecto **No**); `--force` la omite
+- Al iniciar la shell, `ring` programa los recordatorios del día como notificaciones en Reminders.app de macOS
+- `--date` y `--time` son obligatorios
+- `--recur` y `--until` funcionan igual que en tareas/eventos
 
 ---
 
@@ -300,16 +321,19 @@ orbit report --summary [logbook|agenda|highlights|all] [--date D] [--from D] [--
 ## gsync — sincronización con Google
 
 ```bash
-orbit gsync                    # sincroniza tareas/hitos/eventos con Google
-orbit gsync --dry-run          # preview sin escribir
-orbit gsync --list-calendars   # muestra calendarios disponibles
+orbit gsync                        # sincroniza tareas/hitos/eventos con Google
+orbit gsync --dry-run              # preview sin escribir
+orbit gsync --list-calendars       # muestra calendarios disponibles
+orbit gsync --migrate-recurring    # migrar eventos recurrentes viejos a RRULE
 ```
 
 - Tareas e hitos → Google Tasks (una lista por tipo: `🚀[📚Docencia]`, `🚀[🌀Investigacion]`, etc.)
 - Eventos → Google Calendar (un calendario por tipo, configurable en `google-sync.json`)
+- Eventos recurrentes → serie RRULE en Google Calendar (una sola entrada en agenda.md, serie completa en Google)
 - Títulos en Google: `🚀[proyecto] descripción` (eventos y tareas)
 - Sincronización automática: al iniciar la shell + al añadir/completar/editar/eliminar items
 - IDs de sincronización en `.gsync-ids.json` por proyecto (no en agenda.md)
+- Items recurrentes usan clave estable (`desc::🔄recur`) para que al avanzar la fecha no se dupliquen en Google
 - Items sincronizados muestran `[G]` en agenda.md
 
 ---
