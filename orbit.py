@@ -92,6 +92,9 @@ def _edit_args(args):
         new_ring=_ga(args, "new_ring"),
         new_time=_ga(args, "new_time"),
         new_desc=_ga(args, "new_desc"),
+        force=_ga(args, "force", False),
+        occurrence=_ga(args, "occurrence", False),
+        series=_ga(args, "series", False),
     )
 
 
@@ -373,7 +376,10 @@ def cmd_reminder(args):
             new_time=_ga(args, "new_time"),
             new_recur=_ga(args, "new_recur"),
             new_until=_d(_ga(args, "new_until")) or _ga(args, "new_until"),
-            new_desc=_ga(args, "new_desc"))
+            new_desc=_ga(args, "new_desc"),
+            force=_ga(args, "force", False),
+            occurrence=_ga(args, "occurrence", False),
+            series=_ga(args, "series", False))
     if action == "log":    return run_reminder_log(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "list":   return run_reminder_list(project=_ga(args, "project"))
     return 1
@@ -938,6 +944,9 @@ def _build_parser():
                          help="New time HH:MM (or 'none')")
     tn_edit.add_argument("--desc",  dest="new_desc",  default=None,
                          help="New description (or 'none' to clear)")
+    tn_edit.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
+    tn_edit.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
+    tn_edit.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
 
     tn_log = tsknew_sub.add_parser("log", help="Create logbook entry from a task")
     _task_project_text(tn_log, project_required=False)
@@ -977,6 +986,9 @@ def _build_parser():
     ms_edit.add_argument("--ring",  dest="new_ring",  default=None, help="HH:MM, 1d, 2h, YYYY-MM-DD HH:MM, or none")
     ms_edit.add_argument("--time",  dest="new_time",  default=None, help="New time HH:MM (or 'none')")
     ms_edit.add_argument("--desc",  dest="new_desc",  default=None, help="New description (or 'none' to clear)")
+    ms_edit.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
+    ms_edit.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
+    ms_edit.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
 
     ms_log = ms_sub.add_parser("log", help="Create logbook entry from a milestone")
     ms_log.add_argument("project", nargs="?", default=None)
@@ -1015,6 +1027,9 @@ def _build_parser():
     ev_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
     ev_edit.add_argument("--ring",  dest="new_ring",  default=None, help="HH:MM, 1d, 2h, YYYY-MM-DD HH:MM, or none")
     ev_edit.add_argument("--desc",  dest="new_desc",  default=None, help="New description (or 'none' to clear)")
+    ev_edit.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
+    ev_edit.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
+    ev_edit.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
 
     ev_list = ev_sub.add_parser("list", help="List events")
     ev_list.add_argument("project", nargs="?", default=None)
@@ -1055,6 +1070,9 @@ def _build_parser():
     rem_edit.add_argument("--recur", dest="new_recur", default=None, help="New recurrence (or 'none')")
     rem_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
     rem_edit.add_argument("--desc",  dest="new_desc",  default=None, help="Description (or 'none')")
+    rem_edit.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
+    rem_edit.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
+    rem_edit.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
 
     rem_log = rem_sub.add_parser("log", help="Create logbook entry from a reminder")
     rem_log.add_argument("project", nargs="?", default=None)

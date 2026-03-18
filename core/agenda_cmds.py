@@ -654,6 +654,40 @@ def _next_occurrence(due: Optional[str], recur: str, done_date: str) -> str:
     return nxt.isoformat()
 
 
+def _ask_edit_occurrence_or_series(desc: str, recur: str,
+                                   force: bool, occurrence: bool,
+                                   series: bool) -> Optional[bool]:
+    """Decide whether to edit only this occurrence or the whole series.
+
+    Returns True for occurrence, False for series, None for cancel.
+    """
+    if occurrence or series:
+        return occurrence  # explicit flag
+    if not force:
+        if not sys.stdin.isatty():
+            print("Error: usa --force para confirmar en modo no interactivo.")
+            return None
+        try:
+            ans = input(
+                f"\"{desc}\" es recurrente ({recur}).\n"
+                f"  [o] Editar solo esta ocurrencia (crear copia editada + avanzar serie)\n"
+                f"  [s] Editar toda la serie\n"
+                f"  [c] Cancelar\n"
+                f"  ¿Qué hacer? [o/s/C]: "
+            ).strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if ans in ("o", "ocurrencia"):
+            return True
+        if ans in ("s", "serie"):
+            return False
+        print("Cancelado.")
+        return None
+    # --force without -o/-s: safe default = occurrence
+    return True
+
+
 # ── TASK commands ──────────────────────────────────────────────────────────────
 
 def run_task_add(project: str, text: str, date_val: Optional[str] = None,
@@ -857,7 +891,9 @@ def run_task_edit(project: Optional[str], text: Optional[str],
                   new_text: Optional[str] = None, new_date: Optional[str] = None,
                   new_recur: Optional[str] = None, new_until: Optional[str] = None,
                   new_ring: Optional[str] = None, new_time: Optional[str] = None,
-                  new_desc: Optional[str] = None) -> int:
+                  new_desc: Optional[str] = None,
+                  force: bool = False, occurrence: bool = False,
+                  series: bool = False) -> int:
     project_dir = _find_new_project(project) if project else None
     if project and project_dir is None:
         return 1
@@ -894,6 +930,42 @@ def run_task_edit(project: Optional[str], text: Optional[str],
 
     task = data["tasks"][idx]
     old_desc = task["desc"]
+
+    # ── Occurrence vs Series for recurring items ──
+    if task.get("recur") and not (new_recur and new_recur == "none"):
+        choice = _ask_edit_occurrence_or_series(
+            task["desc"], task["recur"], force, occurrence, series)
+        if choice is None:
+            return 1 if not sys.stdin.isatty() else 0
+        if choice:  # occurrence
+            today_str = date.today().isoformat()
+            next_due = _next_occurrence(task.get("date"), task["recur"], today_str)
+            until = task.get("until")
+            # Create a non-recurring copy with edits
+            new_item = {
+                "status": "pending",
+                "desc": new_text or task["desc"],
+                "date": (None if new_date == "none" else new_date) if new_date else task.get("date"),
+                "time": (None if new_time == "none" else new_time) if new_time else task.get("time"),
+                "ring": (None if new_ring == "none" else new_ring) if new_ring else task.get("ring"),
+                "notes": ([new_desc] if new_desc and new_desc != "none" else []) if new_desc is not None else list(task.get("notes") or []),
+            }
+            data["tasks"].append(new_item)
+            # Advance the series
+            if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+                task["status"] = "cancelled"
+                next_info = f" — serie finalizada ({until})"
+            else:
+                task["date"] = next_due
+                next_info = f" → serie avanza a {next_due}"
+            _write_agenda(agenda_path, data)
+            print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['desc']}{next_info}")
+            from core.gsync import sync_item
+            sync_item(project_dir, new_item, "task")
+            sync_item(project_dir, task, "task")
+            return 0
+
+    # ── Series path (or non-recurring) ──
     if new_text:  task["desc"]  = new_text
     if new_date:
         task["date"]  = None if new_date == "none" else new_date
@@ -1183,7 +1255,9 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
                 new_text: Optional[str] = None, new_date: Optional[str] = None,
                 new_recur: Optional[str] = None, new_until: Optional[str] = None,
                 new_ring: Optional[str] = None, new_time: Optional[str] = None,
-                new_desc: Optional[str] = None) -> int:
+                new_desc: Optional[str] = None,
+                force: bool = False, occurrence: bool = False,
+                series: bool = False) -> int:
     if new_date and new_date != "none" and not _valid_date(new_date):
         print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
         return 1
@@ -1220,6 +1294,40 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
 
     ms = data["milestones"][idx]
     old_desc = ms["desc"]
+
+    # ── Occurrence vs Series for recurring items ──
+    if ms.get("recur") and not (new_recur and new_recur == "none"):
+        choice = _ask_edit_occurrence_or_series(
+            ms["desc"], ms["recur"], force, occurrence, series)
+        if choice is None:
+            return 1 if not sys.stdin.isatty() else 0
+        if choice:  # occurrence
+            today_str = date.today().isoformat()
+            next_due = _next_occurrence(ms.get("date"), ms["recur"], today_str)
+            until = ms.get("until")
+            new_item = {
+                "status": "pending",
+                "desc": new_text or ms["desc"],
+                "date": (None if new_date == "none" else new_date) if new_date else ms.get("date"),
+                "time": (None if new_time == "none" else new_time) if new_time else ms.get("time"),
+                "ring": (None if new_ring == "none" else new_ring) if new_ring else ms.get("ring"),
+                "notes": ([new_desc] if new_desc and new_desc != "none" else []) if new_desc is not None else list(ms.get("notes") or []),
+            }
+            data["milestones"].append(new_item)
+            if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+                ms["status"] = "cancelled"
+                next_info = f" — serie finalizada ({until})"
+            else:
+                ms["date"] = next_due
+                next_info = f" → serie avanza a {next_due}"
+            _write_agenda(agenda_path, data)
+            print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['desc']}{next_info}")
+            from core.gsync import sync_item
+            sync_item(project_dir, new_item, "milestone")
+            sync_item(project_dir, ms, "milestone")
+            return 0
+
+    # ── Series path (or non-recurring) ──
     if new_text:  ms["desc"]  = new_text
     if new_date:  ms["date"]  = None if new_date  == "none" else new_date
     if new_recur: ms["recur"] = None if new_recur == "none" else new_recur
@@ -1475,7 +1583,9 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
                 new_end: Optional[str] = None, new_time: Optional[str] = None,
                 new_recur: Optional[str] = None,
                 new_until: Optional[str] = None, new_ring: Optional[str] = None,
-                new_desc: Optional[str] = None) -> int:
+                new_desc: Optional[str] = None,
+                force: bool = False, occurrence: bool = False,
+                series: bool = False) -> int:
     if new_date and not _valid_date(new_date):
         print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
         return 1
@@ -1515,6 +1625,40 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
 
     ev = data["events"][idx]
     old_desc = ev["desc"]
+
+    # ── Occurrence vs Series for recurring items ──
+    if ev.get("recur") and not (new_recur and new_recur == "none"):
+        choice = _ask_edit_occurrence_or_series(
+            ev["desc"], ev["recur"], force, occurrence, series)
+        if choice is None:
+            return 1 if not sys.stdin.isatty() else 0
+        if choice:  # occurrence
+            today_str = date.today().isoformat()
+            next_due = _next_occurrence(ev.get("date"), ev["recur"], today_str)
+            until = ev.get("until")
+            new_item = {
+                "desc": new_text or ev["desc"],
+                "date": (None if new_date == "none" else new_date) if new_date else ev.get("date"),
+                "end": (None if new_end == "none" else new_end) if new_end else ev.get("end"),
+                "time": (None if new_time == "none" else new_time) if new_time else ev.get("time"),
+                "ring": (None if new_ring == "none" else new_ring) if new_ring else ev.get("ring"),
+                "notes": ([new_desc] if new_desc and new_desc != "none" else []) if new_desc is not None else list(ev.get("notes") or []),
+            }
+            data["events"].append(new_item)
+            if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+                data["events"].remove(ev)
+                next_info = f" — serie finalizada ({until})"
+            else:
+                ev["date"] = next_due
+                next_info = f" → serie avanza a {next_due}"
+            _write_agenda(agenda_path, data)
+            print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['date']} — {new_item['desc']}{next_info}")
+            from core.gsync import sync_item
+            sync_item(project_dir, new_item, "event")
+            sync_item(project_dir, ev, "event")
+            return 0
+
+    # ── Series path (or non-recurring) ──
     if new_text:  ev["desc"]  = new_text
     if new_date:  ev["date"]  = new_date
     if new_end:   ev["end"]   = None if new_end   == "none" else new_end
@@ -1766,7 +1910,9 @@ def run_reminder_edit(project: Optional[str], text: Optional[str],
                       new_text: Optional[str] = None, new_date: Optional[str] = None,
                       new_time: Optional[str] = None, new_recur: Optional[str] = None,
                       new_until: Optional[str] = None,
-                      new_desc: Optional[str] = None) -> int:
+                      new_desc: Optional[str] = None,
+                      force: bool = False, occurrence: bool = False,
+                      series: bool = False) -> int:
     """Edit an existing reminder."""
     if new_date and new_date != "none" and not _valid_date(new_date):
         print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
@@ -1804,6 +1950,35 @@ def run_reminder_edit(project: Optional[str], text: Optional[str],
 
         rem = reminders[idx]
         old_desc = rem["desc"]
+
+        # ── Occurrence vs Series for recurring items ──
+        if rem.get("recur") and not (new_recur and new_recur == "none"):
+            choice = _ask_edit_occurrence_or_series(
+                rem["desc"], rem["recur"], force, occurrence, series)
+            if choice is None:
+                return 1 if not sys.stdin.isatty() else 0
+            if choice:  # occurrence
+                today_str = date.today().isoformat()
+                next_due = _next_occurrence(rem.get("date"), rem["recur"], today_str)
+                until = rem.get("until")
+                new_item = {
+                    "desc": new_text or rem["desc"],
+                    "date": (None if new_date == "none" else new_date) if new_date else rem.get("date"),
+                    "time": (None if new_time == "none" else new_time) if new_time else rem.get("time"),
+                    "notes": ([new_desc] if new_desc and new_desc != "none" else []) if new_desc is not None else list(rem.get("notes") or []),
+                }
+                data["reminders"].append(new_item)
+                if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+                    rem["cancelled"] = True
+                    next_info = f" — serie finalizada ({until})"
+                else:
+                    rem["date"] = next_due
+                    next_info = f" → serie avanza a {next_due}"
+                _write_agenda(agenda_path, data)
+                print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['desc']}{next_info}")
+                return 0
+
+        # ── Series path (or non-recurring) ──
         if new_text:   rem["desc"]  = new_text
         if new_date:   rem["date"]  = None if new_date == "none" else new_date
         if new_time:   rem["time"]  = None if new_time == "none" else new_time

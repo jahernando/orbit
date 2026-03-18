@@ -1232,6 +1232,174 @@ class TestDropOccurrenceSeriesReminder:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Edit occurrence vs series — recurring items
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestEditOccurrenceSeriesTask:
+    def test_edit_o_creates_occurrence_and_advances(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "Weekly sync", date_val="2026-03-09", recur="weekly")
+        rc = run_task_edit("test-project", "Weekly sync", new_text="Edited sync", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [t for t in data["tasks"] if t["status"] == "pending"]
+        assert len(pending) == 2
+        recurring = [t for t in pending if t.get("recur")]
+        assert len(recurring) == 1
+        assert recurring[0]["date"] == "2026-03-16"
+        assert recurring[0]["desc"] == "Weekly sync"
+        one_off = [t for t in pending if not t.get("recur")]
+        assert len(one_off) == 1
+        assert one_off[0]["desc"] == "Edited sync"
+        assert one_off[0]["date"] == "2026-03-09"
+        out = capsys.readouterr().out
+        assert "Ocurrencia editada" in out
+
+    def test_edit_s_edits_series_in_place(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "Weekly sync", date_val="2026-03-09", recur="weekly")
+        rc = run_task_edit("test-project", "Weekly sync", new_text="Renamed sync", series=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [t for t in data["tasks"] if t["status"] == "pending"]
+        assert len(pending) == 1
+        assert pending[0]["desc"] == "Renamed sync"
+        assert pending[0]["recur"] == "weekly"
+        assert pending[0]["date"] == "2026-03-09"
+
+    def test_edit_force_defaults_to_occurrence(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "Weekly sync", date_val="2026-03-09", recur="weekly")
+        rc = run_task_edit("test-project", "Weekly sync", new_text="Forced edit", force=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [t for t in data["tasks"] if t["status"] == "pending"]
+        assert len(pending) == 2
+        one_off = [t for t in pending if not t.get("recur")]
+        assert one_off[0]["desc"] == "Forced edit"
+
+    def test_edit_o_nonrecurring_edits_normally(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "One-off", date_val="2026-03-09")
+        rc = run_task_edit("test-project", "One-off", new_text="Updated", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [t for t in data["tasks"] if t["status"] == "pending"]
+        assert len(pending) == 1
+        assert pending[0]["desc"] == "Updated"
+
+    def test_edit_o_respects_until(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "Weekly sync", date_val="2026-03-09",
+                     recur="weekly", until="2026-03-15")
+        rc = run_task_edit("test-project", "Weekly sync", new_text="Last one", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [t for t in data["tasks"] if t["status"] == "pending"]
+        assert len(pending) == 1
+        assert pending[0]["desc"] == "Last one"
+        assert not pending[0].get("recur")
+        out = capsys.readouterr().out
+        assert "serie finalizada" in out
+
+
+class TestEditOccurrenceSeriesMs:
+    def test_edit_o_creates_occurrence_and_advances(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_edit, _read_agenda
+        run_ms_add("test-project", "Monthly review", date_val="2026-03-01", recur="monthly")
+        rc = run_ms_edit("test-project", "Monthly review", new_text="Edited review", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [m for m in data["milestones"] if m["status"] == "pending"]
+        assert len(pending) == 2
+        recurring = [m for m in pending if m.get("recur")]
+        assert len(recurring) == 1
+        assert recurring[0]["date"] == "2026-04-01"
+        one_off = [m for m in pending if not m.get("recur")]
+        assert len(one_off) == 1
+        assert one_off[0]["desc"] == "Edited review"
+
+    def test_edit_s_edits_series_in_place(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_edit, _read_agenda
+        run_ms_add("test-project", "Monthly review", date_val="2026-03-01", recur="monthly")
+        rc = run_ms_edit("test-project", "Monthly review", new_text="Renamed", series=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        pending = [m for m in data["milestones"] if m["status"] == "pending"]
+        assert len(pending) == 1
+        assert pending[0]["desc"] == "Renamed"
+        assert pending[0]["recur"] == "monthly"
+
+
+class TestEditOccurrenceSeriesEv:
+    def test_edit_o_creates_occurrence_and_advances(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Weekly standup", "2026-03-09", recur="weekly")
+        rc = run_ev_edit("test-project", "Weekly standup", new_text="Edited standup", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert len(data["events"]) == 2
+        recurring = [e for e in data["events"] if e.get("recur")]
+        assert len(recurring) == 1
+        assert recurring[0]["date"] == "2026-03-16"
+        one_off = [e for e in data["events"] if not e.get("recur")]
+        assert len(one_off) == 1
+        assert one_off[0]["desc"] == "Edited standup"
+        assert one_off[0]["date"] == "2026-03-09"
+
+    def test_edit_s_edits_series_in_place(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Weekly standup", "2026-03-09", recur="weekly")
+        rc = run_ev_edit("test-project", "Weekly standup", new_text="Renamed", series=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert len(data["events"]) == 1
+        assert data["events"][0]["desc"] == "Renamed"
+        assert data["events"][0]["recur"] == "weekly"
+        assert data["events"][0]["date"] == "2026-03-09"
+
+    def test_edit_o_with_recur_none_edits_in_place(self, proj, projects_dir, capsys):
+        """--recur none bypasses occurrence/series logic."""
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Weekly standup", "2026-03-09", recur="weekly")
+        rc = run_ev_edit("test-project", "Weekly standup", new_recur="none", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        assert len(data["events"]) == 1
+        assert data["events"][0].get("recur") is None
+
+
+class TestEditOccurrenceSeriesReminder:
+    def test_edit_o_creates_occurrence_and_advances(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_edit, _read_agenda
+        run_reminder_add("test-project", "Daily standup", date_val="2026-03-09",
+                         time_val="09:00", recur="daily")
+        rc = run_reminder_edit("test-project", "standup", new_text="Edited standup", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        active = [r for r in data["reminders"] if not r.get("cancelled")]
+        assert len(active) == 2
+        recurring = [r for r in active if r.get("recur")]
+        assert len(recurring) == 1
+        assert recurring[0]["date"] == "2026-03-10"
+        one_off = [r for r in active if not r.get("recur")]
+        assert len(one_off) == 1
+        assert one_off[0]["desc"] == "Edited standup"
+
+    def test_edit_s_edits_series_in_place(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_edit, _read_agenda
+        run_reminder_add("test-project", "Daily standup", date_val="2026-03-09",
+                         time_val="09:00", recur="daily")
+        rc = run_reminder_edit("test-project", "standup", new_text="Renamed", series=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        active = [r for r in data["reminders"] if not r.get("cancelled")]
+        assert len(active) == 1
+        assert active[0]["desc"] == "Renamed"
+        assert active[0]["recur"] == "daily"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Ambiguous match — interactive disambiguation
 # ══════════════════════════════════════════════════════════════════════════════
 
