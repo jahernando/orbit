@@ -1622,7 +1622,7 @@ def run_ev_log(project: Optional[str], text: Optional[str]) -> int:
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
 
-    idx = _select_item(data["events"], "Eventos", text)
+    idx = _select_event(data["events"], text)
     if idx is None:
         return 1
 
