@@ -113,9 +113,9 @@ orbit ev list [<project>] [--from DATE] [--to DATE]
 ## reminder (rem) — recordatorios
 
 ```bash
-orbit reminder add  <project> "<text>" --date DATE --time HH:MM [--recur FREQ] [--until DATE]
+orbit reminder add  <project> "<text>" --date DATE --time HH:MM [--recur FREQ] [--until DATE] [--desc DESC]
 orbit reminder drop [<project>] ["<text>"] [--force] [-o] [-s]
-orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none]
+orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--desc DESC|none]
 orbit reminder list [<project>]
 ```
 

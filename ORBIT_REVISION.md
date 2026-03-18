@@ -24,7 +24,7 @@ Las 4 citas (task, ms, ev, reminder) deberían tener la misma interfaz. Estado a
 | gsync | ✓ | ✓ | ✓ | **no** |
 
 **Propuestas:**
-- [ ] Añadir `--desc` a `reminder add/edit` (notas indentadas, como task/ms/ev)
+- [x] Añadir `--desc` a `reminder add/edit` (notas indentadas, como task/ms/ev)
 - [ ] Considerar si `ev log` debería existir también para task/ms (crear logbook entry desde una cita)
 - [ ] Considerar si reminders deberían sincronizarse con Google (¿Tasks? ¿Calendar?)
 
@@ -37,8 +37,8 @@ Las 4 citas (task, ms, ev, reminder) deberían tener la misma interfaz. Estado a
 - `ls hl [project]` — acepta uno solo (`nargs="?"`, attr `project_name`)
 
 **Propuesta:**
-- [ ] Unificar: todos aceptan `[project...]` (múltiples) con attr `projects`
-- [ ] O todos aceptan `[project]` (uno solo) — depende de qué sea más útil
+- [x] Unificar attr a `project` en ev/hl/reminders/files/notes (tasks/ms mantienen `projects` plural)
+- [x] Eliminar `project_name` → usar `project` en todos
 
 ### A3. Parámetros `--from`/`--to` con nombres internos distintos
 
@@ -111,16 +111,16 @@ El bloque `_prompt_ring()` + validación se repite idéntico en task/ms/ev add.
 - `_select_item_reminder()` — para reminders (filtra por `not cancelled`)
 
 **Propuesta:**
-- [ ] Unificar en `_select_from_list(items, label, text, filter_fn, display_fn)`
-- [ ] Cada tipo pasa su propio filtro y formato de display
+- [x] Unificar en `_select_from_list(items, label, text, filter_fn, display_fn)`
+- [x] Cada tipo pasa su propio filtro y formato de display
 
 ### B4. Dispatchers verbose en orbit.py
 
 Cada `cmd_*` tiene 5-15 líneas de `getattr()` repetitivos para cada acción.
 
 **Propuesta:**
-- [ ] Crear helper `_extract_args(args, *fields)` que devuelve un dict
-- [ ] Reducir cada dispatcher a 2-3 líneas por acción
+- [x] Crear helpers `_add_args`, `_drop_args`, `_edit_args` + `_ga` shorthand
+- [x] Reducir cada dispatcher a 2-3 líneas por acción
 
 ### B5. Shell manipula sys.argv directamente
 
@@ -177,11 +177,11 @@ El try/except por item se añadió para eventos pero no para tasks/milestones.
 5. ~~**A7** — Alias `rem` para `reminder`/`ls reminders`~~
 6. ~~**B9** — try/except por tarea en gsync~~
 
-### Medio esfuerzo
-7. **B3** — Unificar funciones de selección interactiva
-8. **B4** — Simplificar dispatchers
-9. **A2** — Unificar args posicionales en `ls`
-10. **A1** — `--desc` para reminders
+### Medio esfuerzo — ✅ completados
+7. ~~**B3** — Unificar funciones de selección interactiva~~
+8. ~~**B4** — Simplificar dispatchers~~
+9. ~~**A2** — Unificar args posicionales en `ls`~~
+10. ~~**A1** — `--desc` para reminders~~
 
 ### Arquitectural (largo plazo)
 11. **B5** — `run_command()` en vez de sys.argv

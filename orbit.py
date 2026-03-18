@@ -56,6 +56,45 @@ def _d(expr):
     return result
 
 
+def _ga(args, name, default=None):
+    """Get attribute from args, shorthand for getattr with default."""
+    return getattr(args, name, default)
+
+
+def _add_args(args):
+    """Extract common add parameters from args."""
+    return dict(
+        project=args.project, text=args.text,
+        date_val=_d(_ga(args, "date")), recur=_ga(args, "recur"),
+        until=_d(_ga(args, "until")), ring=_ga(args, "ring"),
+        time_val=_ga(args, "time"), desc=_ga(args, "desc"),
+    )
+
+
+def _drop_args(args):
+    """Extract common drop parameters from args."""
+    return dict(
+        project=_ga(args, "project"), text=_ga(args, "text"),
+        force=_ga(args, "force", False),
+        occurrence=_ga(args, "occurrence", False),
+        series=_ga(args, "series", False),
+    )
+
+
+def _edit_args(args):
+    """Extract common edit parameters from args."""
+    return dict(
+        project=_ga(args, "project"), text=_ga(args, "text"),
+        new_text=_ga(args, "new_text"),
+        new_date=_d(_ga(args, "new_date")) or _ga(args, "new_date"),
+        new_recur=_ga(args, "new_recur"),
+        new_until=_d(_ga(args, "new_until")) or _ga(args, "new_until"),
+        new_ring=_ga(args, "new_ring"),
+        new_time=_ga(args, "new_time"),
+        new_desc=_ga(args, "new_desc"),
+    )
+
+
 def _handle_output(args, run_fn, cmd_label: str = ""):
     """Run run_fn capturing output, then --open / --log / print as needed.
 
@@ -274,177 +313,66 @@ def cmd_commit(args):
 
 
 def cmd_task_new(args):
-    """New-model task subcommand dispatcher (task add/done/cancel/edit/list)."""
-    action = getattr(args, "action", None) or "add"
-
-    if action == "add":
-        return run_task_add(
-            project  = args.project,
-            text     = args.text,
-            date_val = _d(getattr(args, "date", None)),
-            recur    = getattr(args, "recur", None),
-            until    = _d(getattr(args, "until", None)),
-            ring     = getattr(args, "ring", None),
-            time_val = getattr(args, "time", None),
-            desc     = getattr(args, "desc", None),
-        )
-    if action == "done":
-        return run_task_done(
-            project = getattr(args, "project", None),
-            text    = getattr(args, "text", None),
-        )
-    if action == "drop":
-        return run_task_drop(
-            project    = getattr(args, "project", None),
-            text       = getattr(args, "text", None),
-            force      = getattr(args, "force", False),
-            occurrence = getattr(args, "occurrence", False),
-            series     = getattr(args, "series", False),
-        )
-    if action == "edit":
-        return run_task_edit(
-            project   = getattr(args, "project", None),
-            text      = getattr(args, "text", None),
-            new_text  = getattr(args, "new_text", None),
-            new_date  = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
-            new_recur = getattr(args, "new_recur", None),
-            new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
-            new_ring  = getattr(args, "new_ring", None),
-            new_time  = getattr(args, "new_time", None),
-            new_desc  = getattr(args, "new_desc", None),
-        )
+    """Task subcommand dispatcher."""
+    action = _ga(args, "action") or "add"
+    if action == "add":    return run_task_add(**_add_args(args))
+    if action == "done":   return run_task_done(project=_ga(args, "project"), text=_ga(args, "text"))
+    if action == "drop":   return run_task_drop(**_drop_args(args))
+    if action == "edit":   return run_task_edit(**_edit_args(args))
     return 1
 
 
 def cmd_ms(args):
     """Milestone subcommand dispatcher."""
-    action = getattr(args, "action", None) or "list"
-
-    if action == "add":
-        return run_ms_add(
-            project  = args.project,
-            text     = args.text,
-            date_val = _d(getattr(args, "date", None)),
-            recur    = getattr(args, "recur", None),
-            until    = _d(getattr(args, "until", None)),
-            ring     = getattr(args, "ring", None),
-            time_val = getattr(args, "time", None),
-            desc     = getattr(args, "desc", None),
-        )
-    if action == "done":
-        return run_ms_done(
-            project = getattr(args, "project", None),
-            text    = getattr(args, "text", None),
-        )
-    if action == "drop":
-        return run_ms_drop(
-            project    = getattr(args, "project", None),
-            text       = getattr(args, "text", None),
-            force      = getattr(args, "force", False),
-            occurrence = getattr(args, "occurrence", False),
-            series     = getattr(args, "series", False),
-        )
-    if action == "edit":
-        return run_ms_edit(
-            project   = getattr(args, "project", None),
-            text      = getattr(args, "text", None),
-            new_text  = getattr(args, "new_text", None),
-            new_date  = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
-            new_recur = getattr(args, "new_recur", None),
-            new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
-            new_ring  = getattr(args, "new_ring", None),
-            new_time  = getattr(args, "new_time", None),
-            new_desc  = getattr(args, "new_desc", None),
-        )
+    action = _ga(args, "action") or "list"
+    if action == "add":    return run_ms_add(**_add_args(args))
+    if action == "done":   return run_ms_done(project=_ga(args, "project"), text=_ga(args, "text"))
+    if action == "drop":   return run_ms_drop(**_drop_args(args))
+    if action == "edit":   return run_ms_edit(**_edit_args(args))
     return 1
 
 
 def cmd_ev(args):
     """Event subcommand dispatcher."""
-    action = getattr(args, "action", None) or "list"
-
+    action = _ga(args, "action") or "list"
     if action == "add":
-        return run_ev_add(
-            project  = args.project,
-            text     = args.text,
-            date_val = _d(args.date),
-            end_date = _d(getattr(args, "end", None)),
-            time_val = getattr(args, "time", None),
-            recur    = getattr(args, "recur", None),
-            until    = _d(getattr(args, "until", None)),
-            ring     = getattr(args, "ring", None),
-            desc     = getattr(args, "desc", None),
-        )
-    if action == "drop":
-        return run_ev_drop(
-            project    = getattr(args, "project", None),
-            text       = getattr(args, "text", None),
-            force      = getattr(args, "force", False),
-            occurrence = getattr(args, "occurrence", False),
-            series     = getattr(args, "series", False),
-        )
+        kw = _add_args(args)
+        kw["end_date"] = _d(_ga(args, "end"))
+        return run_ev_add(**kw)
+    if action == "drop":   return run_ev_drop(**_drop_args(args))
     if action == "edit":
-        return run_ev_edit(
-            project   = getattr(args, "project", None),
-            text      = getattr(args, "text", None),
-            new_text  = getattr(args, "new_text", None),
-            new_date  = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
-            new_end   = _d(getattr(args, "new_end", None)) or getattr(args, "new_end", None),
-            new_time  = getattr(args, "new_time", None),
-            new_recur = getattr(args, "new_recur", None),
-            new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
-            new_ring  = getattr(args, "new_ring", None),
-            new_desc  = getattr(args, "new_desc", None),
-        )
+        kw = _edit_args(args)
+        kw["new_end"] = _d(_ga(args, "new_end")) or _ga(args, "new_end")
+        return run_ev_edit(**kw)
     if action == "list":
-        return run_ev_list(
-            project     = getattr(args, "project", None),
-            period_from = _d(getattr(args, "from_date", None)),
-            period_to   = _d(getattr(args, "to_date", None)),
-        )
+        return run_ev_list(project=_ga(args, "project"),
+                           period_from=_d(_ga(args, "from_date")),
+                           period_to=_d(_ga(args, "to_date")))
     if action == "log":
-        return run_ev_log(
-            project = getattr(args, "project", None),
-            text    = getattr(args, "text", None),
-        )
+        return run_ev_log(project=_ga(args, "project"), text=_ga(args, "text"))
     return 1
 
 
 def cmd_reminder(args):
     """Reminder subcommand dispatcher."""
-    action = getattr(args, "action", None) or "list"
-
+    action = _ga(args, "action") or "list"
     if action == "add":
         return run_reminder_add(
-            project  = args.project,
-            text     = args.text,
-            date_val = _d(args.date),
-            time_val = args.time,
-            recur    = getattr(args, "recur", None),
-            until    = _d(getattr(args, "until", None)),
-        )
-    if action == "drop":
-        return run_reminder_drop(
-            project    = getattr(args, "project", None),
-            text       = getattr(args, "text", None),
-            force      = getattr(args, "force", False),
-            occurrence = getattr(args, "occurrence", False),
-            series     = getattr(args, "series", False),
-        )
+            project=args.project, text=args.text,
+            date_val=_d(args.date), time_val=args.time,
+            recur=_ga(args, "recur"), until=_d(_ga(args, "until")),
+            desc=_ga(args, "desc"))
+    if action == "drop":   return run_reminder_drop(**_drop_args(args))
     if action == "edit":
         return run_reminder_edit(
-            project   = getattr(args, "project", None),
-            text      = getattr(args, "text", None),
-            new_text  = getattr(args, "new_text", None),
-            new_date  = _d(getattr(args, "new_date", None)) or getattr(args, "new_date", None),
-            new_time  = getattr(args, "new_time", None),
-            new_recur = getattr(args, "new_recur", None),
-            new_until = _d(getattr(args, "new_until", None)) or getattr(args, "new_until", None),
-        )
-    if action == "list":
-        return run_reminder_list(
-            project = getattr(args, "project", None),
-        )
+            project=_ga(args, "project"), text=_ga(args, "text"),
+            new_text=_ga(args, "new_text"),
+            new_date=_d(_ga(args, "new_date")) or _ga(args, "new_date"),
+            new_time=_ga(args, "new_time"),
+            new_recur=_ga(args, "new_recur"),
+            new_until=_d(_ga(args, "new_until")) or _ga(args, "new_until"),
+            new_desc=_ga(args, "new_desc"))
+    if action == "list":   return run_reminder_list(project=_ga(args, "project"))
     return 1
 
 
@@ -648,30 +576,30 @@ def cmd_ls(args):
 
     if what == "ev":
         fn = lambda: run_ev_list(
-            project=getattr(args, "project_name", None),
-            period_from=_d(getattr(args, "date_from", None)),
-            period_to=_d(getattr(args, "date_to", None)))
+            project=_ga(args, "project"),
+            period_from=_d(_ga(args, "date_from")),
+            period_to=_d(_ga(args, "date_to")))
         return _handle_output(args, fn, "ls ev")
 
     if what in ("reminders", "rem"):
         fn = lambda: run_reminder_list(
-            project=getattr(args, "project_name", None))
+            project=_ga(args, "project"))
         return _handle_output(args, fn, "ls reminders")
 
     if what == "hl":
         fn = lambda: run_hl_list(
-            project=getattr(args, "project_name", None),
+            project=_ga(args, "project"),
             hl_type=getattr(args, "type", None))
         return _handle_output(args, fn, "ls hl")
 
     if what == "files":
         fn = lambda: run_ls_files(
-            project=getattr(args, "project_name", None))
+            project=_ga(args, "project"))
         return _handle_output(args, fn, "ls files")
 
     if what == "notes":
         fn = lambda: run_ls_notes(
-            project=getattr(args, "project_name", None))
+            project=_ga(args, "project"))
         return _handle_output(args, fn, "ls notes")
 
     # Fallback: treat 'what' as a project name → list logbook entries
@@ -807,7 +735,7 @@ def main():
 
     # ls ev [project]
     ls_ev = ls_sub.add_parser("ev", help="List events")
-    ls_ev.add_argument("project_name", nargs="?", default=None, help="Project")
+    ls_ev.add_argument("project", nargs="?", default=None, help="Project")
     ls_ev.add_argument("--from", dest="date_from", default=None, metavar="DATE")
     ls_ev.add_argument("--to",   dest="date_to",   default=None, metavar="DATE")
     ls_ev.add_argument("--open",   action="store_true")
@@ -816,14 +744,14 @@ def main():
 
     # ls reminders [project]
     ls_rem = ls_sub.add_parser("reminders", aliases=["rem"], help="List active reminders")
-    ls_rem.add_argument("project_name", nargs="?", default=None, help="Project")
+    ls_rem.add_argument("project", nargs="?", default=None, help="Project")
     ls_rem.add_argument("--open",   action="store_true")
     ls_rem.add_argument("--editor", default=None)
     _add_log_args(ls_rem)
 
     # ls hl [project]
     ls_hl = ls_sub.add_parser("hl", help="List highlights")
-    ls_hl.add_argument("project_name", nargs="?", default=None, help="Project")
+    ls_hl.add_argument("project", nargs="?", default=None, help="Project")
     ls_hl.add_argument("--type", default=None, choices=HL_TYPES, help="Section type")
     ls_hl.add_argument("--open",   action="store_true")
     ls_hl.add_argument("--editor", default=None)
@@ -831,14 +759,14 @@ def main():
 
     # ls files [project]
     ls_files = ls_sub.add_parser("files", help="List project md files with git status")
-    ls_files.add_argument("project_name", nargs="?", default=None, help="Project")
+    ls_files.add_argument("project", nargs="?", default=None, help="Project")
     ls_files.add_argument("--open",   action="store_true")
     ls_files.add_argument("--editor", default=None)
     _add_log_args(ls_files)
 
     # ls notes [project]
     ls_notes = ls_sub.add_parser("notes", help="List notes with git status")
-    ls_notes.add_argument("project_name", nargs="?", default=None, help="Project")
+    ls_notes.add_argument("project", nargs="?", default=None, help="Project")
     ls_notes.add_argument("--open",   action="store_true")
     ls_notes.add_argument("--editor", default=None)
     _add_log_args(ls_notes)
@@ -1099,6 +1027,7 @@ def main():
     rem_add.add_argument("--time",   required=True, help="Time: HH:MM")
     rem_add.add_argument("--recur",  default=None, help="Recurrence: daily, weekly, monthly, ...")
     rem_add.add_argument("--until",  default=None, help="End date for recurrence")
+    rem_add.add_argument("--desc",   default=None, help="Description (links, notes)")
 
     rem_drop = rem_sub.add_parser("drop", help="Remove a reminder")
     rem_drop.add_argument("project", nargs="?", default=None)
@@ -1115,6 +1044,7 @@ def main():
     rem_edit.add_argument("--time",  dest="new_time",  default=None, help="New time HH:MM (or 'none')")
     rem_edit.add_argument("--recur", dest="new_recur", default=None, help="New recurrence (or 'none')")
     rem_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
+    rem_edit.add_argument("--desc",  dest="new_desc",  default=None, help="Description (or 'none')")
 
     rem_list = rem_sub.add_parser("list", help="List active reminders")
     rem_list.add_argument("project", nargs="?", default=None)

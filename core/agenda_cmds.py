@@ -485,28 +485,41 @@ def _write_agenda(path: Path, data: dict) -> None:
 
 # ── Interactive selection ──────────────────────────────────────────────────────
 
-def _select_item(items: list, label: str, text: Optional[str] = None) -> Optional[int]:
-    """Return list index of selected item among pending items.
+def _display_task(t: dict) -> str:
+    date_s = f" ({t['date']})" if t.get("date") else ""
+    return f"{t['desc']}{date_s}"
 
-    If *text* given: find by partial match (error if 0 or >1 matches).
-    Else: show interactive numbered list.
+def _display_event(e: dict) -> str:
+    end_s = f" → {e['end']}" if e.get("end") else ""
+    return f"{e['date']} — {e['desc']}{end_s}"
+
+def _display_reminder(r: dict) -> str:
+    return f"{r['desc']} ({r['date']}) ⏰{r['time']}"
+
+
+def _select_from_list(items: list, label: str, text: Optional[str],
+                      display_fn, filter_fn=None,
+                      match_fn=None) -> Optional[int]:
+    """Generic interactive selection. Returns index in original *items* list.
+
+    filter_fn(item) → bool: which items are selectable (default: all).
+    display_fn(item) → str: how to display each item.
+    match_fn(item, text) → bool: how to match text (default: case-insensitive substring on desc).
     """
-    pending_idx = [i for i, t in enumerate(items) if t["status"] == "pending"]
-    pending     = [items[i] for i in pending_idx]
+    if filter_fn:
+        sel_idx = [i for i, t in enumerate(items) if filter_fn(t)]
+    else:
+        sel_idx = list(range(len(items)))
+    sel = [items[i] for i in sel_idx]
 
-    if text:
-        matches = [i for i, t in enumerate(pending) if text.lower() in t["desc"].lower()]
-        if not matches:
-            print(f"Error: no se encontró '{text}'")
-            return None
-        if len(matches) == 1:
-            return pending_idx[matches[0]]
-        # Multiple matches — show numbered list and let user pick
-        print(f"Múltiples coincidencias para '{text}':")
+    if match_fn is None:
+        match_fn = lambda item, txt: txt.lower() in item["desc"].lower()
+
+    def _pick_from_matches(matches):
+        """Show numbered list for ambiguous matches, return selected index or None."""
+        print(f"Múltiples coincidencias{f' para {chr(39)}{text}{chr(39)}' if text else ''}:")
         for j, mi in enumerate(matches, 1):
-            t = pending[mi]
-            date_s = f" ({t['date']})" if t.get("date") else ""
-            print(f"  {j}. {t['desc']}{date_s}")
+            print(f"  {j}. {display_fn(sel[mi])}")
         if not sys.stdin.isatty():
             return None
         try:
@@ -517,18 +530,26 @@ def _select_item(items: list, label: str, text: Optional[str] = None) -> Optiona
         if raw.isdigit():
             idx = int(raw) - 1
             if 0 <= idx < len(matches):
-                return pending_idx[matches[idx]]
+                return sel_idx[matches[idx]]
         print("Cancelado.")
         return None
 
-    if not pending:
-        print(f"No hay {label} pendientes.")
+    if text:
+        matches = [i for i, t in enumerate(sel) if match_fn(t, text)]
+        if not matches:
+            print(f"Error: no se encontró '{text}'")
+            return None
+        if len(matches) == 1:
+            return sel_idx[matches[0]]
+        return _pick_from_matches(matches)
+
+    if not sel:
+        print(f"No hay {label}.")
         return None
 
     print(f"\n{label}:")
-    for i, t in enumerate(pending, 1):
-        date_s = f" ({t['date']})" if t.get("date") else ""
-        print(f"  {i}. {t['desc']}{date_s}")
+    for i, t in enumerate(sel, 1):
+        print(f"  {i}. {display_fn(t)}")
     print()
 
     if not sys.stdin.isatty():
@@ -544,114 +565,30 @@ def _select_item(items: list, label: str, text: Optional[str] = None) -> Optiona
         return None
     if raw.isdigit():
         idx = int(raw) - 1
-        if 0 <= idx < len(pending):
-            return pending_idx[idx]
-        print(f"Fuera de rango (1–{len(pending)})")
+        if 0 <= idx < len(sel):
+            return sel_idx[idx]
+        print(f"Fuera de rango (1–{len(sel)})")
         return None
-    matches = [i for i, t in enumerate(pending) if raw.lower() in t["desc"].lower()]
+    matches = [i for i, t in enumerate(sel) if match_fn(t, raw)]
     if not matches:
         print(f"Sin coincidencias para '{raw}'")
         return None
     if len(matches) == 1:
-        return pending_idx[matches[0]]
-    # Still ambiguous — show numbered list
-    print(f"Múltiples coincidencias:")
-    for j, mi in enumerate(matches, 1):
-        t = pending[mi]
-        date_s = f" ({t['date']})" if t.get("date") else ""
-        print(f"  {j}. {t['desc']}{date_s}")
-    try:
-        raw2 = input("Selecciona (#): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return None
-    if raw2.isdigit():
-        idx = int(raw2) - 1
-        if 0 <= idx < len(matches):
-            return pending_idx[matches[idx]]
-    print("Cancelado.")
-    return None
+        return sel_idx[matches[0]]
+    return _pick_from_matches(matches)
+
+
+def _select_item(items: list, label: str, text: Optional[str] = None) -> Optional[int]:
+    """Select a pending task or milestone by text or interactive list."""
+    return _select_from_list(items, label, text,
+                             display_fn=_display_task,
+                             filter_fn=lambda t: t["status"] == "pending")
 
 
 def _select_event(events: list, text: Optional[str]) -> Optional[int]:
-    """Select an event by text or interactive list. Returns index in events list."""
-    if text:
-        matches = [i for i, e in enumerate(events) if text.lower() in e["desc"].lower()]
-        if not matches:
-            print(f"Error: no se encontró '{text}'")
-            return None
-        if len(matches) == 1:
-            return matches[0]
-        # Multiple matches — show numbered list
-        print(f"Múltiples coincidencias para '{text}':")
-        for j, mi in enumerate(matches, 1):
-            e = events[mi]
-            end_s = f" → {e['end']}" if e.get("end") else ""
-            print(f"  {j}. {e['date']} — {e['desc']}{end_s}")
-        if not sys.stdin.isatty():
-            return None
-        try:
-            raw = input("Selecciona (#): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return None
-        if raw.isdigit():
-            idx = int(raw) - 1
-            if 0 <= idx < len(matches):
-                return matches[idx]
-        print("Cancelado.")
-        return None
-
-    if not events:
-        print("No hay eventos disponibles.")
-        return None
-
-    print("\nEventos:")
-    for i, e in enumerate(events, 1):
-        end_s = f" → {e['end']}" if e.get("end") else ""
-        print(f"  {i}. {e['date']} — {e['desc']}{end_s}")
-    print()
-
-    if not sys.stdin.isatty():
-        return None
-
-    try:
-        raw = input("Selecciona (número o texto parcial): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return None
-
-    if not raw:
-        return None
-    if raw.isdigit():
-        idx = int(raw) - 1
-        if 0 <= idx < len(events):
-            return idx
-        print(f"Fuera de rango (1–{len(events)})")
-        return None
-    matches = [i for i, e in enumerate(events) if raw.lower() in e["desc"].lower()]
-    if not matches:
-        print(f"Sin coincidencias para '{raw}'")
-        return None
-    if len(matches) == 1:
-        return matches[0]
-    # Still ambiguous — show numbered list
-    print(f"Múltiples coincidencias:")
-    for j, mi in enumerate(matches, 1):
-        e = events[mi]
-        end_s = f" → {e['end']}" if e.get("end") else ""
-        print(f"  {j}. {e['date']} — {e['desc']}{end_s}")
-    try:
-        raw2 = input("Selecciona (#): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return None
-    if raw2.isdigit():
-        idx = int(raw2) - 1
-        if 0 <= idx < len(matches):
-            return matches[idx]
-    print("Cancelado.")
-    return None
+    """Select an event by text or interactive list."""
+    return _select_from_list(events, "Eventos", text,
+                             display_fn=_display_event)
 
 
 # ── Recurrence helpers ─────────────────────────────────────────────────────────
@@ -1637,7 +1574,8 @@ def run_ev_list(project: Optional[str] = None,
 def run_reminder_add(project: str, text: str, date_val: str,
                      time_val: str,
                      recur: Optional[str] = None,
-                     until: Optional[str] = None) -> int:
+                     until: Optional[str] = None,
+                     desc: Optional[str] = None) -> int:
     """Add a reminder to a project's agenda."""
     if recur:
         recur = _normalize_recur(recur)
@@ -1652,8 +1590,10 @@ def run_reminder_add(project: str, text: str, date_val: str,
 
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
+    notes = [desc] if desc else []
     new_rem = {"desc": text, "date": date_val, "time": time_val,
-               "recur": recur, "until": until, "cancelled": False}
+               "recur": recur, "until": until, "cancelled": False,
+               "notes": notes}
     data.setdefault("reminders", []).append(new_rem)
     _write_agenda(agenda_path, data)
 
@@ -1787,7 +1727,8 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
 def run_reminder_edit(project: Optional[str], text: Optional[str],
                       new_text: Optional[str] = None, new_date: Optional[str] = None,
                       new_time: Optional[str] = None, new_recur: Optional[str] = None,
-                      new_until: Optional[str] = None) -> int:
+                      new_until: Optional[str] = None,
+                      new_desc: Optional[str] = None) -> int:
     """Edit an existing reminder."""
     if new_date and new_date != "none" and not _valid_date(new_date):
         print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
@@ -1830,6 +1771,8 @@ def run_reminder_edit(project: Optional[str], text: Optional[str],
         if new_time:   rem["time"]  = None if new_time == "none" else new_time
         if new_recur:  rem["recur"] = None if new_recur == "none" else new_recur
         if new_until:  rem["until"] = None if new_until == "none" else new_until
+        if new_desc is not None:
+            rem["notes"] = [new_desc] if new_desc and new_desc != "none" else []
 
         _write_agenda(agenda_path, data)
         attrs = f"({rem.get('date', '?')}) ⏰{rem.get('time', '?')}"
@@ -1856,46 +1799,11 @@ def run_reminder_edit(project: Optional[str], text: Optional[str],
 
 def _select_item_reminder(items: list, text: Optional[str]) -> Optional[int]:
     """Select a reminder by partial match or interactive list."""
-    import sys
-    if text:
-        from core.config import normalize
-        norm = normalize(text)
-        matches = [(i, r) for i, r in enumerate(items)
-                   if norm in normalize(r["desc"])]
-        if len(matches) == 1:
-            return matches[0][0]
-        if len(matches) > 1:
-            print(f"Múltiples coincidencias para '{text}':")
-            for j, (i, r) in enumerate(matches, 1):
-                print(f"  {j}. {r['desc']} ({r['date']}) ⏰{r['time']}")
-            if not sys.stdin.isatty():
-                return None
-            try:
-                raw = input("Selecciona (#): ").strip()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return None
-            if raw.isdigit():
-                idx = int(raw) - 1
-                if 0 <= idx < len(matches):
-                    return matches[idx][0]
-            print("Cancelado.")
-            return None
-        print(f"⚠️  No se encontró recordatorio con '{text}'")
-        return None
-    # Interactive
-    if not sys.stdin.isatty():
-        return None
-    for i, r in enumerate(items):
-        print(f"  [{i+1}] {r['desc']} ({r['date']}) ⏰{r['time']}")
-    try:
-        choice = input("Selecciona (#): ").strip()
-        idx = int(choice) - 1
-        if 0 <= idx < len(items):
-            return idx
-    except (ValueError, EOFError, KeyboardInterrupt):
-        pass
-    return None
+    from core.config import normalize
+    return _select_from_list(
+        items, "Recordatorios", text,
+        display_fn=_display_reminder,
+        match_fn=lambda r, txt: normalize(txt) in normalize(r["desc"]))
 
 
 def run_reminder_list(project: Optional[str] = None) -> int:
