@@ -167,10 +167,21 @@ ev list next-kr
 - `--time HH:MM-HH:MM` — evento con hora de inicio y fin
 - Sin `--time` — evento de día completo (o multi-día con `--end`)
 
-Los tres (task, ms, ev) comparten la misma interfaz: `--date`, `--recur`, `--until`, `--ring`.
+Los cuatro tipos comparten `--date`, `--recur`, `--until`. Tasks, hitos y eventos aceptan `--ring`.
 Las tareas y hitos recurrentes avanzan automáticamente al completarlas.
 Los eventos recurrentes se expanden automáticamente en la agenda y el calendario.
 `--ring` programa una alarma en Reminders.app de macOS.
+
+### Crear entrada de logbook desde una cita
+
+```bash
+task log next-kr "Reproducir"        # → #apunte en logbook
+ms log next-kr "Calibración"         # → #resultado en logbook
+ev log next-kr "Congreso"            # → #evento en logbook
+reminder log next-kr "correo"        # → #apunte en logbook
+```
+
+Útil para anotar qué se hizo cuando se completó una tarea, se alcanzó un hito, se asistió a un evento o se atendió un recordatorio.
 
 ### Recordatorios
 

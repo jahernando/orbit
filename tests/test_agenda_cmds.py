@@ -1403,3 +1403,116 @@ class TestReminderEdit:
         rc = run_reminder_edit("test-project", "Bad time", new_time="not-a-time")
         assert rc == 1
         assert "no válida" in capsys.readouterr().out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# _validate_add_params
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestValidateAddParams:
+    def test_valid_params(self):
+        from core.agenda_cmds import _validate_add_params
+        assert _validate_add_params("2026-03-20", "10:00", "weekly", None, "5m") is None
+
+    def test_invalid_date(self):
+        from core.agenda_cmds import _validate_add_params
+        err = _validate_add_params("not-a-date", None, None, None, None)
+        assert err and "Fecha" in err
+
+    def test_invalid_recur(self):
+        from core.agenda_cmds import _validate_add_params
+        err = _validate_add_params("2026-03-20", None, "bogus", None, None)
+        assert err and "Recurrencia" in err
+
+    def test_until_without_recur(self):
+        from core.agenda_cmds import _validate_add_params
+        err = _validate_add_params("2026-03-20", None, None, "2026-04-01", None)
+        assert err and "--until" in err
+
+    def test_ring_without_date(self):
+        from core.agenda_cmds import _validate_add_params
+        err = _validate_add_params(None, None, None, None, "5m")
+        assert err and "--ring" in err
+
+    def test_invalid_ring(self):
+        from core.agenda_cmds import _validate_add_params
+        err = _validate_add_params("2026-03-20", None, None, None, "bogus")
+        assert err and "Ring" in err
+
+    def test_time_without_date(self):
+        from core.agenda_cmds import _validate_add_params
+        err = _validate_add_params(None, "10:00", None, None, None)
+        assert err and "--time" in err
+
+    def test_invalid_time_simple(self):
+        from core.agenda_cmds import _validate_add_params
+        err = _validate_add_params("2026-03-20", "bad", None, None, None)
+        assert err and "Hora" in err
+
+    def test_event_time_format(self):
+        from core.agenda_cmds import _validate_add_params
+        assert _validate_add_params("2026-03-20", "10:00-11:00", None, None, None,
+                                    time_format="event") is None
+
+    def test_invalid_event_time(self):
+        from core.agenda_cmds import _validate_add_params
+        err = _validate_add_params("2026-03-20", "bad", None, None, None,
+                                   time_format="event")
+        assert err and "Hora" in err
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# task log / ms log / ev log / reminder log
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestTaskLog:
+    def test_creates_logbook_entry(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_log
+        run_task_add("test-project", "Review paper", date_val="2026-03-10")
+        rc = run_task_log("test-project", "Review")
+        assert rc == 0
+        log = _logbook_text(proj)
+        assert "Review paper" in log
+        assert "#apunte" in log
+
+    def test_not_found(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add, run_task_log
+        run_task_add("test-project", "Exists")
+        rc = run_task_log("test-project", "Ghost")
+        assert rc == 1
+
+
+class TestMsLog:
+    def test_creates_logbook_entry(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_log
+        run_ms_add("test-project", "Calibration done", date_val="2026-03-10")
+        rc = run_ms_log("test-project", "Calibration")
+        assert rc == 0
+        log = _logbook_text(proj)
+        assert "Calibration done" in log
+        assert "#resultado" in log
+
+    def test_not_found(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_log
+        run_ms_add("test-project", "Exists")
+        rc = run_ms_log("test-project", "Ghost")
+        assert rc == 1
+
+
+class TestReminderLog:
+    def test_creates_logbook_entry(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_log
+        run_reminder_add("test-project", "Check email", date_val="2026-03-10",
+                         time_val="10:00")
+        rc = run_reminder_log("test-project", "email")
+        assert rc == 0
+        log = _logbook_text(proj)
+        assert "Check email" in log
+        assert "#apunte" in log
+
+    def test_not_found(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_log
+        run_reminder_add("test-project", "Exists", date_val="2026-03-20",
+                         time_val="10:00")
+        rc = run_reminder_log("test-project", "Ghost")
+        assert rc == 1

@@ -26,7 +26,7 @@ Principios de diseño:
     log.py                ← logbook entries
     highlights.py         ← highlights CRUD
     project.py            ← gestión de proyectos
-  tests/                  ← pytest, ~750 tests
+  tests/                  ← pytest, ~765 tests
 
 ~/🚀orbit-ws/             ← workspace de trabajo (privado)
 ~/🌿orbit-ps/             ← workspace personal (privado)
@@ -43,8 +43,8 @@ El sistema de citas es uniforme. Las cuatro comparten la misma interfaz:
 | ev (event) | 📅 | `## 📅 Eventos` | no | no |
 | reminder | 💬 | `## 💬 Recordatorios` | no (cancelled) | no |
 
-Comandos uniformes: `add`, `drop`, `edit`, `list`.
-Además: task/ms tienen `done`; ev tiene `log` (crear entrada de logbook desde evento).
+Comandos uniformes: `add`, `drop`, `edit`, `list`, `log` (crear entrada de logbook desde cita).
+Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 
 ### Recurrencia
 - Todos soportan `--recur` y `--until`
@@ -73,7 +73,9 @@ Además: task/ms tienen `done`; ev tiene `log` (crear entrada de logbook desde e
 - Ignorar `tests/test_notes_commit.py` y `tests/test_undo.py` si fallan por fecha
 - Funciones públicas: `run_*` (dispatchers en orbit.py las llaman)
 - Funciones internas: `_*` (prefijo underscore)
-- Selección interactiva: `_select_item` (task/ms), `_select_event` (ev), `_select_item_reminder` (reminder)
+- Selección interactiva: `_select_from_list` (genérica), wrappers `_select_item`, `_select_event`, `_select_item_reminder`
+- Validación de params: `_validate_add_params()`, `_prompt_and_validate_ring()`
+- Dispatchers: helpers `_ga()`, `_add_args()`, `_drop_args()`, `_edit_args()`
 - Al añadir features: actualizar CHULETA.md, TUTORIAL.md, README.md
 
 ## Documentación
@@ -83,14 +85,18 @@ Además: task/ms tienen `done`; ev tiene `log` (crear entrada de logbook desde e
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.18.1, 2026-03-18)
+## Estado actual (v0.19.0, 2026-03-18)
 
-Sesión de hoy — mejoras al sistema de citas:
-- `reminder` promovido a ciudadano de primera clase (edit, drop, ls reminders)
+Sesión de hoy — mejoras al sistema de citas + refactorización:
+- `reminder` promovido a ciudadano de primera clase (edit, drop, log, ls, --desc)
 - Flags `-o`/`-s` en todos los drop para recurrentes
 - Disambiguación interactiva cuando hay múltiples coincidencias
 - Mac Reminders: formato con emojis, sync en edit/drop, startup programa las 4 citas
-- gsync resiliente (error por evento, no por lote)
+- gsync resiliente (error por item, no por lote)
 - Doctor muestra línea problemática
 - Prompt de ring al crear citas con hora
 - Deliver a cloud por defecto al adjuntar fichero
+- `task log` / `ms log` / `reminder log` (crear logbook entry desde cita)
+- Alias `rem` para `reminder`
+- Refactorización: `run_command()`, `track_operation`, `_validate_add_params`,
+  `_select_from_list`, dispatchers simplificados, args unificados
