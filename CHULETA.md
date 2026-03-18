@@ -78,6 +78,8 @@ Se aceptan días de la semana en inglés y español (`lunes`, `viernes`, etc.).
 Si la tarea tiene `--time`, los rings relativos (`1h`, `30m`) se calculan desde esa hora.
 Sin `--time`, se usa 09:00 como ancla por defecto.
 
+Si al crear una tarea, hito o evento con `--time` no se indica `--ring`, Orbit pregunta interactivamente (defecto `5m`, `0` para no añadir ring).
+
 ---
 
 ## ms — hitos

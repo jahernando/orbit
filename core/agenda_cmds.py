@@ -37,6 +37,23 @@ from core.config import iter_project_dirs
 VALID_RECUR = {"daily", "weekly", "monthly", "weekdays"}
 
 
+def _prompt_ring() -> Optional[str]:
+    """Ask for ring time when adding a timed task/milestone. Returns ring value or None."""
+    import sys
+    if not sys.stdin.isatty():
+        return "5m"
+    try:
+        ans = input("  🔔 ¿Recordatorio? [5m] (0=no): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return "5m"
+    if not ans:
+        return "5m"
+    if ans in ("0", "no", "n"):
+        return None
+    return ans
+
+
 def _valid_date(val: str) -> bool:
     """Check if a date string is a valid ISO date (YYYY-MM-DD)."""
     try:
@@ -690,6 +707,15 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
         print(f"⚠️  Hora '{time_val}' no válida. Usa: HH:MM (ej. 15:00)")
         return 1
 
+    # Prompt for ring if task has date+time but no ring specified
+    if date_val and time_val and not ring:
+        ring = _prompt_ring()
+        if ring:
+            from core.ring import _parse_ring
+            if _parse_ring(ring) is None:
+                print(f"⚠️  Ring '{ring}' no válido, ignorando.")
+                ring = None
+
     project_dir = _find_new_project(project)
     if project_dir is None:
         return 1
@@ -1038,6 +1064,15 @@ def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
         print(f"⚠️  Hora '{time_val}' no válida. Usa: HH:MM (ej. 15:00)")
         return 1
 
+    # Prompt for ring if milestone has date+time but no ring specified
+    if date_val and time_val and not ring:
+        ring = _prompt_ring()
+        if ring:
+            from core.ring import _parse_ring
+            if _parse_ring(ring) is None:
+                print(f"⚠️  Ring '{ring}' no válido, ignorando.")
+                ring = None
+
     project_dir = _find_new_project(project)
     if project_dir is None:
         return 1
@@ -1346,6 +1381,15 @@ def run_ev_add(project: str, text: str, date_val: str,
         if _parse_ring(ring) is None:
             print(f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM")
             return 1
+
+    # Prompt for ring if event has time but no ring specified
+    if time_val and not ring:
+        ring = _prompt_ring()
+        if ring:
+            from core.ring import _parse_ring
+            if _parse_ring(ring) is None:
+                print(f"⚠️  Ring '{ring}' no válido, ignorando.")
+                ring = None
 
     project_dir = _find_new_project(project)
     if project_dir is None:
