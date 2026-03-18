@@ -437,11 +437,27 @@ def _select_item(items: list, label: str, text: Optional[str] = None) -> Optiona
         if not matches:
             print(f"Error: no se encontró '{text}'")
             return None
-        if len(matches) > 1:
-            descs = ", ".join(f'"{pending[i]["desc"]}"' for i in matches)
-            print(f"Ambiguo: {len(matches)} coincidencias: {descs}")
+        if len(matches) == 1:
+            return pending_idx[matches[0]]
+        # Multiple matches — show numbered list and let user pick
+        print(f"Múltiples coincidencias para '{text}':")
+        for j, mi in enumerate(matches, 1):
+            t = pending[mi]
+            date_s = f" ({t['date']})" if t.get("date") else ""
+            print(f"  {j}. {t['desc']}{date_s}")
+        if not sys.stdin.isatty():
             return None
-        return pending_idx[matches[0]]
+        try:
+            raw = input("Selecciona (#): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if raw.isdigit():
+            idx = int(raw) - 1
+            if 0 <= idx < len(matches):
+                return pending_idx[matches[idx]]
+        print("Cancelado.")
+        return None
 
     if not pending:
         print(f"No hay {label} pendientes.")
@@ -474,10 +490,25 @@ def _select_item(items: list, label: str, text: Optional[str] = None) -> Optiona
     if not matches:
         print(f"Sin coincidencias para '{raw}'")
         return None
-    if len(matches) > 1:
-        print(f"Ambiguo: {len(matches)} coincidencias")
+    if len(matches) == 1:
+        return pending_idx[matches[0]]
+    # Still ambiguous — show numbered list
+    print(f"Múltiples coincidencias:")
+    for j, mi in enumerate(matches, 1):
+        t = pending[mi]
+        date_s = f" ({t['date']})" if t.get("date") else ""
+        print(f"  {j}. {t['desc']}{date_s}")
+    try:
+        raw2 = input("Selecciona (#): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
         return None
-    return pending_idx[matches[0]]
+    if raw2.isdigit():
+        idx = int(raw2) - 1
+        if 0 <= idx < len(matches):
+            return pending_idx[matches[idx]]
+    print("Cancelado.")
+    return None
 
 
 def _select_event(events: list, text: Optional[str]) -> Optional[int]:
@@ -487,10 +518,27 @@ def _select_event(events: list, text: Optional[str]) -> Optional[int]:
         if not matches:
             print(f"Error: no se encontró '{text}'")
             return None
-        if len(matches) > 1:
-            print(f"Ambiguo: {len(matches)} coincidencias")
+        if len(matches) == 1:
+            return matches[0]
+        # Multiple matches — show numbered list
+        print(f"Múltiples coincidencias para '{text}':")
+        for j, mi in enumerate(matches, 1):
+            e = events[mi]
+            end_s = f" → {e['end']}" if e.get("end") else ""
+            print(f"  {j}. {e['date']} — {e['desc']}{end_s}")
+        if not sys.stdin.isatty():
             return None
-        return matches[0]
+        try:
+            raw = input("Selecciona (#): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if raw.isdigit():
+            idx = int(raw) - 1
+            if 0 <= idx < len(matches):
+                return matches[idx]
+        print("Cancelado.")
+        return None
 
     if not events:
         print("No hay eventos disponibles.")
@@ -523,10 +571,25 @@ def _select_event(events: list, text: Optional[str]) -> Optional[int]:
     if not matches:
         print(f"Sin coincidencias para '{raw}'")
         return None
-    if len(matches) > 1:
-        print(f"Ambiguo: {len(matches)} coincidencias")
+    if len(matches) == 1:
+        return matches[0]
+    # Still ambiguous — show numbered list
+    print(f"Múltiples coincidencias:")
+    for j, mi in enumerate(matches, 1):
+        e = events[mi]
+        end_s = f" → {e['end']}" if e.get("end") else ""
+        print(f"  {j}. {e['date']} — {e['desc']}{end_s}")
+    try:
+        raw2 = input("Selecciona (#): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
         return None
-    return matches[0]
+    if raw2.isdigit():
+        idx = int(raw2) - 1
+        if 0 <= idx < len(matches):
+            return matches[idx]
+    print("Cancelado.")
+    return None
 
 
 # ── Recurrence helpers ─────────────────────────────────────────────────────────
@@ -1645,6 +1708,7 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
 
 def _select_item_reminder(items: list, text: Optional[str]) -> Optional[int]:
     """Select a reminder by partial match or interactive list."""
+    import sys
     if text:
         from core.config import normalize
         norm = normalize(text)
@@ -1653,14 +1717,25 @@ def _select_item_reminder(items: list, text: Optional[str]) -> Optional[int]:
         if len(matches) == 1:
             return matches[0][0]
         if len(matches) > 1:
-            print(f"⚠️  Múltiples coincidencias para '{text}':")
-            for i, r in matches:
-                print(f"  [{i+1}] {r['desc']} ({r['date']}) ⏰{r['time']}")
+            print(f"Múltiples coincidencias para '{text}':")
+            for j, (i, r) in enumerate(matches, 1):
+                print(f"  {j}. {r['desc']} ({r['date']}) ⏰{r['time']}")
+            if not sys.stdin.isatty():
+                return None
+            try:
+                raw = input("Selecciona (#): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return None
+            if raw.isdigit():
+                idx = int(raw) - 1
+                if 0 <= idx < len(matches):
+                    return matches[idx][0]
+            print("Cancelado.")
             return None
         print(f"⚠️  No se encontró recordatorio con '{text}'")
         return None
     # Interactive
-    import sys
     if not sys.stdin.isatty():
         return None
     for i, r in enumerate(items):

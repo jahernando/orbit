@@ -1221,3 +1221,82 @@ class TestDropOccurrenceSeriesReminder:
         data = _read_agenda(proj / "test-project-agenda.md")
         active = [r for r in data["reminders"] if not r.get("cancelled")]
         assert len(active) == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Ambiguous match — interactive disambiguation
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestAmbiguousSelectTask:
+    def test_ambiguous_lists_and_selects(self, proj, projects_dir, monkeypatch, capsys):
+        """When text matches multiple tasks, show list and let user pick."""
+        from core.agenda_cmds import run_task_add, run_task_drop, _read_agenda
+        run_task_add("test-project", "Reunión semanal", date_val="2026-03-10", recur="weekly")
+        run_task_add("test-project", "Reunión mensual", date_val="2026-04-01", recur="monthly")
+        # Simulate user picking option 2
+        monkeypatch.setattr("sys.stdin", type("FakeTTY", (), {
+            "isatty": lambda self: True,
+            "readline": lambda self: "2\n",
+        })())
+        monkeypatch.setattr("builtins.input", lambda prompt: "2")
+        rc = run_task_drop("test-project", "Reunión", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        out = capsys.readouterr().out
+        assert "Múltiples coincidencias" in out
+        # "Reunión mensual" (option 2) should have been advanced
+        pending = [t for t in data["tasks"] if t["status"] == "pending"]
+        descs = [t["desc"] for t in pending]
+        assert "Reunión semanal" in descs  # untouched
+        assert "Reunión mensual" in descs  # advanced (new occurrence)
+
+    def test_ambiguous_noninteractive_returns_none(self, proj, projects_dir, capsys):
+        """In non-interactive mode, ambiguous match should fail gracefully."""
+        from core.agenda_cmds import run_task_add, run_task_drop
+        run_task_add("test-project", "Reunión semanal", date_val="2026-03-10")
+        run_task_add("test-project", "Reunión mensual", date_val="2026-04-01")
+        rc = run_task_drop("test-project", "Reunión", force=True)
+        assert rc == 1  # can't select in non-tty
+        out = capsys.readouterr().out
+        assert "Múltiples coincidencias" in out
+
+
+class TestAmbiguousSelectEvent:
+    def test_ambiguous_lists_and_selects(self, proj, projects_dir, monkeypatch, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_drop, _read_agenda
+        run_ev_add("test-project", "Reunión semanal", "2026-03-10", recur="weekly")
+        run_ev_add("test-project", "Reunión mensual", "2026-04-01", recur="monthly")
+        monkeypatch.setattr("sys.stdin", type("FakeTTY", (), {
+            "isatty": lambda self: True,
+        })())
+        monkeypatch.setattr("builtins.input", lambda prompt: "1")
+        rc = run_ev_drop("test-project", "Reunión", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        out = capsys.readouterr().out
+        assert "Múltiples coincidencias" in out
+        # First event (semanal) should have been advanced
+        descs = [e["desc"] for e in data["events"]]
+        assert "Reunión semanal" in descs
+        assert "Reunión mensual" in descs
+        semanal = [e for e in data["events"] if e["desc"] == "Reunión semanal"][0]
+        assert semanal["date"] > "2026-03-10"
+
+
+class TestAmbiguousSelectReminder:
+    def test_ambiguous_lists_and_selects(self, proj, projects_dir, monkeypatch, capsys):
+        from core.agenda_cmds import run_reminder_add, run_reminder_drop, _read_agenda
+        run_reminder_add("test-project", "Llamar a Juan", date_val="2026-03-20", time_val="10:00")
+        run_reminder_add("test-project", "Llamar a Pedro", date_val="2026-03-21", time_val="11:00")
+        monkeypatch.setattr("sys.stdin", type("FakeTTY", (), {
+            "isatty": lambda self: True,
+        })())
+        monkeypatch.setattr("builtins.input", lambda prompt: "2")
+        rc = run_reminder_drop("test-project", "Llamar", force=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        out = capsys.readouterr().out
+        assert "Múltiples coincidencias" in out
+        active = [r for r in data["reminders"] if not r.get("cancelled")]
+        assert len(active) == 1
+        assert active[0]["desc"] == "Llamar a Juan"  # Pedro (option 2) was dropped
