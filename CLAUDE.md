@@ -85,9 +85,18 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.19.0, 2026-03-18)
+## Estado actual (v0.19.1, 2026-03-18)
 
-Sesión de hoy — mejoras al sistema de citas + refactorización:
+### v0.19.1 (2026-03-18)
+- Fix: `_build_parser()` — `main()` shadowed causaba `NameError` al arrancar
+- Fix: `edit` en citas recurrentes ahora pregunta ocurrencia vs serie (`-o`/`-s`/`--force`)
+  - `-o`: crea copia no-recurrente con edits + avanza la serie
+  - `-s`: edita la serie en sitio
+  - `--force`: equivale a `-o` (opción segura)
+  - Helper compartido: `_ask_edit_occurrence_or_series()`
+- Migración de agendas de orbit-ps al formato emoji (⏰🔄🔔☁️)
+
+### v0.19.0 (2026-03-18)
 - `reminder` promovido a ciudadano de primera clase (edit, drop, log, ls, --desc)
 - Flags `-o`/`-s` en todos los drop para recurrentes
 - Disambiguación interactiva cuando hay múltiples coincidencias
