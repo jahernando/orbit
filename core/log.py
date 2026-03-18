@@ -246,11 +246,11 @@ def _ask_deliver() -> bool:
     if not sys.stdin.isatty():
         return False
     try:
-        ans = input("  📦 ¿Entregar fichero a cloud? [s/N]: ").strip().lower()
+        ans = input("  📦 ¿Entregar fichero a cloud? [S/n]: ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
-        return False
-    return ans in ("s", "si", "sí", "y", "yes")
+        return True
+    return ans not in ("n", "no")
 
 
 def add_entry_with_ref(project: str, ref: Optional[str], message: str,
