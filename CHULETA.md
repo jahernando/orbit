@@ -42,6 +42,7 @@ orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--
 ```
 
 - `done` y `drop`: interactivos si no se especifica texto; `drop` pide confirmación
+- Si el texto coincide con varias citas, se muestra una lista numerada para elegir (aplica a task, ms, ev y reminder)
 - `done` en tarea recurrente: avanza a la siguiente ocurrencia automáticamente
 - `drop` en tarea recurrente: pregunta si quitar solo esta ocurrencia o toda la serie; `-o` avanza al próximo, `-s` elimina la serie (sin prompt); `--force` avanza al próximo (seguro por defecto)
 - `--open`: escribe el resultado en `cmd.md` y lo abre en el editor

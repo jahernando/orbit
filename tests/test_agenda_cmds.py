@@ -1261,6 +1261,37 @@ class TestAmbiguousSelectTask:
         assert "Múltiples coincidencias" in out
 
 
+class TestAmbiguousSelectMs:
+    def test_ambiguous_lists_and_selects(self, proj, projects_dir, monkeypatch, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_drop, _read_agenda
+        run_ms_add("test-project", "Revisión semanal", date_val="2026-03-10", recur="weekly")
+        run_ms_add("test-project", "Revisión mensual", date_val="2026-04-01", recur="monthly")
+        monkeypatch.setattr("sys.stdin", type("FakeTTY", (), {
+            "isatty": lambda self: True,
+        })())
+        monkeypatch.setattr("builtins.input", lambda prompt: "2")
+        rc = run_ms_drop("test-project", "Revisión", occurrence=True)
+        assert rc == 0
+        data = _read_agenda(proj / "test-project-agenda.md")
+        out = capsys.readouterr().out
+        assert "Múltiples coincidencias" in out
+        pending = [m for m in data["milestones"] if m["status"] == "pending"]
+        descs = [m["desc"] for m in pending]
+        assert "Revisión semanal" in descs  # untouched
+        assert "Revisión mensual" in descs  # advanced (new occurrence)
+        mensual = [m for m in pending if m["desc"] == "Revisión mensual"][0]
+        assert mensual["date"] > "2026-04-01"
+
+    def test_ambiguous_noninteractive_returns_none(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ms_add, run_ms_drop
+        run_ms_add("test-project", "Revisión semanal", date_val="2026-03-10")
+        run_ms_add("test-project", "Revisión mensual", date_val="2026-04-01")
+        rc = run_ms_drop("test-project", "Revisión", force=True)
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "Múltiples coincidencias" in out
+
+
 class TestAmbiguousSelectEvent:
     def test_ambiguous_lists_and_selects(self, proj, projects_dir, monkeypatch, capsys):
         from core.agenda_cmds import run_ev_add, run_ev_drop, _read_agenda
