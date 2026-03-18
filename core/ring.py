@@ -210,6 +210,64 @@ def _clear_ring(project_dir: Path, task_index: int) -> None:
         _write_agenda(resolve_file(project_dir, "agenda"), data)
 
 
+def _milestones_ringing_on(project_dir: Path, target: date) -> list:
+    """Return list of milestone dicts from agenda.md whose ring fires on *target* date."""
+    data = _read_agenda(resolve_file(project_dir, "agenda"))
+    results = []
+
+    for i, ms in enumerate(data["milestones"]):
+        if ms["status"] != "pending":
+            continue
+        if not ms.get("ring") or not ms.get("date"):
+            continue
+
+        ring_dt = resolve_ring_datetime(ms["date"], ms["ring"],
+                                        due_time=ms.get("time"))
+        if ring_dt is None:
+            continue
+        if ring_dt.date() != target:
+            continue
+
+        results.append({
+            "index":   i,
+            "desc":    ms["desc"],
+            "due":     ms["date"],
+            "ring":    ms["ring"],
+            "recur":   ms.get("recur"),
+            "ring_dt": ring_dt,
+        })
+
+    return results
+
+
+def _events_ringing_on(project_dir: Path, target: date) -> list:
+    """Return list of event dicts from agenda.md whose ring fires on *target* date."""
+    data = _read_agenda(resolve_file(project_dir, "agenda"))
+    results = []
+
+    for i, ev in enumerate(data["events"]):
+        if not ev.get("ring") or not ev.get("date"):
+            continue
+
+        ev_time = ev.get("time", "").split("-")[0] if ev.get("time") else None
+        ring_dt = resolve_ring_datetime(ev["date"], ev["ring"], due_time=ev_time)
+        if ring_dt is None:
+            continue
+        if ring_dt.date() != target:
+            continue
+
+        results.append({
+            "index":   i,
+            "desc":    ev["desc"],
+            "due":     ev["date"],
+            "ring":    ev["ring"],
+            "recur":   ev.get("recur"),
+            "ring_dt": ring_dt,
+        })
+
+    return results
+
+
 # ── Reminder collection ───────────────────────────────────────────────────────
 
 def _reminders_on(project_dir: Path, target: date) -> list:
@@ -283,6 +341,30 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
                 scheduled.append({**t, "project": project_dir.name})
             else:
                 print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {t['desc']}")
+
+        # Schedule ring milestones
+        milestones = _milestones_ringing_on(project_dir, target)
+        for m in milestones:
+            ring_dt = m["ring_dt"] if m["ring_dt"] > now else now + timedelta(minutes=1)
+            ok = _schedule_reminder(m["desc"], project_dir.name, ring_dt, kind="milestone")
+            if ok:
+                print(f"  🏁 {project_dir.name}  "
+                      f"{m['ring_dt'].strftime('%H:%M')}  {m['desc']}")
+                scheduled.append({**m, "project": project_dir.name})
+            else:
+                print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {m['desc']}")
+
+        # Schedule ring events
+        events = _events_ringing_on(project_dir, target)
+        for e in events:
+            ring_dt = e["ring_dt"] if e["ring_dt"] > now else now + timedelta(minutes=1)
+            ok = _schedule_reminder(e["desc"], project_dir.name, ring_dt, kind="event")
+            if ok:
+                print(f"  📅 {project_dir.name}  "
+                      f"{e['ring_dt'].strftime('%H:%M')}  {e['desc']}")
+                scheduled.append({**e, "project": project_dir.name})
+            else:
+                print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {e['desc']}")
 
         # Schedule reminders (💬)
         reminders = _reminders_on(project_dir, target)
