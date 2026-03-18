@@ -447,8 +447,10 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
 
     for issue in issues:
         prefix = "  🔧" if issue.fix else "  ⚠️"
+        line_preview = issue.line.strip()[:80]
         print(f"{prefix} [{issue.project}] {issue.file}:{issue.line_num}")
         print(f"      {issue.msg}")
+        print(f"      │ {line_preview}")
         if issue.fix:
             print(f"      → {issue.fix}")
         print()
@@ -469,7 +471,9 @@ def _interactive_fix(fixable: list) -> None:
 
     while True:
         for i, issue in enumerate(fixable, 1):
+            line_preview = issue.line.strip()[:60]
             print(f"      [{i}] {issue.file}:{issue.line_num} — {issue.msg}")
+            print(f"          │ {line_preview}")
             print(f"          → {issue.fix}")
 
         try:

@@ -43,7 +43,9 @@ def _run_startup():
         print(f"  🏥 {n} problema{'s' if n != 1 else ''} de sintaxis encontrado{'s' if n != 1 else ''}:")
         for issue in doctor_issues:
             prefix = "🔧" if issue.fix else "⚠️"
+            line_preview = issue.line.strip()[:60]
             print(f"      {prefix} [{issue.project}] {issue.file}:{issue.line_num} — {issue.msg}")
+            print(f"        │ {line_preview}")
         print()
         if fixable:
             from core.doctor import _interactive_fix
