@@ -654,7 +654,7 @@ class _OrbitParser(argparse.ArgumentParser):
         return super().add_subparsers(**kwargs)
 
 
-def main():
+def _build_parser():
     parser = _OrbitParser(prog="orbit", description="Orbit project management CLI")
     subparsers = parser.add_subparsers(dest="command")
 
