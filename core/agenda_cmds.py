@@ -54,6 +54,51 @@ def _prompt_ring() -> Optional[str]:
     return ans
 
 
+def _prompt_and_validate_ring() -> Optional[str]:
+    """Prompt for ring and validate. Returns valid ring value or None."""
+    ring = _prompt_ring()
+    if ring:
+        from core.ring import _parse_ring
+        if _parse_ring(ring) is None:
+            print(f"⚠️  Ring '{ring}' no válido, ignorando.")
+            return None
+    return ring
+
+
+def _validate_add_params(date_val: Optional[str], time_val: Optional[str],
+                         recur: Optional[str], until: Optional[str],
+                         ring: Optional[str],
+                         time_format: str = "simple") -> Optional[str]:
+    """Validate common add parameters. Returns error message or None if valid.
+
+    time_format: "simple" for HH:MM (task/ms), "event" for HH:MM[-HH:MM] (ev).
+    Note: recur should be pre-normalized with _normalize_recur() before calling.
+    """
+    if date_val and not _valid_date(date_val):
+        return f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ..."
+    if until and not _valid_date(until):
+        return f"⚠️  Fecha --until '{until}' no reconocida."
+    if recur and not is_valid_recur(recur):
+        return f"⚠️  Recurrencia '{recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ..."
+    if until and not recur:
+        return "Error: --until requiere --recur."
+    if ring and not date_val:
+        return "⚠️  --ring requiere --date."
+    if ring:
+        from core.ring import _parse_ring
+        if _parse_ring(ring) is None:
+            return f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM"
+    if time_val and time_format == "simple":
+        if not date_val:
+            return "⚠️  --time requiere --date."
+        if not re.match(r"^\d{2}:\d{2}$", time_val):
+            return f"⚠️  Hora '{time_val}' no válida. Usa: HH:MM (ej. 15:00)"
+    if time_val and time_format == "event":
+        if not _valid_time(time_val):
+            return f"⚠️  Hora '{time_val}' no válida. Usa: HH:MM o HH:MM-HH:MM (ej. 10:00, 10:00-12:30)"
+    return None
+
+
 def _valid_date(val: str) -> bool:
     """Check if a date string is a valid ISO date (YYYY-MM-DD)."""
     try:
@@ -678,43 +723,14 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
                  recur: Optional[str] = None, until: Optional[str] = None,
                  ring: Optional[str] = None, time_val: Optional[str] = None,
                  desc: Optional[str] = None) -> int:
-    if date_val and not _valid_date(date_val):
-        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
-    if until and not _valid_date(until):
-        print(f"⚠️  Fecha --until '{until}' no reconocida.")
-        return 1
     if recur:
         recur = _normalize_recur(recur)
-        if not is_valid_recur(recur):
-            print(f"⚠️  Recurrencia '{recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
-            return 1
-    if until and not recur:
-        print("Error: --until requiere --recur.")
+    err = _validate_add_params(date_val, time_val, recur, until, ring)
+    if err:
+        print(err)
         return 1
-    if ring and not date_val:
-        print("⚠️  --ring requiere --date.")
-        return 1
-    if ring:
-        from core.ring import _parse_ring
-        if _parse_ring(ring) is None:
-            print(f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM")
-            return 1
-    if time_val and not date_val:
-        print("⚠️  --time requiere --date.")
-        return 1
-    if time_val and not re.match(r"^\d{2}:\d{2}$", time_val):
-        print(f"⚠️  Hora '{time_val}' no válida. Usa: HH:MM (ej. 15:00)")
-        return 1
-
-    # Prompt for ring if task has date+time but no ring specified
     if date_val and time_val and not ring:
-        ring = _prompt_ring()
-        if ring:
-            from core.ring import _parse_ring
-            if _parse_ring(ring) is None:
-                print(f"⚠️  Ring '{ring}' no válido, ignorando.")
-                ring = None
+        ring = _prompt_and_validate_ring()
 
     project_dir = _find_new_project(project)
     if project_dir is None:
@@ -1035,43 +1051,14 @@ def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
                recur: Optional[str] = None, until: Optional[str] = None,
                ring: Optional[str] = None, time_val: Optional[str] = None,
                desc: Optional[str] = None) -> int:
-    if date_val and not _valid_date(date_val):
-        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
-    if until and not _valid_date(until):
-        print(f"⚠️  Fecha --until '{until}' no reconocida.")
-        return 1
     if recur:
         recur = _normalize_recur(recur)
-        if not is_valid_recur(recur):
-            print(f"⚠️  Recurrencia '{recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
-            return 1
-    if until and not recur:
-        print("Error: --until requiere --recur.")
+    err = _validate_add_params(date_val, time_val, recur, until, ring)
+    if err:
+        print(err)
         return 1
-    if ring and not date_val:
-        print("⚠️  --ring requiere --date.")
-        return 1
-    if ring:
-        from core.ring import _parse_ring
-        if _parse_ring(ring) is None:
-            print(f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM")
-            return 1
-    if time_val and not date_val:
-        print("⚠️  --time requiere --date.")
-        return 1
-    if time_val and not re.match(r"^\d{2}:\d{2}$", time_val):
-        print(f"⚠️  Hora '{time_val}' no válida. Usa: HH:MM (ej. 15:00)")
-        return 1
-
-    # Prompt for ring if milestone has date+time but no ring specified
     if date_val and time_val and not ring:
-        ring = _prompt_ring()
-        if ring:
-            from core.ring import _parse_ring
-            if _parse_ring(ring) is None:
-                print(f"⚠️  Ring '{ring}' no válido, ignorando.")
-                ring = None
+        ring = _prompt_and_validate_ring()
 
     project_dir = _find_new_project(project)
     if project_dir is None:
@@ -1353,43 +1340,17 @@ def run_ev_add(project: str, text: str, date_val: str,
                recur: Optional[str] = None,
                until: Optional[str] = None, ring: Optional[str] = None,
                desc: Optional[str] = None) -> int:
-    if not _valid_date(date_val):
-        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
     if end_date and not _valid_date(end_date):
         print(f"⚠️  Fecha --end '{end_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
         return 1
-    if time_val and not _valid_time(time_val):
-        print(f"⚠️  Hora '{time_val}' no válida. Usa: HH:MM o HH:MM-HH:MM (ej. 10:00, 10:00-12:30)")
-        return 1
-    if until and not _valid_date(until):
-        print(f"⚠️  Fecha --until '{until}' no reconocida.")
-        return 1
     if recur:
         recur = _normalize_recur(recur)
-        if not is_valid_recur(recur):
-            print(f"⚠️  Recurrencia '{recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
-            return 1
-    if until and not recur:
-        print("Error: --until requiere --recur.")
+    err = _validate_add_params(date_val, time_val, recur, until, ring, time_format="event")
+    if err:
+        print(err)
         return 1
-    if ring and not date_val:
-        print("⚠️  --ring requiere --date.")
-        return 1
-    if ring:
-        from core.ring import _parse_ring
-        if _parse_ring(ring) is None:
-            print(f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM")
-            return 1
-
-    # Prompt for ring if event has time but no ring specified
     if time_val and not ring:
-        ring = _prompt_ring()
-        if ring:
-            from core.ring import _parse_ring
-            if _parse_ring(ring) is None:
-                print(f"⚠️  Ring '{ring}' no válido, ignorando.")
-                ring = None
+        ring = _prompt_and_validate_ring()
 
     project_dir = _find_new_project(project)
     if project_dir is None:
@@ -1678,15 +1639,16 @@ def run_reminder_add(project: str, text: str, date_val: str,
                      recur: Optional[str] = None,
                      until: Optional[str] = None) -> int:
     """Add a reminder to a project's agenda."""
+    if recur:
+        recur = _normalize_recur(recur)
+    err = _validate_add_params(date_val, time_val, recur, until, None)
+    if err:
+        print(err)
+        return 1
+
     project_dir = _find_new_project(project)
     if project_dir is None:
         return 1
-
-    if recur:
-        recur = _normalize_recur(recur)
-        if not is_valid_recur(recur):
-            print(f"⚠️  Recurrencia no válida: {recur}")
-            return 1
 
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)

@@ -46,7 +46,7 @@ Las 4 citas (task, ms, ev, reminder) deberían tener la misma interfaz. Estado a
 - `search`, `agenda`, `report`: `date_from`, `date_to`
 
 **Propuesta:**
-- [ ] Unificar a `date_from`/`date_to` en todos los comandos
+- [x] Unificar a `date_from`/`date_to` en todos los comandos
 
 ### A4. Subcomando `project` usa `sub` en vez de `action`
 
@@ -54,7 +54,7 @@ Las 4 citas (task, ms, ev, reminder) deberían tener la misma interfaz. Estado a
 - project: usa `dest="sub"`
 
 **Propuesta:**
-- [ ] Renombrar a `action` para consistencia
+- [x] Renombrar a `action` para consistencia
 
 ### A5. Prompt de confirmación: `[s/N]` vs `[S/n]`
 
@@ -79,8 +79,8 @@ Las 4 citas (task, ms, ev, reminder) deberían tener la misma interfaz. Estado a
 `ls tasks`, `ls ms`, `ls ev` son cortos. `ls reminders` es largo.
 
 **Propuesta:**
-- [ ] Añadir alias `rem` → `reminders` en el parser de ls
-- [ ] O renombrar el comando principal de `reminder` a `rem` (consistente con `ms`, `ev`)
+- [x] Añadir alias `rem` → `reminders` en el parser de ls
+- [x] Alias `rem` → `reminder` en el comando principal
 
 ---
 
@@ -95,14 +95,14 @@ Los bloques de validación de date/time/recur/ring/until son casi idénticos en:
 - `run_reminder_add` (~15 líneas)
 
 **Propuesta:**
-- [ ] Extraer a `_validate_add_params(date_val, time_val, recur, until, ring)` → returns error msg or None
+- [x] Extraer a `_validate_add_params(date_val, time_val, recur, until, ring)` → returns error msg or None
 
 ### B2. Prompt de ring duplicado en 3 `add`
 
 El bloque `_prompt_ring()` + validación se repite idéntico en task/ms/ev add.
 
 **Propuesta:**
-- [ ] Extraer a `_prompt_and_validate_ring()` → returns ring value or None
+- [x] Extraer a `_prompt_and_validate_ring()` → returns ring value or None
 
 ### B3. Dos funciones de selección interactiva casi idénticas
 
@@ -163,19 +163,19 @@ Cada comando en el shell necesita `commit_operation()` / `discard_operation()` e
 El try/except por item se añadió para eventos pero no para tasks/milestones.
 
 **Propuesta:**
-- [ ] Añadir el mismo try/except a `_sync_tasks_for_project`
+- [x] Añadir el mismo try/except a `_sync_tasks_for_project`
 
 ---
 
 ## C. Prioridades sugeridas
 
-### Rápidos (alto valor, poco esfuerzo)
-1. **B1** — Extraer validación común de `add`
-2. **B2** — Extraer prompt+validación de ring
-3. **A3** — Unificar `period_from` → `date_from`
-4. **A4** — `project sub` → `action`
-5. **A7** — Alias `rem` para `reminder`/`ls reminders`
-6. **B9** — try/except por tarea en gsync
+### Rápidos (alto valor, poco esfuerzo) — ✅ completados
+1. ~~**B1** — Extraer validación común de `add`~~
+2. ~~**B2** — Extraer prompt+validación de ring~~
+3. ~~**A3** — Unificar `period_from` → `date_from`~~
+4. ~~**A4** — `project sub` → `action`~~
+5. ~~**A7** — Alias `rem` para `reminder`/`ls reminders`~~
+6. ~~**B9** — try/except por tarea en gsync~~
 
 ### Medio esfuerzo
 7. **B3** — Unificar funciones de selección interactiva

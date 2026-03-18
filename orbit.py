@@ -452,7 +452,7 @@ from core.config import ORBIT_HOME as ORBIT_DIR
 
 
 def cmd_project(args):
-    sub = getattr(args, "sub", None)
+    sub = getattr(args, "action", None)
     if sub == "create":
         return run_project_create(name=args.name, tipo=args.type,
                                   prioridad=args.priority)
@@ -649,11 +649,11 @@ def cmd_ls(args):
     if what == "ev":
         fn = lambda: run_ev_list(
             project=getattr(args, "project_name", None),
-            period_from=_d(getattr(args, "period_from", None)),
-            period_to=_d(getattr(args, "period_to", None)))
+            period_from=_d(getattr(args, "date_from", None)),
+            period_to=_d(getattr(args, "date_to", None)))
         return _handle_output(args, fn, "ls ev")
 
-    if what == "reminders":
+    if what in ("reminders", "rem"):
         fn = lambda: run_reminder_list(
             project=getattr(args, "project_name", None))
         return _handle_output(args, fn, "ls reminders")
@@ -808,14 +808,14 @@ def main():
     # ls ev [project]
     ls_ev = ls_sub.add_parser("ev", help="List events")
     ls_ev.add_argument("project_name", nargs="?", default=None, help="Project")
-    ls_ev.add_argument("--from", dest="period_from", default=None, metavar="DATE")
-    ls_ev.add_argument("--to",   dest="period_to",   default=None, metavar="DATE")
+    ls_ev.add_argument("--from", dest="date_from", default=None, metavar="DATE")
+    ls_ev.add_argument("--to",   dest="date_to",   default=None, metavar="DATE")
     ls_ev.add_argument("--open",   action="store_true")
     ls_ev.add_argument("--editor", default=None)
     _add_log_args(ls_ev)
 
     # ls reminders [project]
-    ls_rem = ls_sub.add_parser("reminders", help="List active reminders")
+    ls_rem = ls_sub.add_parser("reminders", aliases=["rem"], help="List active reminders")
     ls_rem.add_argument("project_name", nargs="?", default=None, help="Project")
     ls_rem.add_argument("--open",   action="store_true")
     ls_rem.add_argument("--editor", default=None)
@@ -1089,7 +1089,7 @@ def main():
                         help="Event name (partial match; omit for interactive)")
 
     # --- reminder ---
-    rem_p   = subparsers.add_parser("reminder", help="Reminder commands (agenda.md 💬)")
+    rem_p   = subparsers.add_parser("reminder", aliases=["rem"], help="Reminder commands (agenda.md 💬)")
     rem_sub = rem_p.add_subparsers(dest="action")
 
     rem_add = rem_sub.add_parser("add", help="Add a reminder")
@@ -1224,7 +1224,7 @@ def main():
 
     # --- project ---
     prj_p   = subparsers.add_parser("project", help="Manage projects (new model)")
-    prj_sub = prj_p.add_subparsers(dest="sub")
+    prj_sub = prj_p.add_subparsers(dest="action")
 
     # project create
     prc_p = prj_sub.add_parser("create", help="Create a new project")
@@ -1317,7 +1317,7 @@ def main():
     # Simple commands: one function, no subcommand required
     _simple = {
         "task": cmd_task_new,
-        "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "hl": cmd_hl,
+        "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
         "view": cmd_view_new,
         "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "recloud": cmd_recloud,
         "log": cmd_log, "search": cmd_search,

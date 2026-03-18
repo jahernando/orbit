@@ -312,8 +312,14 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
             seen_recur_keys.add(key)
         t["_gtask_id"] = ids.get(key, {}).get("gtask_id")
         if t["status"] == "pending" or t.get("_gtask_id"):
-            new_id = _sync_one_task(tasks_service, tasklist_id, t,
-                                    project_name, False, description, dry_run)
+            try:
+                new_id = _sync_one_task(tasks_service, tasklist_id, t,
+                                        project_name, False, description, dry_run)
+            except Exception as exc:
+                print(f"  ⚠️  [{project_name}] Error sincronizando tarea '{t.get('desc', '?')}': {exc}")
+                t.pop("_gtask_id", None)
+                skipped += 1
+                continue
             if new_id and not t.get("_gtask_id"):
                 ids.setdefault(key, {})["gtask_id"] = new_id
                 ids[key]["snapshot"] = _make_snapshot(t)
@@ -339,8 +345,14 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
             seen_recur_keys.add(key)
         m["_gtask_id"] = ids.get(key, {}).get("gtask_id")
         if m["status"] == "pending" or m.get("_gtask_id"):
-            new_id = _sync_one_task(tasks_service, tasklist_id, m,
-                                    project_name, True, description, dry_run)
+            try:
+                new_id = _sync_one_task(tasks_service, tasklist_id, m,
+                                        project_name, True, description, dry_run)
+            except Exception as exc:
+                print(f"  ⚠️  [{project_name}] Error sincronizando hito '{m.get('desc', '?')}': {exc}")
+                m.pop("_gtask_id", None)
+                skipped += 1
+                continue
             if new_id and not m.get("_gtask_id"):
                 ids.setdefault(key, {})["gtask_id"] = new_id
                 ids[key]["snapshot"] = _make_snapshot(m)
