@@ -33,3 +33,12 @@ Cuando haces `reminder log`, podrías marcar automáticamente el recordatorio co
 ### 5. Notificaciones de ring en el móvil para tareas/hitos
 
 Los `--ring` de tasks/ms/ev se sincronizan con Google, que tiene sus propias notificaciones. ¿Son suficientes las de Google o hay que añadir un recordatorio explícito en Google Calendar para que funcione bien en el móvil?
+
+### 6. Dashboard web ligero
+
+Un servidor local mínimo (Flask/FastAPI) que renderice la agenda, el estado de proyectos y los highlights en el navegador. No sustituiría la CLI sino que la complementaría como vista de consulta rápida — especialmente útil para revisiones semanales o para compartir el estado de un proyecto con colaboradores.
+
+**Consideraciones:**
+- Solo lectura (no edición desde el web) para mantener la CLI como fuente de verdad
+- Podría servir los .md renderizados directamente con un tema limpio
+- ¿Vale la pena el mantenimiento de un componente web o es mejor seguir con `--open` en Typora?
