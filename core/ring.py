@@ -113,7 +113,8 @@ def resolve_ring_datetime(due_date: str, ring: str,
 def _schedule_reminder(title: str, project: str,
                         dt: datetime) -> bool:
     """Create a reminder in macOS Reminders.app. Returns True on success."""
-    full_title = f"[{project}] {title}"
+    from core.config import ORBIT_PROMPT
+    full_title = f"{ORBIT_PROMPT}[{project}] {title}"
     script = f"""
 tell application "Reminders"
     if not (exists list "{REMINDERS_LIST}") then
@@ -141,7 +142,8 @@ end tell
 
 def _delete_reminder(title: str, project: str) -> bool:
     """Delete a reminder from macOS Reminders.app by title. Returns True on success."""
-    full_title = f"[{project}] {title}"
+    from core.config import ORBIT_PROMPT
+    full_title = f"{ORBIT_PROMPT}[{project}] {title}"
     # Escape quotes for AppleScript
     escaped = full_title.replace('"', '\\"')
     script = f"""
