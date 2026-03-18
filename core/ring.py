@@ -110,11 +110,14 @@ def resolve_ring_datetime(due_date: str, ring: str,
 
 # ── AppleScript helper ─────────────────────────────────────────────────────────
 
+_KIND_EMOJI = {"task": "✅", "milestone": "🏁", "event": "📅", "reminder": "💬"}
+
 def _schedule_reminder(title: str, project: str,
-                        dt: datetime) -> bool:
+                        dt: datetime, kind: str = "") -> bool:
     """Create a reminder in macOS Reminders.app. Returns True on success."""
     from core.config import ORBIT_PROMPT
-    full_title = f"{ORBIT_PROMPT}[{project}] {title}"
+    prefix = f"{_KIND_EMOJI[kind]} " if kind in _KIND_EMOJI else ""
+    full_title = f"{ORBIT_PROMPT}[{project}] {prefix}{title}"
     script = f"""
 tell application "Reminders"
     if not (exists list "{REMINDERS_LIST}") then
@@ -140,10 +143,11 @@ end tell
         return False
 
 
-def _delete_reminder(title: str, project: str) -> bool:
+def _delete_reminder(title: str, project: str, kind: str = "") -> bool:
     """Delete a reminder from macOS Reminders.app by title. Returns True on success."""
     from core.config import ORBIT_PROMPT
-    full_title = f"{ORBIT_PROMPT}[{project}] {title}"
+    prefix = f"{_KIND_EMOJI[kind]} " if kind in _KIND_EMOJI else ""
+    full_title = f"{ORBIT_PROMPT}[{project}] {prefix}{title}"
     # Escape quotes for AppleScript
     escaped = full_title.replace('"', '\\"')
     script = f"""
@@ -270,7 +274,7 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
         tasks = _tasks_ringing_on(project_dir, target)
         for t in tasks:
             ring_dt = t["ring_dt"] if t["ring_dt"] > now else now + timedelta(minutes=1)
-            ok = _schedule_reminder(t["desc"], project_dir.name, ring_dt)
+            ok = _schedule_reminder(t["desc"], project_dir.name, ring_dt, kind="task")
             if ok:
                 print(f"  ⏰ {project_dir.name}  "
                       f"{t['ring_dt'].strftime('%H:%M')}  {t['desc']}")
@@ -284,7 +288,7 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
         reminders = _reminders_on(project_dir, target)
         for r in reminders:
             ring_dt = r["ring_dt"] if r["ring_dt"] > now else now + timedelta(minutes=1)
-            ok = _schedule_reminder(f"💬 {r['desc']}", project_dir.name, ring_dt)
+            ok = _schedule_reminder(r['desc'], project_dir.name, ring_dt, kind="reminder")
             if ok:
                 print(f"  💬 {project_dir.name}  "
                       f"{r['ring_dt'].strftime('%H:%M')}  {r['desc']}")
