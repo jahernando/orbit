@@ -310,7 +310,7 @@ def cmd_link(args):
 
 def cmd_render(args):
     from core.render import run_render
-    return run_render(project=args.project, full=args.full)
+    return run_render(project=args.project, full=args.full, check=args.check)
 
 
 def cmd_deliver(args):
@@ -1188,6 +1188,7 @@ def _build_parser():
     rnd_p = subparsers.add_parser("render", help="Render project files to HTML for cloud")
     rnd_p.add_argument("project", nargs="?", default=None, help="Project name (partial match)")
     rnd_p.add_argument("--full", action="store_true", help="Full render of all projects")
+    rnd_p.add_argument("--check", action="store_true", help="Check cloud sync status")
 
     # --- deliver ---
     dlv_p = subparsers.add_parser("deliver", help="Deliver file to cloud (copy + clipboard)")

@@ -55,7 +55,11 @@ def _run_startup():
             print(f"  {len(unfixable)} problema{'s' if len(unfixable) != 1 else ''} requiere{'n' if len(unfixable) != 1 else ''} corrección manual.")
             print()
 
-    # 2. Inbox — check cloud inboxes for mobile captures
+    # 2. Cloud sync check — warn if last background sync failed
+    from core.cloudsync import startup_cloud_check
+    startup_cloud_check()
+
+    # 3. Inbox — check cloud inboxes for mobile captures
     from core.inbox import startup_inbox_check
     startup_inbox_check()
 

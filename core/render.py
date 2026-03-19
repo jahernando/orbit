@@ -377,8 +377,13 @@ def ensure_cloud_inboxes(cloud_root: Optional[Path] = None) -> int:
     return created
 
 
-def run_render(project: Optional[str] = None, full: bool = False) -> int:
-    """CLI entry point: orbit render [project] [--full]."""
+def run_render(project: Optional[str] = None, full: bool = False,
+               check: bool = False) -> int:
+    """CLI entry point: orbit render [project] [--full] [--check]."""
+    if check:
+        from core.cloudsync import check_cloud_sync
+        return check_cloud_sync()
+
     cloud_root = _find_cloud_root()
     if not cloud_root:
         return 1
