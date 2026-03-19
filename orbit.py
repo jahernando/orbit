@@ -303,6 +303,11 @@ def cmd_note(args):
     )
 
 
+def cmd_link(args):
+    from core.project import run_link
+    return run_link(name=args.project)
+
+
 def cmd_deliver(args):
     return run_deliver(project=args.project, file=args.file)
 
@@ -1170,6 +1175,10 @@ def _build_parser():
     note_p.add_argument("--hl",      default=None, metavar="TYPE")
     note_p.add_argument("--editor",  default=None)
 
+    # --- link ---
+    link_p = subparsers.add_parser("link", help="Markdown link to project (copied to clipboard)")
+    link_p.add_argument("project", help="Project name (partial match)")
+
     # --- deliver ---
     dlv_p = subparsers.add_parser("deliver", help="Deliver file to cloud (copy + clipboard)")
     dlv_p.add_argument("project", help="Project name (partial match)")
@@ -1282,7 +1291,7 @@ _COMMANDS = {
     "task": cmd_task_new,
     "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
     "view": cmd_view_new,
-    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "recloud": cmd_recloud,
+    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "link": cmd_link, "recloud": cmd_recloud,
     "log": cmd_log, "search": cmd_search,
     "report": cmd_report, "open": cmd_open,
     "import": cmd_import,

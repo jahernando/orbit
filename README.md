@@ -181,6 +181,12 @@ orbit agenda [--date D] [--from D] [--to D] [--calendar] [--dated] [--open]
 orbit report [project...] [--from D] [--to D] [--open]
 ```
 
+### Link — enlace markdown al proyecto
+
+```bash
+orbit link catedra   # → [⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md) (copiado al portapapeles)
+```
+
 ### Deliver — entregar ficheros a la nube
 
 ```bash

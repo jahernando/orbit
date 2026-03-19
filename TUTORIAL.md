@@ -287,6 +287,7 @@ orbit
   log next-kr "Espectro calibrado" spectrum.png --entry resultado --deliver
   task add next-kr "Preparar presentación" --date "next thursday"
   hl add next-kr "Resolución validada a 511 keV" --type results
+  link next-kr                          # enlace md al portapapeles
 
 Lunes por la tarde
 ──────────────────

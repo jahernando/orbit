@@ -10,7 +10,7 @@ from core.log import find_logbook_file, find_proyecto_file, resolve_file
 from core.tasks import TYPE_MAP, PRIORITY_MAP, normalize
 from core.open import open_file
 
-from core.config import (TEMPLATES_DIR, get_type_label,
+from core.config import (ORBIT_HOME, TEMPLATES_DIR, get_type_label,
                          iter_project_dirs, type_dir_path)
 
 TYPE_LABEL = get_type_label()
@@ -480,6 +480,29 @@ def _find_new_project(name: str) -> Optional[Path]:
         print(f"Error: '{name}' es ambiguo: {names}")
         return None
     return matches[0]
+
+
+# ── project link ──────────────────────────────────────────────────────────────
+
+def run_link(name: str) -> int:
+    """Print and copy to clipboard a markdown link to a project file."""
+    import subprocess
+    project_dir = _find_new_project(name)
+    if project_dir is None:
+        return 1
+    project_file = find_proyecto_file(project_dir)
+    if project_file is None:
+        print(f"Error: no se encontró fichero de proyecto en {project_dir.name}")
+        return 1
+    rel = project_file.relative_to(ORBIT_HOME)
+    link = f"[{project_dir.name}]({rel})"
+    print(link)
+    try:
+        subprocess.run(["pbcopy"], input=link.encode(), check=True)
+        print("  (copiado al portapapeles)")
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        pass
+    return 0
 
 
 # ── project drop ──────────────────────────────────────────────────────────────

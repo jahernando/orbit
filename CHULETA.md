@@ -214,6 +214,15 @@ orbit undo
 
 ---
 
+## link — enlace markdown al proyecto
+
+```bash
+orbit link <project>
+```
+
+- Imprime un enlace markdown al fichero de proyecto: `[⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)`
+- Copia el enlace al portapapeles, listo para pegar en notas
+
 ## deliver — entregar ficheros a la nube
 
 ```bash

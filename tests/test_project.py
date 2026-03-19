@@ -18,6 +18,7 @@ from pathlib import Path
 from core.project import (
     _infer_status, _read_project_meta, _find_new_project,
     run_project_create, run_project_list, run_project_status,
+    run_link,
 )
 
 
@@ -529,3 +530,21 @@ class TestLogCmdOutput:
 
         logbook = (proj / "logtest2-logbook.md").read_text()
         assert "#evaluacion [O]" in logbook
+
+
+# ── run_link ─────────────────────────────────────────────────────────────────
+
+class TestRunLink:
+    def test_link_prints_and_copies(self, project_env, capsys, monkeypatch):
+        proj = _make_new_project(project_env["projects_dir"], "catedra")
+        monkeypatch.setattr("core.project.ORBIT_HOME", project_env["tmp"])
+        rc = run_link("catedra")
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[💻catedra](" in out
+        assert "catedra-project.md)" in out
+
+    def test_link_not_found(self, project_env, capsys, monkeypatch):
+        monkeypatch.setattr("core.project.ORBIT_HOME", project_env["tmp"])
+        rc = run_link("nonexistent")
+        assert rc == 1
