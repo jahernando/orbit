@@ -85,7 +85,22 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.19.1, 2026-03-18)
+## Estado actual (v0.20.0, 2026-03-19)
+
+### v0.20.0 (2026-03-19)
+- `orbit render` — renderizado estático MD→HTML al cloud para acceso móvil
+  - `core/render.py`: conversor con KaTeX (LaTeX), CSS académico responsive
+  - `core/orbit.css`: estilo compartido en la raíz del cloud
+  - Dashboard: `index.html` (hub), `agenda.html` (calendario 2 semanas), `proyectos.html`
+  - Auto-render en background tras cada `commit` (`cloudsync.py`)
+  - `orbit render [project] [--full]` para renderizado manual
+- Cloud inbox: `inbox.txt` (no .md) para edición desde móvil (Drive/OneDrive Android)
+  - `inbox.py` busca `inbox.txt` primero, fallback a `inbox.md`
+  - Orbit los recoge al arrancar la shell
+- `orbit link <proyecto>` — link markdown al portapapeles
+- Fix: `_reminders_on()` no evaluaba recurrencia (`🔄weekdays`) — ahora usa `_next_occurrence()`
+- Cloud solo tiene HTML + inbox.txt — los .md no se copian
+- Limitación: visores de Drive/OneDrive Android no siguen links entre HTMLs
 
 ### v0.19.1 (2026-03-18)
 - Fix: `_build_parser()` — `main()` shadowed causaba `NameError` al arrancar
