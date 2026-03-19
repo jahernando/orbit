@@ -20,7 +20,7 @@ from typing import Optional
 
 from core.project import _is_new_project
 from core.config import iter_project_dirs
-from core.agenda_cmds import _read_agenda, _write_agenda
+from core.agenda_cmds import _read_agenda, _write_agenda, _next_occurrence
 from core.log import resolve_file
 
 from core.config import ORBIT_HOME as ORBIT_DIR
@@ -284,10 +284,34 @@ def _reminders_on(project_dir: Path, target: date) -> list:
             rem_date = date.fromisoformat(rem["date"])
         except ValueError:
             continue
-        if rem_date != target:
+
+        # Check if this reminder fires on target date
+        fires_today = (rem_date == target)
+
+        # For recurring reminders, check if target is a valid occurrence
+        if not fires_today and rem.get("recur") and rem_date <= target:
+            until_date = None
+            if rem.get("until"):
+                try:
+                    until_date = date.fromisoformat(rem["until"])
+                except ValueError:
+                    pass
+            if until_date and target > until_date:
+                continue
+            # Walk occurrences from base date to target
+            current = rem_date
+            for _ in range(366):
+                if current >= target:
+                    break
+                nxt_str = _next_occurrence(current.isoformat(),
+                                           rem["recur"], current.isoformat())
+                current = date.fromisoformat(nxt_str)
+            fires_today = (current == target)
+
+        if not fires_today:
             continue
 
-        fire_dt = datetime.fromisoformat(f"{rem['date']}T{rem['time']}:00")
+        fire_dt = datetime.fromisoformat(f"{target.isoformat()}T{rem['time']}:00")
         results.append({
             "index":   i,
             "desc":    rem["desc"],
