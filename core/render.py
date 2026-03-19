@@ -318,11 +318,15 @@ def render_agenda(cloud_root: Optional[Path] = None) -> bool:
     end = start + timedelta(days=13)
 
     dirs = _resolve_dirs(None)  # all projects
-    collected = _collect_data(dirs, start, end, dated_only=True)
 
     lines = [f"# 📅 Agenda\n"]
     lines.append(f"*{start.isoformat()} → {end.isoformat()}*\n")
 
+    # Calendar grid
+    cal_lines = _build_calendar_md(dirs, start, end)
+    lines.extend(cal_lines)
+
+    collected = _collect_data(dirs, start, end, dated_only=True)
     formatted = _format_by_date(collected, markdown=True, dated_only=True)
     lines.extend(formatted)
 
@@ -401,6 +405,95 @@ def run_render(project: Optional[str] = None, full: bool = False) -> int:
             print("📄 Sin cambios para renderizar")
 
     return 0
+
+
+# ── Calendar ──────────────────────────────────────────────────────────────────
+
+_MONTH_NAMES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
+}
+
+
+def _build_calendar_md(dirs: list, start: date, end: date) -> list:
+    """Build a markdown calendar grid for the given period. Returns lines."""
+    import calendar as _cal
+
+    from core.agenda_view import _collect_calendar_dates, _project_link
+
+    today = date.today()
+    task_dates, event_dates, ms_dates, overdue_dates, overdue_items = \
+        _collect_calendar_dates(dirs, start, end)
+
+    lines = []
+    if overdue_items:
+        lines.append("### ⚠️ Vencidas\n")
+        for proj_dir, kind, desc, d_str in sorted(overdue_items, key=lambda x: x[3]):
+            display_kind = "☐" if kind == "[ ]" else kind
+            proj_tag = _project_link(proj_dir)
+            lines.append(f"- {display_kind} {desc} ({d_str}) — {proj_tag}")
+        lines.append("")
+
+    def _week_overlaps(week, y, m):
+        for day in week:
+            if day != 0:
+                d = date(y, m, day)
+                if start <= d <= end:
+                    return True
+        return False
+
+    current = date(start.year, start.month, 1)
+    while current <= end:
+        y, m = current.year, current.month
+        cal = _cal.Calendar(firstweekday=0)
+        weeks = [w for w in cal.monthdayscalendar(y, m)
+                 if _week_overlaps(w, y, m)]
+
+        if weeks:
+            lines.append(f"### {_MONTH_NAMES[m]} {y}\n")
+            lines.append("| Wk | Lu | Ma | Mi | Ju | Vi | Sa | Do |")
+            lines.append("|---:|---:|---:|---:|---:|---:|---:|---:|")
+
+            for week in weeks:
+                first_day = next((d for d in week if d != 0), None)
+                if first_day is None:
+                    continue
+                wk_num = date(y, m, first_day).isocalendar()[1]
+                cells = [f"**W{wk_num:02d}**"]
+
+                for day in week:
+                    if day == 0:
+                        cells.append("")
+                        continue
+                    d = date(y, m, day)
+                    in_range = start <= d <= end
+
+                    if not in_range:
+                        cells.append(f"~~{day}~~")
+                    elif d == today:
+                        cells.append(f"**[{day}]**")
+                    elif d in overdue_dates:
+                        cells.append(f"⚠️{day}")
+                    elif d in ms_dates:
+                        cells.append(f"🏁{day}")
+                    elif d in event_dates:
+                        cells.append(f"📅{day}")
+                    elif d in task_dates:
+                        cells.append(f"✅{day}")
+                    else:
+                        cells.append(str(day))
+
+                lines.append("| " + " | ".join(cells) + " |")
+
+            lines.append("")
+
+        current = date(y, m + 1, 1) if m < 12 else date(y + 1, 1, 1)
+
+    lines.append("**[N]** hoy · 📅 evento · ✅ tarea · 🏁 hito · ⚠️ vencida")
+    lines.append("")
+    lines.append("[📆 Abrir Google Calendar](https://calendar.google.com)\n")
+    return lines
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
