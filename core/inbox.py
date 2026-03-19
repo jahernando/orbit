@@ -55,7 +55,10 @@ def _find_project_inboxes() -> list:
         cloud_dir = _project_cloud_dir(project_dir, cloud_root)
         if not cloud_dir:
             continue
-        inbox = cloud_dir / "inbox.md"
+        inbox = cloud_dir / "inbox.txt"
+        if not inbox.exists():
+            # Fallback to legacy inbox.md
+            inbox = cloud_dir / "inbox.md"
         if not inbox.exists():
             continue
         text = inbox.read_text().strip()
@@ -74,7 +77,9 @@ def _find_global_inbox() -> Optional[tuple]:
     cloud_root = _find_cloud_root()
     if not cloud_root:
         return None
-    inbox = cloud_root / "inbox.md"
+    inbox = cloud_root / "inbox.txt"
+    if not inbox.exists():
+        inbox = cloud_root / "inbox.md"
     if not inbox.exists():
         return None
     text = inbox.read_text().strip()

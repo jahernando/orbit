@@ -97,9 +97,9 @@ class TestMdToHtml:
         assert 'href="https://example.com"' in result
 
     def test_rewrite_preserves_inbox(self):
-        html = '<a href="inbox.md">buzón</a>'
+        html = '<a href="inbox.txt">buzón</a>'
         result = _rewrite_md_links(html)
-        assert 'href="inbox.md"' in result
+        assert 'href="inbox.txt"' in result
 
 
 # ── Integration tests ────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ class TestRenderProject:
         assert "myproject-logbook.html" in html
 
     def test_excludes_inbox(self, cloud_env):
-        (cloud_env["project"] / "inbox.md").write_text("- tarea: test\n")
+        (cloud_env["project"] / "inbox.txt").write_text("- tarea: test\n")
         n = render_project(cloud_env["project"], cloud_env["cloud"])
         assert n == 4  # inbox not counted
         cloud_proj = cloud_env["cloud"] / "💻software" / "💻myproject"
@@ -173,7 +173,7 @@ class TestRenderIndex:
     def test_has_inbox_link(self, cloud_env):
         render_index(cloud_env["cloud"])
         html = (cloud_env["cloud"] / "index.html").read_text()
-        assert "inbox.md" in html
+        assert "inbox.txt" in html
 
 
 class TestRenderProyectos:
@@ -209,19 +209,19 @@ class TestEnsureCloudInboxes:
     def test_creates_global_inbox(self, cloud_env):
         n = ensure_cloud_inboxes(cloud_env["cloud"])
         assert n >= 1
-        assert (cloud_env["cloud"] / "inbox.md").exists()
+        assert (cloud_env["cloud"] / "inbox.txt").exists()
 
     def test_creates_project_inbox(self, cloud_env):
         ensure_cloud_inboxes(cloud_env["cloud"])
         cloud_proj = cloud_env["cloud"] / "💻software" / "💻myproject"
-        assert (cloud_proj / "inbox.md").exists()
+        assert (cloud_proj / "inbox.txt").exists()
 
     def test_does_not_overwrite_existing(self, cloud_env):
         cloud_proj = cloud_env["cloud"] / "💻software" / "💻myproject"
         cloud_proj.mkdir(parents=True, exist_ok=True)
-        (cloud_proj / "inbox.md").write_text("- tarea: existing\n")
+        (cloud_proj / "inbox.txt").write_text("- tarea: existing\n")
         ensure_cloud_inboxes(cloud_env["cloud"])
-        assert "existing" in (cloud_proj / "inbox.md").read_text()
+        assert "existing" in (cloud_proj / "inbox.txt").read_text()
 
 
 class TestSyncCss:

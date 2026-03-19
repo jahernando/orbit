@@ -54,10 +54,10 @@ def _md_to_html(text: str) -> str:
 
 
 def _rewrite_md_links(html: str) -> str:
-    """Rewrite .md links to .html in rendered HTML, except inbox.md."""
+    """Rewrite .md links to .html in rendered HTML, except inbox.txt."""
     def _replace(m):
         if m.group(1).endswith("inbox"):
-            return m.group(0)  # keep inbox.md as-is
+            return m.group(0)  # keep inbox.txt as-is
         return f'href="{m.group(1)}.html"'
     return re.sub(r'href="([^"]*?)\.md"', _replace, html)
 
@@ -101,8 +101,8 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
     if notes_dir.is_dir():
         md_files.extend(notes_dir.rglob("*.md"))
 
-    # Exclude inbox.md (lives separately in cloud)
-    md_files = [f for f in md_files if f.name != "inbox.md"]
+    # Exclude inbox.txt (lives separately in cloud)
+    md_files = [f for f in md_files if f.name != "inbox.txt"]
 
     rel_project = project_dir.relative_to(ORBIT_HOME)
     rendered = 0
@@ -120,7 +120,7 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
                 proj_name = "../" + proj_name
             nav_links += f' <a href="{proj_name}">📋 Proyecto</a>'
         # Link to project inbox
-        inbox_rel = "inbox.md" if depth == 0 else "../inbox.md"
+        inbox_rel = "inbox.txt" if depth == 0 else "../inbox.txt"
         nav_links += f' <a href="{inbox_rel}">📬 Buzón</a>'
         _render_file(src, dest, css_rel, nav_links)
         rendered += 1
@@ -212,7 +212,7 @@ def render_index(cloud_root: Optional[Path] = None) -> bool:
         "## 📋 Navegación\n",
         "- [📅 Agenda — esta semana y la siguiente](agenda.html)",
         "- [📂 Proyectos — estado y enlaces](proyectos.html)",
-        "- [📬 Buzón general](inbox.md) — captura ideas desde el móvil",
+        "- [📬 Buzón general](inbox.txt) — captura ideas desde el móvil",
         "",
     ]
 
@@ -341,8 +341,9 @@ def render_agenda(cloud_root: Optional[Path] = None) -> bool:
     return True
 
 
+
 def ensure_cloud_inboxes(cloud_root: Optional[Path] = None) -> int:
-    """Ensure empty inbox.md files exist in cloud for each project + root.
+    """Ensure empty inbox.txt files exist in cloud for each project + root.
 
     Returns number of inbox files created.
     """
@@ -354,7 +355,7 @@ def ensure_cloud_inboxes(cloud_root: Optional[Path] = None) -> int:
     created = 0
 
     # Global inbox
-    inbox = cloud_root / "inbox.md"
+    inbox = cloud_root / "inbox.txt"
     if not inbox.exists():
         inbox.parent.mkdir(parents=True, exist_ok=True)
         inbox.write_text("")
@@ -367,7 +368,7 @@ def ensure_cloud_inboxes(cloud_root: Optional[Path] = None) -> int:
         cloud_dir = _project_cloud_dir(project_dir, cloud_root)
         if not cloud_dir:
             continue
-        inbox = cloud_dir / "inbox.md"
+        inbox = cloud_dir / "inbox.txt"
         if not inbox.exists():
             inbox.parent.mkdir(parents=True, exist_ok=True)
             inbox.write_text("")
@@ -499,7 +500,7 @@ def _build_calendar_md(dirs: list, start: date, end: date) -> list:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _render_dashboard(cloud_root: Path) -> None:
-    """Render the three dashboard pages: index, proyectos, agenda."""
+    """Render the dashboard pages: index, proyectos, agenda."""
     render_index(cloud_root)
     render_proyectos(cloud_root)
     render_agenda(cloud_root)
