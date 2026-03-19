@@ -1,14 +1,16 @@
-"""cloudsync.py — sync .md project files to cloud.
+"""cloudsync.py — sync project files to cloud as HTML.
 
-After a git commit, copies changed .md files to the corresponding
-cloud directory so they can be read from mobile devices via Obsidian.
+After a git commit, renders changed .md files to HTML and copies them
+to the cloud directory for reading from mobile devices.
 
-Also provides a full sync for initial setup.
-
-Cloud structure mirrors the repo:
-  cloud_root/{type_dir}/{project_dir}/file.md
-  cloud_root/{type_dir}/{project_dir}/notes/*.md
-  cloud_root/{type_dir}/{project_dir}/cloud/logs/  (delivered files)
+Cloud structure:
+  cloud_root/index.html                          ← project dashboard
+  cloud_root/orbit.css                           ← shared stylesheet
+  cloud_root/inbox.md                            ← global mobile inbox
+  cloud_root/{type_dir}/{project_dir}/*.html     ← rendered project files
+  cloud_root/{type_dir}/{project_dir}/notes/*.html
+  cloud_root/{type_dir}/{project_dir}/inbox.md   ← per-project mobile inbox
+  cloud_root/{type_dir}/{project_dir}/cloud/     ← delivered files (logs, hls)
 """
 
 import shutil
@@ -55,68 +57,44 @@ def _sync_file(src: Path, dest: Path) -> bool:
 
 
 def sync_to_cloud() -> int:
-    """Copy recently committed .md files to cloud.
+    """Render recently committed .md files to HTML in cloud.
 
-    Returns the number of files synced.
+    Returns the number of files rendered.
     """
+    from core.render import render_changed, _render_dashboard, ensure_cloud_inboxes
     cloud_root = _find_cloud_root()
     if not cloud_root:
         return 0
 
-    files = _committed_files()
-    if not files:
-        return 0
+    n = render_changed(cloud_root)
+    _render_dashboard(cloud_root)
+    ensure_cloud_inboxes(cloud_root)
+    return n
 
-    synced = 0
-    for rel_path in files:
-        if not rel_path.endswith(".md"):
-            continue
-        if not _is_project_file(rel_path):
-            continue
 
-        src = ORBIT_HOME / rel_path
-        if not src.exists():
-            continue  # file was deleted
-
-        dest = cloud_root / rel_path
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(src), str(dest))
-        synced += 1
-
-    return synced
+def sync_to_cloud_background() -> None:
+    """Run sync_to_cloud in a background subprocess (fire & forget)."""
+    import sys
+    subprocess.Popen(
+        [sys.executable, "-c",
+         "from core.cloudsync import sync_to_cloud; sync_to_cloud()"],
+        cwd=str(ORBIT_HOME),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def sync_all_to_cloud(dry_run: bool = False) -> int:
-    """Copy all .md project files to cloud (initial full sync).
+    """Render all .md project files to HTML in cloud (initial full sync).
 
-    Only copies files that are newer than the cloud copy or don't
-    exist in cloud yet.
-
-    Returns the number of files synced.
+    Returns the number of files rendered.
     """
+    from core.render import render_all, _render_dashboard, ensure_cloud_inboxes
     cloud_root = _find_cloud_root()
     if not cloud_root:
         return 0
 
-    synced = 0
-    for project_dir in iter_project_dirs():
-        rel_project = project_dir.relative_to(ORBIT_HOME)
-
-        # Collect all .md files in the project directory (non-recursive + notes/)
-        md_files = list(project_dir.glob("*.md"))
-        notes_dir = project_dir / "notes"
-        if notes_dir.is_dir():
-            md_files.extend(notes_dir.rglob("*.md"))
-
-        for src in md_files:
-            rel = src.relative_to(ORBIT_HOME)
-            dest = cloud_root / rel
-
-            if dry_run:
-                if not dest.exists() or dest.stat().st_mtime < src.stat().st_mtime:
-                    synced += 1
-            else:
-                if _sync_file(src, dest):
-                    synced += 1
-
-    return synced
+    n = render_all(cloud_root)
+    _render_dashboard(cloud_root)
+    ensure_cloud_inboxes(cloud_root)
+    return n

@@ -308,6 +308,11 @@ def cmd_link(args):
     return run_link(name=args.project)
 
 
+def cmd_render(args):
+    from core.render import run_render
+    return run_render(project=args.project, full=args.full)
+
+
 def cmd_deliver(args):
     return run_deliver(project=args.project, file=args.file)
 
@@ -1179,6 +1184,11 @@ def _build_parser():
     link_p = subparsers.add_parser("link", help="Markdown link to project (copied to clipboard)")
     link_p.add_argument("project", help="Project name (partial match)")
 
+    # --- render ---
+    rnd_p = subparsers.add_parser("render", help="Render project files to HTML for cloud")
+    rnd_p.add_argument("project", nargs="?", default=None, help="Project name (partial match)")
+    rnd_p.add_argument("--full", action="store_true", help="Full render of all projects")
+
     # --- deliver ---
     dlv_p = subparsers.add_parser("deliver", help="Deliver file to cloud (copy + clipboard)")
     dlv_p.add_argument("project", help="Project name (partial match)")
@@ -1291,7 +1301,8 @@ _COMMANDS = {
     "task": cmd_task_new,
     "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
     "view": cmd_view_new,
-    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "link": cmd_link, "recloud": cmd_recloud,
+    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "link": cmd_link,
+    "render": cmd_render, "recloud": cmd_recloud,
     "log": cmd_log, "search": cmd_search,
     "report": cmd_report, "open": cmd_open,
     "import": cmd_import,

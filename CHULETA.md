@@ -214,6 +214,21 @@ orbit undo
 
 ---
 
+## render — renderizar proyectos a HTML para cloud
+
+```bash
+orbit render                  # renderiza ficheros del último commit
+orbit render <project>        # renderiza un proyecto completo
+orbit render --full           # renderiza todos los proyectos
+```
+
+- Convierte ficheros `.md` de cada proyecto a `.html` en el directorio cloud
+- Genera `index.html` con dashboard de proyectos
+- Crea `inbox.md` vacíos en cloud para capturas desde el móvil
+- Incluye soporte KaTeX para ecuaciones LaTeX (`$...$` y `$$...$$`)
+- Se ejecuta automáticamente en background tras cada `commit`
+- Los `.md` no se copian a cloud — solo los `.html` renderizados + `inbox.md`
+
 ## link — enlace markdown al proyecto
 
 ```bash

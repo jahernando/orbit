@@ -288,6 +288,7 @@ orbit
   task add next-kr "Preparar presentación" --date "next thursday"
   hl add next-kr "Resolución validada a 511 keV" --type results
   link next-kr                          # enlace md al portapapeles
+  render next-kr                        # renderiza a HTML para cloud
 
 Lunes por la tarde
 ──────────────────

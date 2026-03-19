@@ -34,11 +34,13 @@ Cuando haces `reminder log`, podrías marcar automáticamente el recordatorio co
 
 Los `--ring` de tasks/ms/ev se sincronizan con Google, que tiene sus propias notificaciones. ¿Son suficientes las de Google o hay que añadir un recordatorio explícito en Google Calendar para que funcione bien en el móvil?
 
-### 6. Dashboard web ligero
+### 6. ~~Dashboard web ligero~~ → Implementado: `orbit render`
 
-Un servidor local mínimo (Flask/FastAPI) que renderice la agenda, el estado de proyectos y los highlights en el navegador. No sustituiría la CLI sino que la complementaría como vista de consulta rápida — especialmente útil para revisiones semanales o para compartir el estado de un proyecto con colaboradores.
+**Solución implementada (v0.20):** renderizado estático MD→HTML al cloud.
 
-**Consideraciones:**
-- Solo lectura (no edición desde el web) para mantener la CLI como fuente de verdad
-- Podría servir los .md renderizados directamente con un tema limpio
-- ¿Vale la pena el mantenimiento de un componente web o es mejor seguir con `--open` en Typora?
+- `orbit render` genera HTML de los proyectos en el directorio cloud (OneDrive/Google Drive)
+- Se ejecuta automáticamente en background tras cada `commit`
+- `index.html` en la raíz con dashboard de proyectos
+- Estilo académico con KaTeX para ecuaciones LaTeX
+- `inbox.md` en cloud para capturas desde el móvil (se recogen al arrancar orbit)
+- Cloud solo contiene HTML (lectura) + inbox.md (escritura) — los .md no se copian

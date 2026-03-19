@@ -181,6 +181,18 @@ orbit agenda [--date D] [--from D] [--to D] [--calendar] [--dated] [--open]
 orbit report [project...] [--from D] [--to D] [--open]
 ```
 
+### Render — vista HTML para móvil
+
+```bash
+orbit render                  # renderiza cambios del último commit
+orbit render catedra          # renderiza un proyecto completo
+orbit render --full           # renderiza todo (primera vez)
+```
+
+Tras cada `commit`, Orbit renderiza los `.md` modificados a HTML y los copia al cloud (OneDrive/Google Drive). Desde el móvil/tablet, abre `index.html` en la app de cloud para navegar proyectos, agendas, logbooks y notas — con soporte LaTeX (KaTeX).
+
+Los `inbox.md` en cloud permiten capturar ideas desde el móvil; Orbit los recoge al arrancar la shell.
+
 ### Link — enlace markdown al proyecto
 
 ```bash
