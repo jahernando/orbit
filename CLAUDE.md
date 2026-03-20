@@ -85,17 +85,25 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.21.0, 2026-03-20)
+## Estado actual (v0.22.0, 2026-03-20)
+
+### v0.22.0 (2026-03-20)
+- `orbit panel [week|month]` — dashboard dinámico (prioridad, agenda, actividad)
+  - Calendario ANSI en terminal, markdown table para `--open` (Typora)
+  - Prioridad: alta (con motivo), urgente (tareas/eventos en periodo), hitos del mes
+  - Agenda: ordenada por hora, agrupada por día en semana/mes. Tareas como `[ ]`
+  - Actividad: logbook entries del periodo por proyecto
+  - `--open` escribe a `panel.md` (no `cmd.md`)
+- `project priority` pregunta motivo al poner alta (`--reason`)
+  - Motivo en `project.md`: `- Prioridad: 🔴 Alta — Paper deadline`
+- `--append proyecto:nota` en report, agenda, view, search, ls, panel — añade salida a nota
 
 ### v0.21.0 (2026-03-20)
 - `orbit date` — fecha YYYY-MM-DD al portapapeles
-  - Sin args: hoy. Con expresión: `wednesday`, `in 2 weeks`, `lunes`, etc.
 - `orbit week` — semana ISO YYYY-Wnn al portapapeles
 - `orbit report today/week/month` — atajos de periodo
 - `orbit link proj file --from otro_proj` — enlaces relativos entre proyectos (Typora)
-- `orbit panel [week|month]` — dashboard (prioridad, agenda, actividad) para día/semana/mes
-- `--append proyecto:nota` en report, agenda, view, search, ls, panel — añade salida a una nota
-- `orbit note --no-date` — sin prefijo de fecha en nombre, sigue registrando en logbook
+- `orbit note --no-date` — sin prefijo de fecha, sigue registrando en logbook
 - Eliminado `--no-log` de note (siempre registra)
 - `_parse_period` soporta ISO week (`YYYY-Wnn`)
 - Fix: `NameError: time` en edición de recordatorios
