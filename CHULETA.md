@@ -191,7 +191,7 @@ orbit open  <project> [logbook|highlights|agenda|notes|project] [--editor E] [--
 ## log y search
 
 ```bash
-orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--deliver] [--date D] [--open] [--editor E]
+orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--deliver] [--note] [--date D] [--open] [--editor E]
 
 orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
              [--in logbook|highlights|agenda] [--any] [--notes]
@@ -199,6 +199,7 @@ orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
 ```
 
 - `<file|url>`: argumento posicional opcional. Si es URL, enlaza el título. Si es fichero local, enlaza al fichero y pregunta si quieres entregarlo a cloud
+- `--note`: escribe la entrada en una nota (`notes/YYYY-MM-DD_titulo.md`) en vez de solo en el logbook. El logbook recibe un enlace a la nota. Con `--open` abre la nota para expandirla
 - `--deliver`: entrega el fichero directamente a cloud sin preguntar (copia a `logs/` con prefijo `YYYY-MM-DD_`)
 - Si el fichero es imagen (png, jpg, svg...), se inserta `![título](link)` en la línea siguiente de la entrada
 - `--tag`: filtra por hashtag (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
