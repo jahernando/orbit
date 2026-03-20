@@ -93,7 +93,7 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `orbit week` — semana ISO YYYY-Wnn al portapapeles
 - `orbit report today/week/month` — atajos de periodo
 - `orbit link proj file --from otro_proj` — enlaces relativos entre proyectos (Typora)
-- `orbit panel` — dashboard diario (proyectos prioritarios, agenda, actividad)
+- `orbit panel [week|month]` — dashboard (prioridad, agenda, actividad) para día/semana/mes
 - `--append proyecto:nota` en report, agenda, view, search, ls, panel — añade salida a una nota
 - `orbit note --no-date` — sin prefijo de fecha en nombre, sigue registrando en logbook
 - Eliminado `--no-log` de note (siempre registra)

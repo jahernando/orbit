@@ -1,15 +1,15 @@
-"""core/panel.py — daily dashboard: priority projects, agenda, activity.
+"""core/panel.py — dashboard: priority projects, agenda, activity.
 
-  orbit panel [--open] [--append proyecto:nota]
+  orbit panel [week|month] [--open] [--append proyecto:nota]
 
 Sections:
-  1. Priority projects (alta + milestones this month, media + tasks today/overdue)
-  2. Today's agenda (dated items)
-  3. Today's activity (logbook entries)
+  1. Priority (alta + milestones this month + urgent for period)
+  2. Agenda (dated items in period, grouped by day if multi-day)
+  3. Activity (logbook entries in period)
 """
 
 import calendar
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from core.config import iter_project_dirs
@@ -18,12 +18,44 @@ from core.project import _read_project_meta, _resolve_status, _is_new_project
 from core.tasks import PRIORITY_MAP
 
 
+# ── Period helpers ────────────────────────────────────────────────────────────
+
+_WEEKDAYS_ES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes",
+                "Sábado", "Domingo"]
+
+
+def _parse_panel_period(period_str):
+    """Return (start, end, label) for a panel period.
+
+    Accepts: None/'today'/'hoy', 'week'/'semana', 'month'/'mes'.
+    """
+    today = date.today()
+    if not period_str or period_str.lower() in ("today", "hoy"):
+        return today, today, f"{today.isoformat()} ({today.strftime('%A')})"
+    p = period_str.lower()
+    if p in ("week", "semana"):
+        monday = today - timedelta(days=today.weekday())
+        sunday = monday + timedelta(days=6)
+        iso = today.isocalendar()
+        label = f"{iso[0]}-W{iso[1]:02d} ({monday.isoformat()} → {sunday.isoformat()})"
+        return monday, sunday, label
+    if p in ("month", "mes"):
+        first = date(today.year, today.month, 1)
+        last = date(today.year, today.month,
+                    calendar.monthrange(today.year, today.month)[1])
+        label = f"{today.strftime('%Y-%m')} ({first.isoformat()} → {last.isoformat()})"
+        return first, last, label
+    return today, today, f"{today.isoformat()} ({today.strftime('%A')})"
+
+
 # ── Priority scanning ─────────────────────────────────────────────────────────
 
-def _scan_project_agenda(project_dir: Path):
-    """Return (milestones_this_month, has_tasks_today, has_tasks_overdue).
+def _scan_project_agenda(project_dir, start, end):
+    """Return (milestones_this_month, has_items_in_period, has_overdue).
 
-    milestones_this_month is a list of (date_str, desc).
+    milestones_this_month: list of (date_str, desc) — always scanned for the month.
+    has_items_in_period: True if tasks/events/milestones fall in [start, end].
+    has_overdue: True if tasks are overdue (before today).
     """
     from core.agenda_cmds import _read_agenda
 
@@ -37,6 +69,9 @@ def _scan_project_agenda(project_dir: Path):
                      calendar.monthrange(today.year, today.month)[1])
 
     milestones = []
+    has_items = False
+    has_overdue = False
+
     for m in data["milestones"]:
         if m["status"] != "pending" or not m.get("date"):
             continue
@@ -44,36 +79,42 @@ def _scan_project_agenda(project_dir: Path):
             d = date.fromisoformat(m["date"])
             if today <= d <= month_end:
                 milestones.append((m["date"], m["desc"]))
+            if start <= d <= end:
+                has_items = True
         except ValueError:
             pass
 
-    has_tasks_today = False
-    has_tasks_overdue = False
     for t in data["tasks"]:
         if t["status"] != "pending" or not t.get("date"):
             continue
         try:
             d = date.fromisoformat(t["date"])
-            if d == today:
-                has_tasks_today = True
-            elif d < today:
-                has_tasks_overdue = True
+            if start <= d <= end:
+                has_items = True
+            if d < today:
+                has_overdue = True
         except ValueError:
             pass
 
-    return milestones, has_tasks_today, has_tasks_overdue
+    for e in data["events"]:
+        if not e.get("date"):
+            continue
+        try:
+            d = date.fromisoformat(e["date"])
+            if start <= d <= end:
+                has_items = True
+        except ValueError:
+            pass
+
+    return milestones, has_items, has_overdue
 
 
-def _collect_priority_projects():
-    """Return (alta, milestones, media).
-
-    alta: list of (project_dir, motivo) for explicit alta priority
-    milestones: list of (project_dir, date_str, desc) — pending this month
-    media: list of (project_dir, reason) — tasks today/overdue
-    """
+def _collect_priority_projects(start, end):
+    """Return (alta, milestones, media)."""
     alta = []
     milestones = []
     media = []
+    media_seen = set()
 
     for project_dir in iter_project_dirs():
         if not _is_new_project(project_dir):
@@ -85,7 +126,8 @@ def _collect_priority_projects():
 
         prio = meta.get("prioridad", "media").lower()
         motivo = meta.get("prioridad_motivo", "")
-        ms_list, has_tasks, has_overdue = _scan_project_agenda(project_dir)
+        ms_list, has_items, has_overdue = _scan_project_agenda(
+            project_dir, start, end)
 
         if prio == "alta":
             alta.append((project_dir, motivo))
@@ -93,93 +135,95 @@ def _collect_priority_projects():
         for ms_date, ms_desc in ms_list:
             milestones.append((project_dir, ms_date, ms_desc))
 
-        if has_tasks or has_overdue:
-            reasons = []
-            if has_tasks:
-                reasons.append("tareas hoy")
-            if has_overdue:
-                reasons.append("tareas vencidas")
+        reasons = []
+        if has_items:
+            reasons.append("citas en periodo")
+        if has_overdue:
+            reasons.append("tareas vencidas")
+        if reasons and project_dir not in media_seen:
             media.append((project_dir, ", ".join(reasons)))
+            media_seen.add(project_dir)
 
-    # Sort milestones by date
     milestones.sort(key=lambda x: x[1])
-
     return alta, milestones, media
 
 
-# ── Agenda (markdown) ─────────────────────────────────────────────────────────
+# ── Agenda ────────────────────────────────────────────────────────────────────
 
-def _collect_agenda_today():
-    """Collect today's agenda items as flat list sorted by time.
-
-    Returns list of (sort_key, line) where sort_key orders by time (items
-    with time first, then without).
-    """
+def _collect_agenda(start, end):
+    """Collect agenda items for period. Returns dict {date_str: [(sort_key, line)]}."""
     from core.agenda_view import _collect_data
 
     today = date.today()
     dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
-    collected = _collect_data(dirs, today, today, dated_only=True)
+    collected = _collect_data(dirs, start, end, dated_only=True)
 
-    items = []  # (sort_key, formatted_line)
+    by_day = {}  # date_str → [(sort_key, line)]
     for project_dir, tasks, events, milestones in collected:
         proj = project_dir.name
         for e in events:
+            day = e.get("date", "")
             time = e.get("time", "")
             time_display = f"⏰{time} " if time else ""
             key = time if time else "zz"
-            items.append((key, f"- {time_display}📅 {e['desc']} ({proj})"))
+            by_day.setdefault(day, []).append(
+                (key, f"- {time_display}📅 {e['desc']} ({proj})"))
         for m in milestones:
-            items.append(("zz", f"- 🏁 {m['desc']} ({proj})"))
+            day = m.get("date", "")
+            by_day.setdefault(day, []).append(
+                ("zz", f"- 🏁 {m['desc']} ({proj})"))
         for t in tasks:
+            day = t.get("date", "")
             time = t.get("time", "")
             time_display = f"⏰{time} " if time else ""
             overdue = ""
-            if t.get("date"):
+            if day:
                 try:
-                    if date.fromisoformat(t["date"]) < today:
+                    if date.fromisoformat(day) < today:
                         overdue = " ⚠️ vencida"
                 except ValueError:
                     pass
             key = time if time else "zz"
-            items.append((key, f"- [ ] {time_display}{t['desc']}{overdue} ({proj})"))
+            by_day.setdefault(day, []).append(
+                (key, f"- [ ] {time_display}{t['desc']}{overdue} ({proj})"))
 
-    items.sort(key=lambda x: x[0])
-    return [line for _, line in items]
+    # Sort items within each day by time
+    for day in by_day:
+        by_day[day].sort(key=lambda x: x[0])
+
+    return by_day
 
 
 # ── Activity ──────────────────────────────────────────────────────────────────
 
-def _collect_activity_today():
-    """Collect today's logbook entries. Returns list of (project_dir, entries)."""
+def _collect_activity(start, end):
+    """Collect logbook entries for period. Returns list of (project_dir, entries)."""
     from core.stats import _scan_logbook
 
-    today = date.today()
     results = []
-
     for project_dir in sorted(iter_project_dirs()):
         if not _is_new_project(project_dir):
             continue
         logbook_path = find_logbook_file(project_dir)
         if not logbook_path or not logbook_path.exists():
             continue
-
-        _, entries, _, _ = _scan_logbook(logbook_path, today, today)
+        _, entries, _, _ = _scan_logbook(logbook_path, start, end)
         if entries:
             results.append((project_dir, entries))
-
     return results
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def run_panel() -> int:
-    """Print daily dashboard as markdown."""
-    today = date.today()
-    print(f"# Panel — {today.isoformat()} ({today.strftime('%A')})")
+def run_panel(period=None) -> int:
+    """Print dashboard as markdown."""
+    start, end, label = _parse_panel_period(period)
+    is_single_day = start == end
+
+    print(f"# Panel — {label}")
 
     # ── 1. Prioridad ──
-    alta, milestones, media = _collect_priority_projects()
+    alta, milestones, media = _collect_priority_projects(start, end)
 
     print(f"\n## Prioridad\n")
     if alta:
@@ -204,18 +248,37 @@ def run_panel() -> int:
     print("\n---")
 
     # ── 2. Agenda ──
-    agenda = _collect_agenda_today()
+    by_day = _collect_agenda(start, end)
 
     print(f"\n## Agenda\n")
-    if agenda:
-        for line in agenda:
-            print(line)
+    if by_day:
+        if is_single_day:
+            # Single day: flat list
+            items = by_day.get(start.isoformat(), [])
+            for _, line in items:
+                print(line)
+            if not items:
+                print("(sin citas)")
+        else:
+            # Multi-day: group by day
+            for day_str in sorted(by_day.keys()):
+                if not day_str:
+                    continue
+                try:
+                    d = date.fromisoformat(day_str)
+                    wd = _WEEKDAYS_ES[d.weekday()]
+                    print(f"**{day_str} ({wd})**")
+                except ValueError:
+                    print(f"**{day_str}**")
+                for _, line in by_day[day_str]:
+                    print(line)
+                print()
     else:
-        print("(sin citas hoy)")
+        print("(sin citas)")
     print("\n---")
 
     # ── 3. Actividad ──
-    activity = _collect_activity_today()
+    activity = _collect_activity(start, end)
 
     print(f"\n## Actividad\n")
     if activity:

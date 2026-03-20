@@ -665,7 +665,8 @@ _REPORT_PERIODS = {
 def cmd_panel(args):
     from core.panel import run_panel
     from core.config import ORBIT_HOME
-    fn = lambda: run_panel()
+    period = getattr(args, "period", None)
+    fn = lambda: run_panel(period=period)
     return _handle_output(args, fn, "panel",
                           open_file_path=ORBIT_HOME / "panel.md")
 
@@ -999,7 +1000,9 @@ def _build_parser():
                         help="Editor: typora, glow, code, or any command (env ORBIT_EDITOR)")
 
     # --- panel ---
-    pan_p = subparsers.add_parser("panel", help="Daily dashboard: priority projects, agenda, activity")
+    pan_p = subparsers.add_parser("panel", help="Dashboard: priority projects, agenda, activity")
+    pan_p.add_argument("period", nargs="?", default=None,
+                       help="Period: today (default), week, month")
     pan_p.add_argument("--open", action="store_true", help="Open in editor")
     pan_p.add_argument("--editor", default=None)
     _add_log_args(pan_p)

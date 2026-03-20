@@ -381,17 +381,20 @@ orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--summary
 ## panel — dashboard diario
 
 ```bash
-orbit panel                                        # muestra el panel en terminal
-orbit panel --open                                 # abre en editor
+orbit panel                                        # panel del día
+orbit panel week                                   # panel de la semana
+orbit panel month                                  # panel del mes
+orbit panel --open                                 # abre en editor (panel.md)
 orbit panel --append mission:W12                   # añade a una nota
 ```
 
 Dashboard con tres secciones:
 
-- **🔴 Prioridad alta**: proyectos con prioridad explícita `alta` o con hitos pendientes este mes (lo prioritario)
-- **🔶 Prioridad media**: proyectos con tareas pendientes para hoy (lo urgente)
-- **📅 Agenda**: citas del día (solo con fecha)
-- **📝 Actividad**: entradas de logbook de hoy en todos los proyectos
+- **Prioridad**: alta (explícita, con motivo), urgente (tareas/eventos en periodo + vencidas), hitos del mes
+- **Agenda**: citas del periodo ordenadas por hora; por días si es semana/mes. Tareas como `[ ]`
+- **Actividad**: entradas de logbook del periodo por proyecto
+
+`--open` escribe a `panel.md` (no a `cmd.md`) — se puede tener abierto en Typora sin interferir con otros comandos.
 
 ---
 
