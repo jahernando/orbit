@@ -229,6 +229,20 @@ orbit render --full           # renderiza todos los proyectos
 - Se ejecuta automáticamente en background tras cada `commit`
 - Los `.md` no se copian a cloud — solo los `.html` renderizados + `inbox.md`
 
+## date — fecha en formato YYYY-MM-DD
+
+```bash
+orbit date                # hoy: 2026-03-20 (copiado al portapapeles)
+orbit date wednesday      # próximo miércoles
+orbit date in 2 weeks     # dentro de 2 semanas
+orbit date tomorrow       # mañana
+orbit date lunes          # próximo lunes
+```
+
+- Imprime la fecha en formato `YYYY-MM-DD` y la copia al portapapeles
+- Acepta el mismo vocabulario de fechas que el resto de comandos (inglés y español)
+- Sin argumentos: fecha de hoy
+
 ## link — enlace markdown al proyecto
 
 ```bash
@@ -334,9 +348,15 @@ orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--summary
 
 ```bash
 orbit report [project...] [--date D] [--from D] [--to D] [--open] [--editor E]
+orbit report today                    # actividad de hoy
+orbit report week                     # actividad de esta semana
+orbit report month                    # actividad de este mes
+orbit report yesterday                # actividad de ayer
+orbit report myproject today          # actividad de hoy en un proyecto
 orbit report --summary [logbook|agenda|highlights|all] [--date D] [--from D] [--to D]
 ```
 
+- Atajos de periodo: `today`/`hoy`, `yesterday`/`ayer`, `week`/`semana`, `month`/`mes`
 - Sin proyecto: muestra informe de todos los proyectos activos
 - Con proyecto(s): informe solo de esos proyectos
 - Sin fechas: últimos 30 días

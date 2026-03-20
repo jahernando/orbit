@@ -43,6 +43,12 @@ def _parse_period(date_str: Optional[str],
 
     if not date_str:
         return today - timedelta(days=29), today
+    # ISO week: YYYY-Wnn → Monday..Sunday
+    import re
+    wk = re.match(r'^(\d{4})-W(\d{2})$', date_str)
+    if wk:
+        d = date.fromisocalendar(int(wk.group(1)), int(wk.group(2)), 1)
+        return d, d + timedelta(days=6)
     if len(date_str) == 7:
         y, m = int(date_str[:4]), int(date_str[5:7])
         return date(y, m, 1), date(y, m, calendar.monthrange(y, m)[1])

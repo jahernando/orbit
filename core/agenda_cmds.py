@@ -1996,8 +1996,8 @@ def run_reminder_edit(project: Optional[str], text: Optional[str],
         # Update Mac reminder if fires today
         if rem.get("date") and rem.get("time") and rem["date"] == date.today().isoformat():
             from core.ring import _schedule_reminder, _delete_reminder
-            from datetime import datetime as _dt
-            fire_dt = _dt.combine(date.today(), time.fromisoformat(rem["time"]))
+            from datetime import datetime as _dt, time as _time
+            fire_dt = _dt.combine(date.today(), _time.fromisoformat(rem["time"]))
             if new_text or new_time:
                 _delete_reminder(old_desc, project_dir.name, kind="reminder")
             ok = _schedule_reminder(rem['desc'], project_dir.name, fire_dt, kind="reminder")

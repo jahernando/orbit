@@ -85,7 +85,17 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.20.0, 2026-03-19)
+## Estado actual (v0.20.1, 2026-03-20)
+
+### v0.20.1 (2026-03-20)
+- `orbit date` — fecha YYYY-MM-DD al portapapeles
+  - Sin args: hoy. Con expresión: `wednesday`, `in 2 weeks`, `lunes`, etc.
+  - Usa `dateparse.py` (vocabulario completo inglés/español)
+- `orbit report today/week/month` — atajos de periodo para report
+  - `today`/`hoy`, `yesterday`/`ayer`, `week`/`semana`, `month`/`mes`
+  - Combinable con proyecto: `report myproject today`
+- `_parse_period` soporta formato ISO week (`YYYY-Wnn`)
+- Fix: `NameError: time` en edición de recordatorios que suenan hoy (`agenda_cmds.py`)
 
 ### v0.20.0 (2026-03-19)
 - `orbit render` — renderizado estático MD→HTML al cloud para acceso móvil

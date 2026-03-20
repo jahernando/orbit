@@ -179,6 +179,17 @@ orbit open next-kr agenda
 ```bash
 orbit agenda [--date D] [--from D] [--to D] [--calendar] [--dated] [--open]
 orbit report [project...] [--from D] [--to D] [--open]
+orbit report today                  # actividad de hoy
+orbit report week                   # actividad de esta semana
+orbit report month                  # actividad de este mes
+```
+
+### Date — fecha al portapapeles
+
+```bash
+orbit date                # 2026-03-20 (copiado al portapapeles)
+orbit date wednesday      # próximo miércoles
+orbit date in 2 weeks     # dentro de 2 semanas
 ```
 
 ### Render — vista HTML para móvil

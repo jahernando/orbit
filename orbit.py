@@ -308,6 +308,24 @@ def cmd_link(args):
     return run_link(name=args.project)
 
 
+def cmd_date(args):
+    import subprocess
+    from core.dateparse import parse_date
+    expr = " ".join(args.expr) if args.expr else "today"
+    result = parse_date(expr)
+    # Validate it resolved to a YYYY-MM-DD date
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', result):
+        print(f"  no se pudo resolver a una fecha: {expr}")
+        return 1
+    print(result)
+    try:
+        subprocess.run(["pbcopy"], input=result.encode(), check=True)
+        print("  (copiado al portapapeles)")
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        pass
+    return 0
+
+
 def cmd_render(args):
     from core.render import run_render
     return run_render(project=args.project, full=args.full, check=args.check)
@@ -501,12 +519,32 @@ def cmd_cal(args):
     return _handle_output(args, fn, "cal")
 
 
+_REPORT_PERIODS = {
+    "today": "today", "hoy": "today",
+    "yesterday": "yesterday", "ayer": "yesterday",
+    "week": "this week", "semana": "this week",
+    "month": "this month", "mes": "this month",
+}
+
+
 def cmd_report(args):
+    projects = getattr(args, "projects", None) or None
+    date_str = getattr(args, "date", None)
+    date_from = getattr(args, "date_from", None)
+    date_to = getattr(args, "date_to", None)
+
+    # Allow "report today", "report week", "report month" as shortcuts
+    if projects and not date_str and not date_from and not date_to:
+        first = projects[0].lower()
+        if first in _REPORT_PERIODS:
+            date_str = _REPORT_PERIODS[first]
+            projects = projects[1:] or None
+
     fn = lambda: run_report(
-        projects=getattr(args, "projects", None) or None,
-        date_str=_d(getattr(args, "date", None)),
-        date_from=_d(getattr(args, "date_from", None)),
-        date_to=_d(getattr(args, "date_to", None)),
+        projects=projects,
+        date_str=_d(date_str),
+        date_from=_d(date_from),
+        date_to=_d(date_to),
         summary=getattr(args, "summary", False),
     )
     return _handle_output(args, fn, "report")
@@ -1184,6 +1222,10 @@ def _build_parser():
     link_p = subparsers.add_parser("link", help="Markdown link to project (copied to clipboard)")
     link_p.add_argument("project", help="Project name (partial match)")
 
+    # --- date ---
+    date_p = subparsers.add_parser("date", help="Print date in YYYY-MM-DD (copied to clipboard)")
+    date_p.add_argument("expr", nargs="*", help="Date expression (e.g. wednesday, in 2 weeks)")
+
     # --- render ---
     rnd_p = subparsers.add_parser("render", help="Render project files to HTML for cloud")
     rnd_p.add_argument("project", nargs="?", default=None, help="Project name (partial match)")
@@ -1302,7 +1344,7 @@ _COMMANDS = {
     "task": cmd_task_new,
     "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
     "view": cmd_view_new,
-    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "link": cmd_link,
+    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "link": cmd_link, "date": cmd_date,
     "render": cmd_render, "recloud": cmd_recloud,
     "log": cmd_log, "search": cmd_search,
     "report": cmd_report, "open": cmd_open,
