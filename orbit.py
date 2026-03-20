@@ -171,32 +171,39 @@ def cmd_log(args):
         print("Error: especifica un proyecto → orbit log <proyecto> \"mensaje\"")
         return 1
 
-    # --note: write log entry into a note file, logbook gets a link to it
-    if getattr(args, "note", False):
-        from core.notes import _title_to_filename, _find_new_project
-        from core.log import format_entry, add_entry
+    # --note / --to: redirect log entry to a note file
+    note_flag = getattr(args, "note", False)
+    to_note = getattr(args, "to_note", None)
+    if note_flag or to_note:
+        from core.notes import _title_to_filename, _find_new_project, _pick_note
+        from core.log import format_entry, _append_entry
         from datetime import date as _date
 
         project_dir = _find_new_project(args.project)
         if project_dir is None:
             return 1
         notes_dir = project_dir / "notes"
-        notes_dir.mkdir(exist_ok=True)
 
-        base_name = _title_to_filename(args.message)
-        note_name = f"{_date.today().isoformat()}_{base_name}"
-        dest = notes_dir / note_name
-
-        # Format the log entry and write it into the note
         entry_text = format_entry(args.message, args.entry, args.ref,
-                                  _d(args.date)).strip()
-        dest.write_text(f"# {args.message}\n\n{entry_text}\n\n---\n\n")
-        print(f"✓ [{project_dir.name}] Nota creada: {note_name}")
+                                  _d(args.date))
 
-        # Logbook gets a link to the note
-        note_link = f"./notes/{note_name}"
-        add_entry(project=args.project, message=args.message,
-                  tipo=args.entry, path=note_link, fecha=_d(args.date))
+        if to_note:
+            # Append to existing note
+            dest = _pick_note(notes_dir, to_note)
+            if dest is None:
+                return 1
+            _append_entry(dest, entry_text)
+            print(f"✓ [{project_dir.name}] {entry_text.strip()}")
+            print(f"  → nota: {dest.name}")
+        else:
+            # Create new note with entry as content
+            notes_dir.mkdir(exist_ok=True)
+            base_name = _title_to_filename(args.message)
+            note_name = f"{_date.today().isoformat()}_{base_name}"
+            dest = notes_dir / note_name
+            dest.write_text(f"# {args.message}\n\n{entry_text}\n---\n\n")
+            print(f"✓ [{project_dir.name}] Nota creada: {note_name}")
+            print(f"  {entry_text.strip()}")
 
         if getattr(args, "open", False):
             open_file(dest, getattr(args, "editor", None) or default_editor())
@@ -780,7 +787,9 @@ def _build_parser():
         metavar="ENTRY",
         help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
     )
-    log_p.add_argument("--note",    action="store_true", help="Also create a note file and link it")
+    log_p.add_argument("--note",    action="store_true", help="Create a note file with the log entry")
+    log_p.add_argument("--to",      dest="to_note", default=None, metavar="NOTE",
+                        help="Append log entry to an existing note (partial name match)")
     log_p.add_argument("--deliver", action="store_true", help="Deliver file to cloud (logs/ with date prefix)")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
     log_p.add_argument("--open", action="store_true", help="Open the logbook/note in editor after logging")
