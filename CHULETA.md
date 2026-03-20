@@ -378,6 +378,23 @@ orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--summary
 
 ---
 
+## panel — dashboard diario
+
+```bash
+orbit panel                                        # muestra el panel en terminal
+orbit panel --open                                 # abre en editor
+orbit panel --append mission:W12                   # añade a una nota
+```
+
+Dashboard con tres secciones:
+
+- **🔴 Prioridad alta**: proyectos con prioridad explícita `alta` o con hitos pendientes este mes (lo prioritario)
+- **🔶 Prioridad media**: proyectos con tareas pendientes para hoy (lo urgente)
+- **📅 Agenda**: citas del día (solo con fecha)
+- **📝 Actividad**: entradas de logbook de hoy en todos los proyectos
+
+---
+
 ## report — informe de actividad
 
 ```bash

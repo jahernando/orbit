@@ -656,6 +656,12 @@ _REPORT_PERIODS = {
 }
 
 
+def cmd_panel(args):
+    from core.panel import run_panel
+    fn = lambda: run_panel()
+    return _handle_output(args, fn, "panel")
+
+
 def cmd_report(args):
     projects = getattr(args, "projects", None) or None
     date_str = getattr(args, "date", None)
@@ -983,6 +989,12 @@ def _build_parser():
                         help="Open the project directory in Finder")
     open_p.add_argument("--editor",   default=None,
                         help="Editor: typora, glow, code, or any command (env ORBIT_EDITOR)")
+
+    # --- panel ---
+    pan_p = subparsers.add_parser("panel", help="Daily dashboard: priority projects, agenda, activity")
+    pan_p.add_argument("--open", action="store_true", help="Open in editor")
+    pan_p.add_argument("--editor", default=None)
+    _add_log_args(pan_p)
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")
@@ -1486,7 +1498,7 @@ _COMMANDS = {
     "date": cmd_date, "week": cmd_week,
     "render": cmd_render, "recloud": cmd_recloud,
     "log": cmd_log, "search": cmd_search,
-    "report": cmd_report, "open": cmd_open,
+    "panel": cmd_panel, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
     "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync,
