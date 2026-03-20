@@ -548,3 +548,22 @@ class TestRunLink:
         monkeypatch.setattr("core.project.ORBIT_HOME", project_env["tmp"])
         rc = run_link("nonexistent")
         assert rc == 1
+
+    def test_link_with_file(self, project_env, capsys, monkeypatch):
+        proj = _make_new_project(project_env["projects_dir"], "catedra")
+        (proj / "notes").mkdir(exist_ok=True)
+        (proj / "notes" / "result.md").write_text("# Result\n")
+        monkeypatch.setattr("core.project.ORBIT_HOME", project_env["tmp"])
+        rc = run_link("catedra", file="notes/result.md")
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[result](" in out
+        assert "notes/result.md)" in out
+
+    def test_link_with_file_not_found(self, project_env, capsys, monkeypatch):
+        _make_new_project(project_env["projects_dir"], "catedra")
+        monkeypatch.setattr("core.project.ORBIT_HOME", project_env["tmp"])
+        rc = run_link("catedra", file="notes/nope.md")
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "no existe" in out

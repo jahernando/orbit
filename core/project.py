@@ -484,18 +484,29 @@ def _find_new_project(name: str) -> Optional[Path]:
 
 # ── project link ──────────────────────────────────────────────────────────────
 
-def run_link(name: str) -> int:
-    """Print and copy to clipboard a markdown link to a project file."""
+def run_link(name: str, file: str = None) -> int:
+    """Print and copy to clipboard a markdown link to a project or file within it."""
     import subprocess
     project_dir = _find_new_project(name)
     if project_dir is None:
         return 1
-    project_file = find_proyecto_file(project_dir)
-    if project_file is None:
-        print(f"Error: no se encontró fichero de proyecto en {project_dir.name}")
-        return 1
-    rel = project_file.relative_to(ORBIT_HOME)
-    link = f"[{project_dir.name}]({rel})"
+
+    if file:
+        target = project_dir / file
+        if not target.exists():
+            print(f"Error: no existe {file} en {project_dir.name}")
+            return 1
+        rel = target.relative_to(ORBIT_HOME)
+        label = target.stem
+    else:
+        project_file = find_proyecto_file(project_dir)
+        if project_file is None:
+            print(f"Error: no se encontró fichero de proyecto en {project_dir.name}")
+            return 1
+        rel = project_file.relative_to(ORBIT_HOME)
+        label = project_dir.name
+
+    link = f"[{label}]({rel})"
     print(link)
     try:
         subprocess.run(["pbcopy"], input=link.encode(), check=True)

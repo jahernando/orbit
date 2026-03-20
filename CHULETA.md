@@ -246,11 +246,13 @@ orbit date lunes          # próximo lunes
 ## link — enlace markdown al proyecto
 
 ```bash
-orbit link <project>
+orbit link <project>                    # enlace al proyecto
+orbit link <project> notes/result.md    # enlace a un fichero del proyecto
 ```
 
-- Imprime un enlace markdown al fichero de proyecto: `[⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)`
-- Copia el enlace al portapapeles, listo para pegar en notas
+- Imprime un enlace markdown y lo copia al portapapeles
+- Sin fichero: `[⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)`
+- Con fichero: `[result](⚙️gestion/⚙️catedra/notes/result.md)` — para enlazar notas entre proyectos
 
 ## deliver — entregar ficheros a la nube
 

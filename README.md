@@ -207,7 +207,8 @@ Los `inbox.md` en cloud permiten capturar ideas desde el móvil; Orbit los recog
 ### Link — enlace markdown al proyecto
 
 ```bash
-orbit link catedra   # → [⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md) (copiado al portapapeles)
+orbit link catedra                        # → [⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)
+orbit link catedra notes/result.md        # → [result](⚙️gestion/⚙️catedra/notes/result.md)
 ```
 
 ### Deliver — entregar ficheros a la nube

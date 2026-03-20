@@ -305,7 +305,7 @@ def cmd_note(args):
 
 def cmd_link(args):
     from core.project import run_link
-    return run_link(name=args.project)
+    return run_link(name=args.project, file=getattr(args, "file", None))
 
 
 def cmd_date(args):
@@ -1221,6 +1221,7 @@ def _build_parser():
     # --- link ---
     link_p = subparsers.add_parser("link", help="Markdown link to project (copied to clipboard)")
     link_p.add_argument("project", help="Project name (partial match)")
+    link_p.add_argument("file", nargs="?", default=None, help="File path within project (e.g. notes/result.md)")
 
     # --- date ---
     date_p = subparsers.add_parser("date", help="Print date in YYYY-MM-DD (copied to clipboard)")
