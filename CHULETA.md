@@ -164,6 +164,7 @@ orbit note drop   <project> [<file>] [--force]
   - Nombre del fichero: `YYYY-MM-DD_título.md` (con fecha de hoy como prefijo)
   - Contenido: título + línea `*YYYY-MM-DD — [proyecto](link)*`
   - Con `--hl <tipo>`: registra en highlights en vez de logbook, sin prefijo de fecha en el nombre
+  - Con `--no-date`: sin prefijo de fecha en el nombre, pero sigue registrando en logbook
   - Con `--no-log`: no registra en logbook ni highlights, sin prefijo de fecha en el nombre
   - Con `<file>`: importa un `.md` existente en vez de crear desde plantilla
   - Pregunta: `¿Añadir <fichero> a git? [S/n]`

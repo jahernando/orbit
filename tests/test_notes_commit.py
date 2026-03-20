@@ -156,6 +156,19 @@ class TestRunNoteCreate:
         run_note_create("test-project", "Output Test", open_after=False)
         assert "output_test.md" in capsys.readouterr().out
 
+    def test_no_date_flag(self, proj, projects_dir, monkeypatch, capsys):
+        """--no-date creates note without date prefix but still logs."""
+        from core.notes import run_note_create
+        monkeypatch.setattr(sys, "stdin", open("/dev/null"))
+        monkeypatch.setattr("core.notes.open_file", lambda p, e: None)
+        rc = run_note_create("test-project", "Plain Note", no_date=True, open_after=False)
+        assert rc == 0
+        notes = list((proj / "notes").glob("*.md"))
+        assert any(n.name == "plain_note.md" for n in notes)
+        # Should still register in logbook
+        log = _log_text(proj)
+        assert "Plain Note" in log
+
     def test_git_add_skipped_without_tty(self, proj, projects_dir, monkeypatch):
         """Git add not attempted when stdin is not a tty."""
         from core.notes import run_note_create

@@ -298,6 +298,7 @@ def cmd_note(args):
         open_after= not getattr(args, "no_open", False),
         editor    = getattr(args, "editor", None) or default_editor(),
         no_log    = getattr(args, "no_log", False),
+        no_date   = getattr(args, "no_date", False),
         entry     = getattr(args, "entry", None) or "apunte",
         hl_type   = getattr(args, "hl", None),
     )
@@ -1206,6 +1207,8 @@ def _build_parser():
                            help="Do not open the note after creating")
     nt_create.add_argument("--no-log",  action="store_true",
                            help="Do not register in logbook or highlights")
+    nt_create.add_argument("--no-date", action="store_true",
+                           help="No date prefix in filename (still registers in logbook)")
     nt_create.add_argument("--entry",   default="apunte",
                            help="Logbook entry type (default: apunte)")
     nt_create.add_argument("--hl",      default=None, metavar="TYPE",
@@ -1238,6 +1241,7 @@ def _build_parser():
     note_p.add_argument("_file",    nargs="?", default=None)
     note_p.add_argument("--no-open", action="store_true")
     note_p.add_argument("--no-log",  action="store_true")
+    note_p.add_argument("--no-date", action="store_true")
     note_p.add_argument("--entry",   default="apunte")
     note_p.add_argument("--hl",      default=None, metavar="TYPE")
     note_p.add_argument("--editor",  default=None)

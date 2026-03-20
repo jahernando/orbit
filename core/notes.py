@@ -130,7 +130,8 @@ def _pick_note(notes_dir: Path, text: Optional[str]) -> Optional[Path]:
 
 def run_note_create(project: str, title: str, file_str: Optional[str] = None,
                     open_after: bool = True, editor: str = "",
-                    no_log: bool = False, entry: str = "apunte",
+                    no_log: bool = False, no_date: bool = False,
+                    entry: str = "apunte",
                     hl_type: Optional[str] = None) -> int:
     """Create a new note or import an existing .md into project notes/.
 
@@ -152,7 +153,7 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
     notes_dir.mkdir(exist_ok=True)
 
     # Decide filename: date prefix for logbook entries, plain for highlights
-    use_date_prefix = not hl_type and not no_log
+    use_date_prefix = not hl_type and not no_log and not no_date
     base_name = _title_to_filename(title)
     if use_date_prefix:
         note_name = f"{date.today().isoformat()}_{base_name}"
