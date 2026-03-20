@@ -1,3 +1,4 @@
+import os
 import re
 import shutil
 import sys
@@ -484,9 +485,15 @@ def _find_new_project(name: str) -> Optional[Path]:
 
 # ── project link ──────────────────────────────────────────────────────────────
 
-def run_link(name: str, file: str = None) -> int:
-    """Print and copy to clipboard a markdown link to a project or file within it."""
+def run_link(name: str, file: str = None, from_project: str = None) -> int:
+    """Print and copy to clipboard a markdown link to a project or file within it.
+
+    If from_project is given, the path is relative to that project's notes/ dir
+    so that Typora (and other editors) resolve it correctly.
+    """
     import subprocess
+    from pathlib import PurePosixPath
+
     project_dir = _find_new_project(name)
     if project_dir is None:
         return 1
@@ -496,15 +503,25 @@ def run_link(name: str, file: str = None) -> int:
         if not target.exists():
             print(f"Error: no existe {file} en {project_dir.name}")
             return 1
-        rel = target.relative_to(ORBIT_HOME)
+        target_rel = target.relative_to(ORBIT_HOME)
         label = target.stem
     else:
         project_file = find_proyecto_file(project_dir)
         if project_file is None:
             print(f"Error: no se encontró fichero de proyecto en {project_dir.name}")
             return 1
-        rel = project_file.relative_to(ORBIT_HOME)
+        target_rel = project_file.relative_to(ORBIT_HOME)
         label = project_dir.name
+
+    if from_project:
+        from_dir = _find_new_project(from_project)
+        if from_dir is None:
+            return 1
+        # Assume editing from notes/ inside the source project
+        from_notes = (from_dir / "notes").relative_to(ORBIT_HOME)
+        rel = PurePosixPath(os.path.relpath(target_rel, from_notes))
+    else:
+        rel = target_rel
 
     link = f"[{label}]({rel})"
     print(link)

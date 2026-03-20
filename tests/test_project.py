@@ -567,3 +567,23 @@ class TestRunLink:
         assert rc == 1
         out = capsys.readouterr().out
         assert "no existe" in out
+
+    def test_link_from_project(self, project_env, capsys, monkeypatch):
+        """Link from one project's notes/ to a file in another project."""
+        proj_a = _make_new_project(project_env["projects_dir"], "complementos")
+        (proj_a / "notes").mkdir(exist_ok=True)
+        proj_b = _make_new_project(project_env["projects_dir"], "catedra")
+        (proj_b / "notes").mkdir(exist_ok=True)
+        (proj_b / "notes" / "tramos.md").write_text("# Tramos\n")
+        monkeypatch.setattr("core.project.ORBIT_HOME", project_env["tmp"])
+        rc = run_link("catedra", file="notes/tramos.md", from_project="complementos")
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[tramos](" in out
+        # Path should go up from complementos/notes/ to catedra/notes/
+        assert "../" in out
+        assert "catedra/notes/tramos.md" in out
+        # Should NOT start with the type dir (no absolute-from-home path)
+        lines = out.strip().split("\n")
+        link_line = lines[0]
+        assert not link_line.startswith("[tramos](💻")
