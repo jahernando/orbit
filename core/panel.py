@@ -3,71 +3,68 @@
   orbit panel [--open] [--append proyecto:nota]
 
 Sections:
-  1. Priority projects (alta + milestones this month + tasks today)
+  1. Priority projects (alta + milestones this month, media + tasks today/overdue)
   2. Today's agenda (dated items)
   3. Today's activity (logbook entries)
 """
 
 import calendar
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
-from typing import Optional
 
 from core.config import iter_project_dirs
-from core.log import find_logbook_file, find_proyecto_file
+from core.log import find_logbook_file, resolve_file
 from core.project import _read_project_meta, _resolve_status, _is_new_project
 from core.tasks import PRIORITY_MAP
 
 
-def _has_milestones_this_month(project_dir: Path) -> bool:
-    """Check if project has pending milestones due this month."""
+# ── Priority scanning ─────────────────────────────────────────────────────────
+
+def _scan_project_agenda(project_dir: Path):
+    """Return (has_milestone_this_month, has_tasks_today, has_tasks_overdue)."""
     from core.agenda_cmds import _read_agenda
-    from core.log import resolve_file
 
     agenda_path = resolve_file(project_dir, "agenda")
     if not agenda_path.exists():
-        return False
+        return False, False, False
 
     data = _read_agenda(agenda_path)
     today = date.today()
+    today_str = today.isoformat()
     month_end = date(today.year, today.month,
                      calendar.monthrange(today.year, today.month)[1])
 
+    has_ms = False
     for m in data["milestones"]:
-        if m["status"] != "pending":
+        if m["status"] != "pending" or not m.get("date"):
             continue
-        if m.get("date"):
-            try:
-                d = date.fromisoformat(m["date"])
-                if today <= d <= month_end:
-                    return True
-            except ValueError:
-                pass
-    return False
+        try:
+            d = date.fromisoformat(m["date"])
+            if today <= d <= month_end:
+                has_ms = True
+                break
+        except ValueError:
+            pass
 
-
-def _has_tasks_today(project_dir: Path) -> bool:
-    """Check if project has pending tasks due today."""
-    from core.agenda_cmds import _read_agenda
-    from core.log import resolve_file
-
-    agenda_path = resolve_file(project_dir, "agenda")
-    if not agenda_path.exists():
-        return False
-
-    data = _read_agenda(agenda_path)
-    today_str = date.today().isoformat()
-
+    has_tasks_today = False
+    has_tasks_overdue = False
     for t in data["tasks"]:
-        if t["status"] != "pending":
+        if t["status"] != "pending" or not t.get("date"):
             continue
-        if t.get("date") == today_str:
-            return True
-    return False
+        try:
+            d = date.fromisoformat(t["date"])
+            if d == today:
+                has_tasks_today = True
+            elif d < today:
+                has_tasks_overdue = True
+        except ValueError:
+            pass
+
+    return has_ms, has_tasks_today, has_tasks_overdue
 
 
 def _collect_priority_projects():
-    """Return (alta_projects, media_projects) as lists of (project_dir, meta, reason)."""
+    """Return (alta_projects, media_projects) as lists of (project_dir, reason)."""
     alta = []
     media = []
 
@@ -80,34 +77,66 @@ def _collect_priority_projects():
             continue
 
         prio = meta.get("prioridad", "media").lower()
-        has_ms = _has_milestones_this_month(project_dir)
-        has_tasks = _has_tasks_today(project_dir)
+        has_ms, has_tasks, has_overdue = _scan_project_agenda(project_dir)
 
         if prio == "alta" or has_ms:
-            reason = []
+            reasons = []
             if prio == "alta":
-                reason.append("prioridad alta")
+                reasons.append("prioridad alta")
             if has_ms:
-                reason.append("hito este mes")
-            alta.append((project_dir, meta, ", ".join(reason)))
-        elif has_tasks:
-            media.append((project_dir, meta, "tareas hoy"))
+                reasons.append("hito este mes")
+            alta.append((project_dir, ", ".join(reasons)))
+        elif has_tasks or has_overdue:
+            reasons = []
+            if has_tasks:
+                reasons.append("tareas hoy")
+            if has_overdue:
+                reasons.append("tareas vencidas")
+            media.append((project_dir, ", ".join(reasons)))
 
     return alta, media
 
 
-def _print_agenda_today():
-    """Print today's agenda (dated items only)."""
-    from core.agenda_view import run_agenda
-    run_agenda(dated_only=True, no_cal=True)
+# ── Agenda (markdown) ─────────────────────────────────────────────────────────
+
+def _collect_agenda_today():
+    """Collect today's dated agenda items. Returns list of (project_dir, items)."""
+    from core.agenda_view import _collect_data
+
+    today = date.today()
+    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+    collected = _collect_data(dirs, today, today, dated_only=True)
+
+    results = []
+    for project_dir, tasks, events, milestones in collected:
+        items = []
+        for e in events:
+            time_str = f" ⏰{e['time']}" if e.get("time") else ""
+            items.append(f"- 📅 {e['desc']}{time_str}")
+        for m in milestones:
+            items.append(f"- 🏁 {m['desc']}")
+        for t in tasks:
+            overdue = ""
+            if t.get("date"):
+                try:
+                    if date.fromisoformat(t["date"]) < today:
+                        overdue = " ⚠️ vencida"
+                except ValueError:
+                    pass
+            items.append(f"- ✅ {t['desc']}{overdue}")
+        if items:
+            results.append((project_dir, items))
+    return results
 
 
-def _print_activity_today():
-    """Print today's logbook entries across all active projects."""
+# ── Activity ──────────────────────────────────────────────────────────────────
+
+def _collect_activity_today():
+    """Collect today's logbook entries. Returns list of (project_dir, entries)."""
     from core.stats import _scan_logbook
 
     today = date.today()
-    found = False
+    results = []
 
     for project_dir in sorted(iter_project_dirs()):
         if not _is_new_project(project_dir):
@@ -118,52 +147,59 @@ def _print_activity_today():
 
         _, entries, _, _ = _scan_logbook(logbook_path, today, today)
         if entries:
-            if not found:
-                found = True
-            print(f"\n  **{project_dir.name}**")
-            for e in entries:
-                print(f"  {e}")
+            results.append((project_dir, entries))
 
-    if not found:
-        print("  (sin actividad)")
+    return results
 
+
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 def run_panel() -> int:
-    """Print daily dashboard: priority projects, agenda, activity."""
+    """Print daily dashboard as markdown."""
     today = date.today()
-    print(f"PANEL — {today.isoformat()} ({today.strftime('%A')})")
-    print("=" * 54)
+    print(f"# Panel — {today.isoformat()} ({today.strftime('%A')})")
 
     # ── 1. Priority projects ──
     alta, media = _collect_priority_projects()
 
-    print(f"\n🔴 PRIORIDAD ALTA ({len(alta)})")
-    print("─" * 40)
+    print(f"\n## 🔴 Prioridad ({len(alta)})\n")
     if alta:
-        for project_dir, meta, reason in alta:
-            emoji = PRIORITY_MAP.get("alta", "")
-            print(f"  {emoji} {project_dir.name}  — {reason}")
+        for project_dir, reason in alta:
+            print(f"- **{project_dir.name}** — {reason}")
     else:
-        print("  (ninguno)")
+        print("(ninguno)")
 
-    print(f"\n🔶 PRIORIDAD MEDIA ({len(media)})")
-    print("─" * 40)
+    print(f"\n## 🔶 Urgente ({len(media)})\n")
     if media:
-        for project_dir, meta, reason in media:
-            emoji = PRIORITY_MAP.get("media", "")
-            print(f"  {emoji} {project_dir.name}  — {reason}")
+        for project_dir, reason in media:
+            print(f"- **{project_dir.name}** — {reason}")
     else:
-        print("  (ninguno)")
+        print("(ninguno)")
 
     # ── 2. Agenda ──
-    print(f"\n📅 AGENDA")
-    print("─" * 40)
-    _print_agenda_today()
+    agenda = _collect_agenda_today()
+
+    print(f"\n## 📅 Agenda\n")
+    if agenda:
+        for project_dir, items in agenda:
+            print(f"**{project_dir.name}**")
+            for item in items:
+                print(item)
+            print()
+    else:
+        print("(sin citas hoy)")
 
     # ── 3. Activity ──
-    print(f"\n📝 ACTIVIDAD")
-    print("─" * 40)
-    _print_activity_today()
+    activity = _collect_activity_today()
 
-    print()
+    print(f"\n## 📝 Actividad\n")
+    if activity:
+        for project_dir, entries in activity:
+            print(f"**{project_dir.name}**")
+            for e in entries:
+                print(f"- {e}")
+            print()
+    else:
+        print("(sin actividad)")
+
     return 0
