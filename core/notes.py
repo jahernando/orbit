@@ -130,18 +130,18 @@ def _pick_note(notes_dir: Path, text: Optional[str]) -> Optional[Path]:
 
 def run_note_create(project: str, title: str, file_str: Optional[str] = None,
                     open_after: bool = True, editor: str = "",
-                    no_log: bool = False, no_date: bool = False,
+                    no_date: bool = False,
                     entry: str = "apunte",
                     hl_type: Optional[str] = None) -> int:
     """Create a new note or import an existing .md into project notes/.
 
     By default registers in logbook (with date prefix in filename).
     With --hl <type>: registers in highlights instead (no date prefix).
-    With --no-log: no registration anywhere.
+    With --no-date: no date prefix in filename, still registers in logbook.
 
     Args:
         file_str: if given and exists as file, imports it; otherwise title only.
-        no_log: skip logbook/highlights registration.
+        no_date: skip date prefix in filename.
         entry: logbook entry type (default: apunte).
         hl_type: if set, register in highlights under this section instead of logbook.
     """
@@ -152,8 +152,8 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
     notes_dir = project_dir / "notes"
     notes_dir.mkdir(exist_ok=True)
 
-    # Decide filename: date prefix for logbook entries, plain for highlights
-    use_date_prefix = not hl_type and not no_log and not no_date
+    # Decide filename: date prefix for logbook entries, plain for highlights/no-date
+    use_date_prefix = not hl_type and not no_date
     base_name = _title_to_filename(title)
     if use_date_prefix:
         note_name = f"{date.today().isoformat()}_{base_name}"
@@ -202,13 +202,10 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
         from core.highlights import run_hl_add
         run_hl_add(project=project, text=title, hl_type=hl_type,
                    link=note_link)
-    elif not no_log:
+    else:
         from core.log import add_entry
         add_entry(project=project, message=title,
                   tipo=entry, path=note_link, fecha=None)
-    else:
-        add_orbit_entry(project_dir,
-                        f"[nota creada] {note_name} — \"{title}\"", "apunte")
 
     if open_after:
         open_file(dest, editor)

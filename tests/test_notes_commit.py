@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -99,25 +100,27 @@ class TestRunNoteCreate:
         assert rc == 0
         notes = list((proj / "notes").glob("*.md"))
         assert len(notes) == 1
-        assert notes[0].name == "my_analysis.md"
+        today = date.today().isoformat()
+        assert notes[0].name == f"{today}_my_analysis.md"
 
     def test_note_has_title_heading(self, proj, projects_dir, monkeypatch):
         from core.notes import run_note_create
         monkeypatch.setattr(sys, "stdin", open("/dev/null"))
         monkeypatch.setattr("core.notes.open_file", lambda p, e: None)
         run_note_create("test-project", "Test Note", open_after=False)
-        content = (proj / "notes" / "test_note.md").read_text()
+        today = date.today().isoformat()
+        content = (proj / "notes" / f"{today}_test_note.md").read_text()
         assert "# Test Note" in content
 
-    def test_logbook_orbit_entry(self, proj, projects_dir, monkeypatch):
+    def test_logbook_entry(self, proj, projects_dir, monkeypatch):
         from core.notes import run_note_create
         monkeypatch.setattr(sys, "stdin", open("/dev/null"))
         monkeypatch.setattr("core.notes.open_file", lambda p, e: None)
         run_note_create("test-project", "My Note", open_after=False)
         log = _log_text(proj)
-        assert "[nota creada]" in log
+        assert "My Note" in log
         assert "my_note.md" in log
-        assert "[O]" in log
+        assert "#apunte" in log
 
     def test_import_existing_md(self, tmp_path, proj, projects_dir, monkeypatch, capsys):
         from core.notes import run_note_create
@@ -127,7 +130,8 @@ class TestRunNoteCreate:
         src.write_text("# Existing note\n\nContent here.\n")
         rc = run_note_create("test-project", "Existing", file_str=str(src), open_after=False)
         assert rc == 0
-        assert (proj / "notes" / "existing.md").exists()
+        today = date.today().isoformat()
+        assert (proj / "notes" / f"{today}_existing.md").exists()
 
     def test_import_non_md_fails(self, tmp_path, proj, projects_dir, monkeypatch, capsys):
         from core.notes import run_note_create
@@ -184,7 +188,9 @@ class TestRunNoteCreate:
         from core.notes import run_note_create
         monkeypatch.setattr(sys, "stdin", open("/dev/null"))
         monkeypatch.setattr("core.notes.open_file", lambda p, e: None)
-        (proj / "notes" / "my_note.md").write_text("# old content")
+        today = date.today().isoformat()
+        (proj / "notes").mkdir(exist_ok=True)
+        (proj / "notes" / f"{today}_my_note.md").write_text("# old content")
         run_note_create("test-project", "My Note", open_after=False)
         assert "sobreescribirá" in capsys.readouterr().out
 
