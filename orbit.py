@@ -106,9 +106,9 @@ def _handle_output(args, run_fn, cmd_label: str = ""):
     """
     do_open = getattr(args, "open", False)
     log_target = getattr(args, "log", None)
-    to_note = getattr(args, "to_note", None)
+    append_note = getattr(args, "append_note", None)
 
-    if do_open or log_target or to_note:
+    if do_open or log_target or append_note:
         with capture_output() as buf:
             run_fn()
         content = buf.getvalue()
@@ -117,8 +117,8 @@ def _handle_output(args, run_fn, cmd_label: str = ""):
         if log_target:
             entry_type = getattr(args, "log_entry", "apunte")
             log_cmd_output(content, log_target, entry_type, cmd_label)
-        if to_note:
-            _append_to_note(to_note, content, cmd_label)
+        if append_note:
+            _append_to_note(append_note, content, cmd_label)
         return 0
     else:
         run_fn()
@@ -130,7 +130,7 @@ def _append_to_note(to_note: str, content: str, cmd_label: str = ""):
     from core.log import _append_entry
 
     if ":" not in to_note:
-        print("Error: usa --note proyecto:nota (ej. --note catedra:calibracion)")
+        print("Error: usa --append proyecto:nota (ej. --append catedra:calibracion)")
         return 1
 
     project_dir, dest = _resolve_and_find_note(None, to_note)
@@ -200,7 +200,7 @@ def _fix_argv(argv: list) -> list:
     return fixed
 
 
-# ── Note helpers for --note ───────────────────────────────────────────────────
+# ── Note helpers for --append ──────────────────────────────────────────────────
 
 def _find_note(project_dir, note_name):
     """Find a note by partial name match. Returns Path or None."""
@@ -274,30 +274,6 @@ def cmd_log(args):
     if not args.project:
         print("Error: especifica un proyecto → orbit log <proyecto> \"mensaje\"")
         return 1
-
-    # --note: redirect log entry to a note file (existing or new)
-    note_name = getattr(args, "to_note", None)
-    if note_name:
-        project_dir, dest = _resolve_and_find_note(args.project, note_name)
-        if project_dir is None:
-            return 1
-
-        from core.log import format_entry, _append_entry
-        entry_text = format_entry(args.message, args.entry, args.ref,
-                                  _d(args.date))
-
-        if dest:
-            _append_entry(dest, entry_text)
-            print(f"✓ [{project_dir.name}] {entry_text.strip()}")
-            print(f"  → nota: {dest.name}")
-        else:
-            dest = _create_note_for_entry(project_dir, note_name, entry_text)
-            if dest is None:
-                return 1
-
-        if getattr(args, "open", False):
-            open_file(dest, getattr(args, "editor", None) or default_editor())
-        return 0
 
     rc = add_entry_with_ref(
         project=args.project,
@@ -832,8 +808,8 @@ def _add_log_args(p):
     p.add_argument("--log-entry", dest="log_entry", default="apunte",
                    choices=VALID_TYPES, metavar="TYPE",
                    help="Entry type for --log (default: apunte)")
-    p.add_argument("--note", dest="to_note", default=None, metavar="PROJ:NOTA",
-                   help="Append output to a note (e.g. --note catedra:calibracion)")
+    p.add_argument("--append", dest="append_note", default=None, metavar="PROJ:NOTA",
+                   help="Append output to a note (e.g. --append catedra:calibracion)")
 
 
 class _OrbitParser(argparse.ArgumentParser):
@@ -879,8 +855,6 @@ def _build_parser():
         metavar="ENTRY",
         help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
     )
-    log_p.add_argument("--note",    dest="to_note", default=None, metavar="NOTE",
-                        help="Write entry to a note (partial match; creates if not found)")
     log_p.add_argument("--deliver", action="store_true", help="Deliver file to cloud (logs/ with date prefix)")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
     log_p.add_argument("--open", action="store_true", help="Open the logbook/note in editor after logging")

@@ -199,30 +199,14 @@ orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
 ```
 
 - `<file|url>`: argumento posicional opcional. Si es URL, enlaza el título. Si es fichero local, enlaza al fichero y pregunta si quieres entregarlo a cloud
-- `--note <nota>`: escribe la entrada en una nota (nombre parcial). Si la nota existe, añade la entrada. Si no existe, pregunta si quiere crearla. Ejemplo: `--note calibracion`
-
-Muchos comandos soportan `--note proyecto:nota` para redirigir su salida a una nota:
+Muchos comandos soportan `--append proyecto:nota` para añadir su salida a una nota:
 
 ```bash
-orbit report today --note catedra:calibracion       # report del día → nota
-orbit agenda --note mission:W12                      # agenda → nota semanal
-orbit view catedra --note catedra:estado             # vista del proyecto → nota
-orbit search "algo" --note catedra:busqueda          # resultados de búsqueda → nota
+orbit report today --append catedra:calibracion     # report del día → nota
+orbit agenda --append mission:W12                    # agenda → nota semanal
+orbit view catedra --append catedra:estado           # vista del proyecto → nota
+orbit search "algo" --append catedra:busqueda        # resultados de búsqueda → nota
 ```
-
-### Aliases de shell para notas semanales/mensuales
-
-Definidos en `orbit.sh` — combinan `orbit week`/`orbit date` con `--note`:
-
-```bash
-ow "Revisión paper" --entry plan       # → log en mission/notes/2026-W12.md
-om "Objetivos Q2" --entry decision     # → log en mission/notes/2026-03.md
-ow-report                              # → report today → nota semanal
-ow-agenda                              # → agenda → nota semanal
-om-report                              # → report month → nota mensual
-```
-
-Prefijo `ow`/`om` para orbit-ws, `pw`/`pm` para orbit-ps.
 - `--deliver`: entrega el fichero directamente a cloud sin preguntar (copia a `logs/` con prefijo `YYYY-MM-DD_`)
 - Si el fichero es imagen (png, jpg, svg...), se inserta `![título](link)` en la línea siguiente de la entrada
 - `--tag`: filtra por hashtag (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)

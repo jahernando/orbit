@@ -79,21 +79,3 @@ orbit_pull() {
 orbit_update() {
     (cd "$ORBIT_CODE" && git pull origin main && echo "✓ Código actualizado")
 }
-
-# ── Note aliases (weekly/monthly in mission) ─────────────────────────────────
-# Usage: ow "Plan: revisar paper" --entry plan
-#        om "Objetivos Q2" --entry decision
-#        ow-report   → report today → weekly note
-#        ow-agenda   → agenda → weekly note
-
-_orbit_week() { python3 "$ORBIT_CODE/orbit.py" week 2>/dev/null | head -1; }
-_orbit_month() { python3 "$ORBIT_CODE/orbit.py" date 2>/dev/null | head -1 | cut -c1-7; }
-
-ow() { worbit log mission "$@" --note "$(_orbit_week)"; }
-om() { worbit log mission "$@" --note "$(_orbit_month)"; }
-pw() { porbit log mission "$@" --note "$(_orbit_week)"; }
-pm() { porbit log mission "$@" --note "$(_orbit_month)"; }
-
-ow-report() { worbit report "${1:-today}" --note "mission:$(_orbit_week)"; }
-ow-agenda() { worbit agenda --note "mission:$(_orbit_week)"; }
-om-report() { worbit report "${1:-month}" --note "mission:$(_orbit_month)"; }
