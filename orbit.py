@@ -126,25 +126,30 @@ def _handle_output(args, run_fn, cmd_label: str = ""):
 
 
 def _append_to_note(to_note: str, content: str, cmd_label: str = ""):
-    """Append captured output to a note file. Format: project:note_name."""
-    from core.project import _find_new_project
-    from core.notes import _pick_note
+    """Append captured output to a note file.
+
+    Accepts: 'week', 'month', 'project:note', 'project:week', etc.
+    """
     from core.log import _append_entry
 
-    # Parse project:note format
-    if ":" in to_note:
+    # For bare week/month, use directly; otherwise need project:note format
+    lower = to_note.lower()
+    if lower in _NOTE_PERIOD_KEYWORDS:
+        project_name = to_note  # _resolve_note_target handles finding mission
+        note_name = to_note
+    elif ":" in to_note:
         project_name, note_name = to_note.split(":", 1)
     else:
-        print("Error: usa --note proyecto:nota (ej. --note catedra:calibracion)")
+        print("Error: usa --note proyecto:nota, --note week, o --note month")
         return 1
 
-    project_dir = _find_new_project(project_name)
+    project_dir, dest = _resolve_and_find_note(project_name, note_name)
     if project_dir is None:
         return 1
-    notes_dir = project_dir / "notes"
-    dest = _pick_note(notes_dir, note_name)
     if dest is None:
-        return 1
+        dest = _create_note_for_entry(project_dir, note_name)
+        if dest is None:
+            return 1
 
     # Append content with header
     from datetime import date
@@ -203,6 +208,164 @@ def _fix_argv(argv: list) -> list:
     return fixed
 
 
+# ── Note shortcuts for --note (week/month → mission) ─────────────────────────
+
+_NOTE_PERIOD_KEYWORDS = {
+    "week": "week", "semana": "week",
+    "month": "month", "mes": "month",
+}
+
+_WEEK_TEMPLATE = """\
+# Semana {week}
+
+## Plan
+
+## Lunes
+## Martes
+## Miércoles
+## Jueves
+## Viernes
+
+## Resumen
+
+"""
+
+_MONTH_TEMPLATE = """\
+# {month}
+
+## Plan
+
+## Revisión
+
+## Decisiones
+
+"""
+
+
+def _resolve_note_target(project_name: str, note_name: str):
+    """Resolve note shortcuts (week/month) and project:note syntax.
+
+    Returns (project_name, note_search_term, create_filename, template) or None on error.
+    """
+    from datetime import date as _date
+    from core.dateparse import _week_key
+
+    lower = note_name.lower()
+
+    # week/month → mission project of current workspace
+    if lower in _NOTE_PERIOD_KEYWORDS:
+        from core.config import iter_project_dirs
+        mission = next(
+            (d.name for d in iter_project_dirs() if "mission" in d.name.lower()),
+            None,
+        )
+        if not mission:
+            print("Error: no se encontró proyecto mission en el workspace activo")
+            return None
+        period = _NOTE_PERIOD_KEYWORDS[lower]
+        if period == "week":
+            key = _week_key(_date.today())
+            return mission, key, f"{key}.md", _WEEK_TEMPLATE.format(week=key)
+        else:
+            key = _date.today().strftime("%Y-%m")
+            return mission, key, f"{key}.md", _MONTH_TEMPLATE.format(month=key)
+
+    # project:note syntax (from --note on report, agenda, etc.)
+    if ":" in note_name:
+        proj, note = note_name.split(":", 1)
+        note_lower = note.lower()
+        if note_lower in _NOTE_PERIOD_KEYWORDS:
+            # Resolve week/month but use the explicit project
+            period = _NOTE_PERIOD_KEYWORDS[note_lower]
+            if period == "week":
+                key = _week_key(_date.today())
+                return proj, key, f"{key}.md", _WEEK_TEMPLATE.format(week=key)
+            else:
+                key = _date.today().strftime("%Y-%m")
+                return proj, key, f"{key}.md", _MONTH_TEMPLATE.format(month=key)
+        return proj, note, None, None
+
+    # Plain note name
+    return project_name, note_name, None, None
+
+
+def _resolve_and_find_note(project_name, note_name):
+    """Resolve note name and find the target file.
+
+    Returns (project_dir, dest_path_or_None).
+    project_dir is None on error.
+    dest_path is None if not found (caller should create).
+    """
+    from core.project import _find_new_project
+
+    resolved = _resolve_note_target(project_name, note_name)
+    if resolved is None:
+        return None, None
+
+    proj_name, search_term, _, _ = resolved
+    project_dir = _find_new_project(proj_name)
+    if project_dir is None:
+        return None, None
+
+    notes_dir = project_dir / "notes"
+    if not notes_dir.exists():
+        return project_dir, None
+
+    notes = sorted(notes_dir.glob("*.md"))
+    matches = [n for n in notes if search_term.lower() in n.name.lower()]
+
+    if len(matches) == 1:
+        return project_dir, matches[0]
+    elif len(matches) > 1:
+        print(f"Ambiguo: {', '.join(n.name for n in matches)}")
+        return None, None
+    return project_dir, None
+
+
+def _create_note_for_entry(project_dir, note_name, entry_text=None):
+    """Create a new note, asking for confirmation. Returns dest Path or None."""
+    import sys as _sys
+    from core.notes import _title_to_filename
+    from datetime import date as _date
+
+    resolved = _resolve_note_target(project_dir.name, note_name)
+    _, search_term, create_filename, template = resolved
+
+    if _sys.stdin.isatty():
+        try:
+            ans = input(f"Nota '{search_term}' no encontrada. ¿Crear nueva? [S/n]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if ans not in ("", "s", "si", "sí", "y", "yes"):
+            return None
+
+    notes_dir = project_dir / "notes"
+    notes_dir.mkdir(exist_ok=True)
+
+    if create_filename:
+        # week/month: use specific filename and template
+        dest = notes_dir / create_filename
+        content = template
+        if entry_text:
+            content += entry_text
+        dest.write_text(content)
+    else:
+        # Regular note
+        base_name = _title_to_filename(note_name)
+        create_filename = f"{_date.today().isoformat()}_{base_name}"
+        dest = notes_dir / create_filename
+        content = f"# {note_name}\n\n"
+        if entry_text:
+            content += entry_text + "\n---\n\n"
+        dest.write_text(content)
+
+    print(f"✓ [{project_dir.name}] Nota creada: {create_filename}")
+    if entry_text:
+        print(f"  {entry_text.strip()}")
+    return dest
+
+
 def cmd_log(args):
     if not args.project:
         print("Error: especifica un proyecto → orbit log <proyecto> \"mensaje\"")
@@ -211,48 +374,22 @@ def cmd_log(args):
     # --note: redirect log entry to a note file (existing or new)
     note_name = getattr(args, "to_note", None)
     if note_name:
-        import sys as _sys
-        from core.notes import _title_to_filename, _find_new_project, _pick_note
-        from core.log import format_entry, _append_entry
-        from datetime import date as _date
-
-        project_dir = _find_new_project(args.project)
+        project_dir, dest = _resolve_and_find_note(args.project, note_name)
         if project_dir is None:
             return 1
-        notes_dir = project_dir / "notes"
 
+        from core.log import format_entry, _append_entry
         entry_text = format_entry(args.message, args.entry, args.ref,
                                   _d(args.date))
 
-        # Try to find existing note
-        notes = sorted(notes_dir.glob("*.md")) if notes_dir.exists() else []
-        matches = [n for n in notes if note_name.lower() in n.name.lower()]
-
-        if len(matches) == 1:
-            dest = matches[0]
+        if dest:
             _append_entry(dest, entry_text)
             print(f"✓ [{project_dir.name}] {entry_text.strip()}")
             print(f"  → nota: {dest.name}")
-        elif len(matches) > 1:
-            print(f"Ambiguo: {', '.join(n.name for n in matches)}")
-            return 1
         else:
-            # Not found — ask to create
-            if _sys.stdin.isatty():
-                try:
-                    ans = input(f"Nota '{note_name}' no encontrada. ¿Crear nueva? [S/n]: ").strip().lower()
-                except (EOFError, KeyboardInterrupt):
-                    print()
-                    return 1
-                if ans not in ("", "s", "si", "sí", "y", "yes"):
-                    return 1
-            notes_dir.mkdir(exist_ok=True)
-            base_name = _title_to_filename(note_name)
-            fname = f"{_date.today().isoformat()}_{base_name}"
-            dest = notes_dir / fname
-            dest.write_text(f"# {note_name}\n\n{entry_text}\n---\n\n")
-            print(f"✓ [{project_dir.name}] Nota creada: {fname}")
-            print(f"  {entry_text.strip()}")
+            dest = _create_note_for_entry(project_dir, note_name, entry_text)
+            if dest is None:
+                return 1
 
         if getattr(args, "open", False):
             open_file(dest, getattr(args, "editor", None) or default_editor())

@@ -199,16 +199,22 @@ orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
 ```
 
 - `<file|url>`: argumento posicional opcional. Si es URL, enlaza el título. Si es fichero local, enlaza al fichero y pregunta si quieres entregarlo a cloud
-- `--note <nota>`: escribe la entrada en una nota (nombre parcial). Si la nota existe, añade la entrada. Si no existe, pregunta si quiere crearla. Ejemplo: `--note calibracion`
+- `--note <nota>`: escribe la entrada en una nota (nombre parcial). Si la nota existe, añade la entrada. Si no existe, pregunta si quiere crearla
+  - `--note calibracion` → busca nota en el mismo proyecto
+  - `--note week` / `--note semana` → nota semanal `YYYY-Wnn.md` en mission (crea con template si no existe)
+  - `--note month` / `--note mes` → nota mensual `YYYY-MM.md` en mission
 
 Muchos comandos soportan `--note proyecto:nota` para redirigir su salida a una nota:
 
 ```bash
 orbit report today --note catedra:calibracion       # report del día → nota
-orbit agenda --note catedra:resumen                  # agenda → nota
+orbit agenda --note week                             # agenda → nota semanal de mission
+orbit report week --note month                       # report semanal → nota mensual de mission
 orbit view catedra --note catedra:estado             # vista del proyecto → nota
 orbit search "algo" --note catedra:busqueda          # resultados de búsqueda → nota
 ```
+
+Los atajos `week`/`semana` y `month`/`mes` funcionan tanto en `log --note` como en `--note` de otros comandos. Siempre resuelven al proyecto mission del workspace activo.
 - `--deliver`: entrega el fichero directamente a cloud sin preguntar (copia a `logs/` con prefijo `YYYY-MM-DD_`)
 - Si el fichero es imagen (png, jpg, svg...), se inserta `![título](link)` en la línea siguiente de la entrada
 - `--tag`: filtra por hashtag (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
