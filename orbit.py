@@ -98,10 +98,11 @@ def _edit_args(args):
     )
 
 
-def _handle_output(args, run_fn, cmd_label: str = ""):
-    """Run run_fn capturing output, then --open / --log / --to / print as needed.
+def _handle_output(args, run_fn, cmd_label: str = "", open_file_path=None):
+    """Run run_fn capturing output, then --open / --log / --append / print as needed.
 
     run_fn is a zero-arg callable that prints to stdout.
+    open_file_path: if given, --open writes to this path instead of cmd.md.
     Returns exit code (int).
     """
     do_open = getattr(args, "open", False)
@@ -113,7 +114,11 @@ def _handle_output(args, run_fn, cmd_label: str = ""):
             run_fn()
         content = buf.getvalue()
         if do_open:
-            open_cmd_output(content, getattr(args, "editor", None) or "")
+            if open_file_path:
+                open_file_path.write_text(content)
+                open_file(open_file_path, getattr(args, "editor", None) or "")
+            else:
+                open_cmd_output(content, getattr(args, "editor", None) or "")
         if log_target:
             entry_type = getattr(args, "log_entry", "apunte")
             log_cmd_output(content, log_target, entry_type, cmd_label)
@@ -659,8 +664,10 @@ _REPORT_PERIODS = {
 
 def cmd_panel(args):
     from core.panel import run_panel
+    from core.config import ORBIT_HOME
     fn = lambda: run_panel()
-    return _handle_output(args, fn, "panel")
+    return _handle_output(args, fn, "panel",
+                          open_file_path=ORBIT_HOME / "panel.md")
 
 
 def cmd_report(args):
