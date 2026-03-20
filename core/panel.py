@@ -216,8 +216,9 @@ def _collect_activity(start, end):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def _print_calendar(start, end):
-    """Print markdown calendar grid. At least one week shown."""
-    from core.agenda_view import _print_calendar_grid_md
+    """Print calendar grid. ANSI for terminal, markdown for --open/--append."""
+    import sys
+    from core.agenda_view import _print_calendar_grid_md, _print_calendar_grid_ansi
 
     today = date.today()
     dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
@@ -226,7 +227,10 @@ def _print_calendar(start, end):
     cal_start = min(start, today - timedelta(days=today.weekday()))
     cal_end = max(end, cal_start + timedelta(days=6))
 
-    _print_calendar_grid_md(dirs, cal_start, cal_end)
+    if sys.stdout.isatty():
+        _print_calendar_grid_ansi(dirs, cal_start, cal_end)
+    else:
+        _print_calendar_grid_md(dirs, cal_start, cal_end)
 
 
 def run_panel(period=None) -> int:
