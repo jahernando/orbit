@@ -215,12 +215,30 @@ def _collect_activity(start, end):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def _print_calendar(start, end):
+    """Print markdown calendar grid. At least one week shown."""
+    from core.agenda_view import _print_calendar_grid_md
+
+    today = date.today()
+    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+
+    # Always show at least the current week
+    cal_start = min(start, today - timedelta(days=today.weekday()))
+    cal_end = max(end, cal_start + timedelta(days=6))
+
+    _print_calendar_grid_md(dirs, cal_start, cal_end)
+
+
 def run_panel(period=None) -> int:
     """Print dashboard as markdown."""
     start, end, label = _parse_panel_period(period)
     is_single_day = start == end
 
     print(f"# Panel — {label}")
+
+    # ── Calendar ──
+    print()
+    _print_calendar(start, end)
 
     # ── 1. Prioridad ──
     alta, milestones, media = _collect_priority_projects(start, end)
