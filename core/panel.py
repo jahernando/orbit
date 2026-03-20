@@ -67,7 +67,7 @@ def _scan_project_agenda(project_dir: Path):
 def _collect_priority_projects():
     """Return (alta, milestones, media).
 
-    alta: list of (project_dir,) for explicit alta priority
+    alta: list of (project_dir, motivo) for explicit alta priority
     milestones: list of (project_dir, date_str, desc) — pending this month
     media: list of (project_dir, reason) — tasks today/overdue
     """
@@ -84,10 +84,11 @@ def _collect_priority_projects():
             continue
 
         prio = meta.get("prioridad", "media").lower()
+        motivo = meta.get("prioridad_motivo", "")
         ms_list, has_tasks, has_overdue = _scan_project_agenda(project_dir)
 
         if prio == "alta":
-            alta.append(project_dir)
+            alta.append((project_dir, motivo))
 
         for ms_date, ms_desc in ms_list:
             milestones.append((project_dir, ms_date, ms_desc))
@@ -141,7 +142,7 @@ def _collect_agenda_today():
                 except ValueError:
                     pass
             key = time if time else "zz"
-            items.append((key, f"- {time_display}✅ {t['desc']}{overdue} ({proj})"))
+            items.append((key, f"- [ ] {time_display}{t['desc']}{overdue} ({proj})"))
 
     items.sort(key=lambda x: x[0])
     return [line for _, line in items]
@@ -183,8 +184,9 @@ def run_panel() -> int:
     print(f"\n## Prioridad\n")
     if alta:
         print(f"🔴 **Alta**")
-        for project_dir in alta:
-            print(f"- {project_dir.name}")
+        for project_dir, motivo in alta:
+            suffix = f" — {motivo}" if motivo else ""
+            print(f"- {project_dir.name}{suffix}")
     if media:
         if alta:
             print()

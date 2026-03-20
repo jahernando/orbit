@@ -93,6 +93,7 @@ def _read_project_meta(project_dir: Path) -> dict:
         "tipo_emoji": "",
         "tipo_label": "",
         "prioridad":  "media",
+        "prioridad_motivo": "",
         "estado_raw": "[auto]",
     }
     if not project_file or not project_file.exists():
@@ -128,7 +129,17 @@ def _read_project_meta(project_dir: Path) -> dict:
                 if raw.startswith(emoji):
                     raw = raw[len(emoji):].strip()
                     break
-            meta["prioridad"] = raw
+            # Extract motive after — (e.g. "Alta — Paper deadline")
+            if "—" in raw:
+                prio_part, motivo = raw.split("—", 1)
+                meta["prioridad"] = prio_part.strip()
+                meta["prioridad_motivo"] = motivo.strip()
+            elif " - " in raw:
+                prio_part, motivo = raw.split(" - ", 1)
+                meta["prioridad"] = prio_part.strip()
+                meta["prioridad_motivo"] = motivo.strip()
+            else:
+                meta["prioridad"] = raw
 
     return meta
 
