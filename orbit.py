@@ -562,7 +562,8 @@ def cmd_project(args):
     elif sub == "priority":
         from core.project import run_project_priority
         return run_project_priority(name=args.name,
-                                     new_priority=args.priority)
+                                     new_priority=args.priority,
+                                     reason=getattr(args, "reason", None))
     elif sub == "type":
         type_sub = getattr(args, "type_sub", None)
         if type_sub == "add":
@@ -1424,6 +1425,8 @@ def _build_parser():
     prp_p.add_argument("name", help="Project name (partial match)")
     prp_p.add_argument("priority", choices=["alta", "media", "baja"],
                         help="New priority: alta, media, baja")
+    prp_p.add_argument("--reason", default=None,
+                        help="Reason for priority (shown in panel)")
 
     # project drop
     prd_p = prj_sub.add_parser("drop", help="Drop a project (requires confirmation)")

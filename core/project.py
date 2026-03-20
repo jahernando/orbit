@@ -428,7 +428,7 @@ def _set_estado_in_file(project_file: Path, value: str) -> None:
 
 # ── project priority ──────────────────────────────────────────────────────────
 
-def run_project_priority(name: str, new_priority: str) -> int:
+def run_project_priority(name: str, new_priority: str, reason: str = None) -> int:
     """Change the priority of a project."""
     project_dir = _find_new_project(name)
     if project_dir is None:
@@ -439,11 +439,21 @@ def run_project_priority(name: str, new_priority: str) -> int:
         print(f"⚠️  Prioridad '{new_priority}' no válida. Opciones: alta, media, baja")
         return 1
 
+    # Ask for reason interactively if alta and not provided
+    if prio_key == "alta" and not reason and sys.stdin.isatty():
+        try:
+            reason = input("Motivo de la prioridad alta (Enter para omitir): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            reason = ""
+
     project_file = resolve_file(project_dir, "project")
     from core.undo import save_snapshot
     save_snapshot(project_file)
     prio_emoji = PRIORITY_MAP[prio_key]
     new_value = f"{prio_emoji} {new_priority.capitalize()}"
+    if reason:
+        new_value += f" — {reason}"
 
     lines = project_file.read_text().splitlines()
     out = []
