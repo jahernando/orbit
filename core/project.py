@@ -517,9 +517,9 @@ def run_link(name: str, file: str = None, from_project: str = None) -> int:
         from_dir = _find_new_project(from_project)
         if from_dir is None:
             return 1
-        # Assume editing from notes/ inside the source project
-        from_notes = (from_dir / "notes").relative_to(ORBIT_HOME)
-        rel = PurePosixPath(os.path.relpath(target_rel, from_notes))
+        # Relative from source project root (highlights, agenda, logbook, etc.)
+        from_root = from_dir.relative_to(ORBIT_HOME)
+        rel = PurePosixPath(os.path.relpath(target_rel, from_root))
     else:
         rel = target_rel
 
