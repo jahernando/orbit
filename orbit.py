@@ -130,8 +130,6 @@ def _append_to_note(to_note: str, content: str, cmd_label: str = ""):
 
     Accepts: 'week', 'month', 'project:note', 'project:week', etc.
     """
-    from core.log import _append_entry
-
     # For bare week/month, use directly; otherwise need project:note format
     lower = to_note.lower()
     if lower in _NOTE_PERIOD_KEYWORDS:
@@ -151,16 +149,17 @@ def _append_to_note(to_note: str, content: str, cmd_label: str = ""):
         if dest is None:
             return 1
 
-    # Append content with header
+    # Format content block
     from datetime import date
-    header = f"\n## [{cmd_label}] {date.today().isoformat()}\n\n"
+    label = f"**[{cmd_label}] {date.today().isoformat()}**"
     block = content.strip()
     has_md_table = any(l.startswith("|") for l in block.splitlines())
     if has_md_table:
-        entry = f"{header}{block}\n\n"
+        entry = f"{label}\n\n{block}\n\n"
     else:
-        entry = f"{header}```\n{block}\n```\n\n"
-    _append_entry(dest, entry)
+        entry = f"{label}\n\n```\n{block}\n```\n\n"
+
+    _insert_in_section(dest, entry)
     print(f"✓ [{project_dir.name}] → nota: {dest.name}")
 
 
@@ -247,6 +246,86 @@ def _month_template(year: int, month: int) -> str:
     lines.append("\n## Revisión\n")
     lines.append("\n## Decisiones\n\n")
     return "\n".join(lines)
+
+
+_WEEKDAY_SECTIONS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
+
+def _current_section_for_note(note_path) -> str:
+    """Return the ## section header where content should go today.
+
+    For week notes (YYYY-Wnn.md): returns '## Lunes', '## Martes', etc.
+    For month notes (YYYY-MM.md): returns '## Wnn' for current week.
+    For other notes: returns None (append at end).
+    """
+    from datetime import date as _date
+    from core.dateparse import _week_key
+
+    name = note_path.stem  # e.g. '2026-W12' or '2026-03'
+
+    if re.match(r'^\d{4}-W\d{2}$', name):
+        # Week note → day of week
+        wd = _date.today().weekday()  # 0=Monday
+        return f"## {_WEEKDAY_SECTIONS[wd]}"
+
+    if re.match(r'^\d{4}-\d{2}$', name):
+        # Month note → current ISO week
+        wk = _date.today().isocalendar()[1]
+        return f"## W{wk:02d}"
+
+    return None
+
+
+def _insert_in_section(dest, text: str):
+    """Insert text under the appropriate section of a week/month note.
+
+    If the section is found, inserts before the next ## heading.
+    Otherwise falls back to appending at the end.
+    """
+    from core.log import _append_entry
+
+    section = _current_section_for_note(dest)
+    if section is None:
+        _append_entry(dest, text)
+        return
+
+    content = dest.read_text()
+    lines = content.split("\n")
+
+    # Find the section line
+    section_idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == section:
+            section_idx = i
+            break
+
+    if section_idx is None:
+        _append_entry(dest, text)
+        return
+
+    # Find the next ## heading after the section
+    next_heading_idx = None
+    for i in range(section_idx + 1, len(lines)):
+        if lines[i].startswith("## "):
+            next_heading_idx = i
+            break
+
+    # Insert before next heading (with blank line), or append at section end
+    insert_lines = text.rstrip("\n").split("\n")
+    if next_heading_idx is not None:
+        # Insert before the next heading, ensure blank line separation
+        insert_pos = next_heading_idx
+        # Walk back past blank lines to find actual content end
+        while insert_pos > section_idx + 1 and lines[insert_pos - 1].strip() == "":
+            insert_pos -= 1
+        new_lines = lines[:insert_pos] + [""] + insert_lines + [""] + lines[next_heading_idx:]
+    else:
+        # No next heading — append at end of file
+        new_lines = lines + [""] + insert_lines + [""]
+
+    from core.undo import save_snapshot
+    save_snapshot(dest)
+    dest.write_text("\n".join(new_lines))
 
 
 def _resolve_note_target(project_name: str, note_name: str):
@@ -385,12 +464,12 @@ def cmd_log(args):
         if project_dir is None:
             return 1
 
-        from core.log import format_entry, _append_entry
+        from core.log import format_entry
         entry_text = format_entry(args.message, args.entry, args.ref,
                                   _d(args.date))
 
         if dest:
-            _append_entry(dest, entry_text)
+            _insert_in_section(dest, entry_text)
             print(f"✓ [{project_dir.name}] {entry_text.strip()}")
             print(f"  → nota: {dest.name}")
         else:
