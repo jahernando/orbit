@@ -230,16 +230,23 @@ _WEEK_TEMPLATE = """\
 
 """
 
-_MONTH_TEMPLATE = """\
-# {month}
+def _month_template(year: int, month: int) -> str:
+    """Generate month note template with week sections."""
+    import calendar as _cal
+    from datetime import date as _d
 
-## Plan
+    key = f"{year}-{month:02d}"
+    first = _d(year, month, 1)
+    last = _d(year, month, _cal.monthrange(year, month)[1])
+    w_first = first.isocalendar()[1]
+    w_last = last.isocalendar()[1]
 
-## Revisión
-
-## Decisiones
-
-"""
+    lines = [f"# {key}\n", "\n## Plan\n"]
+    for w in range(w_first, w_last + 1):
+        lines.append(f"\n## W{w:02d}\n")
+    lines.append("\n## Revisión\n")
+    lines.append("\n## Decisiones\n\n")
+    return "\n".join(lines)
 
 
 def _resolve_note_target(project_name: str, note_name: str):
@@ -268,7 +275,7 @@ def _resolve_note_target(project_name: str, note_name: str):
             return mission, key, f"{key}.md", _WEEK_TEMPLATE.format(week=key)
         else:
             key = _date.today().strftime("%Y-%m")
-            return mission, key, f"{key}.md", _MONTH_TEMPLATE.format(month=key)
+            return mission, key, f"{key}.md", _month_template(int(key[:4]), int(key[5:7]))
 
     # project:note syntax (from --note on report, agenda, etc.)
     if ":" in note_name:
@@ -282,7 +289,7 @@ def _resolve_note_target(project_name: str, note_name: str):
                 return proj, key, f"{key}.md", _WEEK_TEMPLATE.format(week=key)
             else:
                 key = _date.today().strftime("%Y-%m")
-                return proj, key, f"{key}.md", _MONTH_TEMPLATE.format(month=key)
+                return proj, key, f"{key}.md", _month_template(int(key[:4]), int(key[5:7]))
         return proj, note, None, None
 
     # Plain note name
