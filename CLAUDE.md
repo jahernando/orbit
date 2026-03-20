@@ -85,19 +85,21 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.20.1, 2026-03-20)
+## Estado actual (v0.21.0, 2026-03-20)
 
-### v0.20.1 (2026-03-20)
+### v0.21.0 (2026-03-20)
 - `orbit date` — fecha YYYY-MM-DD al portapapeles
   - Sin args: hoy. Con expresión: `wednesday`, `in 2 weeks`, `lunes`, etc.
-  - Usa `dateparse.py` (vocabulario completo inglés/español)
-- `orbit week` — semana ISO YYYY-Wnn al portapapeles (mismo vocabulario que `date`)
-- `orbit link` acepta fichero opcional: `orbit link proj notes/file.md`
-- `orbit report today/week/month` — atajos de periodo para report
-  - `today`/`hoy`, `yesterday`/`ayer`, `week`/`semana`, `month`/`mes`
-  - Combinable con proyecto: `report myproject today`
-- `_parse_period` soporta formato ISO week (`YYYY-Wnn`)
-- Fix: `NameError: time` en edición de recordatorios que suenan hoy (`agenda_cmds.py`)
+- `orbit week` — semana ISO YYYY-Wnn al portapapeles
+- `orbit report today/week/month` — atajos de periodo
+- `orbit link proj file --from otro_proj` — enlaces relativos entre proyectos (Typora)
+- `orbit log proj "msg" --note nota` — escribe entrada en nota (crea si no existe, pregunta)
+- `--note proyecto:nota` en report, agenda, view, search, ls — redirige salida a nota
+- `orbit note --no-date` — sin prefijo de fecha en nombre, sigue registrando en logbook
+- Eliminado `--no-log` de note (siempre registra)
+- `_parse_period` soporta ISO week (`YYYY-Wnn`)
+- Fix: `NameError: time` en edición de recordatorios
+- Fix: tests preexistentes en `test_notes_commit.py` (prefijo de fecha)
 
 ### v0.20.0 (2026-03-19)
 - `orbit render` — renderizado estático MD→HTML al cloud para acceso móvil
