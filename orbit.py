@@ -99,15 +99,16 @@ def _edit_args(args):
 
 
 def _handle_output(args, run_fn, cmd_label: str = ""):
-    """Run run_fn capturing output, then --open / --log / print as needed.
+    """Run run_fn capturing output, then --open / --log / --to / print as needed.
 
     run_fn is a zero-arg callable that prints to stdout.
     Returns exit code (int).
     """
     do_open = getattr(args, "open", False)
     log_target = getattr(args, "log", None)
+    to_note = getattr(args, "to_note", None)
 
-    if do_open or log_target:
+    if do_open or log_target or to_note:
         with capture_output() as buf:
             run_fn()
         content = buf.getvalue()
@@ -116,10 +117,46 @@ def _handle_output(args, run_fn, cmd_label: str = ""):
         if log_target:
             entry_type = getattr(args, "log_entry", "apunte")
             log_cmd_output(content, log_target, entry_type, cmd_label)
+        if to_note:
+            _append_to_note(to_note, content, cmd_label)
         return 0
     else:
         run_fn()
         return 0
+
+
+def _append_to_note(to_note: str, content: str, cmd_label: str = ""):
+    """Append captured output to a note file. Format: project:note_name."""
+    from core.project import _find_new_project
+    from core.notes import _pick_note
+    from core.log import _append_entry
+
+    # Parse project:note format
+    if ":" in to_note:
+        project_name, note_name = to_note.split(":", 1)
+    else:
+        print("Error: usa --note proyecto:nota (ej. --note catedra:calibracion)")
+        return 1
+
+    project_dir = _find_new_project(project_name)
+    if project_dir is None:
+        return 1
+    notes_dir = project_dir / "notes"
+    dest = _pick_note(notes_dir, note_name)
+    if dest is None:
+        return 1
+
+    # Append content with header
+    from datetime import date
+    header = f"\n## [{cmd_label}] {date.today().isoformat()}\n\n"
+    block = content.strip()
+    has_md_table = any(l.startswith("|") for l in block.splitlines())
+    if has_md_table:
+        entry = f"{header}{block}\n\n"
+    else:
+        entry = f"{header}```\n{block}\n```\n\n"
+    _append_entry(dest, entry)
+    print(f"✓ [{project_dir.name}] → nota: {dest.name}")
 
 
 # Long options that users often type with a single dash (e.g. -date instead of --date)
@@ -736,12 +773,14 @@ def cmd_ls(args):
 
 
 def _add_log_args(p):
-    """Add --log and --log-entry arguments to a parser."""
+    """Add --log, --log-entry, and --to arguments to a parser."""
     p.add_argument("--log", default=None, metavar="PROJECT",
                    help="Log output to a project's logbook (default: mission)")
     p.add_argument("--log-entry", dest="log_entry", default="apunte",
                    choices=VALID_TYPES, metavar="TYPE",
                    help="Entry type for --log (default: apunte)")
+    p.add_argument("--note", dest="to_note", default=None, metavar="PROJ:NOTA",
+                   help="Append output to a note (e.g. --note catedra:calibracion)")
 
 
 class _OrbitParser(argparse.ArgumentParser):
