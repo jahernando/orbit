@@ -191,7 +191,7 @@ orbit open  <project> [logbook|highlights|agenda|notes|project] [--editor E] [--
 ## log y search
 
 ```bash
-orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--deliver] [--note] [--to NOTA] [--date D] [--open] [--editor E]
+orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--deliver] [--note NOTA] [--date D] [--open] [--editor E]
 
 orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
              [--in logbook|highlights|agenda] [--any] [--notes]
@@ -199,8 +199,7 @@ orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
 ```
 
 - `<file|url>`: argumento posicional opcional. Si es URL, enlaza el título. Si es fichero local, enlaza al fichero y pregunta si quieres entregarlo a cloud
-- `--note`: crea una nota nueva con la entrada formateada como contenido. Con `--open` abre la nota para expandirla
-- `--to <nota>`: añade la entrada a una nota existente (nombre parcial). Ejemplo: `--to calibracion`
+- `--note <nota>`: escribe la entrada en una nota (nombre parcial). Si la nota existe, añade la entrada. Si no existe, pregunta si quiere crearla. Ejemplo: `--note calibracion`
 
 Muchos comandos soportan `--note proyecto:nota` para redirigir su salida a una nota:
 

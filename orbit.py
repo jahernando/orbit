@@ -208,10 +208,10 @@ def cmd_log(args):
         print("Error: especifica un proyecto → orbit log <proyecto> \"mensaje\"")
         return 1
 
-    # --note / --to: redirect log entry to a note file
-    note_flag = getattr(args, "note", False)
-    to_note = getattr(args, "to_note", None)
-    if note_flag or to_note:
+    # --note: redirect log entry to a note file (existing or new)
+    note_name = getattr(args, "to_note", None)
+    if note_name:
+        import sys as _sys
         from core.notes import _title_to_filename, _find_new_project, _pick_note
         from core.log import format_entry, _append_entry
         from datetime import date as _date
@@ -224,22 +224,34 @@ def cmd_log(args):
         entry_text = format_entry(args.message, args.entry, args.ref,
                                   _d(args.date))
 
-        if to_note:
-            # Append to existing note
-            dest = _pick_note(notes_dir, to_note)
-            if dest is None:
-                return 1
+        # Try to find existing note
+        notes = sorted(notes_dir.glob("*.md")) if notes_dir.exists() else []
+        matches = [n for n in notes if note_name.lower() in n.name.lower()]
+
+        if len(matches) == 1:
+            dest = matches[0]
             _append_entry(dest, entry_text)
             print(f"✓ [{project_dir.name}] {entry_text.strip()}")
             print(f"  → nota: {dest.name}")
+        elif len(matches) > 1:
+            print(f"Ambiguo: {', '.join(n.name for n in matches)}")
+            return 1
         else:
-            # Create new note with entry as content
+            # Not found — ask to create
+            if _sys.stdin.isatty():
+                try:
+                    ans = input(f"Nota '{note_name}' no encontrada. ¿Crear nueva? [S/n]: ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    return 1
+                if ans not in ("", "s", "si", "sí", "y", "yes"):
+                    return 1
             notes_dir.mkdir(exist_ok=True)
-            base_name = _title_to_filename(args.message)
-            note_name = f"{_date.today().isoformat()}_{base_name}"
-            dest = notes_dir / note_name
-            dest.write_text(f"# {args.message}\n\n{entry_text}\n---\n\n")
-            print(f"✓ [{project_dir.name}] Nota creada: {note_name}")
+            base_name = _title_to_filename(note_name)
+            fname = f"{_date.today().isoformat()}_{base_name}"
+            dest = notes_dir / fname
+            dest.write_text(f"# {note_name}\n\n{entry_text}\n---\n\n")
+            print(f"✓ [{project_dir.name}] Nota creada: {fname}")
             print(f"  {entry_text.strip()}")
 
         if getattr(args, "open", False):
@@ -826,9 +838,8 @@ def _build_parser():
         metavar="ENTRY",
         help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
     )
-    log_p.add_argument("--note",    action="store_true", help="Create a note file with the log entry")
-    log_p.add_argument("--to",      dest="to_note", default=None, metavar="NOTE",
-                        help="Append log entry to an existing note (partial name match)")
+    log_p.add_argument("--note",    dest="to_note", default=None, metavar="NOTE",
+                        help="Write entry to a note (partial match; creates if not found)")
     log_p.add_argument("--deliver", action="store_true", help="Deliver file to cloud (logs/ with date prefix)")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
     log_p.add_argument("--open", action="store_true", help="Open the logbook/note in editor after logging")
