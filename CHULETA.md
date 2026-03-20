@@ -246,13 +246,17 @@ orbit date lunes          # próximo lunes
 ## link — enlace markdown al proyecto
 
 ```bash
-orbit link <project>                    # enlace al proyecto
-orbit link <project> notes/result.md    # enlace a un fichero del proyecto
+orbit link <project>                                        # enlace al proyecto
+orbit link <project> notes/result.md                        # enlace a un fichero del proyecto
+orbit link catedra notes/tramos.md --from complementos      # enlace relativo entre proyectos
 ```
 
 - Imprime un enlace markdown y lo copia al portapapeles
 - Sin fichero: `[⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)`
-- Con fichero: `[result](⚙️gestion/⚙️catedra/notes/result.md)` — para enlazar notas entre proyectos
+- Con fichero: `[result](⚙️gestion/⚙️catedra/notes/result.md)`
+- `--from <proyecto>`: calcula ruta relativa desde la raíz del proyecto origen
+  - Para enlazar entre proyectos en Typora/editores que resuelven paths relativos
+  - Ejemplo: `--from complementos` → `[tramos](../⚙️catedra/notes/tramos.md)`
 
 ## deliver — entregar ficheros a la nube
 
