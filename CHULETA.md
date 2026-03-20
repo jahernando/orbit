@@ -243,6 +243,19 @@ orbit date lunes          # próximo lunes
 - Acepta el mismo vocabulario de fechas que el resto de comandos (inglés y español)
 - Sin argumentos: fecha de hoy
 
+## week — semana ISO al portapapeles
+
+```bash
+orbit week                # esta semana: 2026-W12 (copiado al portapapeles)
+orbit week next week      # próxima semana
+orbit week wednesday      # semana del próximo miércoles
+orbit week in 3 weeks     # dentro de 3 semanas
+```
+
+- Imprime la semana ISO en formato `YYYY-Wnn` y la copia al portapapeles
+- Acepta el mismo vocabulario de fechas que `date` — convierte a semana ISO
+- Sin argumentos: semana actual
+
 ## link — enlace markdown al proyecto
 
 ```bash

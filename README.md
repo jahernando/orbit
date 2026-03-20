@@ -190,6 +190,8 @@ orbit report month                  # actividad de este mes
 orbit date                # 2026-03-20 (copiado al portapapeles)
 orbit date wednesday      # próximo miércoles
 orbit date in 2 weeks     # dentro de 2 semanas
+orbit week                # 2026-W12 (copiado al portapapeles)
+orbit week next week      # próxima semana
 ```
 
 ### Render — vista HTML para móvil

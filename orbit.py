@@ -327,6 +327,29 @@ def cmd_date(args):
     return 0
 
 
+def cmd_week(args):
+    import subprocess
+    from datetime import date as _date
+    from core.dateparse import parse_date, _week_key
+    expr = " ".join(args.expr) if args.expr else "today"
+    result = parse_date(expr)
+    # Convert resolved date to ISO week
+    if re.match(r'^\d{4}-W\d{2}$', result):
+        week = result
+    elif re.match(r'^\d{4}-\d{2}-\d{2}$', result):
+        week = _week_key(_date.fromisoformat(result))
+    else:
+        print(f"  no se pudo resolver a una semana: {expr}")
+        return 1
+    print(week)
+    try:
+        subprocess.run(["pbcopy"], input=week.encode(), check=True)
+        print("  (copiado al portapapeles)")
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        pass
+    return 0
+
+
 def cmd_render(args):
     from core.render import run_render
     return run_render(project=args.project, full=args.full, check=args.check)
@@ -1230,6 +1253,10 @@ def _build_parser():
     date_p = subparsers.add_parser("date", help="Print date in YYYY-MM-DD (copied to clipboard)")
     date_p.add_argument("expr", nargs="*", help="Date expression (e.g. wednesday, in 2 weeks)")
 
+    # --- week ---
+    week_p = subparsers.add_parser("week", help="Print ISO week in YYYY-Wnn (copied to clipboard)")
+    week_p.add_argument("expr", nargs="*", help="Date expression (e.g. next week, in 2 weeks)")
+
     # --- render ---
     rnd_p = subparsers.add_parser("render", help="Render project files to HTML for cloud")
     rnd_p.add_argument("project", nargs="?", default=None, help="Project name (partial match)")
@@ -1348,7 +1375,8 @@ _COMMANDS = {
     "task": cmd_task_new,
     "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
     "view": cmd_view_new,
-    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "link": cmd_link, "date": cmd_date,
+    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "link": cmd_link,
+    "date": cmd_date, "week": cmd_week,
     "render": cmd_render, "recloud": cmd_recloud,
     "log": cmd_log, "search": cmd_search,
     "report": cmd_report, "open": cmd_open,

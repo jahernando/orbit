@@ -91,6 +91,7 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `orbit date` — fecha YYYY-MM-DD al portapapeles
   - Sin args: hoy. Con expresión: `wednesday`, `in 2 weeks`, `lunes`, etc.
   - Usa `dateparse.py` (vocabulario completo inglés/español)
+- `orbit week` — semana ISO YYYY-Wnn al portapapeles (mismo vocabulario que `date`)
 - `orbit link` acepta fichero opcional: `orbit link proj notes/file.md`
 - `orbit report today/week/month` — atajos de periodo para report
   - `today`/`hoy`, `yesterday`/`ayer`, `week`/`semana`, `month`/`mes`

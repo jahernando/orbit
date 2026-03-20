@@ -98,6 +98,46 @@ class TestCmdDate:
 # _parse_period — ISO week support
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# orbit week
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestCmdWeek:
+
+    def _run(self, *args):
+        from orbit import cmd_week
+        ns = Namespace(expr=list(args) if args else [])
+        return cmd_week(ns)
+
+    def test_no_args_returns_this_week(self, capsys):
+        rc = self._run()
+        assert rc == 0
+        out = capsys.readouterr().out
+        iso = date.today().isocalendar()
+        expected = f"{iso[0]}-W{iso[1]:02d}"
+        assert expected in out
+
+    def test_next_week(self, capsys):
+        rc = self._run("next", "week")
+        assert rc == 0
+        out = capsys.readouterr().out
+        iso = (date.today() + timedelta(weeks=1)).isocalendar()
+        expected = f"{iso[0]}-W{iso[1]:02d}"
+        assert expected in out
+
+    def test_from_date(self, capsys):
+        rc = self._run("2026-03-20")
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "2026-W12" in out
+
+    def test_invalid_expression(self, capsys):
+        rc = self._run("xyzzy")
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "no se pudo resolver" in out
+
+
 class TestParsePeriodWeek:
 
     def test_iso_week(self):
