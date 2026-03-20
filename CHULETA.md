@@ -160,10 +160,17 @@ orbit note list   <project> [--open] [--editor E]
 orbit note drop   <project> [<file>] [--force]
 ```
 
-- Sin `<file>`: crea `título_con_guiones.md` en `notes/` a partir de plantilla
-- Al crear, pregunta: `¿Añadir <fichero> a git? [S/n]`
-- `open`: abre nota existente o la crea si no existe; `--date` genera nombre por fecha (YYYY-MM-DD, YYYY-Wnn, YYYY-MM); sin nombre ni fecha: selector interactivo
-- `drop` pide confirmación (defecto **No**); `--force` la omite
+- **create**: crea nota en `notes/` a partir de plantilla y registra en logbook
+  - Nombre del fichero: `YYYY-MM-DD_título.md` (con fecha de hoy como prefijo)
+  - Contenido: título + línea `*YYYY-MM-DD — [proyecto](link)*`
+  - Con `--hl <tipo>`: registra en highlights en vez de logbook, sin prefijo de fecha en el nombre
+  - Con `--no-log`: no registra en logbook ni highlights, sin prefijo de fecha en el nombre
+  - Con `<file>`: importa un `.md` existente en vez de crear desde plantilla
+  - Pregunta: `¿Añadir <fichero> a git? [S/n]`
+- **open**: abre nota existente o la crea si no existe
+  - `--date D`: genera nombre por fecha (YYYY-MM-DD, YYYY-Wnn, YYYY-MM)
+  - Sin nombre ni fecha: selector interactivo
+- **drop**: pide confirmación (defecto **No**); `--force` la omite
 
 ---
 
