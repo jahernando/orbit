@@ -21,28 +21,29 @@ from core.tasks import PRIORITY_MAP
 # ── Priority scanning ─────────────────────────────────────────────────────────
 
 def _scan_project_agenda(project_dir: Path):
-    """Return (has_milestone_this_month, has_tasks_today, has_tasks_overdue)."""
+    """Return (milestones_this_month, has_tasks_today, has_tasks_overdue).
+
+    milestones_this_month is a list of (date_str, desc).
+    """
     from core.agenda_cmds import _read_agenda
 
     agenda_path = resolve_file(project_dir, "agenda")
     if not agenda_path.exists():
-        return False, False, False
+        return [], False, False
 
     data = _read_agenda(agenda_path)
     today = date.today()
-    today_str = today.isoformat()
     month_end = date(today.year, today.month,
                      calendar.monthrange(today.year, today.month)[1])
 
-    has_ms = False
+    milestones = []
     for m in data["milestones"]:
         if m["status"] != "pending" or not m.get("date"):
             continue
         try:
             d = date.fromisoformat(m["date"])
             if today <= d <= month_end:
-                has_ms = True
-                break
+                milestones.append((m["date"], m["desc"]))
         except ValueError:
             pass
 
@@ -60,12 +61,18 @@ def _scan_project_agenda(project_dir: Path):
         except ValueError:
             pass
 
-    return has_ms, has_tasks_today, has_tasks_overdue
+    return milestones, has_tasks_today, has_tasks_overdue
 
 
 def _collect_priority_projects():
-    """Return (alta_projects, media_projects) as lists of (project_dir, reason)."""
+    """Return (alta, milestones, media).
+
+    alta: list of (project_dir,) for explicit alta priority
+    milestones: list of (project_dir, date_str, desc) — pending this month
+    media: list of (project_dir, reason) — tasks today/overdue
+    """
     alta = []
+    milestones = []
     media = []
 
     for project_dir in iter_project_dirs():
@@ -77,16 +84,15 @@ def _collect_priority_projects():
             continue
 
         prio = meta.get("prioridad", "media").lower()
-        has_ms, has_tasks, has_overdue = _scan_project_agenda(project_dir)
+        ms_list, has_tasks, has_overdue = _scan_project_agenda(project_dir)
 
-        if prio == "alta" or has_ms:
-            reasons = []
-            if prio == "alta":
-                reasons.append("prioridad alta")
-            if has_ms:
-                reasons.append("hito este mes")
-            alta.append((project_dir, ", ".join(reasons)))
-        elif has_tasks or has_overdue:
+        if prio == "alta":
+            alta.append(project_dir)
+
+        for ms_date, ms_desc in ms_list:
+            milestones.append((project_dir, ms_date, ms_desc))
+
+        if has_tasks or has_overdue:
             reasons = []
             if has_tasks:
                 reasons.append("tareas hoy")
@@ -94,7 +100,10 @@ def _collect_priority_projects():
                 reasons.append("tareas vencidas")
             media.append((project_dir, ", ".join(reasons)))
 
-    return alta, media
+    # Sort milestones by date
+    milestones.sort(key=lambda x: x[1])
+
+    return alta, milestones, media
 
 
 # ── Agenda (markdown) ─────────────────────────────────────────────────────────
@@ -160,12 +169,19 @@ def run_panel() -> int:
     print(f"# Panel — {today.isoformat()} ({today.strftime('%A')})")
 
     # ── 1. Priority projects ──
-    alta, media = _collect_priority_projects()
+    alta, milestones, media = _collect_priority_projects()
 
     print(f"\n## 🔴 Prioridad ({len(alta)})\n")
     if alta:
-        for project_dir, reason in alta:
-            print(f"- **{project_dir.name}** — {reason}")
+        for project_dir in alta:
+            print(f"- **{project_dir.name}**")
+    else:
+        print("(ninguno)")
+
+    print(f"\n## 🏁 Hitos este mes ({len(milestones)})\n")
+    if milestones:
+        for project_dir, ms_date, ms_desc in milestones:
+            print(f"- **{ms_date}** — {ms_desc} ({project_dir.name})")
     else:
         print("(ninguno)")
 
