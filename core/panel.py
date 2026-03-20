@@ -109,22 +109,30 @@ def _collect_priority_projects():
 # ── Agenda (markdown) ─────────────────────────────────────────────────────────
 
 def _collect_agenda_today():
-    """Collect today's dated agenda items. Returns list of (project_dir, items)."""
+    """Collect today's agenda items as flat list sorted by time.
+
+    Returns list of (sort_key, line) where sort_key orders by time (items
+    with time first, then without).
+    """
     from core.agenda_view import _collect_data
 
     today = date.today()
     dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
     collected = _collect_data(dirs, today, today, dated_only=True)
 
-    results = []
+    items = []  # (sort_key, formatted_line)
     for project_dir, tasks, events, milestones in collected:
-        items = []
+        proj = project_dir.name
         for e in events:
-            time_str = f" ⏰{e['time']}" if e.get("time") else ""
-            items.append(f"- 📅 {e['desc']}{time_str}")
+            time = e.get("time", "")
+            time_display = f"⏰{time} " if time else ""
+            key = time if time else "zz"
+            items.append((key, f"- {time_display}📅 {e['desc']} ({proj})"))
         for m in milestones:
-            items.append(f"- 🏁 {m['desc']}")
+            items.append(("zz", f"- 🏁 {m['desc']} ({proj})"))
         for t in tasks:
+            time = t.get("time", "")
+            time_display = f"⏰{time} " if time else ""
             overdue = ""
             if t.get("date"):
                 try:
@@ -132,10 +140,11 @@ def _collect_agenda_today():
                         overdue = " ⚠️ vencida"
                 except ValueError:
                     pass
-            items.append(f"- ✅ {t['desc']}{overdue}")
-        if items:
-            results.append((project_dir, items))
-    return results
+            key = time if time else "zz"
+            items.append((key, f"- {time_display}✅ {t['desc']}{overdue} ({proj})"))
+
+    items.sort(key=lambda x: x[0])
+    return [line for _, line in items]
 
 
 # ── Activity ──────────────────────────────────────────────────────────────────
@@ -168,47 +177,45 @@ def run_panel() -> int:
     today = date.today()
     print(f"# Panel — {today.isoformat()} ({today.strftime('%A')})")
 
-    # ── 1. Priority projects ──
+    # ── 1. Prioridad ──
     alta, milestones, media = _collect_priority_projects()
 
-    print(f"\n## 🔴 Prioridad ({len(alta)})\n")
+    print(f"\n## Prioridad\n")
     if alta:
+        print(f"🔴 **Alta**")
         for project_dir in alta:
-            print(f"- **{project_dir.name}**")
-    else:
-        print("(ninguno)")
-
-    print(f"\n## 🏁 Hitos este mes ({len(milestones)})\n")
-    if milestones:
-        for project_dir, ms_date, ms_desc in milestones:
-            print(f"- **{ms_date}** — {ms_desc} ({project_dir.name})")
-    else:
-        print("(ninguno)")
-
-    print(f"\n## 🔶 Urgente ({len(media)})\n")
+            print(f"- {project_dir.name}")
     if media:
+        if alta:
+            print()
+        print(f"🔶 **Urgente**")
         for project_dir, reason in media:
-            print(f"- **{project_dir.name}** — {reason}")
-    else:
+            print(f"- {project_dir.name} — {reason}")
+    if milestones:
+        if alta or media:
+            print()
+        print(f"🏁 **Hitos este mes**")
+        for project_dir, ms_date, ms_desc in milestones:
+            print(f"- {ms_date} — {ms_desc} ({project_dir.name})")
+    if not alta and not media and not milestones:
         print("(ninguno)")
+    print("\n---")
 
     # ── 2. Agenda ──
     agenda = _collect_agenda_today()
 
-    print(f"\n## 📅 Agenda\n")
+    print(f"\n## Agenda\n")
     if agenda:
-        for project_dir, items in agenda:
-            print(f"**{project_dir.name}**")
-            for item in items:
-                print(item)
-            print()
+        for line in agenda:
+            print(line)
     else:
         print("(sin citas hoy)")
+    print("\n---")
 
-    # ── 3. Activity ──
+    # ── 3. Actividad ──
     activity = _collect_activity_today()
 
-    print(f"\n## 📝 Actividad\n")
+    print(f"\n## Actividad\n")
     if activity:
         for project_dir, entries in activity:
             print(f"**{project_dir.name}**")
