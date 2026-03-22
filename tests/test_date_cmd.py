@@ -1,9 +1,10 @@
-"""test_date_cmd.py — tests for `orbit date` command and report period shortcuts.
+"""test_date_cmd.py — tests for `orbit clip date/week` and report period shortcuts.
 
 Covers:
-  - cmd_date: no args (today), weekday, relative expressions, invalid input
-  - cmd_report period shortcuts: today, week, month, yesterday, hoy, mes
+  - clip date: no args (today), weekday, relative expressions, invalid input
+  - clip week: no args (this week), next week, from date, invalid
   - _parse_period: YYYY-Wnn support
+  - cmd_report period shortcuts: today, week, month, yesterday, hoy, mes
 """
 
 import pytest
@@ -16,16 +17,16 @@ from core.stats import _parse_period
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# orbit date
+# orbit clip date
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestCmdDate:
 
     def _run(self, *args):
-        """Run cmd_date with given args and return (rc, stdout)."""
-        from orbit import cmd_date
-        ns = Namespace(expr=list(args) if args else [])
-        return cmd_date(ns)
+        """Run clip date with given args and return rc."""
+        from core.clip import _clip_date
+        expr = " ".join(args) if args else "today"
+        return _clip_date(expr)
 
     def test_no_args_returns_today(self, capsys):
         rc = self._run()
@@ -95,19 +96,15 @@ class TestCmdDate:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# _parse_period — ISO week support
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# orbit week
+# orbit clip week
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestCmdWeek:
 
     def _run(self, *args):
-        from orbit import cmd_week
-        ns = Namespace(expr=list(args) if args else [])
-        return cmd_week(ns)
+        from core.clip import _clip_week
+        expr = " ".join(args) if args else "today"
+        return _clip_week(expr)
 
     def test_no_args_returns_this_week(self, capsys):
         rc = self._run()

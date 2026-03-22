@@ -413,51 +413,9 @@ def cmd_note(args):
     )
 
 
-def cmd_link(args):
-    from core.project import run_link
-    return run_link(name=args.project, file=getattr(args, "file", None),
-                    from_project=getattr(args, "from_project", None))
-
-
-def cmd_date(args):
-    import subprocess
-    from core.dateparse import parse_date
-    expr = " ".join(args.expr) if args.expr else "today"
-    result = parse_date(expr)
-    # Validate it resolved to a YYYY-MM-DD date
-    if not re.match(r'^\d{4}-\d{2}-\d{2}$', result):
-        print(f"  no se pudo resolver a una fecha: {expr}")
-        return 1
-    print(result)
-    try:
-        subprocess.run(["pbcopy"], input=result.encode(), check=True)
-        print("  (copiado al portapapeles)")
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        pass
-    return 0
-
-
-def cmd_week(args):
-    import subprocess
-    from datetime import date as _date
-    from core.dateparse import parse_date, _week_key
-    expr = " ".join(args.expr) if args.expr else "today"
-    result = parse_date(expr)
-    # Convert resolved date to ISO week
-    if re.match(r'^\d{4}-W\d{2}$', result):
-        week = result
-    elif re.match(r'^\d{4}-\d{2}-\d{2}$', result):
-        week = _week_key(_date.fromisoformat(result))
-    else:
-        print(f"  no se pudo resolver a una semana: {expr}")
-        return 1
-    print(week)
-    try:
-        subprocess.run(["pbcopy"], input=week.encode(), check=True)
-        print("  (copiado al portapapeles)")
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        pass
-    return 0
+def cmd_clip(args):
+    from core.clip import run_clip
+    return run_clip(mode=args.mode, args=args)
 
 
 def cmd_render(args):
@@ -1413,20 +1371,14 @@ def _build_parser():
     note_p.add_argument("--hl",      default=None, metavar="TYPE")
     note_p.add_argument("--editor",  default=None)
 
-    # --- link ---
-    link_p = subparsers.add_parser("link", help="Markdown link to project (copied to clipboard)")
-    link_p.add_argument("project", help="Project name (partial match)")
-    link_p.add_argument("file", nargs="?", default=None, help="File path within project (e.g. notes/result.md)")
-    link_p.add_argument("--from", dest="from_project", default=None,
+    # --- clip ---
+    clip_p = subparsers.add_parser("clip", help="Copy reference to clipboard (date, week, project link)")
+    clip_p.add_argument("mode", help="date | week | <project name>")
+    clip_p.add_argument("target", nargs="?", default=None,
+                        help="Date expr (for date/week) or file query (for project)")
+    clip_p.add_argument("expr", nargs="*", help="Additional date expression words")
+    clip_p.add_argument("--from", dest="from_project", default=None,
                         help="Source project (for relative path from its notes/)")
-
-    # --- date ---
-    date_p = subparsers.add_parser("date", help="Print date in YYYY-MM-DD (copied to clipboard)")
-    date_p.add_argument("expr", nargs="*", help="Date expression (e.g. wednesday, in 2 weeks)")
-
-    # --- week ---
-    week_p = subparsers.add_parser("week", help="Print ISO week in YYYY-Wnn (copied to clipboard)")
-    week_p.add_argument("expr", nargs="*", help="Date expression (e.g. next week, in 2 weeks)")
 
     # --- render ---
     rnd_p = subparsers.add_parser("render", help="Render project files to HTML for cloud")
@@ -1578,8 +1530,8 @@ _COMMANDS = {
     "task": cmd_task_new,
     "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
     "view": cmd_view_new,
-    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver, "link": cmd_link,
-    "date": cmd_date, "week": cmd_week,
+    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver,
+    "clip": cmd_clip,
     "render": cmd_render, "recloud": cmd_recloud,
     "log": cmd_log, "search": cmd_search,
     "panel": cmd_panel, "report": cmd_report, "open": cmd_open,
