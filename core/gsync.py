@@ -268,6 +268,83 @@ def _sync_one_task(service, tasklist_id: str, item: dict,
             return None
 
 
+def _migrate_recurring_keys(items: list, ids: dict) -> None:
+    """Migrate old recurring keys (desc::date → desc::🔄recur) in-place."""
+    for item in items:
+        if not item.get("recur"):
+            continue
+        new_key = _item_key(item)
+        if new_key in ids:
+            continue
+        old_key = f"{item.get('desc', '')}::{item.get('date', '')}"
+        if old_key in ids:
+            ids[new_key] = ids.pop(old_key)
+
+
+def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
+                    project_name: str, ids: dict, seen_recur_keys: set,
+                    dry_run: bool) -> tuple:
+    """Generic sync loop for tasks, milestones, or events.
+
+    Args:
+        items: list of item dicts from agenda
+        sync_fn: callable(item) -> Optional[str] (Google ID)
+        id_key: "gtask_id" or "gcal_id"
+        label: human label for error messages ("tarea", "hito", "evento")
+        project_name: for error messages
+        ids: gsync IDs dict (mutated in place)
+        seen_recur_keys: set of already-processed recurring keys (mutated)
+        dry_run: if True, no writes
+
+    Returns:
+        (created, updated, skipped, changed, ids_changed)
+    """
+    created = updated = skipped = 0
+    changed = False
+    ids_changed = False
+    temp_key = f"_{id_key}"
+
+    for item in items:
+        key = _item_key(item)
+        if item.get("recur"):
+            if key in seen_recur_keys:
+                skipped += 1
+                continue
+            seen_recur_keys.add(key)
+
+        item[temp_key] = ids.get(key, {}).get(id_key)
+        should_sync = item.get("status", "pending") == "pending" or item.get(temp_key)
+        if not should_sync:
+            item.pop(temp_key, None)
+            continue
+
+        try:
+            new_id = sync_fn(item)
+        except Exception as exc:
+            print(f"  ⚠️  [{project_name}] Error sincronizando {label} "
+                  f"'{item.get('desc', '?')}': {exc}")
+            item.pop(temp_key, None)
+            skipped += 1
+            continue
+
+        if new_id and not item.get(temp_key):
+            ids.setdefault(key, {})[id_key] = new_id
+            ids[key]["snapshot"] = _make_snapshot(item)
+            item["synced"] = True
+            created += 1
+            changed = True
+            ids_changed = True
+        elif item.get(temp_key):
+            ids.setdefault(key, {})["snapshot"] = _make_snapshot(item)
+            updated += 1
+            ids_changed = True
+        else:
+            skipped += 1
+        item.pop(temp_key, None)
+
+    return created, updated, skipped, changed, ids_changed
+
+
 def _sync_tasks_for_project(tasks_service, project_dir: Path,
                             config: dict, dry_run: bool) -> tuple:
     """Sync all tasks and milestones for a project. Returns (created, updated, skipped)."""
@@ -285,95 +362,35 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
         return 0, 0, 0
 
     ids = _load_ids(project_dir)
+    _migrate_recurring_keys(data["tasks"] + data["milestones"], ids)
 
-    # Migrate old recurring keys (desc::date → desc::🔄recur) for tasks/milestones
-    for item in data["tasks"] + data["milestones"]:
-        if not item.get("recur"):
-            continue
-        new_key = _item_key(item)
-        if new_key in ids:
-            continue
-        old_key = f"{item.get('desc', '')}::{item.get('date', '')}"
-        if old_key in ids:
-            ids[new_key] = ids.pop(old_key)
-
-    created = updated = skipped = 0
-    changed = False
-    ids_changed = False
     seen_recur_keys = set()
+    total_created = total_updated = total_skipped = 0
+    any_changed = False
+    any_ids_changed = False
 
-    # Sync tasks
-    for t in data["tasks"]:
-        key = _item_key(t)
-        if t.get("recur"):
-            if key in seen_recur_keys:
-                skipped += 1
-                continue
-            seen_recur_keys.add(key)
-        t["_gtask_id"] = ids.get(key, {}).get("gtask_id")
-        if t["status"] == "pending" or t.get("_gtask_id"):
-            try:
-                new_id = _sync_one_task(tasks_service, tasklist_id, t,
-                                        project_name, False, description, dry_run)
-            except Exception as exc:
-                print(f"  ⚠️  [{project_name}] Error sincronizando tarea '{t.get('desc', '?')}': {exc}")
-                t.pop("_gtask_id", None)
-                skipped += 1
-                continue
-            if new_id and not t.get("_gtask_id"):
-                ids.setdefault(key, {})["gtask_id"] = new_id
-                ids[key]["snapshot"] = _make_snapshot(t)
-                t["synced"] = True
-                created += 1
-                changed = True
-                ids_changed = True
-            elif t.get("_gtask_id"):
-                ids.setdefault(key, {})["snapshot"] = _make_snapshot(t)
-                updated += 1
-                ids_changed = True
-            else:
-                skipped += 1
-        t.pop("_gtask_id", None)
+    for items, is_milestone, label in [
+        (data["tasks"], False, "tarea"),
+        (data["milestones"], True, "hito"),
+    ]:
+        sync_fn = lambda item, _ms=is_milestone: _sync_one_task(
+            tasks_service, tasklist_id, item,
+            project_name, _ms, description, dry_run)
+        c, u, s, changed, ids_changed = _sync_item_loop(
+            items, sync_fn, "gtask_id", label,
+            project_name, ids, seen_recur_keys, dry_run)
+        total_created += c
+        total_updated += u
+        total_skipped += s
+        any_changed = any_changed or changed
+        any_ids_changed = any_ids_changed or ids_changed
 
-    # Sync milestones
-    for m in data["milestones"]:
-        key = _item_key(m)
-        if m.get("recur"):
-            if key in seen_recur_keys:
-                skipped += 1
-                continue
-            seen_recur_keys.add(key)
-        m["_gtask_id"] = ids.get(key, {}).get("gtask_id")
-        if m["status"] == "pending" or m.get("_gtask_id"):
-            try:
-                new_id = _sync_one_task(tasks_service, tasklist_id, m,
-                                        project_name, True, description, dry_run)
-            except Exception as exc:
-                print(f"  ⚠️  [{project_name}] Error sincronizando hito '{m.get('desc', '?')}': {exc}")
-                m.pop("_gtask_id", None)
-                skipped += 1
-                continue
-            if new_id and not m.get("_gtask_id"):
-                ids.setdefault(key, {})["gtask_id"] = new_id
-                ids[key]["snapshot"] = _make_snapshot(m)
-                m["synced"] = True
-                created += 1
-                changed = True
-                ids_changed = True
-            elif m.get("_gtask_id"):
-                ids.setdefault(key, {})["snapshot"] = _make_snapshot(m)
-                updated += 1
-                ids_changed = True
-            else:
-                skipped += 1
-        m.pop("_gtask_id", None)
-
-    if changed and not dry_run:
+    if any_changed and not dry_run:
         _write_agenda(agenda_path, data)
-    if ids_changed and not dry_run:
+    if any_ids_changed and not dry_run:
         _save_ids(project_dir, ids)
 
-    return created, updated, skipped
+    return total_created, total_updated, total_skipped
 
 
 # ── RRULE mapping ──────────────────────────────────────────────────────────
@@ -535,57 +552,14 @@ def _sync_events_for_project(cal_service, project_dir: Path,
     description = _project_description(project_dir, config, html=True)
 
     ids = _load_ids(project_dir)
+    _migrate_recurring_keys(data["events"], ids)
 
-    # Migrate old recurring keys (desc::date → desc::🔄recur)
-    for ev in data["events"]:
-        if not ev.get("recur"):
-            continue
-        new_key = _item_key(ev)
-        if new_key in ids:
-            continue
-        old_key = f"{ev.get('desc', '')}::{ev.get('date', '')}"
-        if old_key in ids:
-            ids[new_key] = ids.pop(old_key)
-
-    created = updated = skipped = 0
-    changed = False
-    ids_changed = False
     seen_recur_keys = set()
-
-    for ev in data["events"]:
-        key = _item_key(ev)
-
-        # Deduplicate recurring events: sync only the first occurrence
-        if ev.get("recur"):
-            if key in seen_recur_keys:
-                skipped += 1
-                continue
-            seen_recur_keys.add(key)
-
-        ev["_gcal_id"] = ids.get(key, {}).get("gcal_id")
-        try:
-            new_id = _sync_one_event(cal_service, calendar_id, ev,
-                                     project_name, description, dry_run)
-        except Exception as exc:
-            print(f"  ⚠️  [{project_name}] Error sincronizando evento '{ev.get('desc', '?')}' "
-                  f"({ev.get('date', '?')}): {exc}")
-            ev.pop("_gcal_id", None)
-            skipped += 1
-            continue
-        if new_id and not ev.get("_gcal_id"):
-            ids.setdefault(key, {})["gcal_id"] = new_id
-            ids[key]["snapshot"] = _make_snapshot(ev)
-            ev["synced"] = True
-            created += 1
-            changed = True
-            ids_changed = True
-        elif ev.get("_gcal_id"):
-            ids.setdefault(key, {})["snapshot"] = _make_snapshot(ev)
-            updated += 1
-            ids_changed = True
-        else:
-            skipped += 1
-        ev.pop("_gcal_id", None)
+    sync_fn = lambda ev: _sync_one_event(
+        cal_service, calendar_id, ev, project_name, description, dry_run)
+    created, updated, skipped, changed, ids_changed = _sync_item_loop(
+        data["events"], sync_fn, "gcal_id", "evento",
+        project_name, ids, seen_recur_keys, dry_run)
 
     if changed and not dry_run:
         _write_agenda(agenda_path, data)

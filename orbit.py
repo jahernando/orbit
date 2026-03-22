@@ -850,6 +850,60 @@ class _OrbitParser(argparse.ArgumentParser):
         return super().add_subparsers(**kwargs)
 
 
+# ── Argument helpers (reduce repetition in _build_parser) ────────────────────
+
+def _add_project_text(p, project_required=True):
+    """Add project + text positional args (used by all appointment subcommands)."""
+    if project_required:
+        p.add_argument("project", help="Project name (partial match)")
+    else:
+        p.add_argument("project", nargs="?", default=None,
+                       help="Project name (partial match; omit for interactive)")
+    p.add_argument("text", nargs="?", default=None, help="Text or partial match")
+
+
+def _add_add_args(p, date_required=False, time_required=False, has_ring=True):
+    """Add common args for 'add' subcommands (date, recur, until, time, desc, ring)."""
+    p.add_argument("--date", required=date_required, default=None, help="Date: YYYY-MM-DD, today, tomorrow...")
+    p.add_argument("--recur", default=None, help="Recurrence: daily, weekly, monthly, weekdays, ...")
+    p.add_argument("--until", default=None, help="End date for recurrence YYYY-MM-DD")
+    p.add_argument("--time", required=time_required, default=None, help="Time HH:MM")
+    p.add_argument("--desc", default=None, help="Description (links, notes)")
+    if has_ring:
+        p.add_argument("--ring", default=None, help="Reminder: 1d, 2h, HH:MM, YYYY-MM-DD HH:MM")
+
+
+def _add_edit_args(p, has_end=False, has_end_time=False):
+    """Add common args for 'edit' subcommands (new_text, new_date, new_recur, etc.)."""
+    p.add_argument("--text", dest="new_text", default=None, help="New description")
+    p.add_argument("--date", dest="new_date", default=None, help="New date (or 'none')")
+    p.add_argument("--recur", dest="new_recur", default=None, help="New recurrence (or 'none')")
+    p.add_argument("--until", dest="new_until", default=None, help="End date (or 'none')")
+    p.add_argument("--ring", dest="new_ring", default=None, help="New ring (or 'none')")
+    p.add_argument("--time", dest="new_time", default=None, help="New time HH:MM (or 'none')")
+    p.add_argument("--desc", dest="new_desc", default=None, help="New description (or 'none')")
+    if has_end:
+        p.add_argument("--end", "--end-date", dest="new_end", default=None, help="End date or 'none'")
+    if has_end_time:
+        p.add_argument("--end-time", dest="new_end_time", default=None, help="End time HH:MM")
+    p.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
+    p.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
+    p.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
+
+
+def _add_drop_args(p):
+    """Add common args for 'drop' subcommands (force, -o, -s)."""
+    p.add_argument("--force", action="store_true", help="Skip confirmation")
+    p.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only")
+    p.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
+
+
+def _add_output_args(p):
+    """Add --open, --editor, --log, --log-entry, --append args."""
+    p.add_argument("--open", action="store_true", help="Open in editor")
+    p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
+
+
 def _build_parser():
     parser = _OrbitParser(prog="orbit", description="Orbit project management CLI")
     subparsers = parser.add_subparsers(dest="command")
@@ -907,8 +961,7 @@ def _build_parser():
     ls_proj.add_argument("--type",   default=None, help="Filter: investigacion, docencia, ...")
     ls_proj.add_argument("--sort",   default=None, choices=["type", "status", "priority"],
                          help="Sort by: type, status, priority")
-    ls_proj.add_argument("--open",   action="store_true")
-    ls_proj.add_argument("--editor", default=None)
+    _add_output_args(ls_proj)
     _add_log_args(ls_proj)
 
     # ls tasks [project...]
@@ -919,8 +972,7 @@ def _build_parser():
     ls_tasks.add_argument("--date",   default=None, help="Filter by date")
     ls_tasks.add_argument("--dated",     action="store_true", help="Only show tasks with a date")
     ls_tasks.add_argument("--unplanned", action="store_true", help="Only show tasks without a date")
-    ls_tasks.add_argument("--open",   action="store_true")
-    ls_tasks.add_argument("--editor", default=None)
+    _add_output_args(ls_tasks)
     _add_log_args(ls_tasks)
 
     # ls ms [project...]
@@ -929,8 +981,7 @@ def _build_parser():
     ls_ms.add_argument("--status", default="pending",
                        choices=["pending", "done", "cancelled", "all"])
     ls_ms.add_argument("--dated",  action="store_true", help="Only show milestones with a date")
-    ls_ms.add_argument("--open",   action="store_true")
-    ls_ms.add_argument("--editor", default=None)
+    _add_output_args(ls_ms)
     _add_log_args(ls_ms)
 
     # ls ev [project]
@@ -938,37 +989,32 @@ def _build_parser():
     ls_ev.add_argument("project", nargs="?", default=None, help="Project")
     ls_ev.add_argument("--from", dest="date_from", default=None, metavar="DATE")
     ls_ev.add_argument("--to",   dest="date_to",   default=None, metavar="DATE")
-    ls_ev.add_argument("--open",   action="store_true")
-    ls_ev.add_argument("--editor", default=None)
+    _add_output_args(ls_ev)
     _add_log_args(ls_ev)
 
     # ls reminders [project]
     ls_rem = ls_sub.add_parser("reminders", aliases=["rem"], help="List active reminders")
     ls_rem.add_argument("project", nargs="?", default=None, help="Project")
-    ls_rem.add_argument("--open",   action="store_true")
-    ls_rem.add_argument("--editor", default=None)
+    _add_output_args(ls_rem)
     _add_log_args(ls_rem)
 
     # ls hl [project]
     ls_hl = ls_sub.add_parser("hl", help="List highlights")
     ls_hl.add_argument("project", nargs="?", default=None, help="Project")
     ls_hl.add_argument("--type", default=None, choices=HL_TYPES, help="Section type")
-    ls_hl.add_argument("--open",   action="store_true")
-    ls_hl.add_argument("--editor", default=None)
+    _add_output_args(ls_hl)
     _add_log_args(ls_hl)
 
     # ls files [project]
     ls_files = ls_sub.add_parser("files", help="List project md files with git status")
     ls_files.add_argument("project", nargs="?", default=None, help="Project")
-    ls_files.add_argument("--open",   action="store_true")
-    ls_files.add_argument("--editor", default=None)
+    _add_output_args(ls_files)
     _add_log_args(ls_files)
 
     # ls notes [project]
     ls_notes = ls_sub.add_parser("notes", help="List notes with git status")
     ls_notes.add_argument("project", nargs="?", default=None, help="Project")
-    ls_notes.add_argument("--open",   action="store_true")
-    ls_notes.add_argument("--editor", default=None)
+    _add_output_args(ls_notes)
     _add_log_args(ls_notes)
 
     # ls <project> — fallback: list logbook entries
@@ -977,8 +1023,7 @@ def _build_parser():
     ls_p.add_argument("--date",        default=None, help="Filter by date")
     ls_p.add_argument("--from",        dest="period_from", default=None, metavar="DATE")
     ls_p.add_argument("--to",          dest="period_to",   default=None, metavar="DATE")
-    ls_p.add_argument("--open",        action="store_true")
-    ls_p.add_argument("--editor",      default=None)
+    _add_output_args(ls_p)
     _add_log_args(ls_p)
 
     shell_p = subparsers.add_parser("shell", help="Enter interactive Orbit shell")
@@ -1097,140 +1142,63 @@ def _build_parser():
     tsknew_p   = subparsers.add_parser("task", help="Task commands: add, done, cancel, edit, list")
     tsknew_sub = tsknew_p.add_subparsers(dest="action")
 
-    def _task_project_text(p, project_required=True):
-        if project_required:
-            p.add_argument("project", help="Project name (partial match)")
-        else:
-            p.add_argument("project", nargs="?", default=None,
-                           help="Project name (partial match; omit for interactive)")
-        p.add_argument("text", nargs="?", default=None,
-                       help="Task text or partial match for selection")
-
     tn_add = tsknew_sub.add_parser("add", help="Add a task")
-    _task_project_text(tn_add, project_required=True)
-    tn_add.add_argument("--date",  default=None, help="Due date YYYY-MM-DD")
-    tn_add.add_argument("--recur", default=None,
-                        help="Recurrence: daily, weekly, monthly, weekdays")
-    tn_add.add_argument("--until", default=None,
-                        help="End date for recurrence YYYY-MM-DD (requires --recur)")
-    tn_add.add_argument("--ring",  default=None,
-                        help="Reminder: 1d, 2h, or YYYY-MM-DD HH:MM")
-    tn_add.add_argument("--time",  default=None,
-                        help="Time HH:MM (e.g. 15:00)")
-    tn_add.add_argument("--desc",  default=None,
-                        help="Description (links, notes — stored as indented lines)")
+    _add_project_text(tn_add, project_required=True)
+    _add_add_args(tn_add)
 
     tn_done = tsknew_sub.add_parser("done", help="Complete a pending task")
-    _task_project_text(tn_done, project_required=False)
+    _add_project_text(tn_done, project_required=False)
 
     tn_drop = tsknew_sub.add_parser("drop", help="Cancel a pending task")
-    _task_project_text(tn_drop, project_required=False)
-    tn_drop.add_argument("--force", action="store_true", help="Skip confirmation")
-    tn_drop.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only (advance to next)")
-    tn_drop.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
+    _add_project_text(tn_drop, project_required=False)
+    _add_drop_args(tn_drop)
 
     tn_edit = tsknew_sub.add_parser("edit", help="Edit a pending task")
-    _task_project_text(tn_edit, project_required=False)
-    tn_edit.add_argument("--text",  dest="new_text",  default=None, help="New description")
-    tn_edit.add_argument("--date",  dest="new_date",  default=None, help="New date (or 'none')")
-    tn_edit.add_argument("--recur", dest="new_recur", default=None,
-                         help="New recurrence (or 'none')")
-    tn_edit.add_argument("--until", dest="new_until", default=None,
-                         help="New end date for recurrence (or 'none')")
-    tn_edit.add_argument("--ring",  dest="new_ring",  default=None,
-                         help="New ring value (or 'none')")
-    tn_edit.add_argument("--time",  dest="new_time",  default=None,
-                         help="New time HH:MM (or 'none')")
-    tn_edit.add_argument("--desc",  dest="new_desc",  default=None,
-                         help="New description (or 'none' to clear)")
-    tn_edit.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
-    tn_edit.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
-    tn_edit.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
+    _add_project_text(tn_edit, project_required=False)
+    _add_edit_args(tn_edit)
 
     tn_log = tsknew_sub.add_parser("log", help="Create logbook entry from a task")
-    _task_project_text(tn_log, project_required=False)
+    _add_project_text(tn_log, project_required=False)
 
     # --- ms ---
     ms_p   = subparsers.add_parser("ms", help="Milestone commands (agenda.md)")
     ms_sub = ms_p.add_subparsers(dest="action")
 
     ms_add = ms_sub.add_parser("add", help="Add a milestone")
-    ms_add.add_argument("project", help="Project name")
-    ms_add.add_argument("text",    nargs="?", default=None, help="Milestone description")
-    ms_add.add_argument("--date",  default=None, help="Target date YYYY-MM-DD")
-    ms_add.add_argument("--recur", default=None, help="Recurrence: daily, weekly, monthly, every 2 weeks, ...")
-    ms_add.add_argument("--until", default=None, help="End date for recurrence")
-    ms_add.add_argument("--ring",  default=None, help="Reminder: HH:MM, 1d, 2h, YYYY-MM-DD HH:MM")
-    ms_add.add_argument("--time",  default=None, help="Time HH:MM (e.g. 15:00)")
-    ms_add.add_argument("--desc",  default=None, help="Description (links, notes)")
+    _add_project_text(ms_add, project_required=True)
+    _add_add_args(ms_add)
 
     ms_done = ms_sub.add_parser("done", help="Mark milestone as reached")
-    ms_done.add_argument("project", nargs="?", default=None)
-    ms_done.add_argument("text",    nargs="?", default=None)
+    _add_project_text(ms_done, project_required=False)
 
     ms_drop = ms_sub.add_parser("drop", help="Cancel a milestone")
-    ms_drop.add_argument("project", nargs="?", default=None)
-    ms_drop.add_argument("text",    nargs="?", default=None)
-    ms_drop.add_argument("--force", action="store_true", help="Skip confirmation")
-    ms_drop.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only (advance to next)")
-    ms_drop.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
+    _add_project_text(ms_drop, project_required=False)
+    _add_drop_args(ms_drop)
 
     ms_edit = ms_sub.add_parser("edit", help="Edit a milestone")
-    ms_edit.add_argument("project", nargs="?", default=None)
-    ms_edit.add_argument("text",    nargs="?", default=None)
-    ms_edit.add_argument("--text",  dest="new_text",  default=None)
-    ms_edit.add_argument("--date",  dest="new_date",  default=None)
-    ms_edit.add_argument("--recur", dest="new_recur", default=None, help="Recurrence (or 'none')")
-    ms_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
-    ms_edit.add_argument("--ring",  dest="new_ring",  default=None, help="HH:MM, 1d, 2h, YYYY-MM-DD HH:MM, or none")
-    ms_edit.add_argument("--time",  dest="new_time",  default=None, help="New time HH:MM (or 'none')")
-    ms_edit.add_argument("--desc",  dest="new_desc",  default=None, help="New description (or 'none' to clear)")
-    ms_edit.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
-    ms_edit.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
-    ms_edit.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
+    _add_project_text(ms_edit, project_required=False)
+    _add_edit_args(ms_edit)
 
     ms_log = ms_sub.add_parser("log", help="Create logbook entry from a milestone")
-    ms_log.add_argument("project", nargs="?", default=None)
-    ms_log.add_argument("text",    nargs="?", default=None)
+    _add_project_text(ms_log, project_required=False)
 
     # --- ev ---
     ev_p   = subparsers.add_parser("ev", help="Event commands (agenda.md)")
     ev_sub = ev_p.add_subparsers(dest="action")
 
     ev_add = ev_sub.add_parser("add", help="Add an event")
-    ev_add.add_argument("project",  help="Project name")
-    ev_add.add_argument("text",     nargs="?", default=None, help="Event description")
-    ev_add.add_argument("--date",   required=True, help="Event date YYYY-MM-DD")
-    ev_add.add_argument("--end", "--end-date", default=None, help="End date YYYY-MM-DD (optional)")
-    ev_add.add_argument("--time",     default=None, help="Time: HH:MM or HH:MM-HH:MM (ej. 10:00, 10:00-12:30)")
-    ev_add.add_argument("--end-time", default=None, dest="end_time", help="End time HH:MM (alternative to --time HH:MM-HH:MM)")
-    ev_add.add_argument("--recur",  default=None, help="Recurrence: daily, weekly, monthly, every 2 weeks, ...")
-    ev_add.add_argument("--until",  default=None, help="End date for recurrence")
-    ev_add.add_argument("--ring",   default=None, help="Reminder: HH:MM, 1d, 2h, YYYY-MM-DD HH:MM")
-    ev_add.add_argument("--desc",   default=None, help="Description (links, notes)")
+    _add_project_text(ev_add, project_required=True)
+    _add_add_args(ev_add, date_required=True)
+    ev_add.add_argument("--end", "--end-date", default=None, help="End date YYYY-MM-DD")
+    ev_add.add_argument("--end-time", default=None, dest="end_time", help="End time HH:MM")
 
     ev_drop = ev_sub.add_parser("drop", help="Remove an event")
-    ev_drop.add_argument("project", nargs="?", default=None)
-    ev_drop.add_argument("text",    nargs="?", default=None)
-    ev_drop.add_argument("--force", action="store_true", help="Skip confirmation")
-    ev_drop.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only (advance to next)")
-    ev_drop.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
+    _add_project_text(ev_drop, project_required=False)
+    _add_drop_args(ev_drop)
 
     ev_edit = ev_sub.add_parser("edit", help="Edit an event")
-    ev_edit.add_argument("project", nargs="?", default=None)
-    ev_edit.add_argument("text",    nargs="?", default=None)
-    ev_edit.add_argument("--text",  dest="new_text",  default=None)
-    ev_edit.add_argument("--date",  dest="new_date",  default=None)
-    ev_edit.add_argument("--end", "--end-date", dest="new_end", default=None, help="End date or 'none'")
-    ev_edit.add_argument("--time",      dest="new_time",      default=None, help="HH:MM, HH:MM-HH:MM, or 'none'")
-    ev_edit.add_argument("--end-time",  dest="new_end_time",  default=None, help="End time HH:MM (alternative to --time HH:MM-HH:MM)")
-    ev_edit.add_argument("--recur", dest="new_recur", default=None, help="Recurrence (or 'none')")
-    ev_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
-    ev_edit.add_argument("--ring",  dest="new_ring",  default=None, help="HH:MM, 1d, 2h, YYYY-MM-DD HH:MM, or none")
-    ev_edit.add_argument("--desc",  dest="new_desc",  default=None, help="New description (or 'none' to clear)")
-    ev_edit.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
-    ev_edit.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
-    ev_edit.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
+    _add_project_text(ev_edit, project_required=False)
+    _add_edit_args(ev_edit, has_end=True, has_end_time=True)
 
     ev_list = ev_sub.add_parser("list", help="List events")
     ev_list.add_argument("project", nargs="?", default=None)
@@ -1238,46 +1206,26 @@ def _build_parser():
     ev_list.add_argument("--to",    dest="to_date", default=None)
 
     ev_log = ev_sub.add_parser("log", help="Create logbook entry from an event")
-    ev_log.add_argument("project", nargs="?", default=None)
-    ev_log.add_argument("text",    nargs="?", default=None,
-                        help="Event name (partial match; omit for interactive)")
+    _add_project_text(ev_log, project_required=False)
 
     # --- reminder ---
     rem_p   = subparsers.add_parser("reminder", aliases=["rem"], help="Reminder commands (agenda.md 💬)")
     rem_sub = rem_p.add_subparsers(dest="action")
 
     rem_add = rem_sub.add_parser("add", help="Add a reminder")
-    rem_add.add_argument("project",  help="Project name")
-    rem_add.add_argument("text",     help="Reminder text")
-    rem_add.add_argument("--date",   required=True, help="Date: YYYY-MM-DD, today, tomorrow...")
-    rem_add.add_argument("--time",   required=True, help="Time: HH:MM")
-    rem_add.add_argument("--recur",  default=None, help="Recurrence: daily, weekly, monthly, ...")
-    rem_add.add_argument("--until",  default=None, help="End date for recurrence")
-    rem_add.add_argument("--desc",   default=None, help="Description (links, notes)")
+    _add_project_text(rem_add, project_required=True)
+    _add_add_args(rem_add, date_required=True, time_required=True, has_ring=False)
 
     rem_drop = rem_sub.add_parser("drop", help="Remove a reminder")
-    rem_drop.add_argument("project", nargs="?", default=None)
-    rem_drop.add_argument("text",    nargs="?", default=None)
-    rem_drop.add_argument("--force", action="store_true", help="Skip confirmation")
-    rem_drop.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only (advance to next)")
-    rem_drop.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
+    _add_project_text(rem_drop, project_required=False)
+    _add_drop_args(rem_drop)
 
     rem_edit = rem_sub.add_parser("edit", help="Edit a reminder")
-    rem_edit.add_argument("project", nargs="?", default=None)
-    rem_edit.add_argument("text",    nargs="?", default=None)
-    rem_edit.add_argument("--text",  dest="new_text",  default=None, help="New description")
-    rem_edit.add_argument("--date",  dest="new_date",  default=None, help="New date (or 'none')")
-    rem_edit.add_argument("--time",  dest="new_time",  default=None, help="New time HH:MM (or 'none')")
-    rem_edit.add_argument("--recur", dest="new_recur", default=None, help="New recurrence (or 'none')")
-    rem_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
-    rem_edit.add_argument("--desc",  dest="new_desc",  default=None, help="Description (or 'none')")
-    rem_edit.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
-    rem_edit.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
-    rem_edit.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
+    _add_project_text(rem_edit, project_required=False)
+    _add_edit_args(rem_edit)
 
     rem_log = rem_sub.add_parser("log", help="Create logbook entry from a reminder")
-    rem_log.add_argument("project", nargs="?", default=None)
-    rem_log.add_argument("text",    nargs="?", default=None)
+    _add_project_text(rem_log, project_required=False)
 
     rem_list = rem_sub.add_parser("list", help="List active reminders")
     rem_list.add_argument("project", nargs="?", default=None)
