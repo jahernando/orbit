@@ -703,6 +703,109 @@ def check_gsync_drift() -> list:
     return results
 
 
+def _secondary_key(item: dict) -> str:
+    """Build a secondary key (without desc) for matching renames.
+
+    Uses date (non-recurring) or recur pattern (recurring) to identify
+    the same item even when its title has changed.
+    """
+    if item.get("recur"):
+        return f"🔄{item['recur']}"
+    return item.get("date", "")
+
+
+def reconcile_gsync_renames() -> list:
+    """Detect items whose title changed in the markdown and re-link their gsync IDs.
+
+    Strategy: find orphaned keys in .gsync-ids.json (no matching item in agenda)
+    and unmatched synced items in agenda (☁️ but no key in ids). If an orphan and
+    an unmatched item share the same date/recur, treat it as a rename: migrate
+    the Google IDs to the new key, update the snapshot, and re-sync.
+
+    Returns list of (project_name, old_desc, new_desc) for each reconciled rename.
+    """
+    results = []
+    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+    for project_dir in dirs:
+        ids = _load_ids(project_dir)
+        if not ids:
+            continue
+        agenda_path = resolve_file(project_dir, "agenda")
+        data = _read_agenda(agenda_path)
+        all_items = (
+            [(t, "task") for t in data["tasks"]]
+            + [(m, "milestone") for m in data["milestones"]]
+            + [(e, "event") for e in data["events"]]
+        )
+
+        # Build set of current item keys
+        current_keys = {}
+        for item, kind in all_items:
+            current_keys[_item_key(item)] = (item, kind)
+
+        # Find orphaned keys (in ids but not in current items)
+        orphans = {}
+        for key in list(ids.keys()):
+            if key not in current_keys:
+                orphans[key] = ids[key]
+
+        if not orphans:
+            continue
+
+        # Find unmatched items (synced marker but no key in ids)
+        unmatched = []
+        for item, kind in all_items:
+            key = _item_key(item)
+            if key not in ids and item.get("synced"):
+                unmatched.append((item, kind))
+
+        # Also include items without synced marker that simply don't have a key
+        # but share a secondary key with an orphan — these are likely renames
+        # where the user also didn't touch the ☁️ marker
+        for item, kind in all_items:
+            key = _item_key(item)
+            if key not in ids and not item.get("synced"):
+                # Check if secondary key matches any orphan
+                sec = _secondary_key(item)
+                for okey, odata in orphans.items():
+                    osec = okey.split("::", 1)[1] if "::" in okey else ""
+                    if sec and sec == osec:
+                        unmatched.append((item, kind))
+                        break
+
+        # Try to match orphans to unmatched items by secondary key
+        changed = False
+        for item, kind in unmatched:
+            sec = _secondary_key(item)
+            if not sec:
+                continue
+            # Find matching orphan
+            for okey in list(orphans.keys()):
+                osec = okey.split("::", 1)[1] if "::" in okey else ""
+                if sec == osec:
+                    # Found a match — migrate
+                    old_desc = okey.split("::")[0]
+                    new_key = _item_key(item)
+                    odata = orphans.pop(okey)
+                    ids.pop(okey, None)
+                    ids[new_key] = odata
+                    ids[new_key]["snapshot"] = _make_snapshot(item)
+                    changed = True
+                    results.append((project_dir.name, old_desc, item.get("desc", "?")))
+
+                    # Re-sync to Google with new title
+                    try:
+                        sync_item(project_dir, item, kind)
+                    except Exception:
+                        pass
+                    break
+
+        if changed:
+            _save_ids(project_dir, ids)
+
+    return results
+
+
 def run_list_calendars() -> int:
     """List available Google Calendars with their IDs."""
     service = _get_calendar_service()

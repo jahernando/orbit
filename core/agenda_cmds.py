@@ -688,19 +688,285 @@ def _ask_edit_occurrence_or_series(desc: str, recur: str,
     return True
 
 
-# ── TASK commands ──────────────────────────────────────────────────────────────
+# ── Type configuration ─────────────────────────────────────────────────────────
 
-def run_task_add(project: str, text: str, date_val: Optional[str] = None,
-                 recur: Optional[str] = None, until: Optional[str] = None,
-                 ring: Optional[str] = None, time_val: Optional[str] = None,
-                 desc: Optional[str] = None) -> int:
+_TYPE_CONFIG = {
+    "task": {
+        "key": "tasks", "label": "Tarea", "kind": "task",
+        "has_status": True, "has_ring": True, "has_gsync": True,
+        "has_end": False, "time_format": "simple",
+        "select_fn": lambda data, text: _select_item(data["tasks"], "Tareas pendientes", text),
+        "drop_action": "cancel", "drop_verb": "cancelada",
+        "log_type": "apunte",
+    },
+    "milestone": {
+        "key": "milestones", "label": "Hito", "kind": "milestone",
+        "has_status": True, "has_ring": True, "has_gsync": True,
+        "has_end": False, "time_format": "simple",
+        "select_fn": lambda data, text: _select_item(data["milestones"], "Hitos pendientes", text),
+        "drop_action": "cancel", "drop_verb": "cancelado",
+        "log_type": "resultado",
+    },
+    "event": {
+        "key": "events", "label": "Evento", "kind": "event",
+        "has_status": False, "has_ring": True, "has_gsync": True,
+        "has_end": True, "time_format": "event",
+        "select_fn": lambda data, text: _select_event(data["events"], text),
+        "drop_action": "pop", "drop_verb": "eliminado",
+        "log_type": "evento",
+    },
+    "reminder": {
+        "key": "reminders", "label": "Recordatorio", "kind": "reminder",
+        "has_status": False, "has_ring": False, "has_gsync": False,
+        "has_end": False, "time_format": "simple",
+        "select_fn": None,  # reminders iterate projects, use _select_item_reminder
+        "drop_action": "cancel_bool", "drop_verb": "eliminado",
+        "log_type": "apunte",
+    },
+}
+
+
+# ── Shared helpers ─────────────────────────────────────────────────────────────
+
+def _resolve_project(project: Optional[str]) -> Optional[Path]:
+    """Resolve project name to dir. Returns None on failure (prints error)."""
+    project_dir = _find_new_project(project) if project else None
+    if project and project_dir is None:
+        return None
+    if project_dir is None:
+        print("Error: especifica un proyecto")
+        return None
+    return project_dir
+
+
+def _format_add_attrs(date_val, time_val, recur, until, ring,
+                      end_date=None, is_event=False) -> str:
+    """Build attribute string for add confirmation message."""
+    attrs = ""
+    if is_event:
+        if time_val: attrs += f" ⏰{time_val}"
+        if end_date: attrs += f" →{end_date}"
+    else:
+        if date_val: attrs += f" ({date_val})"
+        if time_val: attrs += f" ⏰{time_val}"
+    if recur:
+        recur_s = recur
+        if until: recur_s += f":{until}"
+        attrs += f" 🔄{recur_s}"
+    if ring: attrs += f" 🔔{ring}"
+    return attrs
+
+
+def _schedule_ring_if_today(text, project_dir, date_val, ring, time_val, kind):
+    """Schedule Mac reminder if ring fires today."""
+    if not ring:
+        return
+    from core.ring import resolve_ring_datetime, _schedule_reminder
+    ev_time = time_val.split("-")[0] if time_val and "-" in time_val else time_val
+    ring_dt = resolve_ring_datetime(date_val, ring, due_time=ev_time)
+    if ring_dt and ring_dt.date() == date.today():
+        ok = _schedule_reminder(text, project_dir.name, ring_dt, kind=kind)
+        if ok:
+            print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
+
+
+def _delete_ring_if_today(desc, project_dir, date_val, ring, time_val, kind):
+    """Delete Mac reminder if it was firing today."""
+    if not ring or not date_val:
+        return
+    from core.ring import resolve_ring_datetime, _delete_reminder
+    ev_time = time_val.split("-")[0] if time_val and "-" in time_val else time_val
+    ring_dt = resolve_ring_datetime(date_val, ring, due_time=ev_time)
+    if ring_dt and ring_dt.date() == date.today():
+        _delete_reminder(desc, project_dir.name, kind=kind)
+
+
+def _update_ring_on_edit(old_desc, item, project_dir, kind, changed_fields):
+    """Update Mac reminder on edit: delete old + schedule new if changed."""
+    if not item.get("ring") or not item.get("date"):
+        return
+    from core.ring import resolve_ring_datetime, _schedule_reminder, _delete_reminder
+    ev_time = item.get("time", "").split("-")[0] if item.get("time") and "-" in item.get("time", "") else item.get("time")
+    ring_dt = resolve_ring_datetime(item["date"], item["ring"], due_time=ev_time)
+    if ring_dt and ring_dt.date() == date.today():
+        if any(changed_fields):
+            _delete_reminder(old_desc, project_dir.name, kind=kind)
+        ok = _schedule_reminder(item["desc"], project_dir.name, ring_dt, kind=kind)
+        if ok:
+            print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
+
+
+def _sync_to_google(project_dir, item, kind):
+    """Sync item to Google if type supports it."""
+    from core.gsync import sync_item
+    sync_item(project_dir, item, kind)
+
+
+def _ask_drop_confirmation(desc, recur, force, occurrence, series, label) -> tuple:
+    """Handle interactive drop confirmation.
+
+    Returns (proceed: bool, drop_series: bool).
+    """
+    drop_series = series
+    if occurrence or series:
+        return True, drop_series
+    if not force:
+        if not sys.stdin.isatty():
+            print("Error: usa --force para confirmar en modo no interactivo.")
+            return False, False
+        if recur:
+            try:
+                ans = input(
+                    f"\"{desc}\" es recurrente ({recur}).\n"
+                    f"  [o] Quitar esta ocurrencia (avanzar al próximo)\n"
+                    f"  [s] Eliminar toda la serie\n"
+                    f"  [c] Cancelar\n"
+                    f"  ¿Qué hacer? [o/s/C]: "
+                ).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return False, False
+            if ans in ("s", "serie"):
+                return True, True
+            if ans in ("o", "ocurrencia"):
+                return True, False
+            print("Cancelado.")
+            return False, False
+        else:
+            try:
+                ans = input(f"¿Eliminar {label.lower()} \"{desc}\"? [s/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return False, False
+            if ans not in ("s", "si", "sí", "y", "yes"):
+                print("Cancelado.")
+                return False, False
+    return True, drop_series
+
+
+def _advance_recurrence(item, items_list, cfg) -> str:
+    """Advance a recurring item to next occurrence.
+
+    Returns info string like ' (recur: weekly) → próxima: 2026-04-01'.
+    Appends new item to items_list if within until limit.
+    """
+    if not item.get("recur"):
+        return ""
+    today_str = date.today().isoformat()
+    next_due = _next_occurrence(item.get("date"), item["recur"], today_str)
+    until = item.get("until")
+    if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+        return f" (recur: {item['recur']}) — serie finalizada ({until})"
+    new_item = {"desc": item["desc"], "date": next_due, "recur": item["recur"],
+                "until": until, "notes": list(item.get("notes") or [])}
+    if cfg["has_status"]:
+        new_item["status"] = "pending"
+    if cfg["has_ring"]:
+        new_item["ring"] = item.get("ring")
+    if cfg.get("has_end"):
+        # Events: copy all fields except synced
+        new_item = {k: v for k, v in item.items() if k != "synced"}
+        new_item["date"] = next_due
+    items_list.append(new_item)
+    return f" (recur: {item['recur']}) → próxima: {next_due}"
+
+
+def _validate_edit_params(new_date=None, new_until=None, new_recur=None,
+                          new_ring=None, new_time=None,
+                          new_end=None, time_format="simple") -> Optional[str]:
+    """Validate edit parameters. Returns error message or None."""
+    if new_date and new_date != "none" and not _valid_date(new_date):
+        return f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ..."
+    if new_until and new_until != "none" and not _valid_date(new_until):
+        return f"⚠️  Fecha --until '{new_until}' no reconocida."
+    if new_end and new_end != "none" and not _valid_date(new_end):
+        return f"⚠️  Fecha --end '{new_end}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ..."
+    if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
+        return f"⚠️  Recurrencia '{new_recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ..."
+    if new_ring and new_ring != "none":
+        from core.ring import _parse_ring
+        if _parse_ring(new_ring) is None:
+            return f"⚠️  Ring '{new_ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM"
+    if new_time and new_time != "none":
+        if time_format == "simple" and not re.match(r"^\d{2}:\d{2}$", new_time):
+            return f"⚠️  Hora '{new_time}' no válida. Usa: HH:MM (ej. 15:00)"
+        if time_format == "event" and not _valid_time(new_time):
+            return f"⚠️  Hora '{new_time}' no válida. Usa: HH:MM o HH:MM-HH:MM (ej. 10:00, 10:00-12:30)"
+    return None
+
+
+def _apply_edits(item: dict, edits: dict):
+    """Apply edit fields to item in place. 'none' → None."""
+    for key, val in edits.items():
+        if val is not None:
+            if key == "notes":
+                item["notes"] = [val] if val and val != "none" else []
+            else:
+                item[key] = None if val == "none" else val
+
+
+def _make_edit_occurrence(item, data_list, cfg, edits: dict):
+    """Create edited occurrence copy + advance series.
+
+    Returns (new_item_dict, next_info_str).
+    """
+    today_str = date.today().isoformat()
+    next_due = _next_occurrence(item.get("date"), item["recur"], today_str)
+    until = item.get("until")
+
+    # Build non-recurring copy with edits
+    new_item = {"desc": edits.get("desc") or item["desc"]}
+    for field in ("date", "time", "ring", "end"):
+        if field in edits:
+            new_item[field] = None if edits[field] == "none" else edits[field]
+        elif item.get(field) is not None:
+            new_item[field] = item.get(field)
+    # Notes
+    new_desc = edits.get("notes")
+    if new_desc is not None:
+        new_item["notes"] = [new_desc] if new_desc and new_desc != "none" else []
+    else:
+        new_item["notes"] = list(item.get("notes") or [])
+    # Status only for task/ms
+    if cfg["has_status"]:
+        new_item["status"] = "pending"
+
+    data_list.append(new_item)
+
+    # Advance the series
+    if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+        if cfg["has_status"]:
+            item["status"] = "cancelled"
+        elif cfg["key"] == "events":
+            data_list.remove(item)
+        elif not cfg["has_status"]:
+            item["cancelled"] = True
+        return new_item, f" — serie finalizada ({until})"
+    else:
+        item["date"] = next_due
+        return new_item, f" → serie avanza a {next_due}"
+
+
+# ── Generic operations ────────────────────────────────────────────────────────
+
+def _generic_add(type_name: str, project: str, text: str,
+                 date_val=None, recur=None, until=None,
+                 ring=None, time_val=None, desc=None,
+                 end_date=None) -> int:
+    """Generic add for all 4 appointment types."""
+    cfg = _TYPE_CONFIG[type_name]
     if recur:
         recur = _normalize_recur(recur)
-    err = _validate_add_params(date_val, time_val, recur, until, ring)
+    if cfg["has_end"] and end_date and not _valid_date(end_date):
+        print(f"⚠️  Fecha --end '{end_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+        return 1
+    err = _validate_add_params(date_val, time_val, recur, until,
+                               ring if cfg["has_ring"] else None,
+                               time_format=cfg["time_format"])
     if err:
         print(err)
         return 1
-    if date_val and time_val and not ring:
+    if cfg["has_ring"] and date_val and time_val and not ring:
         ring = _prompt_and_validate_ring()
 
     project_dir = _find_new_project(project)
@@ -710,39 +976,290 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
     notes = [desc] if desc else []
-    new_task = {"status": "pending", "desc": text,
-                "date": date_val, "recur": recur,
-                "until": until, "ring": ring, "time": time_val, "notes": notes}
-    data["tasks"].append(new_task)
+
+    # Build item dict
+    new_item = {"desc": text, "date": date_val, "recur": recur,
+                "until": until, "notes": notes}
+    if cfg["has_status"]:
+        new_item["status"] = "pending"
+    if cfg["has_ring"]:
+        new_item["ring"] = ring
+    new_item["time"] = time_val
+    if cfg["has_end"]:
+        new_item["end"] = end_date
+    if not cfg["has_status"] and not cfg["has_ring"]:
+        # Reminder: cancelled flag
+        new_item["cancelled"] = False
+
+    data.setdefault(cfg["key"], []).append(new_item)
     _write_agenda(agenda_path, data)
 
-    attrs = ""
-    if date_val: attrs += f" ({date_val})"
-    if time_val: attrs += f" ⏰{time_val}"
-    if recur:
-        recur_s = recur
-        if until:
-            recur_s += f":{until}"
-        attrs += f" 🔄{recur_s}"
-    if ring:     attrs += f" 🔔{ring}"
-    print(f"✓ [{project_dir.name}] Tarea: {text}{attrs}")
+    # Print confirmation
+    if type_name == "event":
+        attrs = _format_add_attrs(date_val, time_val, recur, until, ring,
+                                  end_date=end_date, is_event=True)
+        print(f"✓ [{project_dir.name}] {cfg['label']}: {date_val} — {text}{attrs}")
+    elif type_name == "reminder":
+        attrs = f"({date_val}) ⏰{time_val}"
+        if recur:
+            recur_s = recur + (f":{until}" if until else "")
+            attrs += f" 🔄{recur_s}"
+        print(f"✓ [{project_dir.name}] {cfg['label']}: {text} {attrs}")
+    else:
+        attrs = _format_add_attrs(date_val, time_val, recur, until, ring)
+        print(f"✓ [{project_dir.name}] {cfg['label']}: {text}{attrs}")
 
-    # Schedule reminder immediately if ring fires today
-    if ring:
-        from core.ring import resolve_ring_datetime, _schedule_reminder
-        ring_dt = resolve_ring_datetime(date_val, ring, due_time=time_val)
-        if ring_dt and ring_dt.date() == date.today():
-            ok = _schedule_reminder(text, project_dir.name, ring_dt, kind="task")
+    # Ring scheduling
+    if cfg["has_ring"]:
+        _schedule_ring_if_today(text, project_dir, date_val, ring, time_val, cfg["kind"])
+    elif type_name == "reminder" and date_val == date.today().isoformat():
+        # Reminders: schedule notification at exact time
+        from datetime import datetime
+        fire_dt = datetime.fromisoformat(f"{date_val}T{time_val}:00")
+        if fire_dt > datetime.now():
+            from core.ring import _schedule_reminder
+            ok = _schedule_reminder(text, project_dir.name, fire_dt, kind="reminder")
             if ok:
-                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
-            else:
-                print(f"  ⚠️  No se pudo programar el recordatorio")
+                print(f"  🔔 Notificación programada para hoy a las {time_val}")
 
-    # Sync to Google
-    from core.gsync import sync_item
-    sync_item(project_dir, new_task, "task")
+    # Google sync
+    if cfg["has_gsync"]:
+        _sync_to_google(project_dir, new_item, cfg["kind"])
 
     return 0
+
+
+def _generic_drop(type_name: str, project_dir: Path, data: dict,
+                  agenda_path: Path, text: Optional[str],
+                  force=False, occurrence=False, series=False) -> int:
+    """Generic drop for task/ms/ev. Reminder uses wrapper with project iteration."""
+    cfg = _TYPE_CONFIG[type_name]
+    items = data[cfg["key"]]
+
+    idx = cfg["select_fn"](data, text)
+    if idx is None:
+        return 1
+
+    item = items[idx]
+    item_desc = item["desc"]
+    display = f"{item['date']} — {item_desc}" if type_name == "event" else item_desc
+
+    proceed, drop_series = _ask_drop_confirmation(
+        display, item.get("recur"), force, occurrence, series, cfg["label"])
+    if not proceed:
+        return 0 if sys.stdin.isatty() else 1
+
+    # Mark cancelled / remove
+    if cfg["drop_action"] == "cancel":
+        item["status"] = "cancelled"
+    elif cfg["drop_action"] == "pop":
+        items.pop(idx)
+    elif cfg["drop_action"] == "cancel_bool":
+        item["cancelled"] = True
+
+    # Advance recurrence
+    next_info = ""
+    if item.get("recur") and not drop_series:
+        if cfg["drop_action"] == "pop":
+            # Event was already popped; advance operates on the popped item
+            next_info = _advance_recurrence(item, items, cfg)
+        elif cfg["drop_action"] == "cancel_bool":
+            # Reminder: advance date in-place instead of new item
+            today_str = date.today().isoformat()
+            next_due = _next_occurrence(item.get("date"), item["recur"], today_str)
+            until = item.get("until")
+            if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+                next_info = f" (recur: {item['recur']}) — serie finalizada ({until})"
+            else:
+                item["cancelled"] = False  # un-cancel, just advance
+                item["date"] = next_due
+                _write_agenda(agenda_path, data)
+                # Delete Mac reminder if for today
+                if date_val_is_today(item.get("date")):
+                    from core.ring import _delete_reminder
+                    _delete_reminder(item_desc, project_dir.name, kind="reminder")
+                print(f"✓ [{project_dir.name}] Recordatorio avanzado: {item_desc} → {next_due}")
+                return 0
+        else:
+            next_info = _advance_recurrence(item, items, cfg)
+
+    _write_agenda(agenda_path, data)
+
+    # Logbook + print
+    if drop_series:
+        if cfg["has_status"]:
+            add_orbit_entry(project_dir, f"[serie cancelada] {cfg['label']}: {item_desc} ({item['recur']})", "apunte")
+            print(f"✓ [{project_dir.name}] [serie cancelada] {item_desc} ({item['recur']})")
+        else:
+            print(f"✓ [{project_dir.name}] Serie eliminada: {display} ({item['recur']})")
+        # Event series: delete from Google Calendar
+        if type_name == "event" and item.get("synced"):
+            from core.gsync import delete_gcal_event
+            delete_gcal_event(project_dir, item)
+    else:
+        if cfg["has_status"]:
+            add_orbit_entry(project_dir, f"[{cfg['drop_verb']}] {cfg['label']}: {item_desc}{next_info}", "apunte")
+            print(f"✓ [{project_dir.name}] [{cfg['drop_verb']}] {item_desc}{next_info}")
+        else:
+            print(f"✓ [{project_dir.name}] {cfg['label']} {cfg['drop_verb']}: {display}{next_info}")
+        # Event non-recurring: delete from Google Calendar
+        if type_name == "event" and not item.get("recur") and item.get("synced"):
+            from core.gsync import delete_gcal_event
+            delete_gcal_event(project_dir, item)
+
+    # Ring cleanup
+    if cfg["has_ring"]:
+        _delete_ring_if_today(item_desc, project_dir, item.get("date"),
+                              item.get("ring"), item.get("time"), cfg["kind"])
+    elif type_name == "reminder" and item.get("date") == date.today().isoformat():
+        from core.ring import _delete_reminder
+        _delete_reminder(item_desc, project_dir.name, kind="reminder")
+
+    # Google sync (task/ms: sync cancelled item)
+    if cfg["has_gsync"] and cfg["drop_action"] == "cancel":
+        _sync_to_google(project_dir, item, cfg["kind"])
+
+    return 0
+
+
+def _generic_edit(type_name: str, project_dir: Path, data: dict,
+                  agenda_path: Path, text: Optional[str],
+                  new_text=None, new_date=None, new_time=None,
+                  new_recur=None, new_until=None, new_ring=None,
+                  new_desc=None, new_end=None,
+                  force=False, occurrence=False, series=False) -> int:
+    """Generic edit for all 4 appointment types."""
+    cfg = _TYPE_CONFIG[type_name]
+
+    # Normalize recur
+    if new_recur and new_recur != "none":
+        new_recur = _normalize_recur(new_recur)
+
+    # Validate
+    err = _validate_edit_params(new_date=new_date, new_until=new_until,
+                                new_recur=new_recur, new_ring=new_ring,
+                                new_time=new_time, new_end=new_end,
+                                time_format=cfg["time_format"])
+    if err:
+        print(err)
+        return 1
+
+    # Select item
+    items = data[cfg["key"]]
+    if type_name == "reminder":
+        reminders = [r for r in items if not r.get("cancelled")]
+        idx = _select_item_reminder(reminders, text)
+        if idx is None:
+            return 1
+        item = reminders[idx]
+    else:
+        idx = cfg["select_fn"](data, text)
+        if idx is None:
+            return 1
+        item = items[idx]
+
+    old_desc = item["desc"]
+
+    # ── Occurrence vs Series for recurring items ──
+    if item.get("recur") and not (new_recur and new_recur == "none"):
+        choice = _ask_edit_occurrence_or_series(
+            item["desc"], item["recur"], force, occurrence, series)
+        if choice is None:
+            return 1 if not sys.stdin.isatty() else 0
+        if choice:  # occurrence
+            edits = {}
+            if new_text: edits["desc"] = new_text
+            if new_date: edits["date"] = new_date
+            if new_time: edits["time"] = new_time
+            if new_ring and cfg["has_ring"]: edits["ring"] = new_ring
+            if new_end and cfg["has_end"]: edits["end"] = new_end
+            if new_desc is not None: edits["notes"] = new_desc
+            new_item, next_info = _make_edit_occurrence(item, items, cfg, edits)
+            _write_agenda(agenda_path, data)
+            print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['desc']}{next_info}")
+            if cfg["has_gsync"]:
+                _sync_to_google(project_dir, new_item, cfg["kind"])
+                _sync_to_google(project_dir, item, cfg["kind"])
+            return 0
+
+    # ── Series path (or non-recurring) ──
+    edits = {}
+    if new_text:  edits["desc"]  = new_text
+    if new_date:  edits["date"]  = new_date
+    if new_time:  edits["time"]  = new_time
+    if new_recur: edits["recur"] = new_recur
+    if new_until: edits["until"] = new_until
+    if new_ring and cfg["has_ring"]:  edits["ring"]  = new_ring
+    if new_end and cfg["has_end"]:    edits["end"]   = new_end
+    if new_desc is not None:          edits["notes"] = new_desc
+    _apply_edits(item, edits)
+
+    _write_agenda(agenda_path, data)
+    if type_name == "event":
+        print(f"✓ [{project_dir.name}] {cfg['label']} actualizado: {item['date']} — {item['desc']}")
+    elif type_name == "reminder":
+        attrs = f"({item.get('date', '?')}) ⏰{item.get('time', '?')}"
+        if item.get("recur"):
+            attrs += f" 🔄{item['recur']}"
+        print(f"✓ [{project_dir.name}] {cfg['label']} actualizado: {item['desc']} {attrs}")
+    else:
+        print(f"✓ [{project_dir.name}] {cfg['label']} actualizada: {item['desc']}")
+
+    # Ring update
+    if cfg["has_ring"]:
+        _update_ring_on_edit(old_desc, item, project_dir, cfg["kind"],
+                             [new_text, new_time, new_ring])
+    elif type_name == "reminder" and item.get("date") and item.get("time"):
+        if item["date"] == date.today().isoformat():
+            from core.ring import _schedule_reminder, _delete_reminder
+            from datetime import datetime as _dt, time as _time
+            fire_dt = _dt.combine(date.today(), _time.fromisoformat(item["time"]))
+            if new_text or new_time:
+                _delete_reminder(old_desc, project_dir.name, kind="reminder")
+            ok = _schedule_reminder(item["desc"], project_dir.name, fire_dt, kind="reminder")
+            if ok:
+                print(f"  🔔 Notificación actualizada: {item['time']}")
+
+    # Google sync
+    if cfg["has_gsync"]:
+        _sync_to_google(project_dir, item, cfg["kind"])
+
+    return 0
+
+
+def _generic_log(type_name: str, project_dir: Path, data: dict,
+                 text: Optional[str], project_name: str) -> int:
+    """Generic log entry creation for all 4 appointment types."""
+    cfg = _TYPE_CONFIG[type_name]
+    if type_name == "reminder":
+        reminders = [r for r in data.get("reminders", []) if not r.get("cancelled")]
+        idx = _select_item_reminder(reminders, text)
+        if idx is None:
+            return 1
+        item = reminders[idx]
+    else:
+        idx = cfg["select_fn"](data, text)
+        if idx is None:
+            return 1
+        item = data[cfg["key"]][idx]
+
+    from core.log import add_entry
+    return add_entry(project_name, item["desc"], cfg["log_type"], None, item.get("date"))
+
+
+def date_val_is_today(date_val):
+    """Check if a date string is today."""
+    return date_val == date.today().isoformat() if date_val else False
+
+
+# ── TASK commands ──────────────────────────────────────────────────────────────
+
+def run_task_add(project: str, text: str, date_val: Optional[str] = None,
+                 recur: Optional[str] = None, until: Optional[str] = None,
+                 ring: Optional[str] = None, time_val: Optional[str] = None,
+                 desc: Optional[str] = None) -> int:
+    return _generic_add("task", project, text, date_val=date_val, recur=recur,
+                        until=until, ring=ring, time_val=time_val, desc=desc)
 
 
 def run_task_done(project: Optional[str], text: Optional[str]) -> int:
@@ -793,98 +1310,13 @@ def run_task_done(project: Optional[str], text: Optional[str]) -> int:
 def run_task_drop(project: Optional[str], text: Optional[str],
                   force: bool = False, occurrence: bool = False,
                   series: bool = False) -> int:
-    project_dir = _find_new_project(project) if project else None
-    if project and project_dir is None:
-        return 1
+    project_dir = _resolve_project(project)
     if project_dir is None:
-        print("Error: especifica un proyecto")
         return 1
-
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-
-    idx = _select_item(data["tasks"], "Tareas pendientes", text)
-    if idx is None:
-        return 1
-
-    task = data["tasks"][idx]
-    task_desc = task["desc"]
-    drop_series = series
-
-    if occurrence or series:
-        # Explicit flag — skip interactive prompt
-        pass
-    elif not force:
-        if not sys.stdin.isatty():
-            print("Error: usa --force para confirmar en modo no interactivo.")
-            return 1
-        if task.get("recur"):
-            try:
-                ans = input(
-                    f"\"{task_desc}\" es recurrente ({task['recur']}).\n"
-                    f"  [o] Quitar esta ocurrencia (avanzar al próximo)\n"
-                    f"  [s] Eliminar toda la serie\n"
-                    f"  [c] Cancelar\n"
-                    f"  ¿Qué hacer? [o/s/C]: "
-                ).strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return 1
-            if ans in ("s", "serie"):
-                drop_series = True
-            elif ans in ("o", "ocurrencia"):
-                drop_series = False
-            else:
-                print("Cancelado.")
-                return 0
-        else:
-            try:
-                ans = input(f"¿Cancelar tarea \"{task_desc}\"? [s/N]: ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return 1
-            if ans not in ("s", "si", "sí", "y", "yes"):
-                print("Cancelado.")
-                return 0
-
-    task["status"] = "cancelled"
-
-    next_info = ""
-    if task.get("recur") and not drop_series:
-        today_str = date.today().isoformat()
-        next_due = _next_occurrence(task.get("date"), task["recur"], today_str)
-        until = task.get("until")
-        if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-            next_info = f" (recur: {task['recur']}) — serie finalizada ({until})"
-        else:
-            data["tasks"].append({"status": "pending", "desc": task_desc,
-                                   "date": next_due, "recur": task["recur"],
-                                   "until": until, "ring": task.get("ring"),
-                                   "notes": list(task.get("notes") or [])})
-            next_info = f" (recur: {task['recur']}) → próxima: {next_due}"
-
-    _write_agenda(agenda_path, data)
-
-    if drop_series:
-        add_orbit_entry(project_dir, f"[serie cancelada] Tarea: {task_desc} ({task['recur']})", "apunte")
-        print(f"✓ [{project_dir.name}] [serie cancelada] {task_desc} ({task['recur']})")
-    else:
-        add_orbit_entry(project_dir, f"[cancelada] Tarea: {task_desc}{next_info}", "apunte")
-        print(f"✓ [{project_dir.name}] [cancelada] {task_desc}{next_info}")
-
-    # Delete Mac reminder if ring was firing today
-    if task.get("ring") and task.get("date"):
-        from core.ring import resolve_ring_datetime, _delete_reminder
-        ring_dt = resolve_ring_datetime(task["date"], task["ring"],
-                                        due_time=task.get("time"))
-        if ring_dt and ring_dt.date() == date.today():
-            _delete_reminder(task_desc, project_dir.name, kind="task")
-
-    # Sync cancelled task to Google
-    from core.gsync import sync_item
-    sync_item(project_dir, task, "task")
-
-    return 0
+    return _generic_drop("task", project_dir, data, agenda_path, text,
+                         force=force, occurrence=occurrence, series=series)
 
 
 def run_task_edit(project: Optional[str], text: Optional[str],
@@ -894,118 +1326,22 @@ def run_task_edit(project: Optional[str], text: Optional[str],
                   new_desc: Optional[str] = None,
                   force: bool = False, occurrence: bool = False,
                   series: bool = False) -> int:
-    project_dir = _find_new_project(project) if project else None
-    if project and project_dir is None:
-        return 1
+    project_dir = _resolve_project(project)
     if project_dir is None:
-        print("Error: especifica un proyecto")
         return 1
-
-    if new_date and new_date != "none" and not _valid_date(new_date):
-        print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
-    if new_until and new_until != "none" and not _valid_date(new_until):
-        print(f"⚠️  Fecha --until '{new_until}' no reconocida.")
-        return 1
-    if new_recur and new_recur != "none":
-        new_recur = _normalize_recur(new_recur)
-    if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
-        print(f"⚠️  Recurrencia '{new_recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
-        return 1
-    if new_ring and new_ring != "none":
-        from core.ring import _parse_ring
-        if _parse_ring(new_ring) is None:
-            print(f"⚠️  Ring '{new_ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM")
-            return 1
-    if new_time and new_time != "none" and not re.match(r"^\d{2}:\d{2}$", new_time):
-        print(f"⚠️  Hora '{new_time}' no válida. Usa: HH:MM (ej. 15:00)")
-        return 1
-
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-
-    idx = _select_item(data["tasks"], "Tareas pendientes", text)
-    if idx is None:
-        return 1
-
-    task = data["tasks"][idx]
-    old_desc = task["desc"]
-
-    # ── Occurrence vs Series for recurring items ──
-    if task.get("recur") and not (new_recur and new_recur == "none"):
-        choice = _ask_edit_occurrence_or_series(
-            task["desc"], task["recur"], force, occurrence, series)
-        if choice is None:
-            return 1 if not sys.stdin.isatty() else 0
-        if choice:  # occurrence
-            today_str = date.today().isoformat()
-            next_due = _next_occurrence(task.get("date"), task["recur"], today_str)
-            until = task.get("until")
-            # Create a non-recurring copy with edits
-            new_item = {
-                "status": "pending",
-                "desc": new_text or task["desc"],
-                "date": (None if new_date == "none" else new_date) if new_date else task.get("date"),
-                "time": (None if new_time == "none" else new_time) if new_time else task.get("time"),
-                "ring": (None if new_ring == "none" else new_ring) if new_ring else task.get("ring"),
-                "notes": ([new_desc] if new_desc and new_desc != "none" else []) if new_desc is not None else list(task.get("notes") or []),
-            }
-            data["tasks"].append(new_item)
-            # Advance the series
-            if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-                task["status"] = "cancelled"
-                next_info = f" — serie finalizada ({until})"
-            else:
-                task["date"] = next_due
-                next_info = f" → serie avanza a {next_due}"
-            _write_agenda(agenda_path, data)
-            print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['desc']}{next_info}")
-            from core.gsync import sync_item
-            sync_item(project_dir, new_item, "task")
-            sync_item(project_dir, task, "task")
-            return 0
-
-    # ── Series path (or non-recurring) ──
-    if new_text:  task["desc"]  = new_text
-    if new_date:
-        task["date"]  = None if new_date == "none" else new_date
-    if new_recur:
-        task["recur"] = None if new_recur == "none" else new_recur
-    if new_until:
-        task["until"] = None if new_until == "none" else new_until
-    if new_ring:
-        task["ring"]  = None if new_ring  == "none" else new_ring
-    if new_time:
-        task["time"]  = None if new_time  == "none" else new_time
-    if new_desc is not None:
-        task["notes"] = [new_desc] if new_desc and new_desc != "none" else []
-
-    _write_agenda(agenda_path, data)
-    print(f"✓ [{project_dir.name}] Tarea actualizada: {task['desc']}")
-
-    # Update Mac reminder if ring fires today
-    if task.get("ring") and task.get("date"):
-        from core.ring import resolve_ring_datetime, _schedule_reminder, _delete_reminder
-        ring_dt = resolve_ring_datetime(task["date"], task["ring"],
-                                        due_time=task.get("time"))
-        if ring_dt and ring_dt.date() == date.today():
-            if new_text or new_time or new_ring:
-                _delete_reminder(old_desc, project_dir.name, kind="task")
-            ok = _schedule_reminder(task["desc"], project_dir.name, ring_dt, kind="task")
-            if ok:
-                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
-
-    # Sync updated task to Google
-    from core.gsync import sync_item
-    sync_item(project_dir, task, "task")
-
-    return 0
+    return _generic_edit("task", project_dir, data, agenda_path, text,
+                         new_text=new_text, new_date=new_date, new_time=new_time,
+                         new_recur=new_recur, new_until=new_until, new_ring=new_ring,
+                         new_desc=new_desc, force=force, occurrence=occurrence, series=series)
 
 
 def run_task_list(projects: Optional[list] = None,
                   status_filter: str = "pending",
                   date_filter: Optional[str] = None,
-                  dated_only: bool = False) -> int:
+                  dated_only: bool = False,
+                  unplanned: bool = False) -> int:
     """List tasks from new-format projects."""
     if projects:
         dirs = []
@@ -1029,6 +1365,8 @@ def run_task_list(projects: Optional[list] = None,
             tasks = [t for t in tasks if t.get("date", "").startswith(date_filter)]
         if dated_only:
             tasks = [t for t in tasks if t.get("date")]
+        if unplanned:
+            tasks = [t for t in tasks if not t.get("date")]
 
         if not tasks:
             continue
@@ -1056,21 +1394,11 @@ def run_task_list(projects: Optional[list] = None,
 
 def run_task_log(project: Optional[str], text: Optional[str]) -> int:
     """Create a logbook entry (#apunte) from an existing task."""
-    project_dir = _find_new_project(project) if project else None
-    if project and project_dir is None:
-        return 1
+    project_dir = _resolve_project(project)
     if project_dir is None:
-        print("Error: especifica un proyecto")
         return 1
-
     data = _read_agenda(resolve_file(project_dir, "agenda"))
-    idx = _select_item(data["tasks"], "Tareas pendientes", text)
-    if idx is None:
-        return 1
-
-    task = data["tasks"][idx]
-    from core.log import add_entry
-    return add_entry(project, task["desc"], "apunte", None, task.get("date"))
+    return _generic_log("task", project_dir, data, text, project or project_dir.name)
 
 
 # ── MILESTONE commands ─────────────────────────────────────────────────────────
@@ -1079,51 +1407,8 @@ def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
                recur: Optional[str] = None, until: Optional[str] = None,
                ring: Optional[str] = None, time_val: Optional[str] = None,
                desc: Optional[str] = None) -> int:
-    if recur:
-        recur = _normalize_recur(recur)
-    err = _validate_add_params(date_val, time_val, recur, until, ring)
-    if err:
-        print(err)
-        return 1
-    if date_val and time_val and not ring:
-        ring = _prompt_and_validate_ring()
-
-    project_dir = _find_new_project(project)
-    if project_dir is None:
-        return 1
-
-    agenda_path = resolve_file(project_dir, "agenda")
-    data = _read_agenda(agenda_path)
-    notes = [desc] if desc else []
-    new_ms = {"status": "pending", "desc": text,
-              "date": date_val, "recur": recur, "until": until, "ring": ring,
-              "time": time_val, "notes": notes}
-    data["milestones"].append(new_ms)
-    _write_agenda(agenda_path, data)
-
-    attrs = ""
-    if date_val: attrs += f" ({date_val})"
-    if time_val: attrs += f" ⏰{time_val}"
-    if recur:
-        recur_s = recur
-        if until: recur_s += f":{until}"
-        attrs += f" 🔄{recur_s}"
-    if ring:     attrs += f" 🔔{ring}"
-    print(f"✓ [{project_dir.name}] Hito: {text}{attrs}")
-
-    # Schedule reminder immediately if ring fires today
-    if ring:
-        from core.ring import resolve_ring_datetime, _schedule_reminder
-        ring_dt = resolve_ring_datetime(date_val, ring, due_time=time_val)
-        if ring_dt and ring_dt.date() == date.today():
-            ok = _schedule_reminder(text, project_dir.name, ring_dt, kind="milestone")
-            if ok:
-                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
-
-    from core.gsync import sync_item
-    sync_item(project_dir, new_ms, "milestone")
-
-    return 0
+    return _generic_add("milestone", project, text, date_val=date_val, recur=recur,
+                        until=until, ring=ring, time_val=time_val, desc=desc)
 
 
 def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
@@ -1158,97 +1443,13 @@ def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
 def run_ms_drop(project: Optional[str], text: Optional[str],
                 force: bool = False, occurrence: bool = False,
                 series: bool = False) -> int:
-    project_dir = _find_new_project(project) if project else None
-    if project and project_dir is None:
-        return 1
+    project_dir = _resolve_project(project)
     if project_dir is None:
-        print("Error: especifica un proyecto")
         return 1
-
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-
-    idx = _select_item(data["milestones"], "Hitos pendientes", text)
-    if idx is None:
-        return 1
-
-    ms = data["milestones"][idx]
-    ms_desc = ms["desc"]
-    drop_series = series
-
-    if occurrence or series:
-        # Explicit flag — skip interactive prompt
-        pass
-    elif not force:
-        if not sys.stdin.isatty():
-            print("Error: usa --force para confirmar en modo no interactivo.")
-            return 1
-        if ms.get("recur"):
-            try:
-                ans = input(
-                    f"\"{ms_desc}\" es recurrente ({ms['recur']}).\n"
-                    f"  [o] Quitar esta ocurrencia (avanzar al próximo)\n"
-                    f"  [s] Eliminar toda la serie\n"
-                    f"  [c] Cancelar\n"
-                    f"  ¿Qué hacer? [o/s/C]: "
-                ).strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return 1
-            if ans in ("s", "serie"):
-                drop_series = True
-            elif ans in ("o", "ocurrencia"):
-                drop_series = False
-            else:
-                print("Cancelado.")
-                return 0
-        else:
-            try:
-                ans = input(f"¿Cancelar hito \"{ms_desc}\"? [s/N]: ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return 1
-            if ans not in ("s", "si", "sí", "y", "yes"):
-                print("Cancelado.")
-                return 0
-
-    ms["status"] = "cancelled"
-
-    next_info = ""
-    if ms.get("recur") and not drop_series:
-        today_str = date.today().isoformat()
-        next_due = _next_occurrence(ms.get("date"), ms["recur"], today_str)
-        until = ms.get("until")
-        if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-            next_info = f" (recur: {ms['recur']}) — serie finalizada ({until})"
-        else:
-            data["milestones"].append({"status": "pending", "desc": ms_desc,
-                                        "date": next_due, "recur": ms["recur"],
-                                        "until": until, "ring": ms.get("ring"),
-                                        "notes": list(ms.get("notes") or [])})
-            next_info = f" (recur: {ms['recur']}) → próximo: {next_due}"
-
-    _write_agenda(agenda_path, data)
-
-    if drop_series:
-        add_orbit_entry(project_dir, f"[serie cancelada] Hito: {ms_desc} ({ms['recur']})", "apunte")
-        print(f"✓ [{project_dir.name}] [serie cancelada] {ms_desc} ({ms['recur']})")
-    else:
-        add_orbit_entry(project_dir, f"[cancelado] Hito: {ms_desc}{next_info}", "apunte")
-        print(f"✓ [{project_dir.name}] [cancelado] {ms_desc}{next_info}")
-
-    # Delete Mac reminder if ring was firing today
-    if ms.get("ring") and ms.get("date"):
-        from core.ring import resolve_ring_datetime, _delete_reminder
-        ring_dt = resolve_ring_datetime(ms["date"], ms["ring"],
-                                        due_time=ms.get("time"))
-        if ring_dt and ring_dt.date() == date.today():
-            _delete_reminder(ms_desc, project_dir.name, kind="milestone")
-
-    from core.gsync import sync_item
-    sync_item(project_dir, ms, "milestone")
-
-    return 0
+    return _generic_drop("milestone", project_dir, data, agenda_path, text,
+                         force=force, occurrence=occurrence, series=series)
 
 
 def run_ms_edit(project: Optional[str], text: Optional[str],
@@ -1258,104 +1459,15 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
                 new_desc: Optional[str] = None,
                 force: bool = False, occurrence: bool = False,
                 series: bool = False) -> int:
-    if new_date and new_date != "none" and not _valid_date(new_date):
-        print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
-    if new_until and new_until != "none" and not _valid_date(new_until):
-        print(f"⚠️  Fecha --until '{new_until}' no reconocida.")
-        return 1
-    if new_recur and new_recur != "none":
-        new_recur = _normalize_recur(new_recur)
-    if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
-        print(f"⚠️  Recurrencia '{new_recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
-        return 1
-    if new_ring and new_ring != "none":
-        from core.ring import _parse_ring
-        if _parse_ring(new_ring) is None:
-            print(f"⚠️  Ring '{new_ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM")
-            return 1
-    if new_time and new_time != "none" and not re.match(r"^\d{2}:\d{2}$", new_time):
-        print(f"⚠️  Hora '{new_time}' no válida. Usa: HH:MM (ej. 15:00)")
-        return 1
-
-    project_dir = _find_new_project(project) if project else None
-    if project and project_dir is None:
-        return 1
+    project_dir = _resolve_project(project)
     if project_dir is None:
-        print("Error: especifica un proyecto")
         return 1
-
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-
-    idx = _select_item(data["milestones"], "Hitos pendientes", text)
-    if idx is None:
-        return 1
-
-    ms = data["milestones"][idx]
-    old_desc = ms["desc"]
-
-    # ── Occurrence vs Series for recurring items ──
-    if ms.get("recur") and not (new_recur and new_recur == "none"):
-        choice = _ask_edit_occurrence_or_series(
-            ms["desc"], ms["recur"], force, occurrence, series)
-        if choice is None:
-            return 1 if not sys.stdin.isatty() else 0
-        if choice:  # occurrence
-            today_str = date.today().isoformat()
-            next_due = _next_occurrence(ms.get("date"), ms["recur"], today_str)
-            until = ms.get("until")
-            new_item = {
-                "status": "pending",
-                "desc": new_text or ms["desc"],
-                "date": (None if new_date == "none" else new_date) if new_date else ms.get("date"),
-                "time": (None if new_time == "none" else new_time) if new_time else ms.get("time"),
-                "ring": (None if new_ring == "none" else new_ring) if new_ring else ms.get("ring"),
-                "notes": ([new_desc] if new_desc and new_desc != "none" else []) if new_desc is not None else list(ms.get("notes") or []),
-            }
-            data["milestones"].append(new_item)
-            if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-                ms["status"] = "cancelled"
-                next_info = f" — serie finalizada ({until})"
-            else:
-                ms["date"] = next_due
-                next_info = f" → serie avanza a {next_due}"
-            _write_agenda(agenda_path, data)
-            print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['desc']}{next_info}")
-            from core.gsync import sync_item
-            sync_item(project_dir, new_item, "milestone")
-            sync_item(project_dir, ms, "milestone")
-            return 0
-
-    # ── Series path (or non-recurring) ──
-    if new_text:  ms["desc"]  = new_text
-    if new_date:  ms["date"]  = None if new_date  == "none" else new_date
-    if new_recur: ms["recur"] = None if new_recur == "none" else new_recur
-    if new_until: ms["until"] = None if new_until == "none" else new_until
-    if new_ring:  ms["ring"]  = None if new_ring  == "none" else new_ring
-    if new_time:  ms["time"]  = None if new_time  == "none" else new_time
-    if new_desc is not None:
-        ms["notes"] = [new_desc] if new_desc and new_desc != "none" else []
-
-    _write_agenda(agenda_path, data)
-    print(f"✓ [{project_dir.name}] Hito actualizado: {ms['desc']}")
-
-    # Update Mac reminder if ring fires today
-    if ms.get("ring") and ms.get("date"):
-        from core.ring import resolve_ring_datetime, _schedule_reminder, _delete_reminder
-        ring_dt = resolve_ring_datetime(ms["date"], ms["ring"],
-                                        due_time=ms.get("time"))
-        if ring_dt and ring_dt.date() == date.today():
-            if new_text or new_time or new_ring:
-                _delete_reminder(old_desc, project_dir.name, kind="milestone")
-            ok = _schedule_reminder(ms["desc"], project_dir.name, ring_dt, kind="milestone")
-            if ok:
-                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
-
-    from core.gsync import sync_item
-    sync_item(project_dir, ms, "milestone")
-
-    return 0
+    return _generic_edit("milestone", project_dir, data, agenda_path, text,
+                         new_text=new_text, new_date=new_date, new_time=new_time,
+                         new_recur=new_recur, new_until=new_until, new_ring=new_ring,
+                         new_desc=new_desc, force=force, occurrence=occurrence, series=series)
 
 
 def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
@@ -1399,21 +1511,11 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
 
 def run_ms_log(project: Optional[str], text: Optional[str]) -> int:
     """Create a logbook entry (#resultado) from an existing milestone."""
-    project_dir = _find_new_project(project) if project else None
-    if project and project_dir is None:
-        return 1
+    project_dir = _resolve_project(project)
     if project_dir is None:
-        print("Error: especifica un proyecto")
         return 1
-
     data = _read_agenda(resolve_file(project_dir, "agenda"))
-    idx = _select_item(data["milestones"], "Hitos pendientes", text)
-    if idx is None:
-        return 1
-
-    ms = data["milestones"][idx]
-    from core.log import add_entry
-    return add_entry(project, ms["desc"], "resultado", None, ms.get("date"))
+    return _generic_log("milestone", project_dir, data, text, project or project_dir.name)
 
 
 # ── EVENT commands ─────────────────────────────────────────────────────────────
@@ -1423,159 +1525,20 @@ def run_ev_add(project: str, text: str, date_val: str,
                recur: Optional[str] = None,
                until: Optional[str] = None, ring: Optional[str] = None,
                desc: Optional[str] = None) -> int:
-    if end_date and not _valid_date(end_date):
-        print(f"⚠️  Fecha --end '{end_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
-    if recur:
-        recur = _normalize_recur(recur)
-    err = _validate_add_params(date_val, time_val, recur, until, ring, time_format="event")
-    if err:
-        print(err)
-        return 1
-    if time_val and not ring:
-        ring = _prompt_and_validate_ring()
-
-    project_dir = _find_new_project(project)
-    if project_dir is None:
-        return 1
-
-    agenda_path = resolve_file(project_dir, "agenda")
-    data = _read_agenda(agenda_path)
-    notes = [desc] if desc else []
-    new_ev = {"date": date_val, "desc": text, "end": end_date,
-              "time": time_val, "recur": recur, "until": until, "ring": ring,
-              "notes": notes}
-    data["events"].append(new_ev)
-    _write_agenda(agenda_path, data)
-
-    attrs = ""
-    if time_val: attrs += f" ⏰{time_val}"
-    if end_date: attrs += f" →{end_date}"
-    if recur:
-        recur_s = recur
-        if until: recur_s += f":{until}"
-        attrs += f" 🔄{recur_s}"
-    if ring: attrs += f" 🔔{ring}"
-    print(f"✓ [{project_dir.name}] Evento: {date_val} — {text}{attrs}")
-
-    # Schedule reminder immediately if ring fires today
-    if ring:
-        from core.ring import resolve_ring_datetime, _schedule_reminder
-        # For events, use start time from time_val (e.g. "09:00" or "09:00-10:00")
-        ev_time = time_val.split("-")[0] if time_val else None
-        ring_dt = resolve_ring_datetime(date_val, ring, due_time=ev_time)
-        if ring_dt and ring_dt.date() == date.today():
-            ok = _schedule_reminder(text, project_dir.name, ring_dt, kind="event")
-            if ok:
-                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
-
-    from core.gsync import sync_item
-    sync_item(project_dir, new_ev, "event")
-
-    return 0
+    return _generic_add("event", project, text, date_val=date_val, end_date=end_date,
+                        recur=recur, until=until, ring=ring, time_val=time_val, desc=desc)
 
 
 def run_ev_drop(project: Optional[str], text: Optional[str],
                 force: bool = False, occurrence: bool = False,
                 series: bool = False) -> int:
-    import sys
-    project_dir = _find_new_project(project) if project else None
-    if project and project_dir is None:
-        return 1
+    project_dir = _resolve_project(project)
     if project_dir is None:
-        print("Error: especifica un proyecto")
         return 1
-
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-
-    idx = _select_event(data["events"], text)
-    if idx is None:
-        return 1
-
-    ev = data["events"][idx]
-    display = f"{ev['date']} — {ev['desc']}"
-
-    drop_series = series  # For recurring: drop whole series?
-
-    if occurrence or series:
-        # Explicit flag — skip interactive prompt
-        pass
-    elif not force:
-        if not sys.stdin.isatty():
-            print("Error: usa --force para confirmar el borrado en modo no interactivo.")
-            return 1
-        if ev.get("recur"):
-            # Recurring event: ask whether to drop occurrence or whole series
-            try:
-                ans = input(
-                    f"\"{display}\" es recurrente ({ev['recur']}).\n"
-                    f"  [o] Quitar esta ocurrencia (avanzar al próximo)\n"
-                    f"  [s] Eliminar toda la serie\n"
-                    f"  [c] Cancelar\n"
-                    f"  ¿Qué hacer? [o/s/C]: "
-                ).strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return 1
-            if ans in ("s", "serie"):
-                drop_series = True
-            elif ans in ("o", "ocurrencia"):
-                drop_series = False
-            else:
-                print("Cancelado.")
-                return 0
-        else:
-            try:
-                ans = input(f"¿Seguro que quieres eliminar \"{display}\"? [s/N]: ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return 1
-            if ans not in ("s", "si", "sí", "y", "yes"):
-                print("Cancelado.")
-                return 0
-
-    ev_removed = data["events"].pop(idx)
-
-    next_info = ""
-    if ev_removed.get("recur") and not drop_series:
-        today_str = date.today().isoformat()
-        next_due = _next_occurrence(ev_removed.get("date"), ev_removed["recur"], today_str)
-        until = ev_removed.get("until")
-        if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-            next_info = f" (recur: {ev_removed['recur']}) — serie finalizada ({until})"
-        else:
-            new_ev = {k: v for k, v in ev_removed.items() if k != "synced"}
-            new_ev["date"] = next_due
-            data["events"].append(new_ev)
-            next_info = f" (recur: {ev_removed['recur']}) → próximo: {next_due}"
-
-    _write_agenda(agenda_path, data)
-
-    if drop_series:
-        print(f"✓ [{project_dir.name}] Serie eliminada: {display} ({ev_removed['recur']})")
-        # Delete whole series from Google Calendar
-        if ev_removed.get("synced"):
-            from core.gsync import delete_gcal_event
-            delete_gcal_event(project_dir, ev_removed)
-    else:
-        print(f"✓ [{project_dir.name}] Evento eliminado: {display}{next_info}")
-        # Recurring: don't delete Google series (gsync will update start date)
-        # Non-recurring: delete from Google Calendar
-        if not ev_removed.get("recur") and ev_removed.get("synced"):
-            from core.gsync import delete_gcal_event
-            delete_gcal_event(project_dir, ev_removed)
-
-    # Delete Mac reminder if ring was firing today
-    if ev_removed.get("ring") and ev_removed.get("date"):
-        from core.ring import resolve_ring_datetime, _delete_reminder
-        ev_time = ev_removed.get("time", "").split("-")[0] if ev_removed.get("time") else None
-        ring_dt = resolve_ring_datetime(ev_removed["date"], ev_removed["ring"],
-                                        due_time=ev_time)
-        if ring_dt and ring_dt.date() == date.today():
-            _delete_reminder(ev_removed["desc"], project_dir.name, kind="event")
-
-    return 0
+    return _generic_drop("event", project_dir, data, agenda_path, text,
+                         force=force, occurrence=occurrence, series=series)
 
 
 def run_ev_edit(project: Optional[str], text: Optional[str],
@@ -1586,134 +1549,25 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
                 new_desc: Optional[str] = None,
                 force: bool = False, occurrence: bool = False,
                 series: bool = False) -> int:
-    if new_date and not _valid_date(new_date):
-        print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
-    if new_end and new_end != "none" and not _valid_date(new_end):
-        print(f"⚠️  Fecha --end '{new_end}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
-    if new_time and new_time != "none" and not _valid_time(new_time):
-        print(f"⚠️  Hora '{new_time}' no válida. Usa: HH:MM o HH:MM-HH:MM (ej. 10:00, 10:00-12:30)")
-        return 1
-    if new_until and new_until != "none" and not _valid_date(new_until):
-        print(f"⚠️  Fecha --until '{new_until}' no reconocida.")
-        return 1
-    if new_recur and new_recur != "none":
-        new_recur = _normalize_recur(new_recur)
-    if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
-        print(f"⚠️  Recurrencia '{new_recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
-        return 1
-    if new_ring and new_ring != "none":
-        from core.ring import _parse_ring
-        if _parse_ring(new_ring) is None:
-            print(f"⚠️  Ring '{new_ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM")
-            return 1
-
-    project_dir = _find_new_project(project) if project else None
-    if project and project_dir is None:
-        return 1
+    project_dir = _resolve_project(project)
     if project_dir is None:
-        print("Error: especifica un proyecto")
         return 1
-
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
-
-    idx = _select_event(data["events"], text)
-    if idx is None:
-        return 1
-
-    ev = data["events"][idx]
-    old_desc = ev["desc"]
-
-    # ── Occurrence vs Series for recurring items ──
-    if ev.get("recur") and not (new_recur and new_recur == "none"):
-        choice = _ask_edit_occurrence_or_series(
-            ev["desc"], ev["recur"], force, occurrence, series)
-        if choice is None:
-            return 1 if not sys.stdin.isatty() else 0
-        if choice:  # occurrence
-            today_str = date.today().isoformat()
-            next_due = _next_occurrence(ev.get("date"), ev["recur"], today_str)
-            until = ev.get("until")
-            new_item = {
-                "desc": new_text or ev["desc"],
-                "date": (None if new_date == "none" else new_date) if new_date else ev.get("date"),
-                "end": (None if new_end == "none" else new_end) if new_end else ev.get("end"),
-                "time": (None if new_time == "none" else new_time) if new_time else ev.get("time"),
-                "ring": (None if new_ring == "none" else new_ring) if new_ring else ev.get("ring"),
-                "notes": ([new_desc] if new_desc and new_desc != "none" else []) if new_desc is not None else list(ev.get("notes") or []),
-            }
-            data["events"].append(new_item)
-            if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-                data["events"].remove(ev)
-                next_info = f" — serie finalizada ({until})"
-            else:
-                ev["date"] = next_due
-                next_info = f" → serie avanza a {next_due}"
-            _write_agenda(agenda_path, data)
-            print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['date']} — {new_item['desc']}{next_info}")
-            from core.gsync import sync_item
-            sync_item(project_dir, new_item, "event")
-            sync_item(project_dir, ev, "event")
-            return 0
-
-    # ── Series path (or non-recurring) ──
-    if new_text:  ev["desc"]  = new_text
-    if new_date:  ev["date"]  = new_date
-    if new_end:   ev["end"]   = None if new_end   == "none" else new_end
-    if new_time:  ev["time"]  = None if new_time  == "none" else new_time
-    if new_recur: ev["recur"] = None if new_recur == "none" else new_recur
-    if new_until: ev["until"] = None if new_until == "none" else new_until
-    if new_ring:  ev["ring"]  = None if new_ring  == "none" else new_ring
-    if new_desc is not None:
-        ev["notes"] = [new_desc] if new_desc and new_desc != "none" else []
-
-    _write_agenda(agenda_path, data)
-    print(f"✓ [{project_dir.name}] Evento actualizado: {ev['date']} — {ev['desc']}")
-
-    # Update Mac reminder if ring fires today
-    if ev.get("ring") and ev.get("date"):
-        from core.ring import resolve_ring_datetime, _schedule_reminder, _delete_reminder
-        ev_time = ev.get("time", "").split("-")[0] if ev.get("time") else None
-        ring_dt = resolve_ring_datetime(ev["date"], ev["ring"], due_time=ev_time)
-        if ring_dt and ring_dt.date() == date.today():
-            if new_text or new_time or new_ring:
-                _delete_reminder(old_desc, project_dir.name, kind="event")
-            ok = _schedule_reminder(ev["desc"], project_dir.name, ring_dt, kind="event")
-            if ok:
-                print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
-
-    from core.gsync import sync_item
-    sync_item(project_dir, ev, "event")
-
-    return 0
+    return _generic_edit("event", project_dir, data, agenda_path, text,
+                         new_text=new_text, new_date=new_date, new_end=new_end,
+                         new_time=new_time, new_recur=new_recur, new_until=new_until,
+                         new_ring=new_ring, new_desc=new_desc,
+                         force=force, occurrence=occurrence, series=series)
 
 
 def run_ev_log(project: Optional[str], text: Optional[str]) -> int:
     """Create a logbook entry (#evento) from an existing event."""
-    project_dir = _find_new_project(project) if project else None
-    if project and project_dir is None:
-        return 1
+    project_dir = _resolve_project(project)
     if project_dir is None:
-        print("Error: especifica un proyecto")
         return 1
-
-    agenda_path = resolve_file(project_dir, "agenda")
-    data = _read_agenda(agenda_path)
-
-    idx = _select_event(data["events"], text)
-    if idx is None:
-        return 1
-
-    ev = data["events"][idx]
-    ev_desc = ev["desc"]
-    ev_date = ev.get("date")
-
-    from core.log import add_entry
-    return add_entry(
-        project, ev_desc, "evento", None, ev_date,
-    )
+    data = _read_agenda(resolve_file(project_dir, "agenda"))
+    return _generic_log("event", project_dir, data, text, project or project_dir.name)
 
 
 def run_ev_list(project: Optional[str] = None,
@@ -1759,53 +1613,14 @@ def run_reminder_add(project: str, text: str, date_val: str,
                      until: Optional[str] = None,
                      desc: Optional[str] = None) -> int:
     """Add a reminder to a project's agenda."""
-    if recur:
-        recur = _normalize_recur(recur)
-    err = _validate_add_params(date_val, time_val, recur, until, None)
-    if err:
-        print(err)
-        return 1
-
-    project_dir = _find_new_project(project)
-    if project_dir is None:
-        return 1
-
-    agenda_path = resolve_file(project_dir, "agenda")
-    data = _read_agenda(agenda_path)
-    notes = [desc] if desc else []
-    new_rem = {"desc": text, "date": date_val, "time": time_val,
-               "recur": recur, "until": until, "cancelled": False,
-               "notes": notes}
-    data.setdefault("reminders", []).append(new_rem)
-    _write_agenda(agenda_path, data)
-
-    attrs = f"({date_val}) ⏰{time_val}"
-    if recur:
-        recur_s = recur
-        if until:
-            recur_s += f":{until}"
-        attrs += f" 🔄{recur_s}"
-    print(f"✓ [{project_dir.name}] Recordatorio: {text} {attrs}")
-
-    # Schedule notification immediately if it fires today
-    from datetime import date as _date
-    if date_val == _date.today().isoformat():
-        from core.ring import resolve_ring_datetime, _schedule_reminder
-        from datetime import datetime
-        fire_dt = datetime.fromisoformat(f"{date_val}T{time_val}:00")
-        if fire_dt > datetime.now():
-            ok = _schedule_reminder(text, project_dir.name, fire_dt, kind="reminder")
-            if ok:
-                print(f"  🔔 Notificación programada para hoy a las {time_val}")
-
-    return 0
+    return _generic_add("reminder", project, text, date_val=date_val,
+                        time_val=time_val, recur=recur, until=until, desc=desc)
 
 
 def run_reminder_drop(project: Optional[str], text: Optional[str],
                       force: bool = False, occurrence: bool = False,
                       series: bool = False) -> int:
     """Drop a reminder: remove or advance to next occurrence."""
-    import sys
     if project:
         project_dir = _find_new_project(project)
         if project_dir is None:
@@ -1826,80 +1641,37 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
             continue
 
         rem = reminders[idx]
-        drop_series = series
+        proceed, drop_series = _ask_drop_confirmation(
+            rem["desc"], rem.get("recur"), force, occurrence, series, "Recordatorio")
+        if not proceed:
+            return 0 if sys.stdin.isatty() else 1
 
-        if occurrence or series:
-            # Explicit flag — skip interactive prompt
-            pass
-        elif not force:
-            if not sys.stdin.isatty():
-                print("Error: usa --force para confirmar en modo no interactivo.")
-                return 1
-            if rem.get("recur"):
-                try:
-                    ans = input(
-                        f"\"{rem['desc']}\" es recurrente ({rem['recur']}).\n"
-                        f"  [o] Quitar esta ocurrencia (avanzar al próximo)\n"
-                        f"  [s] Eliminar toda la serie\n"
-                        f"  [c] Cancelar\n"
-                        f"  ¿Qué hacer? [o/s/C]: "
-                    ).strip().lower()
-                except (EOFError, KeyboardInterrupt):
-                    print()
-                    return 1
-                if ans in ("s", "serie"):
-                    drop_series = True
-                elif ans in ("o", "ocurrencia"):
-                    drop_series = False
-                else:
-                    print("Cancelado.")
-                    return 0
-            else:
-                try:
-                    ans = input(f"¿Eliminar recordatorio \"{rem['desc']}\"? [s/N]: ").strip().lower()
-                except (EOFError, KeyboardInterrupt):
-                    print()
-                    return 1
-                if ans not in ("s", "si", "sí", "y", "yes"):
-                    print("Cancelado.")
-                    return 0
-
-        next_info = ""
+        # Advance recurrence in-place
         if rem.get("recur") and not drop_series:
             today_str = date.today().isoformat()
             next_due = _next_occurrence(rem.get("date"), rem["recur"], today_str)
             until = rem.get("until")
             if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-                next_info = f" (recur: {rem['recur']}) — serie finalizada ({until})"
+                pass  # fall through to cancel
             else:
-                # Advance to next occurrence
-                for r in data["reminders"]:
-                    if r is rem:
-                        r["date"] = next_due
-                        break
+                rem["date"] = next_due
                 _write_agenda(agenda_path, data)
-                # Delete Mac reminder if it was for today
-                if rem.get("date") == date.today().isoformat() or rem.get("date") == today_str:
+                if date_val_is_today(today_str):
                     from core.ring import _delete_reminder
-                    _delete_reminder(rem['desc'], project_dir.name, kind="reminder")
+                    _delete_reminder(rem["desc"], project_dir.name, kind="reminder")
                 print(f"✓ [{project_dir.name}] Recordatorio avanzado: {rem['desc']} → {next_due}")
                 return 0
 
-        # Cancel (mark [-]) or remove
-        for r in data["reminders"]:
-            if r is rem:
-                r["cancelled"] = True
-                break
-
+        # Cancel
+        rem["cancelled"] = True
         _write_agenda(agenda_path, data)
-        # Delete Mac reminder if it was for today
-        if rem.get("date") == date.today().isoformat():
+        if date_val_is_today(rem.get("date")):
             from core.ring import _delete_reminder
-            _delete_reminder(rem['desc'], project_dir.name, kind="reminder")
+            _delete_reminder(rem["desc"], project_dir.name, kind="reminder")
         if drop_series:
             print(f"✓ [{project_dir.name}] Serie eliminada: {rem['desc']} ({rem['recur']})")
         else:
-            print(f"✓ [{project_dir.name}] Recordatorio eliminado: {rem['desc']}{next_info}")
+            print(f"✓ [{project_dir.name}] Recordatorio eliminado: {rem['desc']}")
         return 0
 
     print("No se encontró el recordatorio.")
@@ -1914,21 +1686,6 @@ def run_reminder_edit(project: Optional[str], text: Optional[str],
                       force: bool = False, occurrence: bool = False,
                       series: bool = False) -> int:
     """Edit an existing reminder."""
-    if new_date and new_date != "none" and not _valid_date(new_date):
-        print(f"⚠️  Fecha '{new_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
-    if new_until and new_until != "none" and not _valid_date(new_until):
-        print(f"⚠️  Fecha --until '{new_until}' no reconocida.")
-        return 1
-    if new_recur and new_recur != "none":
-        new_recur = _normalize_recur(new_recur)
-    if new_recur and new_recur != "none" and not is_valid_recur(new_recur):
-        print(f"⚠️  Recurrencia '{new_recur}' no válida. Usa: daily, weekly, monthly, weekdays, every 2 weeks, ...")
-        return 1
-    if new_time and new_time != "none" and not re.match(r"^\d{2}:\d{2}$", new_time):
-        print(f"⚠️  Hora '{new_time}' no válida. Usa: HH:MM (ej. 15:00)")
-        return 1
-
     if project:
         project_dir = _find_new_project(project)
         if project_dir is None:
@@ -1943,68 +1700,15 @@ def run_reminder_edit(project: Optional[str], text: Optional[str],
         reminders = [r for r in data.get("reminders", []) if not r.get("cancelled")]
         if not reminders:
             continue
-
-        idx = _select_item_reminder(reminders, text)
-        if idx is None:
+        # Check if text matches any reminder in this project
+        test_idx = _select_item_reminder(reminders, text)
+        if test_idx is None:
             continue
-
-        rem = reminders[idx]
-        old_desc = rem["desc"]
-
-        # ── Occurrence vs Series for recurring items ──
-        if rem.get("recur") and not (new_recur and new_recur == "none"):
-            choice = _ask_edit_occurrence_or_series(
-                rem["desc"], rem["recur"], force, occurrence, series)
-            if choice is None:
-                return 1 if not sys.stdin.isatty() else 0
-            if choice:  # occurrence
-                today_str = date.today().isoformat()
-                next_due = _next_occurrence(rem.get("date"), rem["recur"], today_str)
-                until = rem.get("until")
-                new_item = {
-                    "desc": new_text or rem["desc"],
-                    "date": (None if new_date == "none" else new_date) if new_date else rem.get("date"),
-                    "time": (None if new_time == "none" else new_time) if new_time else rem.get("time"),
-                    "notes": ([new_desc] if new_desc and new_desc != "none" else []) if new_desc is not None else list(rem.get("notes") or []),
-                }
-                data["reminders"].append(new_item)
-                if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-                    rem["cancelled"] = True
-                    next_info = f" — serie finalizada ({until})"
-                else:
-                    rem["date"] = next_due
-                    next_info = f" → serie avanza a {next_due}"
-                _write_agenda(agenda_path, data)
-                print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['desc']}{next_info}")
-                return 0
-
-        # ── Series path (or non-recurring) ──
-        if new_text:   rem["desc"]  = new_text
-        if new_date:   rem["date"]  = None if new_date == "none" else new_date
-        if new_time:   rem["time"]  = None if new_time == "none" else new_time
-        if new_recur:  rem["recur"] = None if new_recur == "none" else new_recur
-        if new_until:  rem["until"] = None if new_until == "none" else new_until
-        if new_desc is not None:
-            rem["notes"] = [new_desc] if new_desc and new_desc != "none" else []
-
-        _write_agenda(agenda_path, data)
-        attrs = f"({rem.get('date', '?')}) ⏰{rem.get('time', '?')}"
-        if rem.get("recur"):
-            attrs += f" 🔄{rem['recur']}"
-        print(f"✓ [{project_dir.name}] Recordatorio actualizado: {rem['desc']} {attrs}")
-
-        # Update Mac reminder if fires today
-        if rem.get("date") and rem.get("time") and rem["date"] == date.today().isoformat():
-            from core.ring import _schedule_reminder, _delete_reminder
-            from datetime import datetime as _dt, time as _time
-            fire_dt = _dt.combine(date.today(), _time.fromisoformat(rem["time"]))
-            if new_text or new_time:
-                _delete_reminder(old_desc, project_dir.name, kind="reminder")
-            ok = _schedule_reminder(rem['desc'], project_dir.name, fire_dt, kind="reminder")
-            if ok:
-                print(f"  🔔 Notificación actualizada: {rem['time']}")
-
-        return 0
+        return _generic_edit("reminder", project_dir, data, agenda_path, text,
+                             new_text=new_text, new_date=new_date, new_time=new_time,
+                             new_recur=new_recur, new_until=new_until,
+                             new_desc=new_desc, force=force,
+                             occurrence=occurrence, series=series)
 
     print("No se encontró el recordatorio.")
     return 1
@@ -2064,14 +1768,11 @@ def run_reminder_log(project: Optional[str], text: Optional[str]) -> int:
         reminders = [r for r in data.get("reminders", []) if not r.get("cancelled")]
         if not reminders:
             continue
-
-        idx = _select_item_reminder(reminders, text)
-        if idx is None:
+        test_idx = _select_item_reminder(reminders, text)
+        if test_idx is None:
             continue
-
-        rem = reminders[idx]
-        from core.log import add_entry
-        return add_entry(project or project_dir.name, rem["desc"], "apunte", None, rem.get("date"))
+        return _generic_log("reminder", project_dir, data, text,
+                            project or project_dir.name)
 
     print("No se encontró el recordatorio.")
     return 1

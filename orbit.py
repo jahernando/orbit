@@ -174,7 +174,7 @@ _SINGLE_DASH_FIX = {
 _VERB_ENTITY_SWAP = {
     # verb → set of entities it can precede
     "add":      {"task", "ms", "ev", "hl"},
-    "done":     {"task", "ms"},
+    "done":     {"task", "ms", "crono"},
     "drop":     {"task", "ms", "ev", "hl", "project", "note"},
     "edit":     {"task", "ms", "ev", "hl", "note"},
     "list":     {"task", "ms", "ev", "hl", "note"},
@@ -505,11 +505,25 @@ def cmd_ev(args):
     if action == "add":
         kw = _add_args(args)
         kw["end_date"] = _d(_ga(args, "end"))
+        # --end-time → merge into --time as HH:MM-HH:MM
+        end_time = _ga(args, "end_time")
+        if end_time:
+            start_time = kw.get("time_val") or "09:00"
+            kw["time_val"] = f"{start_time}-{end_time}"
         return run_ev_add(**kw)
     if action == "drop":   return run_ev_drop(**_drop_args(args))
     if action == "edit":
         kw = _edit_args(args)
         kw["new_end"] = _d(_ga(args, "new_end")) or _ga(args, "new_end")
+        # --end-time → merge into --time as HH:MM-HH:MM
+        new_end_time = _ga(args, "new_end_time")
+        if new_end_time:
+            start_time = (kw.get("new_time") or "").split("-")[0] or None
+            if start_time:
+                kw["new_time"] = f"{start_time}-{new_end_time}"
+            else:
+                print("⚠️  --end-time requiere --time para especificar la hora de inicio.")
+                return 1
         return run_ev_edit(**kw)
     if action == "list":
         return run_ev_list(project=_ga(args, "project"),
@@ -731,6 +745,29 @@ def cmd_doctor(args):
     )
 
 
+def cmd_crono(args):
+    """Cronograma subcommand dispatcher."""
+    from core.cronograma import (
+        run_crono_add, run_crono_show, run_crono_check,
+        run_crono_list, run_crono_done,
+    )
+    action = _ga(args, "action")
+    if action == "add":
+        return run_crono_add(project=args.project, name=args.name)
+    if action == "show":
+        fn = lambda: run_crono_show(project=args.project, name=args.name)
+        return _handle_output(args, fn, "crono show")
+    if action == "check":
+        return run_crono_check(project=args.project, name=args.name)
+    if action == "list":
+        fn = lambda: run_crono_list(project=args.project)
+        return _handle_output(args, fn, "crono list")
+    if action == "done":
+        return run_crono_done(project=args.project, name=args.name, index=args.index)
+    print("Uso: crono add|show|check|list|done ...")
+    return 1
+
+
 def cmd_undo(args):
     from core.undo import run_undo
     return run_undo()
@@ -765,7 +802,8 @@ def cmd_ls(args):
             projects=getattr(args, "projects", None) or None,
             status_filter=getattr(args, "status", "pending"),
             date_filter=_d(getattr(args, "date", None)),
-            dated_only=getattr(args, "dated", False))
+            dated_only=getattr(args, "dated", False),
+            unplanned=getattr(args, "unplanned", False))
         return _handle_output(args, fn, "ls tasks")
 
     if what == "ms":
@@ -921,7 +959,8 @@ def _build_parser():
     ls_tasks.add_argument("--status", default="pending",
                           choices=["pending", "done", "cancelled", "all"])
     ls_tasks.add_argument("--date",   default=None, help="Filter by date")
-    ls_tasks.add_argument("--dated",  action="store_true", help="Only show tasks with a date")
+    ls_tasks.add_argument("--dated",     action="store_true", help="Only show tasks with a date")
+    ls_tasks.add_argument("--unplanned", action="store_true", help="Only show tasks without a date")
     ls_tasks.add_argument("--open",   action="store_true")
     ls_tasks.add_argument("--editor", default=None)
     _add_log_args(ls_tasks)
@@ -1204,8 +1243,9 @@ def _build_parser():
     ev_add.add_argument("project",  help="Project name")
     ev_add.add_argument("text",     nargs="?", default=None, help="Event description")
     ev_add.add_argument("--date",   required=True, help="Event date YYYY-MM-DD")
-    ev_add.add_argument("--end",    default=None, help="End date YYYY-MM-DD (optional)")
-    ev_add.add_argument("--time",   default=None, help="Time: HH:MM or HH:MM-HH:MM (ej. 10:00, 10:00-12:30)")
+    ev_add.add_argument("--end", "--end-date", default=None, help="End date YYYY-MM-DD (optional)")
+    ev_add.add_argument("--time",     default=None, help="Time: HH:MM or HH:MM-HH:MM (ej. 10:00, 10:00-12:30)")
+    ev_add.add_argument("--end-time", default=None, dest="end_time", help="End time HH:MM (alternative to --time HH:MM-HH:MM)")
     ev_add.add_argument("--recur",  default=None, help="Recurrence: daily, weekly, monthly, every 2 weeks, ...")
     ev_add.add_argument("--until",  default=None, help="End date for recurrence")
     ev_add.add_argument("--ring",   default=None, help="Reminder: HH:MM, 1d, 2h, YYYY-MM-DD HH:MM")
@@ -1223,8 +1263,9 @@ def _build_parser():
     ev_edit.add_argument("text",    nargs="?", default=None)
     ev_edit.add_argument("--text",  dest="new_text",  default=None)
     ev_edit.add_argument("--date",  dest="new_date",  default=None)
-    ev_edit.add_argument("--end",   dest="new_end",   default=None, help="End date or 'none'")
-    ev_edit.add_argument("--time",  dest="new_time",  default=None, help="HH:MM, HH:MM-HH:MM, or 'none'")
+    ev_edit.add_argument("--end", "--end-date", dest="new_end", default=None, help="End date or 'none'")
+    ev_edit.add_argument("--time",      dest="new_time",      default=None, help="HH:MM, HH:MM-HH:MM, or 'none'")
+    ev_edit.add_argument("--end-time",  dest="new_end_time",  default=None, help="End time HH:MM (alternative to --time HH:MM-HH:MM)")
     ev_edit.add_argument("--recur", dest="new_recur", default=None, help="Recurrence (or 'none')")
     ev_edit.add_argument("--until", dest="new_until", default=None, help="End date for recurrence (or 'none')")
     ev_edit.add_argument("--ring",  dest="new_ring",  default=None, help="HH:MM, 1d, 2h, YYYY-MM-DD HH:MM, or none")
@@ -1487,6 +1528,36 @@ def _build_parser():
                                       help="Ask Claude about Orbit usage")
     claude_p.add_argument("question", nargs="+", help="Your question about Orbit")
 
+    # --- crono ---
+    crono_p = subparsers.add_parser("crono", help="Cronogramas: tareas anidadas con dependencias")
+    crono_sub = crono_p.add_subparsers(dest="action")
+
+    cr_add = crono_sub.add_parser("add", help="Crear cronograma")
+    cr_add.add_argument("project", help="Project name")
+    cr_add.add_argument("name", help="Cronograma name")
+
+    cr_show = crono_sub.add_parser("show", help="Mostrar cronograma con fechas calculadas")
+    cr_show.add_argument("project", help="Project name")
+    cr_show.add_argument("name", help="Cronograma name (partial match)")
+    cr_show.add_argument("--open", action="store_true")
+    cr_show.add_argument("--editor", default=None)
+    _add_log_args(cr_show)
+
+    cr_check = crono_sub.add_parser("check", help="Validar cronograma (doctor)")
+    cr_check.add_argument("project", help="Project name")
+    cr_check.add_argument("name", help="Cronograma name (partial match)")
+
+    cr_list = crono_sub.add_parser("list", help="Listar cronogramas del proyecto")
+    cr_list.add_argument("project", help="Project name")
+    cr_list.add_argument("--open", action="store_true")
+    cr_list.add_argument("--editor", default=None)
+    _add_log_args(cr_list)
+
+    cr_done = crono_sub.add_parser("done", help="Marcar tarea de cronograma como completada")
+    cr_done.add_argument("project", help="Project name")
+    cr_done.add_argument("name", help="Cronograma name")
+    cr_done.add_argument("index", help="Task index (e.g. 1.2)")
+
     # --- undo ---
     subparsers.add_parser("undo", help="Undo the last operation")
 
@@ -1515,6 +1586,7 @@ _COMMANDS = {
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
     "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync,
+    "crono": cmd_crono,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,
 }

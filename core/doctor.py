@@ -361,6 +361,13 @@ def check_project(project_dir: Path, max_logbook_lines: int = 200) -> list:
     highlights = resolve_file(project_dir, "highlights")
     issues.extend(_check_highlights(name, highlights))
 
+    # Check cronogramas
+    cronos_dir = project_dir / "cronos"
+    if cronos_dir.exists():
+        from core.cronograma import _check_cronograma
+        for crono_file in sorted(cronos_dir.glob("crono-*.md")):
+            issues.extend(_check_cronograma(name, crono_file))
+
     return issues
 
 

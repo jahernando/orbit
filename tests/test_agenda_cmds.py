@@ -679,7 +679,7 @@ class TestMilestones:
         assert pending[0]["date"] == "2026-04-01"
         assert pending[0]["recur"] == "monthly"
         out = capsys.readouterr().out
-        assert "próximo: 2026-04-01" in out
+        assert "próxima: 2026-04-01" in out
 
     def test_edit_text(self, proj, projects_dir):
         from core.agenda_cmds import run_ms_add, run_ms_edit, _read_agenda
@@ -759,7 +759,7 @@ class TestEvents:
         assert data["events"][0]["date"] == "2026-03-16"
         assert data["events"][0]["recur"] == "weekly"
         out = capsys.readouterr().out
-        assert "próximo: 2026-03-16" in out
+        assert "próxima: 2026-03-16" in out
 
     def test_drop_recurring_event_clears_synced(self, proj, projects_dir):
         from core.agenda_cmds import run_ev_add, run_ev_drop, _read_agenda

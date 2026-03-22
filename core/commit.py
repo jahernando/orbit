@@ -282,6 +282,51 @@ def run_commit(message: Optional[str] = None) -> int:
         print("Sin cambios para commitear.")
         return 0
 
+    # Run doctor checks before committing
+    try:
+        from core.doctor import check_all_projects
+        from core.gsync import check_gsync_drift, reconcile_gsync_renames
+        # Reconcile title renames before drift check
+        try:
+            renames = reconcile_gsync_renames()
+            for proj, old_desc, new_desc in renames:
+                print(f"  🔗 [{proj}] Revinculado: «{old_desc}» → «{new_desc}»")
+            if renames:
+                print()
+        except Exception:
+            pass
+        issues = check_all_projects()
+        if issues:
+            print(f"  🏥 Doctor: {len(issues)} problema{'s' if len(issues) != 1 else ''} en las agendas:")
+            for issue in issues:
+                print(f"    ⚠️  [{issue.project}] {issue.file}:{issue.line_num} — {issue.msg}")
+            print()
+            if sys.stdin.isatty():
+                try:
+                    ans = input("¿Continuar con el commit? [s/N]: ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    return 1
+                if ans not in ("s", "si", "sí", "y", "yes"):
+                    print("Commit cancelado. Ejecuta `orbit doctor --fix` para corregir.")
+                    return 0
+            else:
+                print("⚠️  Hay problemas en las agendas. Ejecuta `orbit doctor --fix`.")
+        # Check gsync drift
+        try:
+            drift = check_gsync_drift()
+            if drift:
+                print(f"  ☁️  {len(drift)} item{'s' if len(drift) != 1 else ''} modificado{'s' if len(drift) != 1 else ''} desde último gsync:")
+                for proj, kind, desc, diffs in drift:
+                    print(f"    ⚠️  [{proj}] {kind}: {desc}")
+                    for d in diffs:
+                        print(f"        {d}")
+                print("  → Considera ejecutar `orbit gsync` tras el commit.\n")
+        except Exception:
+            pass
+    except ImportError:
+        pass
+
     # Show changed files
     print("\nFicheros modificados:")
     for code, path in status:

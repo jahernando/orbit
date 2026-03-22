@@ -85,7 +85,34 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.22.0, 2026-03-20)
+## Estado actual (v0.23.0, 2026-03-21)
+
+### Próximo: Cronogramas (diseño cerrado, pendiente de implementar)
+- Nuevo tipo: cronograma = tareas anidadas con dependencias y duración temporal
+- Fichero propio: `cronos/crono-<nombre>.md`, enlazado desde `## 📊 Cronogramas` en agenda.md
+- Formato lista indentada: `- [ ] 1.1 Título | inicio | duración`
+- Inicio: fecha ISO, semana ISO, semana+día (`2026-W12-wed`), o `after:<índice>`
+- Duración: `Nd`, `NW`; tareas padre se calculan de hijas
+- Doctor: índices únicos, deps válidas, sin ciclos, hojas con inicio+duración
+- Fase 1: parser, cálculo fechas, doctor, `crono show/add/list/done/check`
+- Fase 2: Gantt ANSI terminal
+- Fase 3: gsync (pendiente de decisión)
+- Diseño completo en `~/🚀orbit-ws/💻software/💻orbit/notes/2026-03-21_output_cronograma.md`
+
+### v0.23.0 (2026-03-21)
+- `ev add/edit --end-date` — alias explícito de `--end` (claridad)
+- `ev add/edit --end-time HH:MM` — hora de fin separada (se combina con `--time` → `HH:MM-HH:MM`)
+  - Si no hay `--time`, usa `09:00` como inicio por defecto
+- `orbit ls tasks --unplanned` — filtra tareas sin fecha (futuribles)
+- Doctor pre-check en `orbit commit`:
+  - Valida agendas/logbooks antes de commitear
+  - Muestra problemas y pregunta si continuar `[s/N]`
+  - Ejecuta reconciliación gsync y reporta drift
+- Reconciliación gsync por título (`reconcile_gsync_renames`):
+  - Detecta cuando el usuario cambia el título de una cita editando el markdown
+  - Matchea keys huérfanas con items que comparten fecha/recur pero título diferente
+  - Migra Google IDs al nuevo key, actualiza snapshot, re-sincroniza
+  - Se ejecuta automáticamente en cada commit
 
 ### v0.22.0 (2026-03-20)
 - `orbit panel [week|month]` — dashboard dinámico (prioridad, agenda, actividad)
