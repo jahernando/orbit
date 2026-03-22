@@ -6,7 +6,6 @@ Scans logbook, highlights, and agenda of each project and prints
 a summary of activity within the period.
 """
 
-import calendar
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
@@ -14,6 +13,7 @@ from typing import Optional
 from core.log import VALID_TYPES, TAG_EMOJI, find_logbook_file, resolve_file
 from core.config import iter_project_dirs
 from core.project import _find_new_project, _is_new_project
+from core.agenda_view import _parse_period as _parse_period_base
 
 
 # ── Period parsing ────────────────────────────────────────────────────────────
@@ -21,39 +21,15 @@ from core.project import _find_new_project, _is_new_project
 def _parse_period(date_str: Optional[str],
                   date_from: Optional[str] = None,
                   date_to: Optional[str] = None):
-    """Return (start, end) dates.  Priority: from/to > date > last 30 days."""
-    today = date.today()
+    """Return (start, end) dates.  Priority: from/to > date > last 30 days.
 
-    def _start(s: str) -> date:
-        if len(s) == 7:
-            y, m = int(s[:4]), int(s[5:7])
-            return date(y, m, 1)
-        return date.fromisoformat(s)
-
-    def _end(s: str) -> date:
-        if len(s) == 7:
-            y, m = int(s[:4]), int(s[5:7])
-            return date(y, m, calendar.monthrange(y, m)[1])
-        return date.fromisoformat(s)
-
-    if date_from or date_to:
-        s = _start(date_from) if date_from else date(today.year, today.month, 1)
-        e = min(_end(date_to), today) if date_to else today
-        return s, e
-
-    if not date_str:
-        return today - timedelta(days=29), today
-    # ISO week: YYYY-Wnn → Monday..Sunday
-    import re
-    wk = re.match(r'^(\d{4})-W(\d{2})$', date_str)
-    if wk:
-        d = date.fromisocalendar(int(wk.group(1)), int(wk.group(2)), 1)
-        return d, d + timedelta(days=6)
-    if len(date_str) == 7:
-        y, m = int(date_str[:4]), int(date_str[5:7])
-        return date(y, m, 1), date(y, m, calendar.monthrange(y, m)[1])
-    d = date.fromisoformat(date_str)
-    return d, d
+    Stats-specific: caps end to today when --to is given.
+    """
+    start, end = _parse_period_base(date_str, date_from, date_to,
+                                    default="last_30_days")
+    if date_to:
+        end = min(end, date.today())
+    return start, end
 
 
 # ── Logbook scanning ─────────────────────────────────────────────────────────
