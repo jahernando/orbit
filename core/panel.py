@@ -167,11 +167,11 @@ def _collect_agenda(start, end):
             time_display = f"⏰{time} " if time else ""
             key = time if time else "zz"
             by_day.setdefault(day, []).append(
-                (key, f"- {time_display}📅 {e['desc']} ({proj})"))
+                (key, f"- 📅 {time_display}{e['desc']} ({proj})"))
         for m in milestones:
             day = m.get("date", "")
             by_day.setdefault(day, []).append(
-                ("zz", f"- 🏁 {m['desc']} ({proj})"))
+                ("zz", f"- ☐ 🏁 {m['desc']} ({proj})"))
         for t in tasks:
             day = t.get("date", "")
             time = t.get("time", "")
@@ -185,7 +185,14 @@ def _collect_agenda(start, end):
                     pass
             key = time if time else "zz"
             by_day.setdefault(day, []).append(
-                (key, f"- [ ] {time_display}{t['desc']}{overdue} ({proj})"))
+                (key, f"- ☐ {time_display}{t['desc']}{overdue} ({proj})"))
+
+    # For single-day view, fold overdue items into today
+    if start == end:
+        today_str = start.isoformat()
+        for day_str in list(by_day.keys()):
+            if day_str and day_str < today_str:
+                by_day.setdefault(today_str, []).extend(by_day.pop(day_str))
 
     # Sort items within each day by time
     for day in by_day:

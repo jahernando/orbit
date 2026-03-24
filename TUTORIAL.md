@@ -287,7 +287,7 @@ orbit
   log next-kr "Espectro calibrado" spectrum.png --entry resultado --deliver
   task add next-kr "Preparar presentación" --date "next thursday"
   hl add next-kr "Resolución validada a 511 keV" --type results
-  link next-kr                          # enlace md al portapapeles
+  clip next-kr                          # enlace md al portapapeles
   render next-kr                        # renderiza a HTML para cloud
 
 Lunes por la tarde
@@ -312,7 +312,39 @@ Viernes por la tarde
 
 ```bash
 note next-kr "Análisis detallado de calibración"   # crea nota en notes/
+note import next-kr "Resultados" ./results.md       # importa .md existente (log + clip)
 note list next-kr                                   # listar notas con estado git
+```
+
+### Clip — copiar al portapapeles
+
+```bash
+clip date                  # fecha de hoy YYYY-MM-DD al portapapeles
+clip date next friday      # fecha del próximo viernes
+clip week                  # semana ISO YYYY-Wnn al portapapeles
+clip next-kr               # enlace markdown al proyecto
+clip next-kr notes/result.md  # enlace a un fichero del proyecto
+```
+
+### Panel — dashboard
+
+```bash
+panel                      # panel del día: prioridad, agenda, actividad
+panel week                 # panel semanal
+panel month                # panel mensual
+panel --open               # abre en editor (panel.md)
+```
+
+### Cronogramas
+
+Tareas anidadas con dependencias y duración temporal:
+
+```bash
+crono add next-kr "plan-calibracion"    # crea cronograma y abre en editor
+crono show next-kr "plan"               # muestra con fechas calculadas
+crono check next-kr "plan"              # valida dependencias y ciclos
+crono list next-kr                      # lista cronogramas del proyecto
+crono done next-kr "plan" 1.2           # marca tarea 1.2 como completada
 ```
 
 ### Listados
@@ -320,6 +352,7 @@ note list next-kr                                   # listar notas con estado gi
 ```bash
 ls projects                # lista de proyectos con estado
 ls tasks                   # tareas pendientes de todos los proyectos
+ls tasks --unplanned       # tareas sin fecha (futuribles)
 ls ms                      # hitos pendientes
 ls files next-kr           # ficheros del proyecto con estado git
 ls notes next-kr           # notas con estado git

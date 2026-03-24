@@ -131,7 +131,7 @@ def _build_summary_md(project_dir: Path) -> str:
         parts.append("## ✅ Tareas pendientes")
         for t in pending_tasks:
             date_s = f" ({t['date']})" if t.get("date") else ""
-            parts.append(f"- [ ] {t['desc']}{date_s}")
+            parts.append(f"- ☐ {t['desc']}{date_s}")
         parts.append("")
 
     pending_ms = [ms for ms in data["milestones"] if ms["status"] == "pending"]
@@ -139,7 +139,7 @@ def _build_summary_md(project_dir: Path) -> str:
         parts.append("## 🏁 Hitos pendientes")
         for ms in pending_ms:
             date_s = f" ({ms['date']})" if ms.get("date") else ""
-            parts.append(f"- [ ] {ms['desc']}{date_s}")
+            parts.append(f"- ☐ 🏁 {ms['desc']}{date_s}")
         parts.append("")
 
     upcoming = _upcoming_events(project_dir, days=5)

@@ -154,6 +154,7 @@ orbit hl add next-kr "Gonzalez 2024" ./refs/g2024.pdf --type refs --deliver
 orbit hl list next-kr [--open]
 
 orbit note next-kr "Analisis de calibracion"
+orbit note import next-kr "Resultados" ./results.md   # importa + log + clip
 orbit note list next-kr [--open]
 ```
 
@@ -184,15 +185,42 @@ orbit report week                   # actividad de esta semana
 orbit report month                  # actividad de este mes
 ```
 
-### Date — fecha al portapapeles
+### Clip — copiar al portapapeles
+
+Comando unificado para copiar fechas, semanas y enlaces al portapapeles:
 
 ```bash
-orbit date                # 2026-03-20 (copiado al portapapeles)
-orbit date wednesday      # próximo miércoles
-orbit date in 2 weeks     # dentro de 2 semanas
-orbit week                # 2026-W12 (copiado al portapapeles)
-orbit week next week      # próxima semana
+orbit clip date                # 2026-03-20 (copiado al portapapeles)
+orbit clip date wednesday      # próximo miércoles
+orbit clip week                # 2026-W12 (copiado al portapapeles)
+orbit clip week next week      # próxima semana
+orbit clip catedra                                      # enlace al proyecto
+orbit clip catedra notes/result.md                      # enlace a un fichero
+orbit clip catedra notes/tramos.md --from complementos  # enlace relativo entre proyectos
 ```
+
+### Panel — dashboard
+
+```bash
+orbit panel                    # panel del día
+orbit panel week               # panel de la semana
+orbit panel month              # panel del mes
+orbit panel --open             # abre en editor (panel.md)
+```
+
+Dashboard con prioridad (alta/urgente/hitos), agenda (citas del periodo) y actividad (logbook).
+
+### Cronogramas
+
+```bash
+orbit crono add   <project> "<name>"             # crear cronograma
+orbit crono show  <project> "<name>" [--open]    # mostrar con fechas calculadas
+orbit crono check <project> "<name>"             # validar
+orbit crono list  <project> [--open]             # listar cronogramas
+orbit crono done  <project> "<name>" <index>     # marcar tarea completada
+```
+
+Tareas anidadas con dependencias y duración. Fichero: `cronos/crono-<nombre>.md`.
 
 ### Render — vista HTML para móvil
 
@@ -205,14 +233,6 @@ orbit render --full           # renderiza todo (primera vez)
 Tras cada `commit`, Orbit renderiza los `.md` modificados a HTML y los copia al cloud (OneDrive/Google Drive). Desde el móvil/tablet, abre `index.html` en la app de cloud para navegar proyectos, agendas, logbooks y notas — con soporte LaTeX (KaTeX).
 
 Los `inbox.md` en cloud permiten capturar ideas desde el móvil; Orbit los recoge al arrancar la shell.
-
-### Link — enlace markdown al proyecto
-
-```bash
-orbit link catedra                                      # → [⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)
-orbit link catedra notes/result.md                      # → [result](⚙️gestion/⚙️catedra/notes/result.md)
-orbit link catedra notes/tramos.md --from complementos  # → [tramos](../⚙️catedra/notes/tramos.md)
-```
 
 ### Deliver — entregar ficheros a la nube
 

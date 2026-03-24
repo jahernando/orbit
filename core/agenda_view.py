@@ -772,7 +772,7 @@ def _format_item_line(kind, item, proj_tag, markdown=False):
                     overdue = " ⚠️"
             except ValueError:
                 pass
-        return f"{pfx}🏁 {item['desc']}{overdue}  {proj_tag}"
+        return f"{pfx}☐ 🏁 {item['desc']}{overdue}  {proj_tag}"
 
     else:  # task
         overdue = ""
@@ -887,7 +887,7 @@ def _format_by_type(collected, markdown=False, dated_only=False):
     type_groups = [
         ("📅 Eventos",  [x for x in all_items if x[0] == "event"]),
         ("🏁 Hitos",    [x for x in all_items if x[0] == "milestone"]),
-        ("[ ] Tareas",  [x for x in all_items if x[0] == "task"]),
+        ("☐ Tareas",  [x for x in all_items if x[0] == "task"]),
     ]
 
     lines = []
@@ -962,7 +962,7 @@ def _format_detail_lines(collected, markdown=False):
                         overdue = " ⚠️"
                 except ValueError:
                     pass
-            lines.append(f"{pfx}🏁 {m['desc']}{date_s}{overdue}")
+            lines.append(f"{pfx}☐ 🏁 {m['desc']}{date_s}{overdue}")
 
         check = "☐" if markdown else "[ ]"
         for t in sorted(tasks, key=lambda x: x.get("date") or "9999"):

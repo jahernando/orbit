@@ -34,9 +34,15 @@ def _get_credentials():
         creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
 
     if not creds or not creds.valid:
+        refreshed = False
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+                refreshed = True
+            except Exception:
+                print("⚠️  Token expirado/revocado — re-autenticando...")
+                creds = None
+        if not refreshed:
             if not CREDENTIALS_PATH.exists():
                 print(f"Error: no se encontró credentials.json en {CREDENTIALS_PATH.parent}")
                 return None

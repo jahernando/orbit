@@ -398,6 +398,18 @@ def cmd_note(args):
         return run_note_drop(project=project,
                              file_str=getattr(args, "file", None),
                              force=getattr(args, "force", False))
+    if action == "import":
+        from core.notes import run_note_import
+        return run_note_import(
+            project   = project,
+            title     = getattr(args, "title", ""),
+            file_str  = getattr(args, "file", None),
+            open_after= not getattr(args, "no_open", False),
+            editor    = getattr(args, "editor", None) or default_editor(),
+            no_date   = getattr(args, "no_date", False),
+            entry     = getattr(args, "entry", None) or "apunte",
+            hl_type   = getattr(args, "hl", None),
+        )
     # default: create (shorthand uses _project/_title/_file)
     title = getattr(args, "title", None) or getattr(args, "_title", "") or ""
     file_str = getattr(args, "file", None) or getattr(args, "_file", None)
@@ -578,8 +590,9 @@ def cmd_help(args):
     from core.config import ORBIT_CODE
     topic = getattr(args, "topic", None)
     editor = getattr(args, "editor", None) or default_editor()
+    to_editor = getattr(args, "open", False)
     if topic in (None, "chuleta"):
-        if topic is None:
+        if topic is None and not to_editor:
             # Print in terminal (paged)
             try:
                 text = (ORBIT_CODE / "CHULETA.md").read_text()
@@ -615,12 +628,81 @@ def cmd_agenda(args):
     return _handle_output(args, fn, "agenda")
 
 
+_MONTH_MAP = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+    "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+    "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4,
+    "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    "ene": 1, "abr": 4, "ago": 8, "dic": 12,
+}
+
+
+def _resolve_cal_month(s):
+    """Resolve a month name or YYYY-MM to (from_str, to_str) or None."""
+    import calendar as _calmod
+    from datetime import date as _date_cls
+    # YYYY-MM format
+    if len(s) == 7 and s[4] == '-':
+        try:
+            y, m = int(s[:4]), int(s[5:7])
+            last = _calmod.monthrange(y, m)[1]
+            return _date_cls(y, m, 1).isoformat(), _date_cls(y, m, last).isoformat()
+        except ValueError:
+            return None
+    # Month name
+    m = _MONTH_MAP.get(s.lower())
+    if m:
+        y = _date_cls.today().year
+        last = _calmod.monthrange(y, m)[1]
+        return _date_cls(y, m, 1).isoformat(), _date_cls(y, m, last).isoformat()
+    return None
+
+
 def cmd_cal(args):
     to_file = getattr(args, "open", False) or getattr(args, "log", None)
+    date_str = _d(getattr(args, "date", None))
+    date_from = _d(getattr(args, "date_from", None))
+    date_to = _d(getattr(args, "date_to", None))
+
+    # Resolve positional month/span if no explicit --date/--from/--to
+    month_arg = getattr(args, "month", None)
+    span_arg = getattr(args, "span", None)
+    if month_arg and not date_str and not date_from and not date_to:
+        resolved = _resolve_cal_month(month_arg)
+        if resolved:
+            date_from = resolved[0]  # only set start; span will set end
+            if not span_arg:
+                date_to = resolved[1]
+        else:
+            # month_arg might be a number (span from current month)
+            try:
+                span_arg = int(month_arg)
+            except ValueError:
+                print(f"⚠️  Mes no reconocido: {month_arg}")
+                return 1
+    if span_arg:
+        span = max(1, min(span_arg, 3))
+        from datetime import date as _date_cls
+        import calendar as _calmod
+        if date_from:
+            base = _date_cls.fromisoformat(date_from) if isinstance(date_from, str) else date_from
+        else:
+            base = _date_cls.today()
+        start_m = _date_cls(base.year, base.month, 1)
+        end_y = start_m.year + (start_m.month + span - 2) // 12
+        end_m = (start_m.month + span - 2) % 12 + 1
+        end_d = _calmod.monthrange(end_y, end_m)[1]
+        date_from = start_m.isoformat()
+        date_to = _date_cls(end_y, end_m, end_d).isoformat()
+
     fn = lambda: run_cal(
-        date_str=_d(getattr(args, "date", None)),
-        date_from=_d(getattr(args, "date_from", None)),
-        date_to=_d(getattr(args, "date_to", None)),
+        date_str=date_str,
+        date_from=date_from,
+        date_to=date_to,
         markdown=bool(to_file),
     )
     return _handle_output(args, fn, "cal")
@@ -1093,6 +1175,10 @@ def _build_parser():
     # --- cal ---
     cal_p = subparsers.add_parser("cal",
                                   help="Show a plain calendar grid (no agenda data)")
+    cal_p.add_argument("month", nargs="?", default=None,
+                       help="Month name (april/abril) or YYYY-MM")
+    cal_p.add_argument("span", nargs="?", default=None, type=int,
+                       help="Number of months to show (1-3, default 1)")
     cal_p.add_argument("--date", default=None, help="Date: YYYY-MM-DD, YYYY-MM, YYYY-Wnn...")
     cal_p.add_argument("--from", dest="date_from", default=None, metavar="DATE",
                        help="Period start (default: 1st of current month)")
@@ -1289,6 +1375,20 @@ def _build_parser():
                            help="Register in highlights instead of logbook (e.g. referencia)")
     nt_create.add_argument("--editor",  default=None)
 
+    nt_import = note_sub.add_parser("import", help="Import an existing .md file as a note")
+    nt_import.add_argument("project", help="Project name (partial match)")
+    nt_import.add_argument("title",   help="Note title")
+    nt_import.add_argument("file",    help="Path to .md file to import")
+    nt_import.add_argument("--no-open", action="store_true",
+                           help="Do not open the note after importing")
+    nt_import.add_argument("--no-date", action="store_true",
+                           help="No date prefix in filename")
+    nt_import.add_argument("--entry",   default="apunte",
+                           help="Logbook entry type (default: apunte)")
+    nt_import.add_argument("--hl",      default=None, metavar="TYPE",
+                           help="Register in highlights instead of logbook")
+    nt_import.add_argument("--editor",  default=None)
+
     nt_open = note_sub.add_parser("open", help="Open note (create if missing)")
     nt_open.add_argument("project", help="Project name (partial match)")
     nt_open.add_argument("name", nargs="?", default=None,
@@ -1463,6 +1563,8 @@ def _build_parser():
 
     # --- help ---
     hlp_p   = subparsers.add_parser("help", help="Show help: chuleta (default), tutorial, about")
+    hlp_p.add_argument("--open", action="store_true", help="Open in editor instead of pager")
+    hlp_p.add_argument("--editor", default=None)
     hlp_sub = hlp_p.add_subparsers(dest="topic")
     for _name, _help in [("chuleta",  "Open CHULETA.md in editor"),
                           ("tutorial", "Open TUTORIAL.md in editor"),

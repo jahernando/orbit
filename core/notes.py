@@ -212,6 +212,48 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
     return 0
 
 
+def run_note_import(project: str, title: str, file_str: str,
+                    open_after: bool = True, editor: str = "",
+                    no_date: bool = False,
+                    entry: str = "apunte",
+                    hl_type: Optional[str] = None) -> int:
+    """Import an existing .md file as a project note, log it, and clip the link.
+
+    Like run_note_create with a file, but file is required and the markdown
+    link to the new note is copied to the clipboard.
+    """
+    rc = run_note_create(
+        project=project, title=title, file_str=file_str,
+        open_after=open_after, editor=editor, no_date=no_date,
+        entry=entry, hl_type=hl_type,
+    )
+    if rc != 0:
+        return rc
+
+    # Build the clip link and copy to clipboard
+    project_dir = _find_new_project(project)
+    if project_dir is None:
+        return 0  # note was already created, just can't clip
+
+    use_date_prefix = not hl_type and not no_date
+    base_name = _title_to_filename(title)
+    if use_date_prefix:
+        note_name = f"{date.today().isoformat()}_{base_name}"
+    else:
+        note_name = base_name
+
+    note_link = f"./notes/{note_name}"
+    clip_text = f"[{title}]({note_link})"
+    try:
+        import subprocess as _sp
+        _sp.run(["pbcopy"], input=clip_text.encode(), check=True)
+        print(f"  (enlace copiado al portapapeles)")
+    except (FileNotFoundError, _sp.CalledProcessError):
+        pass
+
+    return 0
+
+
 def run_note_open(project: str, name: Optional[str] = None,
                   date_str: Optional[str] = None,
                   editor: str = "") -> int:

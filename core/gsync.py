@@ -1012,12 +1012,17 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                     _write_agenda(agenda_path, data)
                 item.pop("_gcal_id", None)
 
-        except Exception:
-            pass  # fail silently
+        except Exception as exc:
+            _do_sync.error = exc
 
+    _do_sync.error = None
     t = threading.Thread(target=_do_sync, daemon=True)
     t.start()
-    # No join — sync runs in the background without blocking the CLI
+    t.join(timeout=_SYNC_TIMEOUT)
+    if t.is_alive():
+        print("  ⚠️  gsync: timeout (sincronización en background)")
+    elif _do_sync.error:
+        print(f"  ⚠️  gsync: {_do_sync.error}")
 
 
 # ── Migration: [gtask:id]/[gcal:id] → .gsync-ids.json + [G] ──────────────

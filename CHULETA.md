@@ -99,13 +99,15 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--ti
 ## ev — eventos
 
 ```bash
-orbit ev add  <project> "<text>" --date DATE [--end DATE] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
+orbit ev add  <project> "<text>" --date DATE [--end DATE] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
 orbit ev drop [<project>] ["<text>"] [--force] [-o] [-s]
-orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
+orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
 orbit ev list [<project>] [--from DATE] [--to DATE]
 ```
 
 - `--time`: hora del evento. `HH:MM` (solo inicio, 1h por defecto) o `HH:MM-HH:MM` (inicio-fin)
+- `--end-time HH:MM`: hora de fin separada (se combina con `--time` → `HH:MM-HH:MM`). Si no hay `--time`, usa 09:00 como inicio
+- `--end` / `--end-date`: fecha de fin para eventos multi-día
 - Sin `--time`: evento de día completo
 - `drop` en evento recurrente: pregunta si quitar solo esta ocurrencia o toda la serie; `-o` avanza al próximo, `-s` elimina la serie (sin prompt); `--force` avanza al próximo (seguro por defecto)
 - `drop` pide confirmación (defecto **No**); `--force` la omite
@@ -155,11 +157,14 @@ orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE]
 ```bash
 orbit note <project> "<title>" [<file>]          # crear nota (atajo sin subcomando)
 orbit note create <project> "<title>" [--file F] [--no-open] [--editor E]
+orbit note import <project> "<title>" <file>     # importar .md existente (log + clip)
 orbit note open   <project> [<name>] [--date D] [--editor E]
 orbit note list   <project> [--open] [--editor E]
 orbit note drop   <project> [<file>] [--force]
 ```
 
+- **import**: importa un fichero `.md` existente en `notes/`, registra en logbook y copia el enlace markdown al portapapeles
+  - Acepta los mismos flags que `create` (`--no-date`, `--entry`, `--hl`, `--no-open`)
 - **create**: crea nota en `notes/` a partir de plantilla y registra en logbook
   - Nombre del fichero: `YYYY-MM-DD_título.md` (con fecha de hoy como prefijo)
   - Contenido: título + línea `*YYYY-MM-DD — [proyecto](link)*`
@@ -214,6 +219,37 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 
 ---
 
+## crono — cronogramas
+
+Cronogramas: tareas anidadas con dependencias y duración temporal. Se almacenan en `cronos/crono-<nombre>.md` dentro del proyecto, enlazados desde `## 📊 Cronogramas` en agenda.md.
+
+```bash
+orbit crono add   <project> "<name>"                    # crear cronograma (abre en editor)
+orbit crono show  <project> "<name>" [--open]           # mostrar con fechas calculadas
+orbit crono check <project> "<name>"                    # validar (doctor)
+orbit crono list  <project> [--open]                    # listar cronogramas del proyecto
+orbit crono done  <project> "<name>" <index>            # marcar tarea como completada
+```
+
+### Formato del fichero
+
+```markdown
+# Crono: nombre del cronograma
+
+- [ ] 1. Fase 1 título
+  - [ ] 1.1 Subtarea | 2026-03-20 | 2W
+  - [ ] 1.2 Otra subtarea | after:1.1 | 3d
+- [ ] 2. Fase 2
+  - [ ] 2.1 Siguiente | after:1 | 1W
+```
+
+- Inicio: fecha ISO (`2026-03-20`), semana ISO (`2026-W12`), semana+día (`2026-W12-wed`), o dependencia (`after:<índice>`)
+- Duración: `Nd` (días), `NW` (semanas)
+- Tareas padre calculan su inicio/fin de las hijas
+- `check` valida: índices únicos, dependencias válidas, sin ciclos, hojas con inicio+duración
+
+---
+
 ## undo — deshacer operaciones
 
 ```bash
@@ -244,47 +280,27 @@ orbit render --full           # renderiza todos los proyectos
 - Se ejecuta automáticamente en background tras cada `commit`
 - Los `.md` no se copian a cloud — solo los `.html` renderizados + `inbox.md`
 
-## date — fecha en formato YYYY-MM-DD
+## clip — copiar al portapapeles
+
+Comando unificado que reemplaza `date`, `week` y `link`:
 
 ```bash
-orbit date                # hoy: 2026-03-20 (copiado al portapapeles)
-orbit date wednesday      # próximo miércoles
-orbit date in 2 weeks     # dentro de 2 semanas
-orbit date tomorrow       # mañana
-orbit date lunes          # próximo lunes
+orbit clip date                # hoy: 2026-03-20 (copiado al portapapeles)
+orbit clip date wednesday      # próximo miércoles
+orbit clip date in 2 weeks     # dentro de 2 semanas
+orbit clip week                # esta semana: 2026-W12
+orbit clip week next week      # próxima semana
+orbit clip <project>                                        # enlace al proyecto
+orbit clip <project> notes/result.md                        # enlace a un fichero del proyecto
+orbit clip catedra notes/tramos.md --from complementos      # enlace relativo entre proyectos
 ```
 
-- Imprime la fecha en formato `YYYY-MM-DD` y la copia al portapapeles
-- Acepta el mismo vocabulario de fechas que el resto de comandos (inglés y español)
-- Sin argumentos: fecha de hoy
-
-## week — semana ISO al portapapeles
-
-```bash
-orbit week                # esta semana: 2026-W12 (copiado al portapapeles)
-orbit week next week      # próxima semana
-orbit week wednesday      # semana del próximo miércoles
-orbit week in 3 weeks     # dentro de 3 semanas
-```
-
-- Imprime la semana ISO en formato `YYYY-Wnn` y la copia al portapapeles
-- Acepta el mismo vocabulario de fechas que `date` — convierte a semana ISO
-- Sin argumentos: semana actual
-
-## link — enlace markdown al proyecto
-
-```bash
-orbit link <project>                                        # enlace al proyecto
-orbit link <project> notes/result.md                        # enlace a un fichero del proyecto
-orbit link catedra notes/tramos.md --from complementos      # enlace relativo entre proyectos
-```
-
-- Imprime un enlace markdown y lo copia al portapapeles
-- Sin fichero: `[⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)`
-- Con fichero: `[result](⚙️gestion/⚙️catedra/notes/result.md)`
-- `--from <proyecto>`: calcula ruta relativa desde la raíz del proyecto origen
-  - Para enlazar entre proyectos en Typora/editores que resuelven paths relativos
-  - Ejemplo: `--from complementos` → `[tramos](../⚙️catedra/notes/tramos.md)`
+- `clip date [expr]`: fecha YYYY-MM-DD al portapapeles. Sin argumento: hoy
+- `clip week [expr]`: semana ISO YYYY-Wnn al portapapeles. Sin argumento: semana actual
+- `clip <project> [fichero]`: enlace markdown al proyecto o a un fichero del proyecto
+  - Sin fichero: `[⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)`
+  - Con fichero: busca por nombre parcial en el proyecto (interactivo si hay varias coincidencias)
+  - `--from <proyecto>`: calcula ruta relativa desde la raíz del proyecto origen (para Typora/Obsidian)
 
 ## deliver — entregar ficheros a la nube
 
@@ -333,6 +349,8 @@ orbit commit ["<mensaje>"]
 
 - Sin mensaje: pide interactivamente; intro vacío → genera mensaje automático
 - Muestra ficheros modificados y pide `[S/n]` antes de ejecutar
+- Ejecuta doctor pre-check: valida agendas/logbooks antes de commitear, muestra problemas y pregunta si continuar
+- Ejecuta reconciliación gsync: detecta renombramientos de citas en el markdown y migra IDs de Google
 
 ---
 
@@ -341,7 +359,7 @@ orbit commit ["<mensaje>"]
 ```bash
 orbit ls                              # lista proyectos (por defecto)
 orbit ls projects [--status S] [--type T] [--sort type|status|priority]
-orbit ls tasks    [project...] [--status pending|done|all] [--date D] [--dated]
+orbit ls tasks    [project...] [--status pending|done|all] [--date D] [--dated] [--unplanned]
 orbit ls ms       [project...] [--status pending|done|all] [--dated]
 orbit ls ev         [project]    [--from D] [--to D]
 orbit ls reminders  [project]    # recordatorios activos (alias: ls rem)
@@ -349,6 +367,8 @@ orbit ls hl        [project]    [--type T]
 orbit ls files    [project]    # ficheros md del proyecto con estado git
 orbit ls notes    [project]    # notas con estado git
 ```
+
+- `--unplanned`: solo tareas sin fecha asignada (futuribles)
 
 Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untracked · `✗` ignored
 
@@ -529,9 +549,10 @@ Al entrar en `orbit shell`:
 
 ```bash
 orbit help            # muestra CHULETA.md en terminal (paginado)
-orbit help chuleta    # abre CHULETA.md en el editor
-orbit help about      # abre README.md en el editor
+orbit help --open     # abre CHULETA.md en el editor
+orbit help chuleta    # abre CHULETA.md en el editor (equivalente)
 orbit help tutorial   # abre TUTORIAL.md en el editor
+orbit help about      # abre README.md en el editor
 ```
 
 ---

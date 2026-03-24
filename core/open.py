@@ -12,9 +12,10 @@ from pathlib import Path
 from core.log import find_project, resolve_file, _append_entry, init_logbook
 
 EDITORS = {
-    "typora": ["open", "-a", "Typora"],
-    "glow":   ["glow"],
-    "code":   ["code"],
+    "typora":   ["open", "-a", "Typora"],
+    "obsidian": ["open", "-a", "Obsidian"],
+    "glow":     ["glow"],
+    "code":     ["code"],
 }
 
 # Foreground editors (terminal renderers) — block until exit

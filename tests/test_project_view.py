@@ -242,7 +242,7 @@ class TestBuildSummaryMd:
         from core.project_view import _build_summary_md
         _add_task(proj, "MD task")
         text = _build_summary_md(proj)
-        assert "- [ ] MD task" in text
+        assert "- ☐ MD task" in text
 
     def test_includes_milestones(self, proj):
         from core.project_view import _build_summary_md
