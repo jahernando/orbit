@@ -935,7 +935,7 @@ def delete_gcal_event(project_dir: Path, ev: dict) -> None:
 
 # ── Individual item sync (for add/done/edit/drop hooks) ────────────────────
 
-_SYNC_TIMEOUT = 3  # seconds
+_SYNC_TIMEOUT = 6  # seconds
 
 
 def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:

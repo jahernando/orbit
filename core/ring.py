@@ -300,7 +300,7 @@ def _reminders_on(project_dir: Path, target: date) -> list:
                 continue
             # Walk occurrences from base date to target
             current = rem_date
-            for _ in range(366):
+            for _ in range(5000):
                 if current >= target:
                     break
                 nxt_str = _next_occurrence(current.isoformat(),

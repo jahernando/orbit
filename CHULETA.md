@@ -66,6 +66,14 @@ orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--
 
 Se aceptan días de la semana en inglés y español (`lunes`, `viernes`, etc.).
 
+### Fin de recurrencia (`--until`)
+
+`--until YYYY-MM-DD` indica la fecha límite de la recurrencia. Cuando la siguiente ocurrencia supera esa fecha, la serie se da por finalizada. No confundir con `--end`/`--end-date` de eventos, que indican el día de fin de un evento multi-día.
+
+Ejemplo: `orbit ev add proj "Seminario" --date 2026-04-01 --recur weekly --until 2026-06-30`
+
+En `edit`: `--until none` elimina el límite (la serie pasa a ser indefinida).
+
 ### Ring (`--ring`)
 
 | Valor | Significado |

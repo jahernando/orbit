@@ -192,7 +192,18 @@ def _expand_recurrences(item: dict, start: date, end: date) -> list:
     if until_date and until_date < limit:
         limit = until_date
 
-    # Safety cap: max 366 occurrences
+    # Fast-forward: skip occurrences before the display window.
+    # This avoids hitting the safety cap for old recurring items.
+    for _ in range(5000):
+        if current >= start:
+            break
+        nxt_str = _next_occurrence(current.isoformat(), recur, current.isoformat())
+        nxt = date.fromisoformat(nxt_str)
+        if nxt <= current:
+            break
+        current = nxt
+
+    # Safety cap: max 366 occurrences within the display window
     for _ in range(366):
         if current > limit:
             break
