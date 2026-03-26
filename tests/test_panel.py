@@ -291,7 +291,7 @@ class TestRunPanel:
         out = capsys.readouterr().out
         assert "important" in out
         assert "Deadline" in out
-        assert "Alta" in out
+        assert "🔴" in out
 
     def test_shows_activity(self, panel_env, capsys):
         today = date.today().isoformat()

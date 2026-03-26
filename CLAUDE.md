@@ -69,7 +69,7 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 ## Convenciones de código
 
 - Python 3.9+ (anaconda del usuario)
-- Tests con pytest, ~750 tests (2 fallan por dependencia de fecha, preexistentes)
+- Tests con pytest, ~989 tests (2 fallan por dependencia de fecha, preexistentes)
 - Ignorar `tests/test_notes_commit.py` y `tests/test_undo.py` si fallan por fecha
 - Funciones públicas: `run_*` (dispatchers en orbit.py las llaman)
 - Funciones internas: `_*` (prefijo underscore)
@@ -85,7 +85,7 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.23.0, 2026-03-21)
+## Estado actual (v0.26.0, 2026-03-26)
 
 ### Próximo: Cronogramas (diseño cerrado, pendiente de implementar)
 - Nuevo tipo: cronograma = tareas anidadas con dependencias y duración temporal
@@ -98,6 +98,24 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - Fase 2: Gantt ANSI terminal
 - Fase 3: gsync (pendiente de decisión)
 - Diseño completo en `~/🚀orbit-ws/💻software/💻orbit/notes/2026-03-21_output_cronograma.md`
+
+### v0.26.0 (2026-03-26)
+- **Federación de workspaces**: lectura cruzada entre workspaces via `federation.json`
+  - Comandos de lectura (panel, agenda, report, ls, search) incluyen federados por defecto
+  - `--no-fed` para desactivar; escritura siempre local
+  - Items federados con emoji del workspace (🌿); proyectos locales con link a project.md
+  - Ring startup programa recordatorios de ambos workspaces
+- **Panel y agenda en formato tabla markdown** (prioridad, agenda por día)
+- **Vencidas agrupadas en hoy** con fecha original: `(📅2026-03-22) ⚠️`
+- **`orbit agenda --open`** escribe a `agenda.md` (fijable en Obsidian)
+- **Editor configurable en `orbit.json`**: `"editor": "obsidian"`
+  - Prioridad: `ORBIT_EDITOR` env → `orbit.json` → sistema
+- **Limpieza Typora → Obsidian** en comentarios y help text
+- **Secciones con separadores** (`---`) en panel y agenda markdown
+- **`## Calendario`** como sección explícita en panel y agenda
+- **Exact match ignora emoji de tipo**: `igfae` → `⚙️igfae` sin ambigüedad
+- **`project create`**: avisa si nombre similar a proyecto existente
+- **Doctor**: muestra preview del texto de la línea problemática
 
 ### v0.23.0 (2026-03-21)
 - `ev add/edit --end-date` — alias explícito de `--end` (claridad)

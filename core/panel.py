@@ -20,8 +20,7 @@ from core.tasks import PRIORITY_MAP
 
 # ── Period helpers ────────────────────────────────────────────────────────────
 
-_WEEKDAYS_ES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes",
-                "Sábado", "Domingo"]
+_WEEKDAYS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 
 def _parse_panel_period(period_str):
@@ -31,7 +30,7 @@ def _parse_panel_period(period_str):
     """
     today = date.today()
     if not period_str or period_str.lower() in ("today", "hoy"):
-        return today, today, f"{today.isoformat()} ({today.strftime('%A')})"
+        return today, today, f"{today.isoformat()} ({_WEEKDAYS_ES[today.weekday()]})"
     p = period_str.lower()
     if p in ("week", "semana"):
         monday = today - timedelta(days=today.weekday())
@@ -45,7 +44,7 @@ def _parse_panel_period(period_str):
                     calendar.monthrange(today.year, today.month)[1])
         label = f"{today.strftime('%Y-%m')} ({first.isoformat()} → {last.isoformat()})"
         return first, last, label
-    return today, today, f"{today.isoformat()} ({today.strftime('%A')})"
+    return today, today, f"{today.isoformat()} ({_WEEKDAYS_ES[today.weekday()]})"
 
 
 # ── Priority scanning ─────────────────────────────────────────────────────────
@@ -177,41 +176,42 @@ def _collect_priority_projects(start, end, include_federated=True):
 # ── Agenda ────────────────────────────────────────────────────────────────────
 
 def _collect_agenda(start, end, include_federated=True):
-    """Collect agenda items for period. Returns dict {date_str: [(sort_key, line)]}."""
+    """Collect agenda items for period.
+
+    Returns dict {date_str: [(sort_key, icon, time, desc, proj_link)]}.
+    """
     from core.agenda_view import _collect_data
 
     today = date.today()
     dirs = [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
     collected = _collect_data(dirs, start, end, dated_only=True)
 
-    by_day = {}  # date_str → [(sort_key, line)]
+    by_day = {}  # date_str → [(sort_key, icon, time, desc, proj_link)]
     for project_dir, tasks, events, milestones in collected:
         proj = _project_link(project_dir)
         for e in events:
             day = e.get("date", "")
             time = e.get("time", "")
-            time_display = f"⏰{time} " if time else ""
             key = time if time else "zz"
             by_day.setdefault(day, []).append(
-                (key, f"- 📅 {time_display}{e['desc']} — {proj}"))
+                (key, "📅", time, e["desc"], proj))
         for m in milestones:
             day = m.get("date", "")
             by_day.setdefault(day, []).append(
-                ("zz", f"- ☐ 🏁 {m['desc']} — {proj}"))
+                ("zz", "☐ 🏁", "", m["desc"], proj))
         for t in tasks:
             day = t.get("date", "")
             time = t.get("time", "")
-            time_display = f"⏰{time} " if time else ""
             overdue = ""
             if day:
                 try:
                     if date.fromisoformat(day) < today:
-                        overdue = " ⚠️ vencida"
+                        overdue = " ⚠️"
                 except ValueError:
                     pass
             key = time if time else "zz"
             by_day.setdefault(day, []).append(
-                (key, f"- ☐ {time_display}{t['desc']}{overdue} — {proj}"))
+                (key, "☐", time, f"{t['desc']}{overdue}", proj))
 
     # For single-day view, fold overdue items into today
     if start == end:
@@ -272,33 +272,29 @@ def run_panel(period=None, include_federated=True) -> int:
     is_single_day = start == end
 
     print(f"# Panel — {label}")
+    print("\n---")
 
     # ── Calendar ──
-    print()
+    print(f"\n## Calendario\n")
     _print_calendar(start, end)
+    print("\n---")
 
     # ── 1. Prioridad ──
     alta, milestones, media = _collect_priority_projects(start, end, include_federated)
 
     print(f"\n## Prioridad\n")
-    if alta:
-        print(f"🔴 **Alta**")
+    has_any = alta or media or milestones
+    if has_any:
+        print("| | Proyecto | Detalle |")
+        print("|---|---------|---------|")
         for project_dir, motivo in alta:
-            suffix = f" — {motivo}" if motivo else ""
-            print(f"- {_project_link(project_dir)}{suffix}")
-    if media:
-        if alta:
-            print()
-        print(f"🔶 **Urgente**")
+            detail = motivo if motivo else ""
+            print(f"| 🔴 | {_project_link(project_dir)} | {detail} |")
         for project_dir, reason in media:
-            print(f"- {_project_link(project_dir)} — {reason}")
-    if milestones:
-        if alta or media:
-            print()
-        print(f"🏁 **Hitos este mes**")
+            print(f"| 🔶 | {_project_link(project_dir)} | {reason} |")
         for project_dir, ms_date, ms_desc in milestones:
-            print(f"- {ms_date} — {ms_desc} ({_fed_label(project_dir)})")
-    if not alta and not media and not milestones:
+            print(f"| 🏁 | {_project_link(project_dir)} | {ms_date} — {ms_desc} |")
+    else:
         print("(ninguno)")
     print("\n---")
 
@@ -306,27 +302,29 @@ def run_panel(period=None, include_federated=True) -> int:
     by_day = _collect_agenda(start, end, include_federated)
 
     print(f"\n## Agenda\n")
+    _TBL_HDR = "| | Hora | Descripción | Proyecto |\n|---|------|------------|----------|"
     if by_day:
         if is_single_day:
-            # Single day: flat list
             items = by_day.get(start.isoformat(), [])
-            for _, line in items:
-                print(line)
-            if not items:
+            if items:
+                print(_TBL_HDR)
+                for _, icon, time, desc, proj in items:
+                    print(f"| {icon} | {time} | {desc} | {proj} |")
+            else:
                 print("(sin citas)")
         else:
-            # Multi-day: group by day
             for day_str in sorted(by_day.keys()):
                 if not day_str:
                     continue
                 try:
                     d = date.fromisoformat(day_str)
                     wd = _WEEKDAYS_ES[d.weekday()]
-                    print(f"**{day_str} ({wd})**")
+                    print(f"**{day_str} ({wd})**\n")
                 except ValueError:
-                    print(f"**{day_str}**")
-                for _, line in by_day[day_str]:
-                    print(line)
+                    print(f"**{day_str}**\n")
+                print(_TBL_HDR)
+                for _, icon, time, desc, proj in by_day[day_str]:
+                    print(f"| {icon} | {time} | {desc} | {proj} |")
                 print()
     else:
         print("(sin citas)")

@@ -451,22 +451,33 @@ def run_agenda(
     is_single_day = start == end
 
     if is_single_day:
-        header = f"AGENDA — {start.isoformat()}"
-        if start == today:
-            header += " (hoy)"
+        day_name = _DAY_NAMES[start.weekday()]
+        if markdown:
+            header = f"# Agenda — {start.isoformat()} ({day_name})"
+        else:
+            header = f"AGENDA — {start.isoformat()} ({day_name})"
     else:
         days = (end - start).days + 1
-        header = f"AGENDA — {start.isoformat()} → {end.isoformat()}  ({days}d)"
+        if markdown:
+            header = f"# Agenda — {start.isoformat()} → {end.isoformat()}  ({days}d)"
+        else:
+            header = f"AGENDA — {start.isoformat()} → {end.isoformat()}  ({days}d)"
 
     # Calendar grid (default on, unless --no-cal)
-    if not no_cal:
-        cal_end = _cap_end(start, end)
-        if markdown:
+    if markdown:
+        print(header)
+        print("\n---")
+        if not no_cal:
+            cal_end = _cap_end(start, end)
+            print("\n## Calendario\n")
             _print_calendar_grid_md(dirs, start, cal_end)
-        else:
+            print("\n---")
+        lines = []
+    else:
+        if not no_cal:
+            cal_end = _cap_end(start, end)
             _print_calendar_grid_ansi(dirs, start, cal_end)
-
-    lines = [header, "─" * 56]
+        lines = [header, "─" * 56]
 
     collected = _collect_data(dirs, start, end, dated_only=dated_only)
 
@@ -481,8 +492,9 @@ def run_agenda(
     total_events = sum(len(e) for _, _, e, _ in collected)
     total_ms = sum(len(m) for _, _, _, m in collected)
 
+    footer_sep = "---" if markdown else "─" * 56
     lines.append("")
-    lines.append("─" * 56)
+    lines.append(footer_sep)
     parts = []
     if total_tasks:
         parts.append(f"{total_tasks} tarea{'s' if total_tasks != 1 else ''}")
@@ -614,22 +626,6 @@ def _render_calendar(start: date, end: date, fmt: str = "ansi",
         dates = {}
 
     lines = []
-
-    # Overdue header (only when we have agenda data)
-    if overdue_items:
-        if is_ansi:
-            lines.append(f"  {_RED}{_BOLD}⚠️  Vencidas{_RESET}")
-            for proj_dir, kind, desc, d_str in sorted(overdue_items, key=lambda x: x[3]):
-                lines.append(f"  {_RED}{kind} {desc} ({d_str}) — {proj_dir.name}{_RESET}")
-            lines.append("")
-        else:
-            lines.append("### ⚠️ Vencidas")
-            lines.append("")
-            for proj_dir, kind, desc, d_str in sorted(overdue_items, key=lambda x: x[3]):
-                display_kind = "☐" if kind == "[ ]" else kind
-                proj_tag = _project_link(proj_dir)
-                lines.append(f"- {display_kind} {desc} ({d_str}) — {proj_tag}")
-            lines.append("")
 
     current = date(start.year, start.month, 1)
     while current <= end:
@@ -823,6 +819,47 @@ def _format_item_line(kind, item, proj_tag, markdown=False):
         return f"{pfx}{check} {item['desc']}{recur_s}{overdue}  {proj_tag}"
 
 
+def _item_to_table_row(kind, item, proj_tag):
+    """Convert an agenda item to a table row: (icon, time, desc, proj)."""
+    today = date.today()
+    if kind == "event":
+        time_s = item.get("time", "")
+        end_s = f" → {item['end']}" if item.get("end") else ""
+        recur_s = ""
+        if item.get("recur"):
+            recur_s = f" 🔄{item['recur']}"
+            if item.get("until"):
+                recur_s += f":{item['until']}"
+        return "📅", time_s, f"{item['desc']}{end_s}{recur_s}", proj_tag
+    elif kind == "milestone":
+        overdue = ""
+        if item.get("date"):
+            try:
+                if date.fromisoformat(item["date"]) < today:
+                    overdue = " ⚠️"
+            except ValueError:
+                pass
+        return "☐ 🏁", "", f"{item['desc']}{overdue}", proj_tag
+    else:  # task
+        time_s = item.get("time", "")
+        overdue = ""
+        if item.get("date"):
+            try:
+                if date.fromisoformat(item["date"]) < today:
+                    overdue = " ⚠️"
+            except ValueError:
+                pass
+        recur_s = ""
+        if item.get("recur"):
+            recur_s = f" 🔄{item['recur']}"
+            if item.get("until"):
+                recur_s += f":{item['until']}"
+        return "☐", time_s, f"{item['desc']}{recur_s}{overdue}", proj_tag
+
+
+_TBL_HDR = "| | Hora | Descripción | Proyecto |\n|---|------|------------|----------|"
+
+
 def _format_by_date(collected, markdown=False, dated_only=False):
     """Format agenda items grouped by date, then by hour within each date.
 
@@ -831,7 +868,7 @@ def _format_by_date(collected, markdown=False, dated_only=False):
     Undated items go in a final "Sin fecha" block (unless dated_only).
     """
     # Flatten all items with project info
-    # Each entry: (date_str|None, kind, item, proj_name)
+    # Each entry: (date_str|None, kind, item, proj_tag)
     all_items = []
     for project_dir, tasks, events, milestones in collected:
         tag = _project_link(project_dir) if markdown else _fed_tag(project_dir)
@@ -846,10 +883,18 @@ def _format_by_date(collected, markdown=False, dated_only=False):
     dated = [(d, k, it, p) for d, k, it, p in all_items if d]
     undated = [(d, k, it, p) for d, k, it, p in all_items if not d]
 
-    # Group dated items by date
+    # Group dated items by date, folding overdue into today
+    today = date.today()
+    today_str = today.isoformat()
     by_date = {}
     for d_str, kind, item, proj in dated:
-        by_date.setdefault(d_str, []).append((kind, item, proj))
+        if d_str < today_str:
+            # Overdue: fold into today, annotate original date in desc
+            item = dict(item)  # copy to avoid mutating original
+            item["desc"] = f"{item['desc']} (📅{d_str})"
+            by_date.setdefault(today_str, []).append((kind, item, proj))
+        else:
+            by_date.setdefault(d_str, []).append((kind, item, proj))
 
     # Kind priority: milestone=0, event=1, task=2
     kind_order = {"milestone": 0, "event": 1, "task": 2}
@@ -863,12 +908,6 @@ def _format_by_date(collected, markdown=False, dated_only=False):
         except ValueError:
             day_label = d_str
 
-        lines.append("")
-        if markdown:
-            lines.append(f"**{day_label}**")
-        else:
-            lines.append(f"{_BOLD}{day_label}{_RESET}")
-
         items = by_date[d_str]
         # Sort: items with time first (by time), then without time; within group by kind
         items.sort(key=lambda x: (
@@ -876,28 +915,41 @@ def _format_by_date(collected, markdown=False, dated_only=False):
             kind_order.get(x[0], 9),
         ))
 
-        # Group by hour for display
-        current_time = None
-        for kind, item, proj in items:
-            item_time = item.get("time")
-            if item_time and item_time != current_time:
-                current_time = item_time
-                hour_label = item_time.split("-")[0]  # show start time for ranges
-                lines.append(f"  {_DIM}{hour_label}{_RESET}" if not markdown else f"  *{hour_label}*")
-            lines.append(_format_item_line(kind, item, proj, markdown=markdown))
+        lines.append("")
+        if markdown:
+            lines.append(f"**{day_label}**")
+            lines.append("")
+            lines.append(_TBL_HDR)
+            for kind, item, proj in items:
+                icon, time_s, desc, proj_tag = _item_to_table_row(kind, item, proj)
+                lines.append(f"| {icon} | {time_s} | {desc} | {proj_tag} |")
+        else:
+            lines.append(f"{_BOLD}{day_label}{_RESET}")
+            current_time = None
+            for kind, item, proj in items:
+                item_time = item.get("time")
+                if item_time and item_time != current_time:
+                    current_time = item_time
+                    hour_label = item_time.split("-")[0]
+                    lines.append(f"  {_DIM}{hour_label}{_RESET}")
+                lines.append(_format_item_line(kind, item, proj, markdown=False))
 
     # Undated block
     if undated and not dated_only:
         lines.append("")
         if markdown:
             lines.append("**Sin fecha**")
+            lines.append("")
+            lines.append(_TBL_HDR)
+            undated.sort(key=lambda x: kind_order.get(x[1], 9))
+            for _, kind, item, proj in undated:
+                icon, time_s, desc, proj_tag = _item_to_table_row(kind, item, proj)
+                lines.append(f"| {icon} | {time_s} | {desc} | {proj_tag} |")
         else:
             lines.append(f"{_BOLD}Sin fecha{_RESET}")
-
-        # Sort: milestones, events, tasks
-        undated.sort(key=lambda x: kind_order.get(x[1], 9))
-        for _, kind, item, proj in undated:
-            lines.append(_format_item_line(kind, item, proj, markdown=markdown))
+            undated.sort(key=lambda x: kind_order.get(x[1], 9))
+            for _, kind, item, proj in undated:
+                lines.append(_format_item_line(kind, item, proj, markdown=False))
 
     return lines
 

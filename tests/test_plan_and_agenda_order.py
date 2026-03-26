@@ -53,10 +53,10 @@ class TestPlanTag:
 
     def test_format_entry_plan(self):
         from core.log import format_entry
-        entry = format_entry("planificación semanal", "plan", None, "2026-03-11")
+        entry = format_entry("planificación semanal", "plan", None, "2027-03-11")
         assert "🗓️" in entry
         assert "#plan" in entry
-        assert "2026-03-11" in entry
+        assert "2027-03-11" in entry
 
     def test_plans_section_in_highlights(self):
         from core.highlights import SECTION_MAP, VALID_TYPES
@@ -89,29 +89,29 @@ class TestAgendaOrderDate:
 
         collected = [
             (proj_a,
-             [{"status": "pending", "desc": "Task A1", "date": "2026-03-11"}],
-             [{"date": "2026-03-12", "desc": "Event A1", "time": "10:00"}],
+             [{"status": "pending", "desc": "Task A1", "date": "2027-03-11"}],
+             [{"date": "2027-03-12", "desc": "Event A1", "time": "10:00"}],
              []),
             (proj_b,
-             [{"status": "pending", "desc": "Task B1", "date": "2026-03-11"}],
+             [{"status": "pending", "desc": "Task B1", "date": "2027-03-11"}],
              [],
-             [{"status": "pending", "desc": "Milestone B1", "date": "2026-03-12"}]),
+             [{"status": "pending", "desc": "Milestone B1", "date": "2027-03-12"}]),
         ]
 
         lines = _format_by_date(collected)
         text = "\n".join(lines)
 
         # Both dates should appear as headers
-        assert "2026-03-11" in text
-        assert "2026-03-12" in text
+        assert "2027-03-11" in text
+        assert "2027-03-12" in text
 
         # Project tags should appear
         assert "[💻alpha]" in text
         assert "[🔬beta]" in text
 
         # Day 11 should come before day 12
-        idx_11 = text.index("2026-03-11")
-        idx_12 = text.index("2026-03-12")
+        idx_11 = text.index("2027-03-11")
+        idx_12 = text.index("2027-03-12")
         assert idx_11 < idx_12
 
     def test_format_by_date_time_ordering(self, agenda_env):
@@ -121,9 +121,9 @@ class TestAgendaOrderDate:
 
         collected = [
             (proj,
-             [{"status": "pending", "desc": "No-time task", "date": "2026-03-11"}],
-             [{"date": "2026-03-11", "desc": "Morning event", "time": "09:00"},
-              {"date": "2026-03-11", "desc": "Afternoon event", "time": "14:00"}],
+             [{"status": "pending", "desc": "No-time task", "date": "2027-03-11"}],
+             [{"date": "2027-03-11", "desc": "Morning event", "time": "09:00"},
+              {"date": "2027-03-11", "desc": "Afternoon event", "time": "14:00"}],
              []),
         ]
 
@@ -143,7 +143,7 @@ class TestAgendaOrderDate:
 
         collected = [
             (proj,
-             [{"status": "pending", "desc": "Dated task", "date": "2026-03-11"},
+             [{"status": "pending", "desc": "Dated task", "date": "2027-03-11"},
               {"status": "pending", "desc": "Undated task", "date": None}],
              [],
              []),
@@ -162,7 +162,7 @@ class TestAgendaOrderDate:
 
         collected = [
             (proj,
-             [{"status": "pending", "desc": "Dated task", "date": "2026-03-11"},
+             [{"status": "pending", "desc": "Dated task", "date": "2027-03-11"},
               {"status": "pending", "desc": "Undated task", "date": None}],
              [],
              []),
@@ -183,9 +183,9 @@ class TestAgendaOrderDate:
 
         collected = [
             (proj,
-             [{"status": "pending", "desc": "A task", "date": "2026-03-11"}],
-             [{"date": "2026-03-11", "desc": "An event"}],
-             [{"status": "pending", "desc": "A milestone", "date": "2026-03-11"}]),
+             [{"status": "pending", "desc": "A task", "date": "2027-03-11"}],
+             [{"date": "2027-03-11", "desc": "An event"}],
+             [{"status": "pending", "desc": "A milestone", "date": "2027-03-11"}]),
         ]
 
         lines = _format_by_date(collected)
@@ -203,7 +203,7 @@ class TestAgendaOrderDate:
 
         collected = [
             (proj,
-             [{"status": "pending", "desc": "Task md", "date": "2026-03-11"}],
+             [{"status": "pending", "desc": "Task md", "date": "2027-03-11"}],
              [],
              []),
         ]
@@ -211,7 +211,7 @@ class TestAgendaOrderDate:
         lines = _format_by_date(collected, markdown=True)
         text = "\n".join(lines)
 
-        assert "**2026-03-11" in text
+        assert "**2027-03-11" in text
         assert "☐" in text  # markdown checkbox
 
 

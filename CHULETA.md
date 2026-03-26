@@ -377,6 +377,7 @@ orbit ls notes    [project]    # notas con estado git
 ```
 
 - `--unplanned`: solo tareas sin fecha asignada (futuribles)
+- `--no-fed`: excluye proyectos federados del listado
 
 Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untracked · `✗` ignored
 
@@ -385,7 +386,7 @@ Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untra
 ## agenda — vista temporal
 
 ```bash
-orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--summary] [--dated] [--order project|date] [--open] [--editor E]
+orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--summary] [--dated] [--order project|date] [--no-fed] [--open] [--editor E]
 ```
 
 - Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
@@ -402,7 +403,10 @@ orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--summary
 - `--dated`: solo muestra tareas/hitos que tienen fecha asignada
 - `--order project`: agrupa por proyecto (por defecto)
 - `--order date`: agrupa por día, con horas como sub-cabeceras; sin-fecha al final
-- Compatible con `--open` y `--log`
+- `--no-fed`: excluye proyectos de workspaces federados
+- `--open` escribe a `agenda.md` (fijable en Obsidian) — formato tabla markdown
+- Tareas vencidas se agrupan en el día de hoy con la fecha original: `(📅2026-03-22) ⚠️`
+- Compatible con `--log`
 
 ---
 
@@ -413,23 +417,26 @@ orbit panel                                        # panel del día
 orbit panel week                                   # panel de la semana
 orbit panel month                                  # panel del mes
 orbit panel --open                                 # abre en editor (panel.md)
+orbit panel --no-fed                               # sin proyectos federados
 orbit panel --append mission:W12                   # añade a una nota
 ```
 
-Dashboard con tres secciones:
+Dashboard con tres secciones (formato tabla markdown):
 
-- **Prioridad**: alta (explícita, con motivo), urgente (tareas/eventos en periodo + vencidas), hitos del mes
-- **Agenda**: citas del periodo ordenadas por hora; por días si es semana/mes. Tareas como `[ ]`
+- **Prioridad**: tabla con 🔴 alta, 🔶 urgente (citas/vencidas en periodo), 🏁 hitos del mes
+- **Agenda**: tabla por día con columnas: tipo, hora, descripción, proyecto (con link)
 - **Actividad**: entradas de logbook del periodo por proyecto
 
-`--open` escribe a `panel.md` (no a `cmd.md`) — se puede tener abierto en Typora sin interferir con otros comandos.
+`--open` escribe a `panel.md` (fijable en Obsidian). `--no-fed` excluye federados.
+
+Proyectos locales se muestran como links a `project.md`; federados con emoji del workspace (🌿).
 
 ---
 
 ## report — informe de actividad
 
 ```bash
-orbit report [project...] [--date D] [--from D] [--to D] [--open] [--editor E]
+orbit report [project...] [--date D] [--from D] [--to D] [--no-fed] [--open] [--editor E]
 orbit report today                    # actividad de hoy
 orbit report week                     # actividad de esta semana
 orbit report month                    # actividad de este mes
@@ -553,6 +560,29 @@ Al entrar en `orbit shell`:
 
 ---
 
+## Federación de workspaces
+
+Orbit puede leer proyectos de otros workspaces (lectura federada). Útil para ver citas personales desde el workspace de trabajo.
+
+Configuración: `federation.json` en la raíz del workspace:
+
+```json
+{
+  "federated": [
+    {"name": "personal", "path": "~/🌿orbit-ps", "emoji": "🌿"}
+  ]
+}
+```
+
+- Los comandos de lectura (`panel`, `agenda`, `report`, `ls`, `search`) incluyen proyectos federados por defecto
+- `--no-fed`: desactiva la federación para ese comando
+- Los comandos de escritura (`add`, `edit`, `done`, `drop`) solo operan en el workspace activo
+- Los proyectos federados se muestran con el emoji del workspace (🌿) sin link
+- Los recordatorios del Mac (`ring`) se programan para ambos workspaces al entrar en la shell
+- La federación es asimétrica: cada workspace decide qué otros ve
+
+---
+
 ## help — documentación
 
 ```bash
@@ -568,12 +598,20 @@ orbit help about      # abre README.md en el editor
 ## --open — abrir resultado en editor
 
 Los comandos de listado aceptan `--open [--editor E]`:
-capturan el output, lo escriben en `cmd.md` y abren el fichero en el editor.
+capturan el output, lo escriben en un fichero markdown y lo abren en el editor.
 
-El editor se configura con `export ORBIT_EDITOR=typora` (o el que prefieras).
-Sin variable, usa el abridor del sistema (`open` en macOS, `xdg-open` en Linux).
+- `panel --open` → `panel.md`
+- `agenda --open` → `agenda.md`
+- El resto → `cmd.md`
 
-Comandos que lo admiten: `ls` · `view` · `search` · `report`
+Estos ficheros se pueden fijar en Obsidian (pin tab) para tener un dashboard permanente.
+
+El editor se configura (en orden de prioridad):
+1. `ORBIT_EDITOR` (variable de entorno)
+2. `"editor"` en `orbit.json` (por workspace)
+3. Abridor del sistema (`open` en macOS)
+
+Comandos que lo admiten: `ls` · `view` · `search` · `report` · `agenda` · `panel`
 
 ---
 
