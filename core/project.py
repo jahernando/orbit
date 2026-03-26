@@ -12,7 +12,7 @@ from core.tasks import TYPE_MAP, PRIORITY_MAP, normalize
 from core.open import open_file
 
 from core.config import (ORBIT_HOME, TEMPLATES_DIR, get_type_label,
-                         iter_project_dirs, type_dir_path)
+                         iter_project_dirs, type_dir_path, get_type_emojis)
 
 TYPE_LABEL = get_type_label()
 
@@ -186,6 +186,22 @@ def run_project_create(name: str, tipo: str, prioridad: str) -> int:
     if project_dir.exists():
         print(f"Error: ya existe el proyecto en {project_dir}")
         return 1
+
+    # Warn if another project name contains or is contained in this one
+    name_low = name.lower()
+    similar = [d.name for d in iter_project_dirs() if _is_new_project(d)
+               and (name_low in _strip_type_emoji(d.name).lower()
+                    or _strip_type_emoji(d.name).lower() in name_low)]
+    if similar:
+        print(f"⚠️  Nombre similar a proyecto(s) existente(s): {', '.join(similar)}")
+        print("   Esto causará ambigüedad en comandos con coincidencia parcial.")
+        try:
+            ans = input("   ¿Continuar? [s/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 1
+        if ans not in ("s", "si", "sí", "y", "yes"):
+            return 1
 
     for tpl in ["project.md", "logbook.md", "highlights.md", "agenda.md"]:
         if not (TEMPLATES_DIR / tpl).exists():
@@ -480,16 +496,27 @@ def run_project_edit(name: str, editor: str = "") -> int:
 
 # ── finder ────────────────────────────────────────────────────────────────────
 
+def _strip_type_emoji(name: str) -> str:
+    """Strip leading type emoji from a project directory name."""
+    for emoji in get_type_emojis():
+        if name.startswith(emoji):
+            return name[len(emoji):]
+    return name
+
+
 def _find_new_project(name: str) -> Optional[Path]:
     """Find a new-format project directory by partial name match.
-    Exact match (case-insensitive) takes priority over partial matches."""
+    Exact match (case-insensitive, ignoring type emoji) takes priority
+    over partial matches."""
     name_low = name.lower()
     candidates = [
         d for d in iter_project_dirs()
         if _is_new_project(d)
     ]
-    # Prefer exact match
-    exact = [d for d in candidates if d.name.lower() == name_low]
+    # Prefer exact match (with or without type emoji)
+    exact = [d for d in candidates
+             if d.name.lower() == name_low
+             or _strip_type_emoji(d.name).lower() == name_low]
     if exact:
         return exact[0]
     # Fall back to partial match

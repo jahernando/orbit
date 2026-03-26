@@ -23,10 +23,14 @@ _FOREGROUND = {"glow"}
 
 
 def default_editor() -> str:
-    """Return the default editor from ORBIT_EDITOR env var, or system opener."""
+    """Return the default editor: ORBIT_EDITOR env → orbit.json → system opener."""
     env = os.environ.get("ORBIT_EDITOR", "").strip()
     if env:
         return env
+    from core.config import _load_orbit_json
+    cfg_editor = _load_orbit_json().get("editor", "").strip()
+    if cfg_editor:
+        return cfg_editor
     # System default: 'open' on macOS, 'xdg-open' on Linux
     return "open" if platform.system() == "Darwin" else "xdg-open"
 
