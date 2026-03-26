@@ -510,7 +510,7 @@ def run_link(name: str, file: str = None, from_project: str = None) -> int:
     """Print and copy to clipboard a markdown link to a project or file within it.
 
     If from_project is given, the path is relative to that project's notes/ dir
-    so that Typora (and other editors) resolve it correctly.
+    so that editors (Obsidian, etc.) resolve it correctly.
     """
     import subprocess
     from pathlib import PurePosixPath

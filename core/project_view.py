@@ -243,7 +243,7 @@ def run_new_open(project: str, what: Optional[str] = None,
         return 1
 
     if what == "notes":
-        # Open the notes/ directory (Typora shows a file tree)
+        # Open the notes/ directory in the editor
         path = project_dir / "notes"
         if not path.exists():
             print(f"Error: no existe notes/ en {project_dir.name}")

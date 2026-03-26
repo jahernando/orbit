@@ -26,6 +26,16 @@ if _ORBIT_JSON_PATH.exists():
 ORBIT_SPACE   = _orbit_space
 ORBIT_PROMPT = os.environ.get("ORBIT_PROMPT", _orbit_emoji)
 
+# ── Federation (read-only access to other workspaces) ────────────────────────
+_FEDERATION_PATH = ORBIT_HOME / "federation.json"
+_FEDERATED_SPACES: list = []
+if _FEDERATION_PATH.exists():
+    try:
+        _fed_cfg = json.loads(_FEDERATION_PATH.read_text())
+        _FEDERATED_SPACES = _fed_cfg.get("federated", [])
+    except (json.JSONDecodeError, KeyError):
+        pass
+
 # Legacy alias — points to ORBIT_HOME itself (projects are now under type dirs).
 PROJECTS_DIR  = ORBIT_HOME
 TEMPLATES_DIR = ORBIT_CODE / "📐templates"
@@ -132,6 +142,63 @@ def iter_project_dirs() -> Iterator[Path]:
             if project.is_dir() and project not in seen:
                 seen.add(project)
                 yield project
+
+
+def _iter_workspace_projects(workspace_path: Path) -> Iterator[Path]:
+    """Yield project dirs from a workspace path, using its own orbit.json types."""
+    if not workspace_path.exists():
+        return
+    space_json = workspace_path / "orbit.json"
+    if space_json.exists():
+        try:
+            space_types = json.loads(space_json.read_text()).get("types", {})
+            type_emojis = set(space_types.values())
+        except (json.JSONDecodeError, KeyError):
+            type_emojis = set(_DEFAULT_TYPES.values())
+    else:
+        type_emojis = set(_DEFAULT_TYPES.values())
+    if not type_emojis:
+        return
+    for child in sorted(workspace_path.iterdir()):
+        if not child.is_dir():
+            continue
+        if any(child.name.startswith(e) for e in type_emojis):
+            for project in sorted(child.iterdir()):
+                if project.is_dir():
+                    yield project
+
+
+def iter_federated_project_dirs(include_federated: bool = True) -> Iterator[Path]:
+    """Yield project dirs from local workspace + federated workspaces.
+
+    Local projects are yielded first, then federated ones.
+    Use include_federated=False to get local-only (same as iter_project_dirs).
+    """
+    yield from iter_project_dirs()
+    if not include_federated:
+        return
+    seen = {p.resolve() for p in iter_project_dirs()}
+    for space in _FEDERATED_SPACES:
+        space_path = Path(space["path"]).expanduser().resolve()
+        for project in _iter_workspace_projects(space_path):
+            if project.resolve() not in seen:
+                seen.add(project.resolve())
+                yield project
+
+
+def get_federation_emoji(project_dir: Path) -> str:
+    """Return emoji for a federated project, empty string for local."""
+    resolved = str(project_dir.resolve())
+    for space in _FEDERATED_SPACES:
+        space_path = str(Path(space["path"]).expanduser().resolve())
+        if resolved.startswith(space_path):
+            return space.get("emoji", "")
+    return ""
+
+
+def is_federated(project_dir: Path) -> bool:
+    """Check if a project dir belongs to a federated workspace."""
+    return bool(get_federation_emoji(project_dir))
 
 
 def get_type_emojis() -> tuple:

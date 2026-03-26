@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.log import VALID_TYPES, TAG_EMOJI, find_logbook_file, resolve_file
-from core.config import iter_project_dirs
+from core.config import iter_federated_project_dirs
 from core.project import _find_new_project, _is_new_project
 from core.agenda_view import _parse_period as _parse_period_base
 
@@ -150,6 +150,7 @@ def run_report(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     summary: Optional[str] = None,
+    include_federated: bool = True,
 ) -> int:
     """Print activity report for project(s) in a time period."""
     start, end = _parse_period(date_str, date_from, date_to)
@@ -165,7 +166,7 @@ def run_report(
         if not dirs:
             return 1
     else:
-        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+        dirs = [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
 
     # ── Collect data for all projects ──
     project_data = []

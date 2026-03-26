@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.project import _is_new_project
-from core.config import iter_project_dirs
+from core.config import iter_project_dirs, iter_federated_project_dirs, is_federated
 from core.agenda_cmds import _read_agenda, _write_agenda, _next_occurrence
 from core.log import resolve_file
 
@@ -348,9 +348,10 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             pass
 
     scheduled = []
-    for project_dir in iter_project_dirs():
+    for project_dir in iter_federated_project_dirs():
         if not _is_new_project(project_dir):
             continue
+        federated = is_federated(project_dir)
 
         # Schedule ring tasks
         tasks = _tasks_ringing_on(project_dir, target)
@@ -360,7 +361,7 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             if ok:
                 print(f"  ⏰ {project_dir.name}  "
                       f"{t['ring_dt'].strftime('%H:%M')}  {t['desc']}")
-                if not t.get("recur"):
+                if not t.get("recur") and not federated:
                     _clear_ring(project_dir, t["index"])
                 scheduled.append({**t, "project": project_dir.name})
             else:

@@ -19,13 +19,20 @@ _MONTH_NAMES = [
 ]
 
 from core.log import resolve_file, find_proyecto_file
-from core.config import iter_project_dirs
+from core.config import iter_federated_project_dirs, get_federation_emoji
 from core.project import _find_new_project, _is_new_project
 from core.agenda_cmds import _read_agenda, _next_occurrence
 
 
 def _project_link(project_dir):
-    """Build a markdown link to the project file: [name](relative/path)."""
+    """Build a markdown link to the project file: [name](relative/path).
+
+    Local projects get a clickable link; federated projects get emoji prefix
+    without link (project.md is in another workspace).
+    """
+    fed_emoji = get_federation_emoji(project_dir)
+    if fed_emoji:
+        return f"{fed_emoji} \\[{project_dir.name}\\]"
     proj_file = find_proyecto_file(project_dir)
     rel = f"{project_dir.parent.name}/{project_dir.name}"
     if proj_file:
@@ -115,7 +122,21 @@ def _default_end(today, default):
     return today
 
 
-def _resolve_dirs(projects: Optional[list]) -> list:
+def _fed_tag(project_dir) -> str:
+    """Terminal tag: [name] for local, 🌿 [name] for federated."""
+    emoji = get_federation_emoji(project_dir)
+    if emoji:
+        return f"{emoji} [{project_dir.name}]"
+    return f"[{project_dir.name}]"
+
+
+def _fed_label(project_dir) -> str:
+    """Project name with federation emoji prefix and brackets if federated."""
+    emoji = get_federation_emoji(project_dir)
+    return f"{emoji} [{project_dir.name}]" if emoji else project_dir.name
+
+
+def _resolve_dirs(projects: Optional[list], include_federated: bool = True) -> list:
     if projects:
         dirs = []
         for p in projects:
@@ -123,7 +144,7 @@ def _resolve_dirs(projects: Optional[list]) -> list:
             if d:
                 dirs.append(d)
         return dirs
-    return [d for d in iter_project_dirs() if _is_new_project(d)]
+    return [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
 
 
 def _in_range(d_str: Optional[str], start: date, end: date) -> bool:
@@ -340,7 +361,7 @@ def _print_summary(dirs, start: date, end: date, markdown: bool = False) -> int:
                     sum(1 for m in milestones if not m.get("date"))
 
         proj_link = _project_link(project_dir)
-        proj_name = project_dir.name
+        proj_name = _fed_label(project_dir)
 
         rows.append({
             "name": proj_name, "link": proj_link,
@@ -412,13 +433,14 @@ def run_agenda(
     dated_only: bool = False,
     order: str = "date",
     summary: bool = False,
+    include_federated: bool = True,
 ) -> int:
     """Print agenda (tasks/events/milestones) for a day or period.
 
     Calendar grid is shown by default above the list.  Use no_cal=True to suppress.
     """
     start, end = _parse_period(date_str, date_from, date_to)
-    dirs = _resolve_dirs(projects)
+    dirs = _resolve_dirs(projects, include_federated=include_federated)
     if projects and not dirs:
         return 1
 
@@ -812,7 +834,7 @@ def _format_by_date(collected, markdown=False, dated_only=False):
     # Each entry: (date_str|None, kind, item, proj_name)
     all_items = []
     for project_dir, tasks, events, milestones in collected:
-        tag = _project_link(project_dir) if markdown else f"[{project_dir.name}]"
+        tag = _project_link(project_dir) if markdown else _fed_tag(project_dir)
         for e in events:
             all_items.append((e.get("date"), "event", e, tag))
         for m in milestones:
@@ -887,7 +909,7 @@ def _format_by_type(collected, markdown=False, dated_only=False):
     # Flatten all items
     all_items = []
     for project_dir, tasks, events, milestones in collected:
-        tag = _project_link(project_dir) if markdown else f"[{project_dir.name}]"
+        tag = _project_link(project_dir) if markdown else _fed_tag(project_dir)
         for e in events:
             all_items.append(("event", e, tag))
         for m in milestones:
@@ -950,7 +972,7 @@ def _format_detail_lines(collected, markdown=False):
     lines = []
     for project_dir, tasks, events, milestones in collected:
         lines.append("")
-        lines.append(f"**{_project_link(project_dir)}**" if markdown else f"[{project_dir.name}]")
+        lines.append(f"**{_project_link(project_dir)}**" if markdown else _fed_tag(project_dir))
 
         pfx = "- " if markdown else "  "
 

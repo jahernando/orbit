@@ -101,8 +101,8 @@ def log_cmd_output(content: str, project: str, entry_type: str = "apunte",
     emoji = TAG_EMOJI.get(entry_type, "")
     block = content.strip()
 
-    # If content contains markdown tables, insert as-is so renderers
-    # (e.g. Typora) display them properly; otherwise wrap in code block.
+    # If content contains markdown tables, insert as-is so markdown
+    # editors display them properly; otherwise wrap in code block.
     has_md_table = any(l.startswith("|") for l in block.splitlines())
     if has_md_table:
         entry = f"{date_str} {emoji} {summary} #{entry_type} [O]\n\n{block}\n\n"

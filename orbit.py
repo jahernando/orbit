@@ -311,6 +311,7 @@ def cmd_search(args):
         open_after=args.open,
         editor=args.editor,
         in_filter=getattr(args, "in_filter", None),
+        include_federated=not getattr(args, "no_fed", False),
     )
     return _handle_output(args, fn, "search")
 
@@ -437,6 +438,16 @@ def cmd_render(args):
 
 def cmd_deliver(args):
     return run_deliver(project=args.project, file=args.file)
+
+
+def cmd_cloud(args):
+    """Cloud subcommand dispatcher."""
+    action = _ga(args, "action")
+    if action == "imgs":
+        from core.cloud_imgs import run_cloud_imgs
+        return run_cloud_imgs(dry_run=getattr(args, "dry_run", False))
+    print("Uso: orbit cloud imgs [--dry-run]")
+    return 1
 
 
 def cmd_recloud(args):
@@ -624,8 +635,10 @@ def cmd_agenda(args):
         dated_only=getattr(args, "dated", False),
         order=getattr(args, "order", "date"),
         summary=getattr(args, "summary", False),
+        include_federated=not getattr(args, "no_fed", False),
     )
-    return _handle_output(args, fn, "agenda")
+    return _handle_output(args, fn, "agenda",
+                          open_file_path=ORBIT_DIR / "agenda.md")
 
 
 _MONTH_MAP = {
@@ -720,7 +733,8 @@ def cmd_panel(args):
     from core.panel import run_panel
     from core.config import ORBIT_HOME
     period = getattr(args, "period", None)
-    fn = lambda: run_panel(period=period)
+    fn = lambda: run_panel(period=period,
+                           include_federated=not getattr(args, "no_fed", False))
     return _handle_output(args, fn, "panel",
                           open_file_path=ORBIT_HOME / "panel.md")
 
@@ -744,6 +758,7 @@ def cmd_report(args):
         date_from=_d(date_from),
         date_to=_d(date_to),
         summary=getattr(args, "summary", False),
+        include_federated=not getattr(args, "no_fed", False),
     )
     return _handle_output(args, fn, "report")
 
@@ -837,32 +852,38 @@ def cmd_ls(args):
             sort_by=getattr(args, "sort", None))
         return _handle_output(args, fn, "ls projects")
 
+    _inc_fed = not getattr(args, "no_fed", False)
+
     if what == "tasks":
         fn = lambda: run_task_list(
             projects=getattr(args, "projects", None) or None,
             status_filter=getattr(args, "status", "pending"),
             date_filter=_d(getattr(args, "date", None)),
             dated_only=getattr(args, "dated", False),
-            unplanned=getattr(args, "unplanned", False))
+            unplanned=getattr(args, "unplanned", False),
+            include_federated=_inc_fed)
         return _handle_output(args, fn, "ls tasks")
 
     if what == "ms":
         fn = lambda: run_ms_list(
             projects=getattr(args, "projects", None) or None,
             status_filter=getattr(args, "status", "pending"),
-            dated_only=getattr(args, "dated", False))
+            dated_only=getattr(args, "dated", False),
+            include_federated=_inc_fed)
         return _handle_output(args, fn, "ls ms")
 
     if what == "ev":
         fn = lambda: run_ev_list(
             project=_ga(args, "project"),
             period_from=_d(_ga(args, "date_from")),
-            period_to=_d(_ga(args, "date_to")))
+            period_to=_d(_ga(args, "date_to")),
+            include_federated=_inc_fed)
         return _handle_output(args, fn, "ls ev")
 
     if what in ("reminders", "rem"):
         fn = lambda: run_reminder_list(
-            project=_ga(args, "project"))
+            project=_ga(args, "project"),
+            include_federated=_inc_fed)
         return _handle_output(args, fn, "ls reminders")
 
     if what == "hl":
@@ -980,6 +1001,12 @@ def _add_drop_args(p):
     p.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
 
 
+def _add_fed_args(p):
+    """Add --no-fed flag to disable federated workspace reading."""
+    p.add_argument("--no-fed", action="store_true",
+                   help="No incluir espacios federados")
+
+
 def _add_output_args(p):
     """Add --open, --editor, --log, --log-entry, --append args."""
     p.add_argument("--open", action="store_true", help="Open in editor")
@@ -1032,6 +1059,7 @@ def _build_parser():
                           help="Open results in editor")
     search_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
     _add_log_args(search_p)
+    _add_fed_args(search_p)
 
     # --- ls (unified listing) ---
     ls_p   = subparsers.add_parser("ls", help="List projects, tasks, milestones, events, highlights, files, notes")
@@ -1056,6 +1084,7 @@ def _build_parser():
     ls_tasks.add_argument("--unplanned", action="store_true", help="Only show tasks without a date")
     _add_output_args(ls_tasks)
     _add_log_args(ls_tasks)
+    _add_fed_args(ls_tasks)
 
     # ls ms [project...]
     ls_ms = ls_sub.add_parser("ms", help="List milestones")
@@ -1065,6 +1094,7 @@ def _build_parser():
     ls_ms.add_argument("--dated",  action="store_true", help="Only show milestones with a date")
     _add_output_args(ls_ms)
     _add_log_args(ls_ms)
+    _add_fed_args(ls_ms)
 
     # ls ev [project]
     ls_ev = ls_sub.add_parser("ev", help="List events")
@@ -1073,12 +1103,14 @@ def _build_parser():
     ls_ev.add_argument("--to",   dest="date_to",   default=None, metavar="DATE")
     _add_output_args(ls_ev)
     _add_log_args(ls_ev)
+    _add_fed_args(ls_ev)
 
     # ls reminders [project]
     ls_rem = ls_sub.add_parser("reminders", aliases=["rem"], help="List active reminders")
     ls_rem.add_argument("project", nargs="?", default=None, help="Project")
     _add_output_args(ls_rem)
     _add_log_args(ls_rem)
+    _add_fed_args(ls_rem)
 
     # ls hl [project]
     ls_hl = ls_sub.add_parser("hl", help="List highlights")
@@ -1121,7 +1153,7 @@ def _build_parser():
     open_p.add_argument("--dir",      action="store_true",
                         help="Open the project directory in Finder")
     open_p.add_argument("--editor",   default=None,
-                        help="Editor: typora, glow, code, or any command (env ORBIT_EDITOR)")
+                        help="Editor: obsidian, glow, code, or any command (env ORBIT_EDITOR)")
 
     # --- panel ---
     pan_p = subparsers.add_parser("panel", help="Dashboard: priority projects, agenda, activity")
@@ -1130,6 +1162,7 @@ def _build_parser():
     pan_p.add_argument("--open", action="store_true", help="Open in editor")
     pan_p.add_argument("--editor", default=None)
     _add_log_args(pan_p)
+    _add_fed_args(pan_p)
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")
@@ -1147,6 +1180,7 @@ def _build_parser():
     rep_p.add_argument("--open", action="store_true", help="Open in editor")
     rep_p.add_argument("--editor", default=None)
     _add_log_args(rep_p)
+    _add_fed_args(rep_p)
 
     # --- agenda ---
     ag_p = subparsers.add_parser("agenda",
@@ -1171,6 +1205,7 @@ def _build_parser():
     ag_p.add_argument("--open",   action="store_true", help="Open in editor")
     ag_p.add_argument("--editor", default=None)
     _add_log_args(ag_p)
+    _add_fed_args(ag_p)
 
     # --- cal ---
     cal_p = subparsers.add_parser("cal",
@@ -1439,6 +1474,13 @@ def _build_parser():
     dlv_p.add_argument("project", help="Project name (partial match)")
     dlv_p.add_argument("file",    help="File path to deliver")
 
+    # --- cloud ---
+    cld_p   = subparsers.add_parser("cloud", help="Cloud operations: imgs")
+    cld_sub = cld_p.add_subparsers(dest="action")
+
+    ci_p = cld_sub.add_parser("imgs", help="Collect images from _imgs/ and deliver to project cloud")
+    ci_p.add_argument("--dry-run", action="store_true", help="Show what would be done without moving files")
+
     # --- recloud ---
     rcl_p = subparsers.add_parser("recloud", help="Migrate cloud links to use symlink")
     rcl_p.add_argument("--dry-run", action="store_true", help="Show changes without applying")
@@ -1582,7 +1624,7 @@ _COMMANDS = {
     "view": cmd_view_new,
     "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver,
     "clip": cmd_clip,
-    "render": cmd_render, "recloud": cmd_recloud,
+    "cloud": cmd_cloud, "render": cmd_render, "recloud": cmd_recloud,
     "log": cmd_log, "search": cmd_search,
     "panel": cmd_panel, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,

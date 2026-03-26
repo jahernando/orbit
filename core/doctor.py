@@ -425,6 +425,17 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     else:
         issues = check_all_projects()
 
+    # Check pending images in _imgs/
+    try:
+        from core.cloud_imgs import check_pending_imgs
+        pending = check_pending_imgs()
+        if pending:
+            print(f"  🖼️  {pending} imagen{'es' if pending != 1 else ''} pendiente{'s' if pending != 1 else ''} en _imgs/")
+            print("  → Ejecuta `orbit cloud imgs` para entregarlas al cloud de sus proyectos.")
+            print()
+    except Exception:
+        pass
+
     # Check gsync drift (items changed since last sync)
     try:
         from core.gsync import check_gsync_drift

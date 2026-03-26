@@ -32,9 +32,17 @@ from typing import Optional
 
 from core.project import _find_new_project, _is_new_project
 from core.log import add_orbit_entry, resolve_file
-from core.config import iter_project_dirs
+from core.config import iter_project_dirs, iter_federated_project_dirs, get_federation_emoji
 
 VALID_RECUR = {"daily", "weekly", "monthly", "weekdays"}
+
+
+def _fed_tag(project_dir) -> str:
+    """Terminal tag: [name] for local, 🌿 [name] for federated."""
+    emoji = get_federation_emoji(project_dir)
+    if emoji:
+        return f"{emoji} [{project_dir.name}]"
+    return f"[{project_dir.name}]"
 
 
 def _prompt_ring() -> Optional[str]:
@@ -1341,7 +1349,8 @@ def run_task_list(projects: Optional[list] = None,
                   status_filter: str = "pending",
                   date_filter: Optional[str] = None,
                   dated_only: bool = False,
-                  unplanned: bool = False) -> int:
+                  unplanned: bool = False,
+                  include_federated: bool = True) -> int:
     """List tasks from new-format projects."""
     if projects:
         dirs = []
@@ -1352,7 +1361,7 @@ def run_task_list(projects: Optional[list] = None,
         if not dirs:
             return 1
     else:
-        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+        dirs = [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
 
     total = 0
     for project_dir in dirs:
@@ -1371,7 +1380,7 @@ def run_task_list(projects: Optional[list] = None,
         if not tasks:
             continue
 
-        print(f"\n[{project_dir.name}]")
+        print(f"\n{_fed_tag(project_dir)}")
         for t in tasks:
             status_s = {"pending": "[ ]", "done": "[x]", "cancelled": "[-]"}[t["status"]]
             date_s   = f" ({t['date']})" if t.get("date") else ""
@@ -1471,7 +1480,7 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
 
 
 def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
-                dated_only: bool = False) -> int:
+                dated_only: bool = False, include_federated: bool = True) -> int:
     if projects:
         dirs = []
         for p in projects:
@@ -1481,7 +1490,7 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
         if not dirs:
             return 1
     else:
-        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+        dirs = [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
 
     total = 0
     for project_dir in dirs:
@@ -1495,7 +1504,7 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
         if not mss:
             continue
 
-        print(f"\n[{project_dir.name}]")
+        print(f"\n{_fed_tag(project_dir)}")
         for ms in mss:
             status_s = {"pending": "[ ]", "done": "[x]", "cancelled": "[-]"}[ms["status"]]
             date_s   = f" ({ms['date']})" if ms.get("date") else ""
@@ -1572,14 +1581,15 @@ def run_ev_log(project: Optional[str], text: Optional[str]) -> int:
 
 def run_ev_list(project: Optional[str] = None,
                 period_from: Optional[str] = None,
-                period_to:   Optional[str] = None) -> int:
+                period_to:   Optional[str] = None,
+                include_federated: bool = True) -> int:
     if project:
         project_dir = _find_new_project(project)
         if project_dir is None:
             return 1
         dirs = [project_dir]
     else:
-        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+        dirs = [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
 
     total = 0
     for project_dir in dirs:
@@ -1592,7 +1602,7 @@ def run_ev_list(project: Optional[str] = None,
         if not events:
             continue
 
-        print(f"\n[{project_dir.name}]")
+        print(f"\n{_fed_tag(project_dir)}")
         for e in sorted(events, key=lambda x: x["date"]):
             end_s = f" → {e['end']}" if e.get("end") else ""
             print(f"  {e['date']} — {e['desc']}{end_s}")
@@ -1723,7 +1733,8 @@ def _select_item_reminder(items: list, text: Optional[str]) -> Optional[int]:
         match_fn=lambda r, txt: normalize(txt) in normalize(r["desc"]))
 
 
-def run_reminder_list(project: Optional[str] = None) -> int:
+def run_reminder_list(project: Optional[str] = None,
+                      include_federated: bool = True) -> int:
     """List active reminders."""
     if project:
         project_dir = _find_new_project(project)
@@ -1731,7 +1742,7 @@ def run_reminder_list(project: Optional[str] = None) -> int:
             return 1
         dirs = [project_dir]
     else:
-        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+        dirs = [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
 
     total = 0
     for project_dir in dirs:
@@ -1740,7 +1751,7 @@ def run_reminder_list(project: Optional[str] = None) -> int:
         if not reminders:
             continue
 
-        print(f"\n[{project_dir.name}]")
+        print(f"\n{_fed_tag(project_dir)}")
         for r in sorted(reminders, key=lambda x: (x["date"], x["time"])):
             recur_s = f" 🔄{r['recur']}" if r.get("recur") else ""
             print(f"  💬 {r['desc']} ({r['date']}) ⏰{r['time']}{recur_s}")

@@ -6,7 +6,7 @@ from typing import Optional
 
 from core.log import (find_project, find_logbook_file,
                       find_highlights_file, find_agenda_file)
-from core.config import iter_project_dirs
+from core.config import iter_federated_project_dirs
 from core.open import open_file, open_cmd_output
 from core.project import _is_new_project, _read_project_meta
 
@@ -122,6 +122,7 @@ def run_search(
     open_after: bool = False,
     editor: str = "",
     in_filter: Optional[str] = None,
+    include_federated: bool = True,
 ) -> int:
     keywords = query.split() if query else []
     logbooks_only = bool(tag)
@@ -144,7 +145,7 @@ def run_search(
         if not project_dirs:
             return 1
     else:
-        project_dirs = list(iter_project_dirs())
+        project_dirs = list(iter_federated_project_dirs(include_federated))
 
     for project_dir in project_dirs:
         if limit and total >= limit:

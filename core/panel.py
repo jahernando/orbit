@@ -12,8 +12,8 @@ import calendar
 from datetime import date, timedelta
 from pathlib import Path
 
-from core.config import iter_project_dirs
-from core.log import find_logbook_file, resolve_file
+from core.config import iter_federated_project_dirs, get_federation_emoji
+from core.log import find_logbook_file, find_proyecto_file, resolve_file
 from core.project import _read_project_meta, _resolve_status, _is_new_project
 from core.tasks import PRIORITY_MAP
 
@@ -109,14 +109,40 @@ def _scan_project_agenda(project_dir, start, end):
     return milestones, has_items, has_overdue
 
 
-def _collect_priority_projects(start, end):
+def _project_link(project_dir) -> str:
+    """Markdown link to project.md; federated get emoji prefix with brackets, no link."""
+    fed_emoji = get_federation_emoji(project_dir)
+    if fed_emoji:
+        return f"{fed_emoji} \\[{project_dir.name}\\]"
+    proj_file = find_proyecto_file(project_dir)
+    rel = f"{project_dir.parent.name}/{project_dir.name}"
+    if proj_file:
+        return f"[{project_dir.name}]({rel}/{proj_file.name})"
+    return f"[{project_dir.name}]({rel}/)"
+
+
+def _fed_tag(project_dir) -> str:
+    """Terminal tag: [name] for local, 🌿 [name] for federated."""
+    emoji = get_federation_emoji(project_dir)
+    if emoji:
+        return f"{emoji} [{project_dir.name}]"
+    return f"[{project_dir.name}]"
+
+
+def _fed_label(project_dir) -> str:
+    """Project name with federation emoji prefix and brackets if federated."""
+    emoji = get_federation_emoji(project_dir)
+    return f"{emoji} [{project_dir.name}]" if emoji else project_dir.name
+
+
+def _collect_priority_projects(start, end, include_federated=True):
     """Return (alta, milestones, media)."""
     alta = []
     milestones = []
     media = []
     media_seen = set()
 
-    for project_dir in iter_project_dirs():
+    for project_dir in iter_federated_project_dirs(include_federated):
         if not _is_new_project(project_dir):
             continue
         meta = _read_project_meta(project_dir)
@@ -150,28 +176,28 @@ def _collect_priority_projects(start, end):
 
 # ── Agenda ────────────────────────────────────────────────────────────────────
 
-def _collect_agenda(start, end):
+def _collect_agenda(start, end, include_federated=True):
     """Collect agenda items for period. Returns dict {date_str: [(sort_key, line)]}."""
     from core.agenda_view import _collect_data
 
     today = date.today()
-    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+    dirs = [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
     collected = _collect_data(dirs, start, end, dated_only=True)
 
     by_day = {}  # date_str → [(sort_key, line)]
     for project_dir, tasks, events, milestones in collected:
-        proj = project_dir.name
+        proj = _project_link(project_dir)
         for e in events:
             day = e.get("date", "")
             time = e.get("time", "")
             time_display = f"⏰{time} " if time else ""
             key = time if time else "zz"
             by_day.setdefault(day, []).append(
-                (key, f"- 📅 {time_display}{e['desc']} ({proj})"))
+                (key, f"- 📅 {time_display}{e['desc']} — {proj}"))
         for m in milestones:
             day = m.get("date", "")
             by_day.setdefault(day, []).append(
-                ("zz", f"- ☐ 🏁 {m['desc']} ({proj})"))
+                ("zz", f"- ☐ 🏁 {m['desc']} — {proj}"))
         for t in tasks:
             day = t.get("date", "")
             time = t.get("time", "")
@@ -185,7 +211,7 @@ def _collect_agenda(start, end):
                     pass
             key = time if time else "zz"
             by_day.setdefault(day, []).append(
-                (key, f"- ☐ {time_display}{t['desc']}{overdue} ({proj})"))
+                (key, f"- ☐ {time_display}{t['desc']}{overdue} — {proj}"))
 
     # For single-day view, fold overdue items into today
     if start == end:
@@ -203,12 +229,12 @@ def _collect_agenda(start, end):
 
 # ── Activity ──────────────────────────────────────────────────────────────────
 
-def _collect_activity(start, end):
+def _collect_activity(start, end, include_federated=True):
     """Collect logbook entries for period. Returns list of (project_dir, entries)."""
     from core.stats import _scan_logbook
 
     results = []
-    for project_dir in sorted(iter_project_dirs()):
+    for project_dir in sorted(iter_federated_project_dirs(include_federated)):
         if not _is_new_project(project_dir):
             continue
         logbook_path = find_logbook_file(project_dir)
@@ -228,7 +254,7 @@ def _print_calendar(start, end):
     from core.agenda_view import _print_calendar_grid_md, _print_calendar_grid_ansi
 
     today = date.today()
-    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+    dirs = [d for d in iter_federated_project_dirs() if _is_new_project(d)]
 
     # Always show at least the current week
     cal_start = min(start, today - timedelta(days=today.weekday()))
@@ -240,7 +266,7 @@ def _print_calendar(start, end):
         _print_calendar_grid_md(dirs, cal_start, cal_end)
 
 
-def run_panel(period=None) -> int:
+def run_panel(period=None, include_federated=True) -> int:
     """Print dashboard as markdown."""
     start, end, label = _parse_panel_period(period)
     is_single_day = start == end
@@ -252,32 +278,32 @@ def run_panel(period=None) -> int:
     _print_calendar(start, end)
 
     # ── 1. Prioridad ──
-    alta, milestones, media = _collect_priority_projects(start, end)
+    alta, milestones, media = _collect_priority_projects(start, end, include_federated)
 
     print(f"\n## Prioridad\n")
     if alta:
         print(f"🔴 **Alta**")
         for project_dir, motivo in alta:
             suffix = f" — {motivo}" if motivo else ""
-            print(f"- {project_dir.name}{suffix}")
+            print(f"- {_project_link(project_dir)}{suffix}")
     if media:
         if alta:
             print()
         print(f"🔶 **Urgente**")
         for project_dir, reason in media:
-            print(f"- {project_dir.name} — {reason}")
+            print(f"- {_project_link(project_dir)} — {reason}")
     if milestones:
         if alta or media:
             print()
         print(f"🏁 **Hitos este mes**")
         for project_dir, ms_date, ms_desc in milestones:
-            print(f"- {ms_date} — {ms_desc} ({project_dir.name})")
+            print(f"- {ms_date} — {ms_desc} ({_fed_label(project_dir)})")
     if not alta and not media and not milestones:
         print("(ninguno)")
     print("\n---")
 
     # ── 2. Agenda ──
-    by_day = _collect_agenda(start, end)
+    by_day = _collect_agenda(start, end, include_federated)
 
     print(f"\n## Agenda\n")
     if by_day:
@@ -307,12 +333,12 @@ def run_panel(period=None) -> int:
     print("\n---")
 
     # ── 3. Actividad ──
-    activity = _collect_activity(start, end)
+    activity = _collect_activity(start, end, include_federated)
 
     print(f"\n## Actividad\n")
     if activity:
         for project_dir, entries in activity:
-            print(f"**{project_dir.name}**")
+            print(f"**{_project_link(project_dir)}**")
             for e in entries:
                 print(f"- {e}")
             print()

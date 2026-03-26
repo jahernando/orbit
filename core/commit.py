@@ -282,6 +282,16 @@ def run_commit(message: Optional[str] = None) -> int:
         print("Sin cambios para commitear.")
         return 0
 
+    # Collect pending images from _imgs/ before doctor checks
+    try:
+        from core.cloud_imgs import run_cloud_imgs, check_pending_imgs
+        if check_pending_imgs() > 0:
+            run_cloud_imgs()
+            # Re-stage any files modified by cloud imgs
+            _git_add_all_tracked()
+    except Exception:
+        pass
+
     # Run doctor checks before committing
     try:
         from core.doctor import check_all_projects
