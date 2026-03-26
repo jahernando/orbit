@@ -309,7 +309,9 @@ def run_commit(message: Optional[str] = None) -> int:
         if issues:
             print(f"  🏥 Doctor: {len(issues)} problema{'s' if len(issues) != 1 else ''} en las agendas:")
             for issue in issues:
+                preview = issue.line.strip()[:60]
                 print(f"    ⚠️  [{issue.project}] {issue.file}:{issue.line_num} — {issue.msg}")
+                print(f"        │ {preview}")
             print()
             if sys.stdin.isatty():
                 try:
