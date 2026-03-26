@@ -1,7 +1,6 @@
 # orbit.sh — shell functions for Orbit CLI
 # Compatible with sh/bash/zsh. Source from your shell rc file.
-
-export ORBIT_EDITOR=typora
+# Editor: configura "editor" en orbit.json de cada workspace.
 
 ORBIT_CODE="$HOME/orbit"
 export PATH="$ORBIT_CODE/bin:$PATH"

@@ -134,7 +134,6 @@ orbit ms list [--open]
 
 orbit ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18 --ring 1d
 orbit ev edit next-kr "Congreso" --date 2026-04-20
-orbit ev list next-kr [--open]
 ```
 
 ### Recordatorios
@@ -144,7 +143,6 @@ orbit reminder add mission "¡Revisa el correo!" --date 2026-03-18 --time 17:00
 orbit reminder add next-kr "Backup" --date 2026-03-20 --time 09:00 --recur weekly
 orbit reminder edit mission "correo" --text "Nuevo título" --time 18:00
 orbit reminder drop mission "correo"
-orbit reminder list [project]
 ```
 
 ### Highlights y notas
@@ -175,10 +173,30 @@ orbit open next-kr logbook
 orbit open next-kr agenda
 ```
 
-### Agenda y report
+### Panel y agenda — gestión dinámica del día
+
+Panel y agenda son las dos herramientas dinámicas para planificar y seguir la jornada. Se ejecutan al empezar el día y se refrescan durante el trabajo.
 
 ```bash
-orbit agenda [--date D] [--from D] [--to D] [--calendar] [--dated] [--open]
+orbit panel                    # dashboard del día: prioridad, citas, actividad
+orbit panel week               # dashboard semanal
+orbit panel month              # dashboard mensual
+orbit panel --from monday --to friday   # rango personalizado
+orbit panel --open             # escribe a panel.md (fijable en Obsidian)
+
+orbit agenda                   # citas de hoy: tareas, eventos, hitos, recordatorios
+orbit agenda week              # citas de la semana
+orbit agenda month             # citas del mes
+orbit agenda --open            # escribe a agenda.md (fijable en Obsidian)
+orbit agenda --date 2026-03    # mes concreto
+orbit agenda --from monday --to friday   # rango personalizado
+```
+
+Con `--open`, ambos escriben a ficheros fijos que se pueden fijar como pestañas en Obsidian. Cada ejecución actualiza el fichero con el estado actual.
+
+### Report — informe de actividad
+
+```bash
 orbit report [project...] [--from D] [--to D] [--open]
 orbit report today                  # actividad de hoy
 orbit report week                   # actividad de esta semana
@@ -198,17 +216,6 @@ orbit clip catedra                                      # enlace al proyecto
 orbit clip catedra notes/result.md                      # enlace a un fichero
 orbit clip catedra notes/tramos.md --from complementos  # enlace relativo entre proyectos
 ```
-
-### Panel — dashboard
-
-```bash
-orbit panel                    # panel del día
-orbit panel week               # panel de la semana
-orbit panel month              # panel del mes
-orbit panel --open             # abre en editor (panel.md)
-```
-
-Dashboard con prioridad (alta/urgente/hitos), agenda (citas del periodo) y actividad (logbook).
 
 ### Cronogramas
 
@@ -265,9 +272,9 @@ orbit commit ["mensaje"]           # commit + push interactivo
 ### Documentacion
 
 ```bash
-orbit help                         # chuleta de comandos (terminal)
-orbit help chuleta                 # abre CHULETA.md en el editor
-orbit help tutorial                # abre TUTORIAL.md en el editor
+orbit help                         # chuleta de comandos (terminal, paginado)
+orbit help tutorial                # tutorial en terminal (paginado)
+orbit help --open                  # abre CHULETA.md en el editor
 ```
 
 ---
@@ -280,6 +287,6 @@ orbit help tutorial                # abre TUTORIAL.md en el editor
 - `cmd.md` — fichero temporal de salida de comandos con `--open`.
 - `[G]` en agenda.md indica que el item esta sincronizado con Google (IDs en `.gsync-ids.json`).
 - Las operaciones destructivas piden confirmacion (defecto **No**) o requieren `--force`.
-- `--open [--editor E]` disponible en comandos de listado; abre `cmd.md` en el editor.
+- `--open [EDITOR]` disponible en comandos de consulta; abre resultado en el editor (por defecto o el indicado).
 - `--log PROJECT [--log-entry TYPE]` guarda el output como entrada en el logbook de un proyecto.
 - `--date` acepta lenguaje natural: `today/hoy` · `next friday` · `in 5 days` · `YYYY-MM-DD`.

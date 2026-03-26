@@ -8,28 +8,23 @@ Orbit es un sistema de gestión de proyectos científicos basado en ficheros mar
 
 ### Requisito previo
 
-Añade estas líneas a tu `~/.zshrc`:
+Carga `orbit.sh` desde tu `~/.zshrc`:
 
 ```zsh
-export ORBIT_EDITOR=typora                          # tu editor de markdown preferido
-orbit() {
-    if [[ "$1" == "claude" ]]; then
-        cd /Users/TU_USUARIO/Orbit && claude
-    elif [[ $# -eq 0 ]]; then
-        python3 /Users/TU_USUARIO/Orbit/orbit.py shell
-    else
-        python3 /Users/TU_USUARIO/Orbit/orbit.py "$@"
-    fi
+source /ruta/a/orbit/orbit.sh
+```
+
+Esto te da los comandos `worbit` (workspace de trabajo) y `porbit` (workspace personal).
+
+Configura tu editor de markdown preferido en el `orbit.json` de cada workspace:
+
+```json
+{
+  "editor": "obsidian"
 }
 ```
 
-Recarga la shell:
-
-```bash
-source ~/.zshrc
-```
-
-Si no defines `ORBIT_EDITOR`, Orbit usará el abridor por defecto del sistema (`open` en macOS, `xdg-open` en Linux). También puedes usar `--editor` en cualquier comando para una apertura puntual.
+Si no configuras editor, Orbit usa el abridor del sistema (`open` en macOS). Puedes usar `--open obsidian` en cualquier comando para una apertura puntual con otro editor.
 
 ### Entrar en Orbit
 
@@ -71,22 +66,67 @@ Puedes usar sus hitos para definir el **foco** de cada período y revisarlos con
 
 ---
 
-## 4. Empezar el día — revisar la agenda
+## 4. Empezar el día — panel y agenda
+
+Panel y agenda son las dos herramientas dinámicas para gestionar el día. Ambas muestran información actualizada cada vez que las ejecutas: citas, tareas, actividad. La idea es abrirlas al empezar y refrescarlas durante la jornada.
+
+### Panel — el dashboard
+
+El panel es la vista de alto nivel: proyectos prioritarios, citas del periodo y actividad reciente.
 
 ```bash
-agenda
+panel                      # panel del día
+panel week                 # panel semanal
+panel month                # panel mensual
+panel --from monday --to friday   # rango personalizado
+panel --open               # escribe a panel.md y abre en editor (fijable en Obsidian)
 ```
 
-Muestra las tareas pendientes y vencidas, eventos de hoy y hitos próximos de todos los proyectos.
+Secciones del panel:
+- **Prioridad**: proyectos 🔴 alta, 🔶 urgentes (con citas/vencidas), 🏁 hitos del mes
+- **Agenda**: tabla con las citas del periodo (tipo, hora, descripción, proyecto)
+- **Actividad**: entradas de logbook del periodo por proyecto
+
+### Agenda — las citas del día
+
+La agenda muestra tareas pendientes y vencidas, eventos, hitos y recordatorios.
 
 ```bash
-agenda --date 2026-03     # agenda del mes completo
-agenda --calendar         # vista calendario con colores
+agenda                     # agenda de hoy
+agenda week                # agenda de la semana
+agenda month               # agenda del mes
+agenda --open              # escribe a agenda.md y abre en editor (fijable en Obsidian)
+agenda --date 2026-03      # agenda de un mes concreto
 agenda --from monday --to friday   # rango personalizado
-agenda --dated                   # solo tareas/hitos con fecha
+agenda --dated             # solo tareas/hitos con fecha
+agenda --order date        # agrupa por día con horas
 ```
 
-Con esto planificas el día: ves qué hay pendiente y qué vence pronto.
+Con `--open`, tanto panel como agenda escriben a ficheros fijos (`panel.md`, `agenda.md`) que puedes fijar como pestañas en Obsidian. Cada vez que ejecutas el comando, el fichero se actualiza.
+
+### Flujo típico del día
+
+```
+Por la mañana
+──────────────
+orbit
+  panel --open              # abre panel.md: ¿qué proyectos son prioritarios?
+  agenda --open             # abre agenda.md: ¿qué citas hay hoy?
+  note mission "notas-día"  # (opcional) nota temporal para apuntes sueltos
+
+Durante el día
+──────────────
+  # Trabajar, anotar, completar tareas...
+  log next-kr "σ/E = 2.1%" --entry resultado
+  task done next-kr "Reproducir"
+  panel                     # refrescar: ve la actividad actualizada
+  agenda                    # refrescar: ve las tareas completadas
+
+Al final del día
+────────────────
+  report today              # resumen de actividad del día
+  commit                    # guardar cambios en git
+```
 
 ---
 
@@ -160,7 +200,6 @@ ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18 --ring 1d
 ev add next-kr "Seminario" --date 2026-03-20 --time 10:00-11:00 --recur weekly
 ev add next-kr "Dentista" --date 2026-03-25 --time 16:00
 ev edit next-kr "Congreso" --date 2026-04-20
-ev list next-kr
 ```
 
 - `--time HH:MM` — evento con hora de inicio (1h por defecto en Google Calendar)
@@ -196,7 +235,7 @@ reminder edit mission "correo" --text "Revisa el correo personal" --time 18:00
 reminder drop mission "correo"      # elimina por match parcial
 reminder drop mission "Backup" -o  # solo esta ocurrencia (avanza al próximo)
 reminder drop mission "Gym" -s     # elimina toda la serie
-reminder list                       # lista recordatorios activos de todos los proyectos
+ls reminders                        # lista recordatorios activos de todos los proyectos
 ```
 
 Se guardan en la sección `## 💬 Recordatorios` del `agenda.md`. Al iniciar la shell, los recordatorios del día se programan automáticamente en Reminders.app.
@@ -278,26 +317,31 @@ hl add mission "Semana productiva en next-kr, retrasar hk-sources" --type evals
 Lunes por la mañana
 ───────────────────
 orbit
-  agenda                           # ver qué hay pendiente hoy
-  project list                     # revisar estado del portfolio
+  panel --open                     # dashboard en Obsidian: prioridad + citas + actividad
+  agenda --open                    # agenda del día en Obsidian (fijar como pestaña)
+  note mission "notas-lunes"       # nota temporal para apuntes del día
 
   # Trabajar y anotar:
   log next-kr "σ/E = 2.1% @ 511 keV" --entry resultado
   log next-kr "Probar con diferentes ROI" --entry idea
   log next-kr "Espectro calibrado" spectrum.png --entry resultado --deliver
+  task done next-kr "Reproducir"
   task add next-kr "Preparar presentación" --date "next thursday"
   hl add next-kr "Resolución validada a 511 keV" --type results
-  clip next-kr                          # enlace md al portapapeles
-  render next-kr                        # renderiza a HTML para cloud
+
+  # Refrescar durante el día:
+  panel                            # actualiza panel.md: nueva actividad
+  agenda                           # actualiza agenda.md: tareas completadas
 
 Lunes por la tarde
 ──────────────────
-  report                           # ¿qué se ha hecho hoy?
+  report today                     # ¿qué se ha hecho hoy?
   report --log mission             # guardar en logbook de mission
   commit                           # guardar cambios en git
 
 Viernes por la tarde
 ────────────────────
+  panel week --open                # dashboard semanal
   report --from monday --to friday # informe semanal
   report --from monday --to friday --log mission
   hl add mission "Buena semana: calibración avanzada, pendiente topo" --type evals
@@ -326,15 +370,6 @@ clip next-kr               # enlace markdown al proyecto
 clip next-kr notes/result.md  # enlace a un fichero del proyecto
 ```
 
-### Panel — dashboard
-
-```bash
-panel                      # panel del día: prioridad, agenda, actividad
-panel week                 # panel semanal
-panel month                # panel mensual
-panel --open               # abre en editor (panel.md)
-```
-
 ### Cronogramas
 
 Tareas anidadas con dependencias y duración temporal:
@@ -358,44 +393,140 @@ ls files next-kr           # ficheros del proyecto con estado git
 ls notes next-kr           # notas con estado git
 ```
 
-### Commit
-
-```bash
-commit                     # muestra cambios, pide confirmación, genera mensaje
-commit "feat: calibración validada"
-```
-
-### Undo — deshacer
-
-```bash
-undo                       # muestra operaciones y pregunta cuál deshacer
-```
-
-Orbit guarda el estado de los ficheros antes de cada operación. Al ejecutar `undo`, verás la lista numerada de operaciones deshacibles. Elige el número (1 = última, 2 = las dos últimas, etc.) o 0 para cancelar. Puedes deshacer hasta 20 operaciones por sesión.
-
-### Doctor y archive
-
-```bash
-doctor                       # valida sintaxis de logbook, agenda y highlights
-doctor --fix                 # ofrece corregir errores detectados
-
-archive                      # archiva todo (pregunta por cada categoría)
-archive next-kr --months 3   # solo un proyecto, antigüedad 3 meses
-archive --agenda             # solo tareas/hitos completados + eventos pasados
-archive --logbook            # solo entradas de logbook antiguas
-archive --notes              # solo notas obsoletas
-archive --dry-run            # muestra qué se archivaría sin borrar
-archive --force              # salta confirmaciones
-```
-
 ### Documentación
 
 ```bash
 help                       # chuleta de comandos (terminal, paginado)
-help chuleta               # abre CHULETA.md en el editor
-help tutorial              # abre este tutorial en el editor
-help about                 # abre README.md en el editor
+help chuleta               # equivalente (paginado)
+help tutorial              # tutorial en terminal (paginado)
+help about                 # README en terminal (paginado)
+help --open                # abre CHULETA.md en el editor
+help tutorial --open       # abre TUTORIAL.md en el editor
 ```
+
+---
+
+## 13. Servicios externos y mantenimiento
+
+Orbit gestiona automáticamente la conexión con servicios externos: sincroniza citas con Google, versiona con git, renderiza a cloud y programa notificaciones en el Mac. No necesitas pensar en ello durante el día — Orbit se encarga al arrancar la shell, al operar sobre citas y al hacer commit.
+
+Los comandos de esta sección son para **configurar** los servicios la primera vez o para **diagnosticar** si algo no funciona.
+
+### Git — versionado y backup
+
+Al hacer `commit`, Orbit valida los ficheros (doctor), reconcilia los IDs de Google y guarda en git. Es lo único que haces manualmente:
+
+```bash
+commit                     # muestra cambios, pide confirmación, genera mensaje
+commit "feat: calibración validada"   # con mensaje directo
+undo                       # deshacer la última operación de Orbit
+```
+
+Para hacer push al remoto, usa `orbit_push` desde la terminal del sistema (fuera de la shell). Si hay cambios sin commit, hace commit primero.
+
+### Google Calendar/Tasks
+
+Orbit sincroniza las citas con Google automáticamente: tareas e hitos van a Google Tasks, eventos a Google Calendar. No necesitas ejecutar nada — ocurre al arrancar y tras cada `add`, `done`, `drop` o `edit`. Los items sincronizados muestran `[G]` en `agenda.md`.
+
+**Configuración**: `google-sync.json` en la raíz del workspace (mapa tipo → calendario).
+
+**Si algo falla** (token expirado, error de red):
+
+```bash
+gsync                      # forzar sincronización manual
+gsync --dry-run             # ver qué se sincronizaría sin hacerlo
+gsync --list-calendars      # listar calendarios disponibles en Google
+```
+
+### Cloud (OneDrive/Google Drive)
+
+Tras cada `commit`, Orbit renderiza los markdown a HTML y los copia al cloud automáticamente. Puedes consultar proyectos, agendas y logbooks desde el móvil abriendo `index.html` en la app de cloud.
+
+**Configuración**: `"cloud_root"` en `orbit.json` apunta al directorio del servicio de nube.
+
+**Comandos manuales** (primera vez o para forzar):
+
+```bash
+render --full              # renderiza todo (primera vez)
+render next-kr             # renderiza un proyecto concreto
+deliver next-kr paper.pdf  # entrega un fichero al cloud del proyecto
+```
+
+También puedes entregar ficheros directamente desde `log` y `hl add` con `--deliver`.
+
+### Mac Reminders
+
+Orbit programa notificaciones en Reminders.app automáticamente al entrar en la shell: recorre las citas del día (de todos los workspaces) y las programa en el Mac.
+
+Al crear citas con `--time`, Orbit pregunta si quieres un recordatorio (por defecto 5 minutos antes). También puedes especificarlo directamente con `--ring`:
+
+```bash
+task add next-kr "Reunión" --date tomorrow --time 10:00 --ring 30m
+```
+
+### Doctor y archive — mantenimiento interno
+
+Doctor valida la sintaxis de los ficheros y se ejecuta automáticamente al arrancar y antes de cada commit. Solo lo ejecutas manualmente si quieres revisar o corregir:
+
+```bash
+doctor                     # valida logbook, agenda y highlights
+doctor --fix               # ofrece corregir errores detectados
+```
+
+Archive limpia entradas antiguas (tareas completadas, logbook viejo, notas sin modificar):
+
+```bash
+archive                    # archiva todo (pregunta por cada categoría)
+archive --dry-run          # muestra qué se archivaría sin borrar
+archive next-kr --months 3 # solo un proyecto, antigüedad 3 meses
+```
+
+---
+
+## 14. Federación de workspaces — ver citas de otro espacio
+
+Si tienes más de un workspace (por ejemplo, uno de trabajo y otro personal), puedes federar uno desde el otro para ver sus citas en panel, agenda y otros comandos de lectura.
+
+### Configurar la federación
+
+Crea `federation.json` en la raíz del workspace desde el que quieres ver el otro:
+
+```json
+{
+  "federated": [
+    {"name": "personal", "path": "~/🌿orbit-ps", "emoji": "🌿"}
+  ]
+}
+```
+
+Puedes federar varios workspaces añadiendo más entradas al array.
+
+### Qué incluye y qué no
+
+La federación es **solo lectura**. Los proyectos federados aparecen automáticamente en los comandos de consulta:
+
+```bash
+panel                      # incluye citas de ambos workspaces
+agenda                     # incluye citas de ambos workspaces
+ls tasks                   # tareas pendientes de todos los workspaces
+search "reunión"           # busca en todos los workspaces
+report week                # actividad de todos los workspaces
+```
+
+Pero **no puedes crear, editar ni borrar** citas o notas de proyectos federados. Los comandos de escritura (`add`, `edit`, `done`, `drop`, `log`, `note`) solo operan en el workspace activo. Para modificar un proyecto federado, entra en su workspace directamente.
+
+Los proyectos federados se distinguen visualmente con el emoji del workspace (🌿) en vez de un link al `project.md`.
+
+### Desactivar la federación puntualmente
+
+```bash
+agenda --no-fed            # solo citas del workspace activo
+panel --no-fed             # solo proyectos del workspace activo
+```
+
+### Notificaciones Mac
+
+Al entrar en la shell, Orbit programa las notificaciones (`ring`) del día de **ambos** workspaces, no solo el activo. Así no te pierdes recordatorios del espacio personal mientras trabajas.
 
 ---
 

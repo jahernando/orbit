@@ -242,17 +242,11 @@ def run_new_open(project: str, what: Optional[str] = None,
     if project_dir is None:
         return 1
 
-    if what == "notes":
-        # Open the notes/ directory in the editor
-        path = project_dir / "notes"
-        if not path.exists():
-            print(f"Error: no existe notes/ en {project_dir.name}")
-            return 1
-    elif what is None or what in _VALID_WHAT:
+    if what is None or what in _VALID_WHAT:
         kind = what or "project"
         path = resolve_file(project_dir, kind)
     else:
-        print(f"Error: '{what}' no válido. Opciones: {', '.join(sorted(_VALID_WHAT))} notes")
+        print(f"Error: '{what}' no válido. Opciones: {', '.join(sorted(_VALID_WHAT))}")
         return 1
 
     if not path.exists():

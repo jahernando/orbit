@@ -340,15 +340,6 @@ class TestRunNewOpen:
         assert rc == 0
         assert "test-project-agenda.md" in opened
 
-    def test_open_notes_dir(self, proj, projects_dir, monkeypatch):
-        from core.project_view import run_new_open
-        opened = []
-        monkeypatch.setattr("core.project_view.open_file",
-                            lambda path, editor: opened.append(path) or 0)
-        rc = run_new_open("test-project", what="notes")
-        assert rc == 0
-        assert opened[0].is_dir()
-
     def test_open_invalid_what(self, proj, projects_dir, capsys):
         from core.project_view import run_new_open
         rc = run_new_open("test-project", what="invalid")

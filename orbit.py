@@ -98,6 +98,15 @@ def _edit_args(args):
     )
 
 
+def _editor_from_args(args) -> str:
+    """Extract editor from --open [EDITOR] or --editor, with default fallback."""
+    open_val = getattr(args, "open", None)
+    if isinstance(open_val, str):
+        return open_val
+    editor_val = getattr(args, "editor", None)
+    return editor_val or default_editor()
+
+
 def _handle_output(args, run_fn, cmd_label: str = "", open_file_path=None):
     """Run run_fn capturing output, then --open / --log / --append / print as needed.
 
@@ -105,7 +114,9 @@ def _handle_output(args, run_fn, cmd_label: str = "", open_file_path=None):
     open_file_path: if given, --open writes to this path instead of cmd.md.
     Returns exit code (int).
     """
-    do_open = getattr(args, "open", False)
+    open_val = getattr(args, "open", False)
+    do_open = bool(open_val)
+    editor = _editor_from_args(args)
     log_target = getattr(args, "log", None)
     append_note = getattr(args, "append_note", None)
 
@@ -116,9 +127,9 @@ def _handle_output(args, run_fn, cmd_label: str = "", open_file_path=None):
         if do_open:
             if open_file_path:
                 open_file_path.write_text(content)
-                open_file(open_file_path, getattr(args, "editor", None) or "")
+                open_file(open_file_path, editor)
             else:
-                open_cmd_output(content, getattr(args, "editor", None) or "")
+                open_cmd_output(content, editor)
         if log_target:
             entry_type = getattr(args, "log_entry", "apunte")
             log_cmd_output(content, log_target, entry_type, cmd_label)
@@ -293,7 +304,7 @@ def cmd_log(args):
         if project_dir:
             logbook = find_logbook_file(project_dir)
             if logbook:
-                open_file(logbook, args.editor)
+                open_file(logbook, _editor_from_args(args))
     return rc
 
 
@@ -308,8 +319,8 @@ def cmd_search(args):
         any_mode=args.any,
         notes=getattr(args, "notes", False),
         limit=args.limit,
-        open_after=args.open,
-        editor=args.editor,
+        open_after=False,
+        editor="",
         in_filter=getattr(args, "in_filter", None),
         include_federated=not getattr(args, "no_fed", False),
     )
@@ -325,22 +336,23 @@ def cmd_open(args):
         from core.project import generate_proyectos_md
         path = generate_proyectos_md()
         print(f"Generado {path.name}")
-        return open_file(path, getattr(args, "editor", None) or default_editor())
+        return open_file(path, _editor_from_args(args))
     what = getattr(args, "what", None)
     return run_new_open(args.target, what=what,
-                        editor=getattr(args, "editor", None) or default_editor())
+                        editor=_editor_from_args(args))
 
 
 def cmd_view_new(args):
     log_target = getattr(args, "log", None)
+    editor = _editor_from_args(args)
     if log_target:
         fn = lambda: run_new_view(project=getattr(args, "project", None),
-                                  open_after=False, editor=default_editor())
+                                  open_after=False, editor=editor)
         return _handle_output(args, fn, "view")
     return run_new_view(
         project    = getattr(args, "project", None),
-        open_after = getattr(args, "open", False),
-        editor     = getattr(args, "editor", None) or default_editor(),
+        open_after = bool(getattr(args, "open", None)),
+        editor     = editor,
     )
 
 
@@ -375,7 +387,7 @@ def cmd_hl(args):
             new_text = getattr(args, "new_text", None),
             new_link = getattr(args, "new_link", None),
             hl_type  = getattr(args, "type", None),
-            editor   = getattr(args, "editor", None) or default_editor(),
+            editor   = _editor_from_args(args),
         )
     return 1
 
@@ -390,7 +402,7 @@ def cmd_note(args):
             project  = project,
             name     = getattr(args, "name", None),
             date_str = _d(getattr(args, "date", None)),
-            editor   = getattr(args, "editor", None) or default_editor(),
+            editor   = _editor_from_args(args),
         )
     if action == "list":
         fn = lambda: run_note_list(project=project)
@@ -406,7 +418,7 @@ def cmd_note(args):
             title     = getattr(args, "title", ""),
             file_str  = getattr(args, "file", None),
             open_after= not getattr(args, "no_open", False),
-            editor    = getattr(args, "editor", None) or default_editor(),
+            editor    = _editor_from_args(args),
             no_date   = getattr(args, "no_date", False),
             entry     = getattr(args, "entry", None) or "apunte",
             hl_type   = getattr(args, "hl", None),
@@ -419,7 +431,7 @@ def cmd_note(args):
         title     = title,
         file_str  = file_str,
         open_after= not getattr(args, "no_open", False),
-        editor    = getattr(args, "editor", None) or default_editor(),
+        editor    = _editor_from_args(args),
         no_date   = getattr(args, "no_date", False),
         entry     = getattr(args, "entry", None) or "apunte",
         hl_type   = getattr(args, "hl", None),
@@ -506,10 +518,7 @@ def cmd_ev(args):
                 print("⚠️  --end-time requiere --time para especificar la hora de inicio.")
                 return 1
         return run_ev_edit(**kw)
-    if action == "list":
-        return run_ev_list(project=_ga(args, "project"),
-                           period_from=_d(_ga(args, "from_date")),
-                           period_to=_d(_ga(args, "to_date")))
+    # list: use "ls ev" instead
     if action == "log":
         return run_ev_log(project=_ga(args, "project"), text=_ga(args, "text"))
     return 1
@@ -538,7 +547,7 @@ def cmd_reminder(args):
             occurrence=_ga(args, "occurrence", False),
             series=_ga(args, "series", False))
     if action == "log":    return run_reminder_log(project=_ga(args, "project"), text=_ga(args, "text"))
-    if action == "list":   return run_reminder_list(project=_ga(args, "project"))
+    # list: use "ls reminders" instead
     return 1
 
 
@@ -555,7 +564,7 @@ def cmd_project(args):
                                   set_status=getattr(args, "set", None))
     elif sub == "edit":
         return run_project_edit(name=args.name,
-                                editor=getattr(args, "editor", None) or default_editor())
+                                editor=_editor_from_args(args))
     elif sub == "drop":
         return run_project_drop(name=args.name,
                                 force=getattr(args, "force", False))
@@ -600,36 +609,65 @@ def cmd_help(args):
     import subprocess
     from core.config import ORBIT_CODE
     topic = getattr(args, "topic", None)
-    editor = getattr(args, "editor", None) or default_editor()
-    to_editor = getattr(args, "open", False)
-    if topic in (None, "chuleta"):
-        if topic is None and not to_editor:
-            # Print in terminal (paged)
-            try:
-                text = (ORBIT_CODE / "CHULETA.md").read_text()
-                pager = subprocess.Popen(["less", "-R"], stdin=subprocess.PIPE)
-                pager.communicate(input=text.encode())
-            except Exception:
-                print((ORBIT_CODE / "CHULETA.md").read_text())
-        else:
-            open_file(ORBIT_CODE / "CHULETA.md", editor)
-    elif topic == "tutorial":
-        open_file(ORBIT_CODE / "TUTORIAL.md", editor)
-    elif topic == "about":
-        open_file(ORBIT_CODE / "README.md", editor)
+    to_editor = bool(getattr(args, "open", None))
+    editor = _editor_from_args(args)
+
+    _HELP_FILES = {
+        None:       ("CHULETA.md",  "chuleta.md"),
+        "chuleta":  ("CHULETA.md",  "chuleta.md"),
+        "tutorial": ("TUTORIAL.md", "tutorial.md"),
+        "about":    ("README.md",   "readme.md"),
+    }
+    entry = _HELP_FILES.get(topic)
+    if not entry:
+        print(f"Tema desconocido: {topic}. Usa: chuleta, tutorial, about")
+        return 1
+
+    source, workspace_name = entry
+    path = ORBIT_CODE / source
+    if to_editor:
+        dest = ORBIT_DIR / workspace_name
+        dest.write_text(path.read_text())
+        open_file(dest, editor)
+    else:
+        try:
+            text = path.read_text()
+            pager = subprocess.Popen(["less", "-R"], stdin=subprocess.PIPE)
+            pager.communicate(input=text.encode())
+        except Exception:
+            print(path.read_text())
     return 0
 
 
 
 
 
+_AGENDA_PERIODS = {
+    "today": "today", "hoy": "today",
+    "week": "this week", "semana": "this week",
+    "month": "this month", "mes": "this month",
+}
+
+
 def cmd_agenda(args):
     to_file = getattr(args, "open", False) or getattr(args, "log", None)
+    projects = getattr(args, "projects", None) or None
+    date_str = getattr(args, "date", None)
+    date_from = getattr(args, "date_from", None)
+    date_to = getattr(args, "date_to", None)
+
+    # Allow "agenda week", "agenda month" as period shortcuts
+    if projects and not date_str and not date_from and not date_to:
+        first = projects[0].lower()
+        if first in _AGENDA_PERIODS:
+            date_str = _AGENDA_PERIODS[first]
+            projects = projects[1:] or None
+
     fn = lambda: run_agenda(
-        projects=getattr(args, "projects", None) or None,
-        date_str=_d(getattr(args, "date", None)),
-        date_from=_d(getattr(args, "date_from", None)),
-        date_to=_d(getattr(args, "date_to", None)),
+        projects=projects,
+        date_str=_d(date_str),
+        date_from=_d(date_from),
+        date_to=_d(date_to),
         no_cal=getattr(args, "no_cal", False),
         markdown=bool(to_file),
         dated_only=getattr(args, "dated", False),
@@ -734,7 +772,9 @@ def cmd_panel(args):
     from core.config import ORBIT_HOME
     period = getattr(args, "period", None)
     fn = lambda: run_panel(period=period,
-                           include_federated=not getattr(args, "no_fed", False))
+                           include_federated=not getattr(args, "no_fed", False),
+                           date_from=_d(getattr(args, "date_from", None)),
+                           date_to=_d(getattr(args, "date_to", None)))
     return _handle_output(args, fn, "panel",
                           open_file_path=ORBIT_HOME / "panel.md")
 
@@ -868,6 +908,7 @@ def cmd_ls(args):
         fn = lambda: run_ms_list(
             projects=getattr(args, "projects", None) or None,
             status_filter=getattr(args, "status", "pending"),
+            date_filter=_d(getattr(args, "date", None)),
             dated_only=getattr(args, "dated", False),
             include_federated=_inc_fed)
         return _handle_output(args, fn, "ls ms")
@@ -1008,9 +1049,9 @@ def _add_fed_args(p):
 
 
 def _add_output_args(p):
-    """Add --open, --editor, --log, --log-entry, --append args."""
-    p.add_argument("--open", action="store_true", help="Open in editor")
-    p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
+    """Add --open [EDITOR], --log, --log-entry, --append args."""
+    p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                   help="Open in editor (optionally specify editor name)")
 
 
 def _build_parser():
@@ -1031,8 +1072,8 @@ def _build_parser():
     )
     log_p.add_argument("--deliver", action="store_true", help="Deliver file to cloud (logs/ with date prefix)")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
-    log_p.add_argument("--open", action="store_true", help="Open the logbook/note in editor after logging")
-    log_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
+    log_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                       help="Open in editor (optionally specify editor name)")
 
     # --- search ---
     search_p = subparsers.add_parser("search", help="Search across project logbooks and notes")
@@ -1055,9 +1096,8 @@ def _build_parser():
                           help="Also search inside notes/ files of each project")
     search_p.add_argument("--limit", type=int, default=0, metavar="N",
                           help="Maximum number of results (default: unlimited)")
-    search_p.add_argument("--open", action="store_true",
-                          help="Open results in editor")
-    search_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
+    search_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                          help="Open in editor (optionally specify editor name)")
     _add_log_args(search_p)
     _add_fed_args(search_p)
 
@@ -1091,6 +1131,7 @@ def _build_parser():
     ls_ms.add_argument("projects", nargs="*", default=None, help="Project(s)")
     ls_ms.add_argument("--status", default="pending",
                        choices=["pending", "done", "cancelled", "all"])
+    ls_ms.add_argument("--date",   default=None, help="Filter by date")
     ls_ms.add_argument("--dated",  action="store_true", help="Only show milestones with a date")
     _add_output_args(ls_ms)
     _add_log_args(ls_ms)
@@ -1148,19 +1189,23 @@ def _build_parser():
     open_p.add_argument("target", nargs="?", default=None,
                         help="Project name (partial match)")
     open_p.add_argument("what", nargs="?", default=None,
-                        choices=["logbook", "highlights", "agenda", "notes", "project"],
+                        choices=["logbook", "highlights", "agenda", "project"],
                         help="Which file to open: project (default), logbook, highlights, agenda, notes")
     open_p.add_argument("--dir",      action="store_true",
                         help="Open the project directory in Finder")
     open_p.add_argument("--editor",   default=None,
-                        help="Editor: obsidian, glow, code, or any command (env ORBIT_EDITOR)")
+                        help="Editor: obsidian, glow, code, or any command")
 
     # --- panel ---
     pan_p = subparsers.add_parser("panel", help="Dashboard: priority projects, agenda, activity")
     pan_p.add_argument("period", nargs="?", default=None,
                        help="Period: today (default), week, month")
-    pan_p.add_argument("--open", action="store_true", help="Open in editor")
-    pan_p.add_argument("--editor", default=None)
+    pan_p.add_argument("--from", dest="date_from", default=None, metavar="DATE",
+                       help="Period start")
+    pan_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
+                       help="Period end")
+    pan_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                       help="Open in editor (optionally specify editor name)")
     _add_log_args(pan_p)
     _add_fed_args(pan_p)
 
@@ -1177,8 +1222,8 @@ def _build_parser():
     rep_p.add_argument("--summary", nargs="?", const="", default=None,
                        metavar="SECTION",
                        help="Summary table: logbook, agenda, highlights, all (default: logbook+agenda)")
-    rep_p.add_argument("--open", action="store_true", help="Open in editor")
-    rep_p.add_argument("--editor", default=None)
+    rep_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                       help="Open in editor (optionally specify editor name)")
     _add_log_args(rep_p)
     _add_fed_args(rep_p)
 
@@ -1192,8 +1237,6 @@ def _build_parser():
                       help="Period start")
     ag_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
                       help="Period end")
-    ag_p.add_argument("--calendar", action="store_true", default=None,
-                      help="Show calendar grid (default; kept for backwards compat)")
     ag_p.add_argument("--no-cal", action="store_true", dest="no_cal",
                       help="Suppress calendar grid, show only the list")
     ag_p.add_argument("--dated",  action="store_true",
@@ -1202,8 +1245,8 @@ def _build_parser():
                       help="Order by date (default), project, or type (events/milestones/tasks)")
     ag_p.add_argument("--summary", action="store_true",
                       help="Per-project summary table (counts and date range)")
-    ag_p.add_argument("--open",   action="store_true", help="Open in editor")
-    ag_p.add_argument("--editor", default=None)
+    ag_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                      help="Open in editor (optionally specify editor name)")
     _add_log_args(ag_p)
     _add_fed_args(ag_p)
 
@@ -1219,8 +1262,8 @@ def _build_parser():
                        help="Period start (default: 1st of current month)")
     cal_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
                        help="Period end (default: last day of current month)")
-    cal_p.add_argument("--open", action="store_true", help="Open in editor")
-    cal_p.add_argument("--editor", default=None)
+    cal_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                       help="Open in editor (optionally specify editor name)")
     _add_log_args(cal_p)
 
     # --- gsync ---
@@ -1321,11 +1364,6 @@ def _build_parser():
     _add_project_text(ev_edit, project_required=False)
     _add_edit_args(ev_edit, has_end=True, has_end_time=True)
 
-    ev_list = ev_sub.add_parser("list", help="List events")
-    ev_list.add_argument("project", nargs="?", default=None)
-    ev_list.add_argument("--from",  dest="from_date", default=None)
-    ev_list.add_argument("--to",    dest="to_date", default=None)
-
     ev_log = ev_sub.add_parser("log", help="Create logbook entry from an event")
     _add_project_text(ev_log, project_required=False)
 
@@ -1347,9 +1385,6 @@ def _build_parser():
 
     rem_log = rem_sub.add_parser("log", help="Create logbook entry from a reminder")
     _add_project_text(rem_log, project_required=False)
-
-    rem_list = rem_sub.add_parser("list", help="List active reminders")
-    rem_list.add_argument("project", nargs="?", default=None)
 
     # --- hl ---
     hl_p   = subparsers.add_parser("hl", help="Highlights commands (highlights.md)")
@@ -1386,9 +1421,8 @@ def _build_parser():
                                   help="Terminal summary of a project (or interactive picker)")
     v2_p.add_argument("project", nargs="?", default=None,
                       help="Project name (partial match; omit for interactive picker)")
-    v2_p.add_argument("--open",   action="store_true",
-                      help="Open summary as markdown in editor")
-    v2_p.add_argument("--editor", default=None)
+    v2_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                      help="Open in editor (optionally specify editor name)")
     _add_log_args(v2_p)
 
     # --- note (new-model notes/) ---
@@ -1434,8 +1468,8 @@ def _build_parser():
 
     nt_list = note_sub.add_parser("list", help="List notes with git status")
     nt_list.add_argument("project", help="Project name (partial match)")
-    nt_list.add_argument("--open",   action="store_true", help="Open output in editor")
-    nt_list.add_argument("--editor", default=None)
+    nt_list.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                         help="Open in editor (optionally specify editor name)")
     _add_log_args(nt_list)
 
     nt_drop = note_sub.add_parser("drop", help="Delete a note (interactive)")
@@ -1511,7 +1545,7 @@ def _build_parser():
     # project edit
     pre_p = prj_sub.add_parser("edit", help="Open project.md in editor")
     pre_p.add_argument("name", help="Project name (partial match)")
-    pre_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
+    pre_p.add_argument("--editor", default=None, help="Editor")
 
     # project priority
     prp_p = prj_sub.add_parser("priority", help="Change project priority")
@@ -1561,8 +1595,8 @@ def _build_parser():
                         help="Period start")
     hist_p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
                         help="Period end")
-    hist_p.add_argument("--open", action="store_true", help="Open in editor")
-    hist_p.add_argument("--editor", default=None)
+    hist_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                        help="Open in editor (optionally specify editor name)")
     _add_log_args(hist_p)
 
     # --- claude ---
@@ -1581,8 +1615,7 @@ def _build_parser():
     cr_show = crono_sub.add_parser("show", help="Mostrar cronograma con fechas calculadas")
     cr_show.add_argument("project", help="Project name")
     cr_show.add_argument("name", help="Cronograma name (partial match)")
-    cr_show.add_argument("--open", action="store_true")
-    cr_show.add_argument("--editor", default=None)
+    cr_show.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
     _add_log_args(cr_show)
 
     cr_check = crono_sub.add_parser("check", help="Validar cronograma (doctor)")
@@ -1591,8 +1624,7 @@ def _build_parser():
 
     cr_list = crono_sub.add_parser("list", help="Listar cronogramas del proyecto")
     cr_list.add_argument("project", help="Project name")
-    cr_list.add_argument("--open", action="store_true")
-    cr_list.add_argument("--editor", default=None)
+    cr_list.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
     _add_log_args(cr_list)
 
     cr_done = crono_sub.add_parser("done", help="Marcar tarea de cronograma como completada")
@@ -1605,14 +1637,13 @@ def _build_parser():
 
     # --- help ---
     hlp_p   = subparsers.add_parser("help", help="Show help: chuleta (default), tutorial, about")
-    hlp_p.add_argument("--open", action="store_true", help="Open in editor instead of pager")
-    hlp_p.add_argument("--editor", default=None)
+    hlp_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                       help="Open in editor (optionally specify editor name)")
     hlp_sub = hlp_p.add_subparsers(dest="topic")
     for _name, _help in [("chuleta",  "Open CHULETA.md in editor"),
-                          ("tutorial", "Open TUTORIAL.md in editor"),
-                          ("about",    "Open README.md in editor")]:
+                          ("tutorial", "Open TUTORIAL.md"),
+                          ("about",    "Open README.md")]:
         _p = hlp_sub.add_parser(_name, help=_help)
-        _p.add_argument("--editor", default=None)
 
     return parser
 
@@ -1649,7 +1680,7 @@ def run_command(argv: list) -> int:
     if args.command in _COMMANDS:
         return _COMMANDS[args.command](args) or 0
     if args.command == "shell":
-        run_shell(editor=getattr(args, "editor", None) or default_editor())
+        run_shell(editor=_editor_from_args(args))
         return 0
     if args.command == "help":
         return cmd_help(args) or 0

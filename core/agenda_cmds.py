@@ -1480,6 +1480,7 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
 
 
 def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
+                date_filter: Optional[str] = None,
                 dated_only: bool = False, include_federated: bool = True) -> int:
     if projects:
         dirs = []
@@ -1499,6 +1500,8 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
 
         if status_filter != "all":
             mss = [ms for ms in mss if ms["status"] == status_filter]
+        if date_filter:
+            mss = [ms for ms in mss if ms.get("date", "").startswith(date_filter)]
         if dated_only:
             mss = [ms for ms in mss if ms.get("date")]
         if not mss:

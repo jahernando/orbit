@@ -110,7 +110,6 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--ti
 orbit ev add  <project> "<text>" --date DATE [--end DATE] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
 orbit ev drop [<project>] ["<text>"] [--force] [-o] [-s]
 orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
-orbit ev list [<project>] [--from DATE] [--to DATE]
 ```
 
 - `--time`: hora del evento. `HH:MM` (solo inicio, 1h por defecto) o `HH:MM-HH:MM` (inicio-fin)
@@ -130,7 +129,6 @@ orbit reminder add  <project> "<text>" --date DATE --time HH:MM [--recur FREQ] [
 orbit reminder drop [<project>] ["<text>"] [--force] [-o] [-s]
 orbit reminder log  [<project>] ["<text>"]
 orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--desc DESC|none]
-orbit reminder list [<project>]
 ```
 
 - Los recordatorios son notificaciones programadas: no tienen estado (done/pending), solo se disparan en la fecha/hora indicada
@@ -149,7 +147,7 @@ orbit reminder list [<project>]
 ```bash
 orbit hl add  <project> "<text>" [<file|url>] --type TYPE [--deliver] [--date [FECHA]]
 orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
-orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE]
+orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE] [--editor E]
 ```
 
 - `<file|url>`: argumento posicional opcional. Si es URL, enlaza el texto. Si es fichero local, enlaza y pregunta si quieres entregarlo a cloud
@@ -167,7 +165,7 @@ orbit note <project> "<title>" [<file>]          # crear nota (atajo sin subcoma
 orbit note create <project> "<title>" [--file F] [--no-open] [--editor E]
 orbit note import <project> "<title>" <file>     # importar .md existente (log + clip)
 orbit note open   <project> [<name>] [--date D] [--editor E]
-orbit note list   <project> [--open] [--editor E]
+orbit note list   <project> [--open [EDITOR]]
 orbit note drop   <project> [<file>] [--force]
 ```
 
@@ -190,8 +188,8 @@ orbit note drop   <project> [<file>] [--force]
 ## view / open — navegar proyectos
 
 ```bash
-orbit view  [<project>] [--open] [--editor E]
-orbit open  <project> [logbook|highlights|agenda|notes|project] [--editor E] [--dir]
+orbit view  [<project>] [--open [EDITOR]]
+orbit open  <project> [logbook|highlights|agenda|project] [--editor E] [--dir]
 ```
 
 - `view` sin proyecto: muestra lista para selección interactiva
@@ -204,11 +202,11 @@ orbit open  <project> [logbook|highlights|agenda|notes|project] [--editor E] [--
 ## log y search
 
 ```bash
-orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--deliver] [--note NOTA] [--date D] [--open] [--editor E]
+orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--deliver] [--note NOTA] [--date D] [--open [EDITOR]]
 
-orbit search [query] [--project P...] [--tag TAG] [--date D] [--from D] [--to D]
+orbit search [query] [--project P...] [--entry TIPO] [--date D] [--from D] [--to D]
              [--in logbook|highlights|agenda] [--any] [--notes]
-             [--limit N] [--open] [--editor E]
+             [--limit N] [--open [EDITOR]]
 ```
 
 - `<file|url>`: argumento posicional opcional. Si es URL, enlaza el título. Si es fichero local, enlaza al fichero y pregunta si quieres entregarlo a cloud
@@ -222,7 +220,7 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 ```
 - `--deliver`: entrega el fichero directamente a cloud sin preguntar (copia a `logs/` con prefijo `YYYY-MM-DD_`)
 - Si el fichero es imagen (png, jpg, svg...), se inserta `![título](link)` en la línea siguiente de la entrada
-- `--tag`: filtra por hashtag (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
+- `--entry`: filtra por tipo de entrada (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
 - `--in`: busca en un tipo de fichero específico (por defecto logbook)
 
 ---
@@ -273,24 +271,9 @@ orbit undo
 
 ---
 
-## render — renderizar proyectos a HTML para cloud
-
-```bash
-orbit render                  # renderiza ficheros del último commit
-orbit render <project>        # renderiza un proyecto completo
-orbit render --full           # renderiza todos los proyectos
-```
-
-- Convierte ficheros `.md` de cada proyecto a `.html` en el directorio cloud
-- Genera `index.html` con dashboard de proyectos
-- Crea `inbox.md` vacíos en cloud para capturas desde el móvil
-- Incluye soporte KaTeX para ecuaciones LaTeX (`$...$` y `$$...$$`)
-- Se ejecuta automáticamente en background tras cada `commit`
-- Los `.md` no se copian a cloud — solo los `.html` renderizados + `inbox.md`
-
 ## clip — copiar al portapapeles
 
-Comando unificado que reemplaza `date`, `week` y `link`:
+Comando unificado para copiar fechas, semanas y enlaces al portapapeles:
 
 ```bash
 orbit clip date                # hoy: 2026-03-20 (copiado al portapapeles)
@@ -308,57 +291,7 @@ orbit clip catedra notes/tramos.md --from complementos      # enlace relativo en
 - `clip <project> [fichero]`: enlace markdown al proyecto o a un fichero del proyecto
   - Sin fichero: `[⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)`
   - Con fichero: busca por nombre parcial en el proyecto (interactivo si hay varias coincidencias)
-  - `--from <proyecto>`: calcula ruta relativa desde la raíz del proyecto origen (para Typora/Obsidian)
-
-## deliver — entregar ficheros a la nube
-
-```bash
-orbit deliver <project> <file>
-```
-
-- Copia el fichero al directorio cloud del proyecto y deja la ruta en el portapapeles
-- Para entregar un fichero y crear entrada de logbook o highlight, usa `--deliver` en `log` o `hl add`
-
-### Estructura cloud
-
-```
-cloud_root/                         ← definido en orbit.json ("cloud_root")
-  {type_emoji}{type_name}/          ← ej. ⚙️gestion
-    {project_dir}/                  ← ej. ⚙️catedra
-      logs/                         ← ficheros entregados desde log (con prefijo YYYY-MM-DD_)
-      hls/                          ← ficheros entregados desde hl
-      ...                           ← otros ficheros manuales
-```
-
-### Configuracion cloud en orbit.json
-
-Cada workspace necesita `cloud_root` en su `orbit.json`:
-
-```json
-{
-  "space": "orbit-ws",
-  "emoji": "🚀",
-  "cloud_root": "~/Library/CloudStorage/OneDrive-.../🚀orbit-ws",
-  "types": { ... }
-}
-```
-
-El directorio cloud raiz deberia llamarse `{emoji}{space}` (ej. `🚀orbit-ws`, `🌿orbit-ps`) para identificarlo visualmente en el servicio de nube.
-
-Cada proyecto tiene un link `[cloud]` en su `project.md` que apunta a su directorio en cloud.
-
----
-
-## commit
-
-```bash
-orbit commit ["<mensaje>"]
-```
-
-- Sin mensaje: pide interactivamente; intro vacío → genera mensaje automático
-- Muestra ficheros modificados y pide `[S/n]` antes de ejecutar
-- Ejecuta doctor pre-check: valida agendas/logbooks antes de commitear, muestra problemas y pregunta si continuar
-- Ejecuta reconciliación gsync: detecta renombramientos de citas en el markdown y migra IDs de Google
+  - `--from <proyecto>`: calcula ruta relativa desde la raíz del proyecto origen (para Obsidian)
 
 ---
 
@@ -368,7 +301,7 @@ orbit commit ["<mensaje>"]
 orbit ls                              # lista proyectos (por defecto)
 orbit ls projects [--status S] [--type T] [--sort type|status|priority]
 orbit ls tasks    [project...] [--status pending|done|all] [--date D] [--dated] [--unplanned]
-orbit ls ms       [project...] [--status pending|done|all] [--dated]
+orbit ls ms       [project...] [--status pending|done|all] [--date D] [--dated]
 orbit ls ev         [project]    [--from D] [--to D]
 orbit ls reminders  [project]    # recordatorios activos (alias: ls rem)
 orbit ls hl        [project]    [--type T]
@@ -383,22 +316,22 @@ Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untra
 
 ---
 
-## agenda — vista temporal
+> **Panel y agenda** son las dos herramientas dinámicas para gestionar el día. Se abren al empezar (`--open` para fijar en Obsidian) y se refrescan durante la jornada. Panel da la vista de alto nivel (prioridad + citas + actividad); agenda detalla las citas. Al final del día, `report` resume la actividad.
+
+## agenda — citas del día (herramienta dinámica)
 
 ```bash
-orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--summary] [--dated] [--order project|date] [--no-fed] [--open] [--editor E]
+orbit agenda [project...] [--date D] [--from D] [--to D] [--no-cal] [--summary] [--dated] [--order project|date] [--no-fed] [--open [EDITOR]]
+orbit agenda week                     # esta semana
+orbit agenda month                    # este mes
 ```
 
 - Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
+- Atajos de periodo: `today`/`hoy`, `week`/`semana`, `month`/`mes`
 - `--date 2026-03`: todo el mes
 - `--from monday --to friday`: rango
-- `--calendar`: vista de calendario con colores (máx. 3 meses)
-  - Azul: número de semana
-  - Amarillo: tarea
-  - Cian: evento
-  - Magenta: hito
-  - Rojo: vencida
-  - Invertido: hoy
+- El calendario se muestra por defecto; `--no-cal` lo suprime (para calendarios dedicados, usa `cal`)
+- Colores del calendario: azul (semana) · amarillo (tarea) · cian (evento) · magenta (hito) · rojo (vencida) · invertido (hoy)
 - `--summary`: tabla resumen por proyecto (primera/última fecha, conteo de tareas/hitos/eventos/sin fecha)
 - `--dated`: solo muestra tareas/hitos que tienen fecha asignada
 - `--order project`: agrupa por proyecto (por defecto)
@@ -410,12 +343,13 @@ orbit agenda [project...] [--date D] [--from D] [--to D] [--calendar] [--summary
 
 ---
 
-## panel — dashboard diario
+## panel — dashboard dinámico
 
 ```bash
 orbit panel                                        # panel del día
 orbit panel week                                   # panel de la semana
 orbit panel month                                  # panel del mes
+orbit panel --from monday --to friday              # rango personalizado
 orbit panel --open                                 # abre en editor (panel.md)
 orbit panel --no-fed                               # sin proyectos federados
 orbit panel --append mission:W12                   # añade a una nota
@@ -436,7 +370,7 @@ Proyectos locales se muestran como links a `project.md`; federados con emoji del
 ## report — informe de actividad
 
 ```bash
-orbit report [project...] [--date D] [--from D] [--to D] [--no-fed] [--open] [--editor E]
+orbit report [project...] [--date D] [--from D] [--to D] [--no-fed] [--open [EDITOR]]
 orbit report today                    # actividad de hoy
 orbit report week                     # actividad de esta semana
 orbit report month                    # actividad de este mes
@@ -460,7 +394,23 @@ orbit report --summary [logbook|agenda|highlights|all] [--date D] [--from D] [--
 
 ---
 
-## gsync — sincronización con Google
+## Servicios externos
+
+> Orbit gestiona estas conexiones automáticamente (al arrancar, al operar sobre citas, al commitear). Los comandos siguientes permiten interactuar manualmente.
+
+### Git — versionado
+
+```bash
+orbit commit ["<mensaje>"]
+```
+
+- Sin mensaje: pide interactivamente; intro vacío → genera mensaje automático
+- Muestra ficheros modificados y pide `[S/n]` antes de ejecutar
+- Ejecuta doctor pre-check: valida agendas/logbooks antes de commitear
+- Ejecuta reconciliación gsync: detecta renombramientos de citas en el markdown y migra IDs de Google
+- Push al remoto: `orbit_push` desde la terminal del sistema (fuera de la shell)
+
+### Google Calendar/Tasks — gsync
 
 ```bash
 orbit gsync                        # sincroniza tareas/hitos/eventos con Google
@@ -478,9 +428,40 @@ orbit gsync --migrate-recurring    # migrar eventos recurrentes viejos a RRULE
 - Items recurrentes usan clave estable (`desc::🔄recur`) para que al avanzar la fecha no se dupliquen en Google
 - Items sincronizados muestran `[G]` en agenda.md
 
+### Cloud (OneDrive/Google Drive) — render y deliver
+
+```bash
+orbit render                  # renderiza ficheros del último commit
+orbit render <project>        # renderiza un proyecto completo
+orbit render --full           # renderiza todos los proyectos
+orbit deliver <project> <file>   # entrega un fichero al cloud del proyecto
+```
+
+- Convierte ficheros `.md` de cada proyecto a `.html` en el directorio cloud
+- Genera `index.html` con dashboard de proyectos
+- Incluye soporte KaTeX para ecuaciones LaTeX (`$...$` y `$$...$$`)
+- Se ejecuta automáticamente en background tras cada `commit`
+- `deliver` también disponible como `--deliver` en `log` y `hl add`
+- Estructura cloud: `cloud_root/{tipo}/{proyecto}/logs/`, `hls/`
+- `cloud_root` se configura en `orbit.json`; cada proyecto tiene un link `[cloud]` en `project.md`
+
+### Mac Reminders — notificaciones
+
+No hay un comando propio — `--ring` es un flag transversal disponible en `task`, `ms`, `ev`:
+
+```bash
+orbit task add next-kr "Reunión" --date tomorrow --time 10:00 --ring 30m
+```
+
+- Si creas una cita con `--time` sin `--ring`, Orbit pregunta interactivamente (defecto: 5 min antes)
+- Al entrar en la shell, se programan las notificaciones del día de todos los workspaces
+- Valores: `1d` (1 día antes), `2h`, `30m`, `HH:MM` (hora fija), `YYYY-MM-DD HH:MM`
+
 ---
 
-## history — historial de comandos
+## Mantenimiento interno
+
+### history — historial de comandos
 
 ```bash
 orbit history                          # hoy
@@ -495,23 +476,7 @@ orbit history --open                   # abrir en editor
 - No registra comandos de solo lectura (agenda, report, view, ls, doctor, search, history, open)
 - Fichero: `history.md` en la raíz de Orbit
 
----
-
-## claude — asistente integrado
-
-```bash
-orbit claude "¿cómo creo una tarea recurrente?"
-orbit claude "quiero ver la agenda de la semana"
-```
-
-- Envía la pregunta a Claude con la CHULETA como contexto
-- Si un comando falla y hay API key, sugiere alternativas automáticamente
-- Requiere: `pip install anthropic` + `ANTHROPIC_API_KEY` env var
-- Usa Haiku (rápido y económico)
-
----
-
-## doctor — validación de ficheros
+### doctor — validación de ficheros
 
 ```bash
 orbit doctor [<project>]        # revisa todos o un proyecto
@@ -519,12 +484,10 @@ orbit doctor --fix [<project>]  # revisa y ofrece corregir
 ```
 
 - Valida logbook (fechas, tipos, emojis), agenda (marcadores, fechas, recurrencia, formato de eventos) y highlights (secciones, formato de items, links)
-- Se ejecuta automáticamente en segundo plano al iniciar la shell
+- Se ejecuta automáticamente al iniciar la shell y antes de cada commit
 - Con `--fix`: muestra correcciones disponibles y permite aplicarlas interactivamente
 
----
-
-## archive — archivado de entradas antiguas
+### archive — archivado de entradas antiguas
 
 ```bash
 orbit archive [<project>] [--months N] [--dry-run] [--force]
@@ -546,6 +509,17 @@ Qué se limpia:
 3. **notes**: notas en `notes/` no modificadas en N meses
 
 Los datos eliminados son recuperables con `git log -p -- <fichero>`.
+
+### claude — asistente integrado
+
+```bash
+orbit claude "¿cómo creo una tarea recurrente?"
+orbit claude "quiero ver la agenda de la semana"
+```
+
+- Envía la pregunta a Claude con la CHULETA como contexto
+- Si un comando falla y hay API key, sugiere alternativas automáticamente
+- Requiere: `pip install anthropic` + `ANTHROPIC_API_KEY` env var
 
 ---
 
@@ -587,18 +561,25 @@ Configuración: `federation.json` en la raíz del workspace:
 
 ```bash
 orbit help            # muestra CHULETA.md en terminal (paginado)
+orbit help chuleta    # equivalente (paginado)
+orbit help tutorial   # muestra TUTORIAL.md en terminal (paginado)
+orbit help about      # muestra README.md en terminal (paginado)
 orbit help --open     # abre CHULETA.md en el editor
-orbit help chuleta    # abre CHULETA.md en el editor (equivalente)
-orbit help tutorial   # abre TUTORIAL.md en el editor
-orbit help about      # abre README.md en el editor
+orbit help tutorial --open   # abre TUTORIAL.md en el editor
 ```
 
 ---
 
 ## --open — abrir resultado en editor
 
-Los comandos de listado aceptan `--open [--editor E]`:
+Los comandos de consulta aceptan `--open [EDITOR]`:
 capturan el output, lo escriben en un fichero markdown y lo abren en el editor.
+
+```bash
+orbit agenda --open               # abre en editor por defecto
+orbit agenda --open obsidian      # abre en Obsidian
+orbit panel --open code           # abre en VS Code
+```
 
 - `panel --open` → `panel.md`
 - `agenda --open` → `agenda.md`
@@ -606,12 +587,14 @@ capturan el output, lo escriben en un fichero markdown y lo abren en el editor.
 
 Estos ficheros se pueden fijar en Obsidian (pin tab) para tener un dashboard permanente.
 
-El editor se configura (en orden de prioridad):
+Sin especificar editor, se usa el editor por defecto (en orden de prioridad):
 1. `ORBIT_EDITOR` (variable de entorno)
 2. `"editor"` en `orbit.json` (por workspace)
 3. Abridor del sistema (`open` en macOS)
 
-Comandos que lo admiten: `ls` · `view` · `search` · `report` · `agenda` · `panel`
+Comandos que lo admiten: `ls` · `view` · `search` · `report` · `agenda` · `panel` · `help` · `history` · `crono show/list` · `note list`
+
+Los comandos que abren ficheros directamente usan `--editor E` (no `--open`): `open`, `note create/open/import`, `hl edit`, `project edit`, `shell`.
 
 ---
 

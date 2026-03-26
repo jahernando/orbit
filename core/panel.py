@@ -266,9 +266,17 @@ def _print_calendar(start, end):
         _print_calendar_grid_md(dirs, cal_start, cal_end)
 
 
-def run_panel(period=None, include_federated=True) -> int:
+def run_panel(period=None, include_federated=True,
+              date_from=None, date_to=None) -> int:
     """Print dashboard as markdown."""
-    start, end, label = _parse_panel_period(period)
+    if date_from or date_to:
+        from core.dateparse import parse_date
+        today = date.today()
+        start = date.fromisoformat(parse_date(date_from)) if date_from else today
+        end = date.fromisoformat(parse_date(date_to)) if date_to else start
+        label = f"{start.isoformat()} → {end.isoformat()}"
+    else:
+        start, end, label = _parse_panel_period(period)
     is_single_day = start == end
 
     print(f"# Panel — {label}")
