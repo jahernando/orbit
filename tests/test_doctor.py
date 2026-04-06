@@ -170,7 +170,20 @@ class TestCheckAgenda:
             "## 🏁 Hitos\n"
             "- [ ] Hito 1 (2026-06-01)\n\n"
             "## 📅 Eventos\n"
-            "2026-04-01 — Reunión de equipo\n"
+            "2030-04-01 — Reunión de equipo\n"
+        )
+        issues = _check_agenda("💻testproj", path)
+        assert issues == []
+
+    def test_past_dates_are_allowed(self, doctor_env):
+        """Past dates in agenda are normal (historical) — doctor should not warn."""
+        path = doctor_env["proj"] / "testproj-agenda.md"
+        path.write_text(
+            "# Agenda\n\n"
+            "## ✅ Tareas\n"
+            "- [ ] Tarea pasada (2020-01-01)\n"
+            "## 📅 Eventos\n"
+            "2020-01-01 — Evento pasado\n"
         )
         issues = _check_agenda("💻testproj", path)
         assert issues == []

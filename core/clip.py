@@ -1,7 +1,8 @@
 """orbit clip — copy useful references to the clipboard.
 
-  orbit clip date [expr]                  →  2026-03-22
-  orbit clip week [expr]                  →  2026-W12
+  orbit clip date  [expr]                 →  2026-03-22
+  orbit clip week  [expr]                 →  2026-W12
+  orbit clip month [expr]                 →  2026-03
   orbit clip proj [target] [--from proj]  →  [label](path)
 
 `clip proj` without target links to the project file.
@@ -61,6 +62,24 @@ def _clip_week(expr: str = "today") -> int:
         return 1
     print(week)
     _copy_to_clipboard(week)
+    return 0
+
+
+# ── clip month ──────────────────────────────────────────────────────────────
+
+def _clip_month(expr: str = "today") -> int:
+    from datetime import date
+    from core.dateparse import parse_date
+    result = parse_date(expr)
+    if re.match(r'^\d{4}-\d{2}$', result):
+        month = result
+    elif re.match(r'^\d{4}-\d{2}-\d{2}$', result):
+        month = result[:7]
+    else:
+        print(f"  no se pudo resolver a un mes: {expr}")
+        return 1
+    print(month)
+    _copy_to_clipboard(month)
     return 0
 
 
@@ -155,7 +174,7 @@ def _clip_proj(name: str, target: str = None,
 
 def run_clip(mode: str, args) -> int:
     """Main entry point for `orbit clip`."""
-    if mode in ("date", "week"):
+    if mode in ("date", "week", "month"):
         # Combine target + expr into a single expression string
         parts = []
         if getattr(args, "target", None):
@@ -165,6 +184,8 @@ def run_clip(mode: str, args) -> int:
         expr = " ".join(parts) if parts else "today"
         if mode == "date":
             return _clip_date(expr)
+        if mode == "month":
+            return _clip_month(expr)
         return _clip_week(expr)
     # Default: project link
     return _clip_proj(

@@ -274,7 +274,7 @@ def _collect_data(dirs, start, end, dated_only=False):
                 tasks.append(t)
             elif not dated_only and start <= today <= end and not t.get("date"):
                 tasks.append(t)
-            elif t.get("date"):
+            elif t.get("date") and not t.get("recur"):
                 try:
                     if date.fromisoformat(t["date"]) < start:
                         tasks.append(t)
@@ -300,7 +300,7 @@ def _collect_data(dirs, start, end, dated_only=False):
                 milestones.append(m)
             elif not dated_only and start <= today <= end and not m.get("date"):
                 milestones.append(m)
-            elif m.get("date"):
+            elif m.get("date") and not m.get("recur"):
                 try:
                     if date.fromisoformat(m["date"]) < start:
                         milestones.append(m)
@@ -888,8 +888,9 @@ def _format_by_date(collected, markdown=False, dated_only=False):
     today_str = today.isoformat()
     by_date = {}
     for d_str, kind, item, proj in dated:
-        if d_str < today_str:
+        if d_str < today_str and kind != "event":
             # Overdue: fold into today, annotate original date in desc
+            # Events are not folded — a past event already happened
             item = dict(item)  # copy to avoid mutating original
             item["desc"] = f"{item['desc']} (📅{d_str})"
             by_date.setdefault(today_str, []).append((kind, item, proj))

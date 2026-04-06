@@ -1489,8 +1489,8 @@ def _build_parser():
     note_p.add_argument("--editor",  default=None)
 
     # --- clip ---
-    clip_p = subparsers.add_parser("clip", help="Copy reference to clipboard (date, week, project link)")
-    clip_p.add_argument("mode", help="date | week | <project name>")
+    clip_p = subparsers.add_parser("clip", help="Copy reference to clipboard (date, week, month, project link)")
+    clip_p.add_argument("mode", help="date | week | month | <project name>")
     clip_p.add_argument("target", nargs="?", default=None,
                         help="Date expr (for date/week) or file query (for project)")
     clip_p.add_argument("expr", nargs="*", help="Additional date expression words")

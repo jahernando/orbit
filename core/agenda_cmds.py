@@ -96,6 +96,17 @@ def _validate_add_params(date_val: Optional[str], time_val: Optional[str],
         from core.ring import _parse_ring
         if _parse_ring(ring) is None:
             return f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM"
+    # Warn if date is in the past (non-recurring only)
+    if date_val and _valid_date(date_val) and not recur:
+        if date.fromisoformat(date_val) < date.today() and sys.stdin.isatty():
+            print(f"⚠️  La fecha {date_val} está en el pasado.")
+            try:
+                resp = input("   ¿Continuar? [s/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                resp = ""
+            if resp not in ("s", "si", "sí", "y", "yes"):
+                return "Cancelado."
+
     if time_val and time_format == "simple":
         if not date_val:
             return "⚠️  --time requiere --date."

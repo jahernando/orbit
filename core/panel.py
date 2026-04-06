@@ -197,8 +197,15 @@ def _collect_agenda(start, end, include_federated=True):
                 (key, "📅", time, e["desc"], proj))
         for m in milestones:
             day = m.get("date", "")
+            overdue = ""
+            if day:
+                try:
+                    if date.fromisoformat(day) < today:
+                        overdue = f" (📅{day}) ⚠️"
+                except ValueError:
+                    pass
             by_day.setdefault(day, []).append(
-                ("zz", "☐ 🏁", "", m["desc"], proj))
+                ("zz", "☐ 🏁", "", f"{m['desc']}{overdue}", proj))
         for t in tasks:
             day = t.get("date", "")
             time = t.get("time", "")
@@ -206,19 +213,23 @@ def _collect_agenda(start, end, include_federated=True):
             if day:
                 try:
                     if date.fromisoformat(day) < today:
-                        overdue = " ⚠️"
+                        overdue = f" (📅{day}) ⚠️"
                 except ValueError:
                     pass
             key = time if time else "zz"
             by_day.setdefault(day, []).append(
                 (key, "☐", time, f"{t['desc']}{overdue}", proj))
 
-    # For single-day view, fold overdue items into today
+    # For single-day view, fold overdue items into today (not events)
     if start == end:
         today_str = start.isoformat()
         for day_str in list(by_day.keys()):
             if day_str and day_str < today_str:
-                by_day.setdefault(today_str, []).extend(by_day.pop(day_str))
+                # Keep only non-event items (events in the past already happened)
+                items = by_day.pop(day_str)
+                non_events = [it for it in items if it[1] != "📅"]
+                if non_events:
+                    by_day.setdefault(today_str, []).extend(non_events)
 
     # Sort items within each day by time
     for day in by_day:
