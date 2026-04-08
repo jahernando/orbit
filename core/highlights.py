@@ -38,6 +38,7 @@ SECTION_MAP = {
     "ideas":     "## 💡 Ideas",
     "evals":     "## 🔍 Evaluaciones",
     "plans":     "## 🗓️ Planes",
+    "contacts":  "## 👥 Contactos",
 }
 
 # Reverse: heading text → type key

@@ -124,10 +124,21 @@ def find_project(name: str) -> Optional[Path]:
         return None
 
     if len(matches) > 1:
-        print(f"Ambiguous name '{name}'. Did you mean:")
-        for m in sorted(matches):
-            print(f"  {m.name}")
-        return None
+        sorted_matches = sorted(matches, key=lambda m: m.name)
+        print(f"Múltiples proyectos coinciden con '{name}':")
+        for j, m in enumerate(sorted_matches, 1):
+            print(f"  {j}. {m.name}")
+        if not sys.stdin.isatty():
+            return None
+        try:
+            raw = input("Selecciona (#): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if not raw.isdigit() or not (1 <= int(raw) <= len(sorted_matches)):
+            print("Selección no válida.")
+            return None
+        return sorted_matches[int(raw) - 1]
 
     return matches[0]
 
@@ -200,7 +211,8 @@ def _is_new_project(project_dir: Path) -> bool:
 
 
 def add_entry(project: str, message: str, tipo: str, path: Optional[str],
-              fecha: Optional[str], orbit: bool = False) -> int:
+              fecha: Optional[str], orbit: bool = False,
+              project_dir: Optional[Path] = None) -> int:
     if fecha:
         try:
             entry_date = date.fromisoformat(fecha)
@@ -211,7 +223,8 @@ def add_entry(project: str, message: str, tipo: str, path: Optional[str],
             print(f"Error: la fecha {fecha} es futura. Las entradas deben ser de hoy o anteriores")
             return 1
 
-    project_dir = find_project(project)
+    if project_dir is None:
+        project_dir = find_project(project)
     if not project_dir:
         return 1
 
@@ -255,7 +268,8 @@ def _ask_deliver() -> bool:
 
 def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                        tipo: str, fecha: Optional[str],
-                       deliver: bool = False, orbit: bool = False) -> int:
+                       deliver: bool = False, orbit: bool = False,
+                       project_dir: Optional[Path] = None) -> int:
     """Add a logbook entry, handling URL/file/deliver logic.
 
     - ref is URL → link title to URL
@@ -265,7 +279,8 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
     """
     from core.deliver import deliver_file, IMAGE_EXTS, relative_cloud_link
 
-    project_dir = find_project(project)
+    if project_dir is None:
+        project_dir = find_project(project)
     if not project_dir:
         return 1
 
@@ -300,7 +315,8 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
             else:
                 link = ref  # keep as-is (relative path or manual reference)
 
-    rc = add_entry(project, message, tipo, link, fecha, orbit=orbit)
+    rc = add_entry(project, message, tipo, link, fecha, orbit=orbit,
+                   project_dir=project_dir)
     if rc != 0:
         return rc
 

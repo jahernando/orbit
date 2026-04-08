@@ -291,6 +291,10 @@ def cmd_log(args):
         print("Error: especifica un proyecto → orbit log <proyecto> \"mensaje\"")
         return 1
 
+    project_dir = find_project(args.project)
+    if not project_dir:
+        return 1
+
     rc = add_entry_with_ref(
         project=args.project,
         ref=args.ref,
@@ -298,13 +302,12 @@ def cmd_log(args):
         tipo=args.entry,
         fecha=_d(args.date),
         deliver=getattr(args, "deliver", False),
+        project_dir=project_dir,
     )
     if rc == 0 and args.open:
-        project_dir = find_project(args.project)
-        if project_dir:
-            logbook = find_logbook_file(project_dir)
-            if logbook:
-                open_file(logbook, _editor_from_args(args))
+        logbook = find_logbook_file(project_dir)
+        if logbook:
+            open_file(logbook, _editor_from_args(args))
     return rc
 
 

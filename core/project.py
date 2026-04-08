@@ -525,9 +525,21 @@ def _find_new_project(name: str) -> Optional[Path]:
         print(f"Error: proyecto '{name}' no encontrado.")
         return None
     if len(matches) > 1:
-        names = ", ".join(d.name for d in matches)
-        print(f"Error: '{name}' es ambiguo: {names}")
-        return None
+        sorted_matches = sorted(matches, key=lambda m: m.name)
+        print(f"Múltiples proyectos coinciden con '{name}':")
+        for j, m in enumerate(sorted_matches, 1):
+            print(f"  {j}. {m.name}")
+        if not sys.stdin.isatty():
+            return None
+        try:
+            raw = input("Selecciona (#): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if not raw.isdigit() or not (1 <= int(raw) <= len(sorted_matches)):
+            print("Selección no válida.")
+            return None
+        return sorted_matches[int(raw) - 1]
     return matches[0]
 
 

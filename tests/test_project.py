@@ -269,7 +269,7 @@ class TestFindNewProject:
         _make_new_project(project_env["projects_dir"], "mission-b")
         result = _find_new_project("mission")
         assert result is None
-        assert "ambiguo" in capsys.readouterr().out
+        assert "Múltiples proyectos" in capsys.readouterr().out
 
     def test_exact_match_not_ambiguous(self, project_env):
         _make_new_project(project_env["projects_dir"], "mission")

@@ -355,12 +355,15 @@ def _print_table(data: list, total_col, extra_cols: list, extra_fn):
         else:
             totals.append(p[total_col])
 
+    # Blank line before table (required by Obsidian to render tables)
+    print()
+
     # Header
     hdr = "| Proyecto | # |"
-    sep = "|---|--:|"
+    sep = "|----------|----:|"
     for h in extra_cols:
         hdr += f" {h} |"
-        sep += "--:|"
+        sep += "----:|"
 
     print(hdr)
     print(sep)

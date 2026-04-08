@@ -105,7 +105,7 @@ def run_shell(editor: str = ""):
     history_file = Path.home() / ".orbit_history"
     try:
         readline.read_history_file(history_file)
-    except FileNotFoundError:
+    except (FileNotFoundError, OSError):
         pass
     readline.set_history_length(500)
 

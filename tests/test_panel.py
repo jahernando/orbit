@@ -309,6 +309,15 @@ class TestRunPanel:
         out = capsys.readouterr().out
         assert "Reunión" in out
 
+    def test_overdue_task_shows_original_date(self, panel_env, capsys):
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        agenda = f"## ✅ Tareas\n\n- [ ] Tarea vieja ({yesterday})\n"
+        _make_project(panel_env["type_dir"], agenda_extra=agenda)
+        run_panel()
+        out = capsys.readouterr().out
+        assert f"(📅{yesterday})" in out
+        assert "⚠️" in out
+
     def test_spanish_period(self, panel_env, capsys):
         rc = run_panel(period="semana")
         assert rc == 0
