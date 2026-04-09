@@ -359,8 +359,8 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             ring_dt = t["ring_dt"] if t["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(t["desc"], project_dir.name, ring_dt, kind="task")
             if ok:
-                print(f"  ⏰ {project_dir.name}  "
-                      f"{t['ring_dt'].strftime('%H:%M')}  {t['desc']}")
+                print(f"  ⏰ {t['ring_dt'].strftime('%H:%M')}  "
+                      f"{project_dir.name}  {t['desc']}")
                 if not t.get("recur") and not federated:
                     _clear_ring(project_dir, t["index"])
                 scheduled.append({**t, "project": project_dir.name})
@@ -373,8 +373,8 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             ring_dt = m["ring_dt"] if m["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(m["desc"], project_dir.name, ring_dt, kind="milestone")
             if ok:
-                print(f"  🏁 {project_dir.name}  "
-                      f"{m['ring_dt'].strftime('%H:%M')}  {m['desc']}")
+                print(f"  🏁 {m['ring_dt'].strftime('%H:%M')}  "
+                      f"{project_dir.name}  {m['desc']}")
                 scheduled.append({**m, "project": project_dir.name})
             else:
                 print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {m['desc']}")
@@ -385,8 +385,8 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             ring_dt = e["ring_dt"] if e["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(e["desc"], project_dir.name, ring_dt, kind="event")
             if ok:
-                print(f"  📅 {project_dir.name}  "
-                      f"{e['ring_dt'].strftime('%H:%M')}  {e['desc']}")
+                print(f"  📅 {e['ring_dt'].strftime('%H:%M')}  "
+                      f"{project_dir.name}  {e['desc']}")
                 scheduled.append({**e, "project": project_dir.name})
             else:
                 print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {e['desc']}")
@@ -397,8 +397,8 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             ring_dt = r["ring_dt"] if r["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(r['desc'], project_dir.name, ring_dt, kind="reminder")
             if ok:
-                print(f"  💬 {project_dir.name}  "
-                      f"{r['ring_dt'].strftime('%H:%M')}  {r['desc']}")
+                print(f"  💬 {r['ring_dt'].strftime('%H:%M')}  "
+                      f"{project_dir.name}  {r['desc']}")
                 scheduled.append({**r, "project": project_dir.name})
             else:
                 print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {r['desc']}")

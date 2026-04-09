@@ -153,11 +153,11 @@ def _process_reminder(r: dict, proyecto_path: Path, target: date) -> None:
     """After successful AppleScript call: advance recurring task or mark as scheduled."""
     if r.get("recur"):
         next_d = _advance_recurring(proyecto_path, r["line_index"], r["recur"], target)
-        print(f"  ⏰ [{r['project']}] {r['hour']:02d}:{r['minute']:02d} {r['title']} "
-              f"{r['recur']} → próximo: {next_d}")
+        print(f"  ⏰ {r['hour']:02d}:{r['minute']:02d}  "
+              f"[{r['project']}] {r['title']} {r['recur']} → próximo: {next_d}")
     else:
         _mark_scheduled(proyecto_path, r["line_index"])
-        print(f"  ⏰ [{r['project']}] {r['hour']:02d}:{r['minute']:02d} {r['title']}")
+        print(f"  ⏰ {r['hour']:02d}:{r['minute']:02d}  [{r['project']}] {r['title']}")
 
 
 def schedule_today_reminders(target: Optional[date] = None) -> list:
