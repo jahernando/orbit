@@ -359,7 +359,7 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             ring_dt = t["ring_dt"] if t["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(t["desc"], project_dir.name, ring_dt, kind="task")
             if ok:
-                print(f"  ⏰ {t['ring_dt'].strftime('%H:%M')}  "
+                print(f"  ✅ {t['ring_dt'].strftime('%H:%M')}  "
                       f"{project_dir.name}  {t['desc']}")
                 if not t.get("recur") and not federated:
                     _clear_ring(project_dir, t["index"])
