@@ -759,7 +759,8 @@ def cmd_cal(args):
         date_to=date_to,
         markdown=bool(to_file),
     )
-    return _handle_output(args, fn, "cal")
+    return _handle_output(args, fn, "cal",
+                          open_file_path=ORBIT_DIR / "calendar.md")
 
 
 _REPORT_PERIODS = {
