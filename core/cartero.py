@@ -29,7 +29,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from core.config import ORBIT_HOME
+from core.config import ORBIT_HOME, _FEDERATED_SPACES
 
 # ── Paths ───────────────────────────────────────────────────────────────────
 
@@ -331,19 +331,61 @@ def _write_state(state: dict):
     tmp.rename(CARTERO_STATE)
 
 
-def get_prompt_indicator() -> str:
-    """Return prompt indicator string, e.g. '[📬4]' or '' if no messages.
+def _read_federated_states() -> list:
+    """Read .cartero-state.json from federated workspaces.
 
-    Combines all sources (gmail + slack).
-    Reads local file only — no network I/O.
+    Returns [(emoji, state_dict), ...] for each federated workspace that has state.
+    """
+    results = []
+    for space in _FEDERATED_SPACES:
+        space_path = Path(space["path"]).expanduser().resolve()
+        state_file = space_path / ".cartero-state.json"
+        if state_file.exists():
+            try:
+                state = json.loads(state_file.read_text())
+                emoji = space.get("emoji", "")
+                results.append((emoji, state))
+            except (json.JSONDecodeError, ValueError):
+                pass
+    return results
+
+
+def _federated_total() -> tuple:
+    """Return (total, indicator_parts) from federated workspaces.
+
+    indicator_parts: list of "🌿📬3" strings for the prompt.
+    """
+    parts = []
+    total = 0
+    for emoji, state in _read_federated_states():
+        fed_total = 0
+        for source in ("gmail", "slack"):
+            fed_total += state.get(source, {}).get("total", 0)
+        if fed_total > 0:
+            parts.append(f"{emoji}📬{fed_total}")
+            total += fed_total
+    return total, parts
+
+
+def get_prompt_indicator() -> str:
+    """Return prompt indicator string, e.g. '[📬4]' or '[📬4 🌿📬3]'.
+
+    Combines local sources (gmail + slack) + federated workspaces.
+    Reads local files only — no network I/O.
     """
     state = _read_state()
-    gmail_total = state.get("gmail", {}).get("total", 0)
-    slack_total = state.get("slack", {}).get("total", 0)
-    total = gmail_total + slack_total
-    if total > 0:
-        return f"[📬{total}]"
-    return ""
+    local_total = (state.get("gmail", {}).get("total", 0)
+                   + state.get("slack", {}).get("total", 0))
+    fed_total, fed_parts = _federated_total()
+
+    if local_total == 0 and fed_total == 0:
+        return ""
+
+    parts = []
+    if local_total > 0:
+        parts.append(f"📬{local_total}")
+    parts.extend(fed_parts)
+    return "[" + " ".join(parts) + "]"
 
 
 # ── macOS notifications ─────────────────────────────────────────────────────
@@ -551,17 +593,21 @@ def startup_cartero():
     """Called from shell.py during startup.
 
     Launches background process if configured and not already running.
-    Shows current mail/message status.
+    Shows current mail/message status including federated workspaces.
     """
     config = _load_cartero_config()
-    if not config or not _has_any_source():
+    has_federated = bool(_read_federated_states())
+
+    if not config and not has_federated:
+        return
+    if not _has_any_source() and not has_federated:
         return
 
-    if not _is_running():
+    if _has_any_source() and not _is_running():
         _start_background(config)
-        # Give it a moment for first check
         time.sleep(1)
 
+    # Local sources
     state = _read_state()
     parts = []
     for source in ("gmail", "slack"):
@@ -570,6 +616,16 @@ def startup_cartero():
             if count > 0:
                 prefix = "#" if source == "slack" else ""
                 parts.append(f"{prefix}{name} ({count})")
+
+    # Federated sources
+    for emoji, fed_state in _read_federated_states():
+        for source in ("gmail", "slack"):
+            src = fed_state.get(source, {})
+            for name, count in src.get("counts", {}).items():
+                if count > 0:
+                    prefix = "#" if source == "slack" else ""
+                    parts.append(f"{emoji}{prefix}{name} ({count})")
+
     if parts:
         print(f"  📬 Cartero activo ({', '.join(parts)})")
     else:
@@ -696,5 +752,25 @@ def run_mail(status: bool = False, stop: bool = False, start: bool = False) -> i
 
     if has_results:
         _write_state(state)
+
+    # Federated workspaces (read-only, no polling)
+    fed_states = _read_federated_states()
+    for emoji, fed_state in fed_states:
+        fed_parts = []
+        for source in ("gmail", "slack"):
+            src = fed_state.get(source, {})
+            if not src or not src.get("counts"):
+                continue
+            label = "Gmail" if source == "gmail" else "Slack"
+            print(f"📬 {emoji} {label} (federado) — mensajes no leídos:")
+            max_len = max(len(n) for n in src["counts"]) if src["counts"] else 0
+            prefix = "#" if source == "slack" else ""
+            src_total = 0
+            for name, count in src["counts"].items():
+                print(f"  {prefix}{name:{max_len}s}  {count:3d}")
+                src_total += count
+            print(f"  {'─' * (max_len + 6)}")
+            print(f"  {'Total':{max_len + 1}s}  {src_total:3d}")
+            print()
 
     return 0

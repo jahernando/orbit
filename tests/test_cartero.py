@@ -508,6 +508,87 @@ class TestHasAnySource:
         assert _has_any_source() is False
 
 
+# ── Federation tests ───────────────────────────────────────────────────────
+
+class TestFederation:
+
+    def test_no_federated(self, _isolate):
+        from core.cartero import _read_federated_states
+        assert _read_federated_states() == []
+
+    def test_read_federated_state(self, _isolate, monkeypatch):
+        from core.cartero import _read_federated_states
+        # Create a fake federated workspace with cartero state
+        fed_path = _isolate / "fed-ws"
+        fed_path.mkdir()
+        (fed_path / ".cartero-state.json").write_text(json.dumps({
+            "gmail": {"total": 3, "counts": {"Inbox": 3}},
+        }))
+        monkeypatch.setattr("core.cartero._FEDERATED_SPACES", [
+            {"name": "personal", "path": str(fed_path), "emoji": "🌿"}
+        ])
+        results = _read_federated_states()
+        assert len(results) == 1
+        assert results[0][0] == "🌿"
+        assert results[0][1]["gmail"]["total"] == 3
+
+    def test_federated_total(self, _isolate, monkeypatch):
+        from core.cartero import _federated_total
+        fed_path = _isolate / "fed-ws"
+        fed_path.mkdir()
+        (fed_path / ".cartero-state.json").write_text(json.dumps({
+            "gmail": {"total": 4, "counts": {"A": 4}},
+        }))
+        monkeypatch.setattr("core.cartero._FEDERATED_SPACES", [
+            {"name": "personal", "path": str(fed_path), "emoji": "🌿"}
+        ])
+        total, parts = _federated_total()
+        assert total == 4
+        assert parts == ["🌿📬4"]
+
+    def test_prompt_with_federation(self, _isolate, monkeypatch):
+        from core.cartero import get_prompt_indicator, _write_state
+        # Local: 2 slack messages
+        _write_state({"slack": {"total": 2, "counts": {"general": 2}}})
+        # Federated: 3 gmail
+        fed_path = _isolate / "fed-ws"
+        fed_path.mkdir()
+        (fed_path / ".cartero-state.json").write_text(json.dumps({
+            "gmail": {"total": 3, "counts": {"Inbox": 3}},
+        }))
+        monkeypatch.setattr("core.cartero._FEDERATED_SPACES", [
+            {"name": "personal", "path": str(fed_path), "emoji": "🌿"}
+        ])
+        indicator = get_prompt_indicator()
+        assert "📬2" in indicator
+        assert "🌿📬3" in indicator
+
+    def test_prompt_federated_only(self, _isolate, monkeypatch):
+        from core.cartero import get_prompt_indicator
+        # No local state
+        fed_path = _isolate / "fed-ws"
+        fed_path.mkdir()
+        (fed_path / ".cartero-state.json").write_text(json.dumps({
+            "gmail": {"total": 5, "counts": {"X": 5}},
+        }))
+        monkeypatch.setattr("core.cartero._FEDERATED_SPACES", [
+            {"name": "personal", "path": str(fed_path), "emoji": "🌿"}
+        ])
+        assert get_prompt_indicator() == "[🌿📬5]"
+
+    def test_prompt_no_federated_messages(self, _isolate, monkeypatch):
+        from core.cartero import get_prompt_indicator
+        fed_path = _isolate / "fed-ws"
+        fed_path.mkdir()
+        (fed_path / ".cartero-state.json").write_text(json.dumps({
+            "gmail": {"total": 0, "counts": {}},
+        }))
+        monkeypatch.setattr("core.cartero._FEDERATED_SPACES", [
+            {"name": "personal", "path": str(fed_path), "emoji": "🌿"}
+        ])
+        assert get_prompt_indicator() == ""
+
+
 # ── Delta notification logic ───────────────────────────────────────────────
 
 class TestDeltaNotification:
