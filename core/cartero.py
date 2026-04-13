@@ -275,9 +275,11 @@ def _check_slack(token: str, channel_ids: dict) -> dict:
 def _check_slack_dms(token: str) -> int:
     """Count total unread DMs (im + mpim).
 
+    Uses conversations.list to get DM channel IDs, then conversations.info
+    for each to get unread_count_display (not returned by list endpoint).
     Returns total unread count across all direct message conversations.
     """
-    total = 0
+    dm_ids = []
     for conv_type in ("im", "mpim"):
         cursor = None
         while True:
@@ -289,12 +291,21 @@ def _check_slack_dms(token: str) -> int:
                 if not resp.get("ok"):
                     break
                 for ch in resp.get("channels", []):
-                    total += ch.get("unread_count_display", 0)
+                    dm_ids.append(ch["id"])
                 cursor = resp.get("response_metadata", {}).get("next_cursor")
                 if not cursor:
                     break
             except Exception:
                 break
+
+    total = 0
+    for cid in dm_ids:
+        try:
+            resp = _slack_api("conversations.info", token, {"channel": cid})
+            if resp.get("ok"):
+                total += resp["channel"].get("unread_count_display", 0)
+        except Exception:
+            pass
     return total
 
 

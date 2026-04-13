@@ -431,17 +431,20 @@ class TestSlackAPI:
         from core.cartero import _check_slack_dms
         with patch("core.cartero._slack_api") as mock_api:
             def side_effect(method, token, params=None):
-                if params and params.get("types") == "im":
-                    return {
-                        "ok": True,
-                        "channels": [
-                            {"unread_count_display": 3},
-                            {"unread_count_display": 1},
-                        ],
-                        "response_metadata": {"next_cursor": ""},
-                    }
-                return {"ok": True, "channels": [],
-                        "response_metadata": {"next_cursor": ""}}
+                if method == "conversations.list":
+                    if params and params.get("types") == "im":
+                        return {
+                            "ok": True,
+                            "channels": [{"id": "D1"}, {"id": "D2"}],
+                            "response_metadata": {"next_cursor": ""},
+                        }
+                    return {"ok": True, "channels": [],
+                            "response_metadata": {"next_cursor": ""}}
+                if method == "conversations.info":
+                    cid = params["channel"]
+                    unread = {"D1": 3, "D2": 1}.get(cid, 0)
+                    return {"ok": True, "channel": {"unread_count_display": unread}}
+                return {"ok": False}
             mock_api.side_effect = side_effect
             assert _check_slack_dms("token") == 4
 
