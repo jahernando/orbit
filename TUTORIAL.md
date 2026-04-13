@@ -464,6 +464,40 @@ Al crear citas con `--time`, Orbit pregunta si quieres un recordatorio (por defe
 task add next-kr "Reunión" --date tomorrow --time 10:00 --ring 30m
 ```
 
+### Cartero — notificaciones de correo
+
+El cartero vigila tu correo y te avisa desde la shell cuando hay mensajes nuevos en etiquetas que te importan. No es un cliente de correo — para leer los mensajes, abre Gmail.
+
+**Configuración** en `orbit.json`:
+
+```json
+"cartero": {
+  "gmail": {
+    "labels": ["hogar", "Eva y familia", "viajes", "investigacion"],
+    "interval": 600
+  }
+}
+```
+
+Requiere habilitar la API de Gmail en Google Cloud Console (mismo proyecto que gsync) y tener `credentials.json` en el workspace.
+
+Al arrancar la shell, el cartero se lanza en background y revisa cada 10 minutos. Si hay correos no leídos con esas etiquetas, verás un indicador en el prompt:
+
+```
+🌿[📬4] > _
+```
+
+Y una notificación macOS cuando lleguen correos nuevos.
+
+**Comandos manuales**:
+
+```bash
+mail                       # check ahora: muestra conteo por etiqueta
+mail --status              # ¿está corriendo el background?
+mail --stop                # para el background
+mail --start               # arranca el background
+```
+
 ### Doctor y archive — mantenimiento interno
 
 Doctor valida la sintaxis de los ficheros y se ejecuta automáticamente al arrancar y antes de cada commit. Solo lo ejecutas manualmente si quieres revisar o corregir:

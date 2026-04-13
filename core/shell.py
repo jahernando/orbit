@@ -83,7 +83,12 @@ def _run_startup():
     scheduled = schedule_new_format_reminders()
     if scheduled:
         print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
-        print()
+
+    # 7. Cartero — background mail checker
+    from core.cartero import startup_cartero
+    startup_cartero()
+
+    print()
 
 
 # ── Shutdown sequence ────────────────────────────────────────────────────────
@@ -111,7 +116,7 @@ def run_shell(editor: str = ""):
 
     COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "deliver", "recloud", "migrate",
                 "import", "ls", "log", "search", "open", "report", "agenda",
-                "gsync", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
+                "gsync", "mail", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
 
     # Shell commands allowed to run from the Orbit REPL
     SHELL_COMMANDS = {"git", "cat", "head", "tail", "pwd", "echo"}
@@ -145,7 +150,10 @@ def run_shell(editor: str = ""):
             shell_start_date = _date.today()
 
         try:
-            line = input(f"{ORBIT_PROMPT} ").strip()
+            from core.cartero import get_prompt_indicator
+            _mail = get_prompt_indicator()
+            _prompt = f"{ORBIT_PROMPT}{_mail} " if _mail else f"{ORBIT_PROMPT} "
+            line = input(_prompt).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break

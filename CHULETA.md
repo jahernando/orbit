@@ -457,6 +457,35 @@ orbit task add next-kr "Reunión" --date tomorrow --time 10:00 --ring 30m
 - Al entrar en la shell, se programan las notificaciones del día de todos los workspaces
 - Valores: `1d` (1 día antes), `2h`, `30m`, `HH:MM` (hora fija), `YYYY-MM-DD HH:MM`
 
+### Cartero — notificaciones de correo
+
+```bash
+orbit mail                     # check manual: muestra no leídos por etiqueta
+orbit mail --status            # estado del proceso background
+orbit mail --start             # arranca el proceso background
+orbit mail --stop              # para el proceso background
+```
+
+- Vigila etiquetas de Gmail configuradas y avisa de correos no leídos
+- Indicador en el prompt: `🌿[📬4] >` (solo si hay correos)
+- Notificación macOS cuando llegan correos nuevos (solo al subir el conteo, no en cada check)
+- Proceso background: se lanza al entrar en la shell, un solo proceso por workspace (PID lock)
+- Configuración en `orbit.json`:
+
+```json
+"cartero": {
+  "gmail": {
+    "labels": ["hogar", "Eva y familia", "viajes", "investigacion"],
+    "interval": 600
+  }
+}
+```
+
+- `labels`: etiquetas de Gmail a vigilar (solo correos con alguna de estas etiquetas cuentan)
+- `interval`: segundos entre checks (default: 600 = 10 min)
+- Requiere las mismas credenciales que gsync (`credentials.json`) + habilitar la API de Gmail en Google Cloud Console
+- Estado en `ORBIT_HOME/.cartero-state.json`, PID en `ORBIT_HOME/.cartero.pid`
+
 ---
 
 ## Mantenimiento interno
@@ -531,6 +560,7 @@ Al entrar en `orbit shell`:
 2. **Ficheros sin trackear** en `🚀proyectos/` — ofrece añadirlos a git
 3. **Cambios sin commit** — ofrece hacer commit + push (mensaje por defecto: `sync YYYY-MM-DD`)
 4. **gsync** en background + **recordatorios** — sincroniza con Google y programa los recordatorios del día (tras commit)
+5. **Cartero** — lanza el proceso background de correo si hay configuración en `orbit.json`
 
 ---
 

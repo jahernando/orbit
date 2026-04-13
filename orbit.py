@@ -818,6 +818,15 @@ def cmd_gsync(args):
     )
 
 
+def cmd_mail(args):
+    from core.cartero import run_mail
+    return run_mail(
+        status=getattr(args, "status", False),
+        stop=getattr(args, "stop", False),
+        start=getattr(args, "start", False),
+    )
+
+
 def cmd_history(args):
     to_file = getattr(args, "open", False) or getattr(args, "log", None)
     fn = lambda: run_history(
@@ -893,7 +902,8 @@ def cmd_ls(args):
         fn = lambda: run_project_list(
             status_filter=getattr(args, "status", None),
             tipo_filter=getattr(args, "type", None),
-            sort_by=getattr(args, "sort", None))
+            sort_by=getattr(args, "sort", None),
+            name_filter=getattr(args, "filter", None))
         return _handle_output(args, fn, "ls projects")
 
     _inc_fed = not getattr(args, "no_fed", False)
@@ -1111,6 +1121,8 @@ def _build_parser():
 
     # ls projects (default when no subcommand)
     ls_proj = ls_sub.add_parser("projects", help="List projects with status")
+    ls_proj.add_argument("filter", nargs="?", default=None,
+                         help="Filter projects by name (substring match)")
     ls_proj.add_argument("--status", default=None, help="Filter: active, paused, sleeping")
     ls_proj.add_argument("--type",   default=None, help="Filter: investigacion, docencia, ...")
     ls_proj.add_argument("--sort",   default=None, choices=["type", "status", "priority"],
@@ -1279,6 +1291,15 @@ def _build_parser():
                          help="List available Google Calendars with IDs")
     gsync_p.add_argument("--migrate-recurring", action="store_true", dest="migrate_recurring",
                          help="One-time: mark old recurring events with ⚠️ and reset for RRULE re-creation")
+
+    # --- mail (cartero) ---
+    mail_p = subparsers.add_parser("mail", help="Check mail notifications (cartero)")
+    mail_p.add_argument("--status", action="store_true",
+                        help="Show background process status")
+    mail_p.add_argument("--stop", action="store_true",
+                        help="Stop background cartero process")
+    mail_p.add_argument("--start", action="store_true",
+                        help="Start background cartero process")
 
     # --- doctor ---
     doc_p = subparsers.add_parser("doctor",
@@ -1664,7 +1685,7 @@ _COMMANDS = {
     "panel": cmd_panel, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "mail": cmd_mail,
     "crono": cmd_crono,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,
