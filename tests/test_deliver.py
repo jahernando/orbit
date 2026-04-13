@@ -68,6 +68,13 @@ def orbit_env(tmp_path, monkeypatch):
     src_image = tmp_path / "figure.png"
     src_image.write_bytes(b"\x89PNG-fake")
 
+    src_dir = tmp_path / "lista4ti"
+    src_dir.mkdir()
+    (src_dir / "doc1.pdf").write_bytes(b"%PDF-1")
+    (src_dir / "doc2.pdf").write_bytes(b"%PDF-2")
+    (src_dir / "sub").mkdir()
+    (src_dir / "sub" / "nested.txt").write_text("nested content")
+
     # Monkeypatch
     import core.config as cfg
     import core.log as cl
@@ -88,6 +95,7 @@ def orbit_env(tmp_path, monkeypatch):
         "proj": proj,
         "src_file": src_file,
         "src_image": src_image,
+        "src_dir": src_dir,
     }
 
 
@@ -203,6 +211,36 @@ class TestDeliverFile:
         )
         assert dest.parent.exists()
 
+    def test_copies_directory(self, orbit_env):
+        from core.deliver import deliver_file
+        dest = deliver_file(orbit_env["proj"], orbit_env["src_dir"], subdir="hls")
+        assert dest is not None
+        assert dest.is_dir()
+        assert dest.name == "lista4ti"
+        assert (dest / "doc1.pdf").exists()
+        assert (dest / "doc2.pdf").exists()
+        assert (dest / "sub" / "nested.txt").exists()
+
+    def test_directory_overwrites_existing(self, orbit_env):
+        from core.deliver import deliver_file
+        dest = deliver_file(orbit_env["proj"], orbit_env["src_dir"], subdir="hls")
+        # Add a file that should disappear on re-deliver
+        (dest / "stale.txt").write_text("old")
+        dest2 = deliver_file(orbit_env["proj"], orbit_env["src_dir"], subdir="hls")
+        assert dest2 == dest
+        assert not (dest2 / "stale.txt").exists()
+        assert (dest2 / "doc1.pdf").exists()
+
+    def test_directory_with_date_prefix(self, orbit_env):
+        from core.deliver import deliver_file
+        dest = deliver_file(
+            orbit_env["proj"], orbit_env["src_dir"],
+            subdir="logs", date_prefix=True,
+        )
+        assert dest is not None
+        assert dest.name == f"{date.today().isoformat()}_lista4ti"
+        assert dest.is_dir()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # run_deliver
@@ -231,6 +269,14 @@ class TestRunDeliver:
         monkeypatch.setattr("core.deliver._copy_to_clipboard", lambda x: None)
         rc = run_deliver("nonexistent", str(orbit_env["src_file"]))
         assert rc == 1
+
+    def test_delivers_directory(self, orbit_env, capsys, monkeypatch):
+        from core.deliver import run_deliver
+        monkeypatch.setattr("core.deliver._copy_to_clipboard", lambda x: None)
+        rc = run_deliver("catedra", str(orbit_env["src_dir"]))
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Directorio entregado" in out
 
 
 # ══════════════════════════════════════════════════════════════════════════════

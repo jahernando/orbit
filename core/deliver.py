@@ -108,17 +108,17 @@ def ensure_project_cloud_symlink(project_dir: Path) -> bool:
 
 def deliver_file(project_dir: Path, src: Path, subdir: str = "",
                  date_prefix: bool = False) -> Optional[Path]:
-    """Copy a file to the project's cloud directory.
+    """Copy a file or directory to the project's cloud directory.
 
-    Files are placed under cloud_project_dir/cloud/{subdir}/ so that
+    Files/dirs are placed under cloud_project_dir/cloud/{subdir}/ so that
     relative links (./cloud/logs/file.pdf) work both locally (through
     the per-project symlink) and from mobile (in the cloud filesystem).
 
     Args:
         project_dir: local project directory
-        src: source file path
+        src: source file or directory path
         subdir: subdirectory under cloud/ ("logs", "hls", or "")
-        date_prefix: if True, prefix filename with YYYY-MM-DD_
+        date_prefix: if True, prefix name with YYYY-MM-DD_
 
     Returns the cloud destination path, or None on error.
     """
@@ -137,8 +137,14 @@ def deliver_file(project_dir: Path, src: Path, subdir: str = "",
     dest = dest_dir / filename
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    shutil.copy2(str(src), str(dest))
-    print(f"  📦 {src.name} → {dest.parent}/")
+    if src.is_dir():
+        if dest.exists():
+            shutil.rmtree(str(dest))
+        shutil.copytree(str(src), str(dest))
+        print(f"  📦 {src.name}/ → {dest.parent}/")
+    else:
+        shutil.copy2(str(src), str(dest))
+        print(f"  📦 {src.name} → {dest.parent}/")
 
     # Ensure per-project cloud symlink
     ensure_project_cloud_symlink(project_dir)
@@ -156,9 +162,9 @@ def relative_cloud_link(subdir: str, filename: str) -> str:
 
 
 def run_deliver(project: str, file: str) -> int:
-    """Deliver a file to cloud and copy the cloud path to clipboard."""
+    """Deliver a file or directory to cloud and copy the cloud path to clipboard."""
 
-    # Resolve source file
+    # Resolve source file/directory
     src = Path(file).expanduser()
     if not src.is_absolute():
         project_dir = find_project(project)
@@ -183,5 +189,6 @@ def run_deliver(project: str, file: str) -> int:
         return 1
 
     _copy_to_clipboard(str(dest))
-    print(f"💾 Fichero entregado (enlace en portapapeles)")
+    kind = "Directorio" if src.is_dir() else "Fichero"
+    print(f"💾 {kind} entregado (enlace en portapapeles)")
     return 0

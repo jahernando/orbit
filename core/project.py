@@ -261,7 +261,8 @@ _STATUS_ORDER = {"active": 0, "paused": 1, "new": 2, "sleeping": 3}
 
 def run_project_list(status_filter: Optional[str] = None,
                      tipo_filter:   Optional[str] = None,
-                     sort_by:       Optional[str] = None) -> int:
+                     sort_by:       Optional[str] = None,
+                     name_filter:   Optional[str] = None) -> int:
     """List projects with emoji-only columns for tipo, estado, prioridad."""
     rows = []
     for d in iter_project_dirs():
@@ -278,6 +279,9 @@ def run_project_list(status_filter: Optional[str] = None,
                 continue
         if tipo_filter:
             if tipo_filter.lower() not in meta.get("tipo_label", "").lower():
+                continue
+        if name_filter:
+            if name_filter.lower() not in meta["name"].lower():
                 continue
 
         prio_key = normalize(meta["prioridad"])
