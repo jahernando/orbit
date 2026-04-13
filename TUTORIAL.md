@@ -466,33 +466,38 @@ task add next-kr "Reunión" --date tomorrow --time 10:00 --ring 30m
 
 ### Cartero — notificaciones de correo
 
-El cartero vigila tu correo y te avisa desde la shell cuando hay mensajes nuevos en etiquetas que te importan. No es un cliente de correo — para leer los mensajes, abre Gmail.
+El cartero vigila tu correo (Gmail/Outlook) y canales de Slack, y te avisa desde la shell cuando hay mensajes nuevos. No es un cliente — para leer los mensajes, abre la aplicación correspondiente.
 
 **Configuración** en `orbit.json`:
 
 ```json
 "cartero": {
   "gmail": {
-    "labels": ["hogar", "Eva y familia", "viajes", "investigacion"],
+    "labels": ["🏠 hogar", "🤗  Eva y familia", "🧳 viajes"],
+    "interval": 600
+  },
+  "slack": {
+    "channels": ["general", "alertas"],
     "interval": 600
   }
 }
 ```
 
-Requiere habilitar la API de Gmail en Google Cloud Console (mismo proyecto que gsync) y tener `credentials.json` en el workspace.
+- **Gmail**: requiere habilitar la API de Gmail en Google Cloud Console y tener `credentials.json` en el workspace. Los nombres de etiqueta deben ser exactos (usa `labels.list` de la API para verlos).
+- **Slack**: requiere un user token (`xoxp-...`) guardado en `ORBIT_HOME/.slack-token`. Se obtiene creando una Slack App con scopes `channels:read` y `groups:read`.
 
-Al arrancar la shell, el cartero se lanza en background y revisa cada 10 minutos. Si hay correos no leídos con esas etiquetas, verás un indicador en el prompt:
+Al arrancar la shell, el cartero se lanza en background y revisa cada 10 minutos. Si hay mensajes no leídos, verás un indicador en el prompt:
 
 ```
-🌿[📬4] > _
+🚀[📬7] > _
 ```
 
-Y una notificación macOS cuando lleguen correos nuevos.
+Y una notificación macOS cuando lleguen mensajes nuevos.
 
 **Comandos manuales**:
 
 ```bash
-mail                       # check ahora: muestra conteo por etiqueta
+mail                       # check ahora: muestra conteo por fuente
 mail --status              # ¿está corriendo el background?
 mail --stop                # para el background
 mail --start               # arranca el background

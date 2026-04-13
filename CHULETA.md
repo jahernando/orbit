@@ -466,24 +466,28 @@ orbit mail --start             # arranca el proceso background
 orbit mail --stop              # para el proceso background
 ```
 
-- Vigila etiquetas de Gmail configuradas y avisa de correos no leídos
-- Indicador en el prompt: `🌿[📬4] >` (solo si hay correos)
-- Notificación macOS cuando llegan correos nuevos (solo al subir el conteo, no en cada check)
+- Vigila Gmail y/o Slack y avisa de mensajes no leídos
+- Indicador en el prompt: `🚀[📬7] >` (suma de todas las fuentes, solo si hay mensajes)
+- Notificación macOS cuando llegan mensajes nuevos (solo al subir el conteo, no en cada check)
 - Proceso background: se lanza al entrar en la shell, un solo proceso por workspace (PID lock)
 - Configuración en `orbit.json`:
 
 ```json
 "cartero": {
   "gmail": {
-    "labels": ["hogar", "Eva y familia", "viajes", "investigacion"],
+    "labels": ["🏠 hogar", "🤗  Eva y familia"],
+    "interval": 600
+  },
+  "slack": {
+    "channels": ["general", "alertas"],
     "interval": 600
   }
 }
 ```
 
-- `labels`: etiquetas de Gmail a vigilar (solo correos con alguna de estas etiquetas cuentan)
+- **Gmail**: `labels` = etiquetas a vigilar (nombres exactos de la API, pueden tener emojis). Requiere `credentials.json` + API de Gmail habilitada en Google Cloud Console
+- **Slack**: `channels` = canales a vigilar. Requiere token de usuario en `ORBIT_HOME/.slack-token` (una línea, `xoxp-...`)
 - `interval`: segundos entre checks (default: 600 = 10 min)
-- Requiere las mismas credenciales que gsync (`credentials.json`) + habilitar la API de Gmail en Google Cloud Console
 - Estado en `ORBIT_HOME/.cartero-state.json`, PID en `ORBIT_HOME/.cartero.pid`
 
 ---

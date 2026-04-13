@@ -310,6 +310,204 @@ class TestStartup:
         assert capsys.readouterr().out == ""
 
 
+# ── Slack tests ─────────────────────────────────────────────────────────────
+
+class TestSlackConfig:
+
+    def test_slack_config_single(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({
+            "cartero": {"slack": {"workspace": "test", "channels": ["general"], "interval": 600}}
+        }))
+        from core.cartero import _slack_config
+        cfg = _slack_config()
+        assert cfg is not None
+        assert len(cfg) == 1
+        assert cfg[0]["channels"] == ["general"]
+
+    def test_slack_config_list(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({
+            "cartero": {"slack": [
+                {"workspace": "ws1", "channels": ["a"]},
+                {"workspace": "ws2", "channels": ["b"], "dms": True},
+            ]}
+        }))
+        from core.cartero import _slack_config
+        cfg = _slack_config()
+        assert len(cfg) == 2
+        assert cfg[1]["dms"] is True
+
+    def test_slack_config_missing(self, _isolate):
+        from core.cartero import _slack_config
+        assert _slack_config() is None
+
+    def test_slack_config_empty_channels(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({
+            "cartero": {"slack": {"channels": []}}
+        }))
+        from core.cartero import _slack_config
+        assert _slack_config() is None
+
+    def test_slack_config_dms_only(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({
+            "cartero": {"slack": {"workspace": "test", "dms": True}}
+        }))
+        from core.cartero import _slack_config
+        cfg = _slack_config()
+        assert cfg is not None
+        assert len(cfg) == 1
+
+
+class TestSlackToken:
+
+    def test_no_token_file(self, _isolate):
+        from core.cartero import _get_slack_token
+        assert _get_slack_token() is None
+
+    def test_empty_token_file(self, _isolate):
+        from core.cartero import _get_slack_token
+        (_isolate / ".slack-token").write_text("")
+        assert _get_slack_token() is None
+
+    def test_valid_token(self, _isolate):
+        from core.cartero import _get_slack_token
+        (_isolate / ".slack-token-myws").write_text("xoxp-12345\n")
+        assert _get_slack_token("myws") == "xoxp-12345"
+
+
+class TestSlackAPI:
+
+    def test_resolve_channels(self):
+        from core.cartero import _resolve_slack_channels
+        with patch("core.cartero._slack_api") as mock_api:
+            mock_api.return_value = {
+                "ok": True,
+                "channels": [
+                    {"name": "general", "id": "C001"},
+                    {"name": "alertas", "id": "C002"},
+                    {"name": "random", "id": "C003"},
+                ],
+                "response_metadata": {"next_cursor": ""},
+            }
+            result = _resolve_slack_channels("token", ["general", "alertas"])
+            assert result == {"general": "C001", "alertas": "C002"}
+
+    def test_resolve_channels_not_found(self, capsys):
+        from core.cartero import _resolve_slack_channels
+        with patch("core.cartero._slack_api") as mock_api:
+            mock_api.return_value = {
+                "ok": True,
+                "channels": [{"name": "random", "id": "C003"}],
+                "response_metadata": {"next_cursor": ""},
+            }
+            result = _resolve_slack_channels("token", ["noexiste"])
+            assert result == {}
+            assert "no encontrado" in capsys.readouterr().out
+
+    def test_check_slack(self):
+        from core.cartero import _check_slack
+        with patch("core.cartero._slack_api") as mock_api:
+            def side_effect(method, token, params=None):
+                if method == "conversations.info":
+                    cid = params["channel"]
+                    unread = {"C001": 5, "C002": 2}.get(cid, 0)
+                    return {"ok": True, "channel": {"unread_count_display": unread}}
+                return {"ok": False}
+            mock_api.side_effect = side_effect
+
+            result = _check_slack("token", {"general": "C001", "alertas": "C002"})
+            assert result["counts"]["general"] == 5
+            assert result["counts"]["alertas"] == 2
+            assert result["total"] == 7
+
+    def test_check_slack_error(self):
+        from core.cartero import _check_slack
+        with patch("core.cartero._slack_api") as mock_api:
+            mock_api.side_effect = Exception("network error")
+            result = _check_slack("token", {"general": "C001"})
+            assert result["counts"]["general"] == 0
+            assert result["total"] == 0
+
+    def test_check_slack_dms(self):
+        from core.cartero import _check_slack_dms
+        with patch("core.cartero._slack_api") as mock_api:
+            def side_effect(method, token, params=None):
+                if params and params.get("types") == "im":
+                    return {
+                        "ok": True,
+                        "channels": [
+                            {"unread_count_display": 3},
+                            {"unread_count_display": 1},
+                        ],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                return {"ok": True, "channels": [],
+                        "response_metadata": {"next_cursor": ""}}
+            mock_api.side_effect = side_effect
+            assert _check_slack_dms("token") == 4
+
+    def test_check_slack_workspace_with_dms(self):
+        from core.cartero import _check_slack_workspace
+        with patch("core.cartero._check_slack") as mock_ch, \
+             patch("core.cartero._check_slack_dms") as mock_dm:
+            mock_ch.return_value = {
+                "counts": {"general": 2}, "total": 2,
+                "timestamp": "2026-04-13T10:00:00",
+            }
+            mock_dm.return_value = 5
+            result = _check_slack_workspace("token", {"general": "C1"}, True)
+            assert result["counts"]["general"] == 2
+            assert result["counts"]["DMs"] == 5
+            assert result["total"] == 7
+
+
+class TestPromptIndicatorMultiSource:
+
+    def test_gmail_only(self, _isolate):
+        from core.cartero import get_prompt_indicator, _write_state
+        _write_state({"gmail": {"total": 3, "counts": {"A": 3}}})
+        assert get_prompt_indicator() == "[📬3]"
+
+    def test_slack_only(self, _isolate):
+        from core.cartero import get_prompt_indicator, _write_state
+        _write_state({"slack": {"total": 5, "counts": {"general": 5}}})
+        assert get_prompt_indicator() == "[📬5]"
+
+    def test_both_sources(self, _isolate):
+        from core.cartero import get_prompt_indicator, _write_state
+        _write_state({
+            "gmail": {"total": 3, "counts": {"A": 3}},
+            "slack": {"total": 2, "counts": {"general": 2}},
+        })
+        assert get_prompt_indicator() == "[📬5]"
+
+    def test_both_zero(self, _isolate):
+        from core.cartero import get_prompt_indicator, _write_state
+        _write_state({
+            "gmail": {"total": 0, "counts": {}},
+            "slack": {"total": 0, "counts": {}},
+        })
+        assert get_prompt_indicator() == ""
+
+
+class TestHasAnySource:
+
+    def test_gmail_only(self, _isolate):
+        from core.cartero import _has_any_source
+        assert _has_any_source() is True
+
+    def test_slack_only(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({
+            "cartero": {"slack": {"channels": ["general"]}}
+        }))
+        from core.cartero import _has_any_source
+        assert _has_any_source() is True
+
+    def test_no_sources(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({"space": "test"}))
+        from core.cartero import _has_any_source
+        assert _has_any_source() is False
+
+
 # ── Delta notification logic ───────────────────────────────────────────────
 
 class TestDeltaNotification:

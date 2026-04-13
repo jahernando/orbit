@@ -1,17 +1,23 @@
-"""cartero — background mail notifier for Orbit.
+"""cartero — background mail/messaging notifier for Orbit.
 
-Polls Gmail (Phase 1) for unread messages in configured labels and:
+Polls Gmail and/or Slack for unread messages and:
   - Updates a shared state file (ORBIT_HOME/.cartero-state.json)
   - Shows a prompt indicator [📬N] in the Orbit shell
-  - Sends macOS notifications when new mail arrives
+  - Sends macOS notifications when new messages arrive
 
 Configuration in orbit.json:
   "cartero": {
     "gmail": {
       "labels": ["Importante", "Familia"],
       "interval": 600
+    },
+    "slack": {
+      "channels": ["general", "alertas"],
+      "interval": 600
     }
   }
+
+Slack token: ORBIT_HOME/.slack-token (one line, xoxp-... user token)
 """
 
 import json
@@ -54,6 +60,30 @@ def _gmail_config() -> Optional[dict]:
     if not gmail or not gmail.get("labels"):
         return None
     return gmail
+
+
+def _slack_config() -> Optional[list]:
+    """Return slack sub-config as a list of workspace configs, or None.
+
+    Supports both single dict and list of dicts:
+      "slack": {"workspace": "next", "channels": [...]}
+      "slack": [{"workspace": "next", ...}, {"workspace": "water", ...}]
+    """
+    cfg = _load_cartero_config()
+    slack = cfg.get("slack")
+    if not slack:
+        return None
+    # Normalize to list
+    if isinstance(slack, dict):
+        slack = [slack]
+    # Filter out entries without channels and without dms
+    valid = [s for s in slack if s.get("channels") or s.get("dms")]
+    return valid if valid else None
+
+
+def _has_any_source() -> bool:
+    """Return True if any cartero source is configured."""
+    return _gmail_config() is not None or _slack_config() is not None
 
 
 # ── Gmail API ───────────────────────────────────────────────────────────────
@@ -152,6 +182,136 @@ def _check_gmail(service, label_ids: dict) -> dict:
     }
 
 
+# ── Slack API ──────────────────────────────────────────────────────────────
+
+def _slack_token_path(workspace: Optional[str] = None) -> Path:
+    """Return path to slack token file for a workspace."""
+    if workspace:
+        return ORBIT_HOME / f".slack-token-{workspace}"
+    return ORBIT_HOME / ".slack-token"
+
+
+def _get_slack_token(workspace: Optional[str] = None) -> Optional[str]:
+    """Read Slack user token from .slack-token[-workspace] file."""
+    path = _slack_token_path(workspace)
+    if not path.exists():
+        return None
+    token = path.read_text().strip()
+    return token if token else None
+
+
+def _slack_api(method: str, token: str, params: Optional[dict] = None) -> dict:
+    """Call a Slack Web API method. Returns parsed JSON response."""
+    import urllib.request
+    import urllib.parse
+
+    url = f"https://slack.com/api/{method}"
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}",
+    })
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _resolve_slack_channels(token: str, channel_names: list) -> dict:
+    """Map channel names → IDs.
+
+    Returns {name: channel_id}.  Case-insensitive match.
+    Uses users.conversations to list channels the user is in.
+    """
+    resolved = {}
+    names_lower = {n.lower(): n for n in channel_names}
+    cursor = None
+
+    while True:
+        params = {"types": "public_channel,private_channel", "limit": "200"}
+        if cursor:
+            params["cursor"] = cursor
+        resp = _slack_api("users.conversations", token, params)
+        if not resp.get("ok"):
+            print(f"⚠️  Slack API error: {resp.get('error', 'unknown')}")
+            break
+        for ch in resp.get("channels", []):
+            ch_name = ch.get("name", "").lower()
+            if ch_name in names_lower:
+                resolved[names_lower[ch_name]] = ch["id"]
+        # Pagination
+        cursor = resp.get("response_metadata", {}).get("next_cursor")
+        if not cursor:
+            break
+
+    for name in channel_names:
+        if name not in resolved:
+            print(f"⚠️  Canal '{name}' no encontrado en Slack")
+    return resolved
+
+
+def _check_slack(token: str, channel_ids: dict) -> dict:
+    """Count unread messages per channel.
+
+    Uses conversations.info which returns unread_count_display for user tokens.
+    Returns {"counts": {name: N}, "total": N, "timestamp": ISO}.
+    """
+    counts = {}
+    for name, cid in channel_ids.items():
+        try:
+            resp = _slack_api("conversations.info", token, {"channel": cid})
+            if resp.get("ok"):
+                counts[name] = resp["channel"].get("unread_count_display", 0)
+            else:
+                counts[name] = 0
+        except Exception:
+            counts[name] = 0
+    return {
+        "counts": counts,
+        "total": sum(counts.values()),
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def _check_slack_dms(token: str) -> int:
+    """Count total unread DMs (im + mpim).
+
+    Returns total unread count across all direct message conversations.
+    """
+    total = 0
+    for conv_type in ("im", "mpim"):
+        cursor = None
+        while True:
+            params = {"types": conv_type, "limit": "200", "exclude_archived": "true"}
+            if cursor:
+                params["cursor"] = cursor
+            try:
+                resp = _slack_api("conversations.list", token, params)
+                if not resp.get("ok"):
+                    break
+                for ch in resp.get("channels", []):
+                    total += ch.get("unread_count_display", 0)
+                cursor = resp.get("response_metadata", {}).get("next_cursor")
+                if not cursor:
+                    break
+            except Exception:
+                break
+    return total
+
+
+def _check_slack_workspace(token: str, channel_ids: dict, include_dms: bool) -> dict:
+    """Check a single Slack workspace: channels + optional DMs.
+
+    Returns {"counts": {name: N, "DMs": N}, "total": N, "timestamp": ISO}.
+    """
+    result = _check_slack(token, channel_ids)
+    if include_dms:
+        dm_count = _check_slack_dms(token)
+        if dm_count > 0:
+            result["counts"]["DMs"] = dm_count
+            result["total"] += dm_count
+    return result
+
+
 # ── Shared state ────────────────────────────────────────────────────────────
 
 def _read_state() -> dict:
@@ -172,13 +332,15 @@ def _write_state(state: dict):
 
 
 def get_prompt_indicator() -> str:
-    """Return prompt indicator string, e.g. '[📬4]' or '' if no mail.
+    """Return prompt indicator string, e.g. '[📬4]' or '' if no messages.
 
+    Combines all sources (gmail + slack).
     Reads local file only — no network I/O.
     """
     state = _read_state()
-    gmail = state.get("gmail", {})
-    total = gmail.get("total", 0)
+    gmail_total = state.get("gmail", {}).get("total", 0)
+    slack_total = state.get("slack", {}).get("total", 0)
+    total = gmail_total + slack_total
     if total > 0:
         return f"[📬{total}]"
     return ""
@@ -247,9 +409,11 @@ def _background_loop(config: dict):
     """Main loop for the background daemon process.
 
     Called after double-fork.  Runs until SIGTERM.
+    Polls all configured sources (Gmail, Slack).
     """
     interval = config.get("interval", DEFAULT_INTERVAL)
     gmail_cfg = config.get("gmail")
+    slack_cfgs = _slack_config()  # list of workspace configs or None
 
     # Handle SIGTERM gracefully
     running = True
@@ -261,48 +425,80 @@ def _background_loop(config: dict):
     # Write PID
     CARTERO_PID.write_text(str(os.getpid()))
 
-    service = None
-    label_ids = None
+    # Gmail state (lazy init)
+    gmail_service = None
+    gmail_label_ids = None
+
+    # Slack state (lazy init, per workspace)
+    slack_tokens = {}       # {ws_name: token}
+    slack_channel_ids = {}  # {ws_name: {name: id}}
 
     while running:
         try:
-            # Build service lazily / rebuild if needed
-            if service is None:
-                service = _get_gmail_service()
-                if service is None:
-                    time.sleep(interval)
-                    continue
+            prev_state = _read_state()
+            state = prev_state.copy()
+            state["pid"] = os.getpid()
+            state["workspace"] = str(ORBIT_HOME.name)
+            notify_parts = []
 
-            # Resolve labels once (or if config changed)
-            if label_ids is None and gmail_cfg:
-                label_ids = _resolve_label_ids(service, gmail_cfg.get("labels", []))
-                if not label_ids:
-                    time.sleep(interval)
-                    continue
+            # ── Gmail ───────────────────────────────────────────
+            if gmail_cfg and gmail_cfg.get("labels"):
+                if gmail_service is None:
+                    gmail_service = _get_gmail_service()
+                if gmail_service and gmail_label_ids is None:
+                    gmail_label_ids = _resolve_label_ids(
+                        gmail_service, gmail_cfg.get("labels", []))
+                if gmail_service and gmail_label_ids:
+                    result = _check_gmail(gmail_service, gmail_label_ids)
+                    prev_total = prev_state.get("gmail", {}).get("total", 0)
+                    delta = result["total"] - prev_total
+                    state["gmail"] = result
+                    if delta > 0:
+                        parts = [f"{n} ({c})" for n, c in result["counts"].items() if c > 0]
+                        notify_parts.append(
+                            f"{delta} correo{'s' if delta != 1 else ''}: {', '.join(parts)}")
 
-            # Check Gmail
-            if label_ids:
-                result = _check_gmail(service, label_ids)
-                prev_state = _read_state()
-                prev_total = prev_state.get("gmail", {}).get("total", 0)
-                new_total = result["total"]
+            # ── Slack (multiple workspaces) ─────────────────────
+            if slack_cfgs:
+                combined_counts = {}
+                combined_total = 0
+                for i, scfg in enumerate(slack_cfgs):
+                    ws_name = scfg.get("workspace", f"slack{i}")
+                    if ws_name not in slack_tokens:
+                        slack_tokens[ws_name] = _get_slack_token(ws_name)
+                    token = slack_tokens.get(ws_name)
+                    if not token:
+                        continue
+                    if ws_name not in slack_channel_ids:
+                        channels = scfg.get("channels", [])
+                        slack_channel_ids[ws_name] = _resolve_slack_channels(
+                            token, channels) if channels else {}
+                    ch_ids = slack_channel_ids.get(ws_name, {})
+                    include_dms = scfg.get("dms", False)
+                    if ch_ids or include_dms:
+                        result = _check_slack_workspace(token, ch_ids, include_dms)
+                        for name, count in result["counts"].items():
+                            combined_counts[f"{ws_name}:{name}"] = count
+                        combined_total += result["total"]
 
-                state = prev_state.copy()
-                state["gmail"] = result
-                state["pid"] = os.getpid()
-                state["workspace"] = str(ORBIT_HOME.name)
-                _write_state(state)
+                slack_result = {
+                    "counts": combined_counts,
+                    "total": combined_total,
+                    "timestamp": datetime.now().isoformat(timespec="seconds"),
+                }
+                prev_total = prev_state.get("slack", {}).get("total", 0)
+                delta = combined_total - prev_total
+                state["slack"] = slack_result
+                if delta > 0:
+                    parts = [f"#{n} ({c})" for n, c in combined_counts.items() if c > 0]
+                    notify_parts.append(
+                        f"{delta} mensaje{'s' if delta != 1 else ''} Slack: {', '.join(parts)}")
 
-                # Notify only on increase (new mail arrived)
-                delta = new_total - prev_total
-                if delta > 0 and prev_total >= 0:
-                    # Build detail: "Importante (3), Familia (1)"
-                    parts = [f"{n} ({c})" for n, c in result["counts"].items() if c > 0]
-                    body = ", ".join(parts) if parts else ""
-                    _notify_macos(
-                        f"📬 {delta} correo{'s' if delta != 1 else ''} nuevo{'s' if delta != 1 else ''}",
-                        body,
-                    )
+            _write_state(state)
+
+            # Notify if any source has new messages
+            if notify_parts:
+                _notify_macos("📬 Mensajes nuevos", " · ".join(notify_parts))
 
         except Exception:
             pass  # Fail silently, retry next cycle
@@ -355,10 +551,10 @@ def startup_cartero():
     """Called from shell.py during startup.
 
     Launches background process if configured and not already running.
-    Shows current mail status.
+    Shows current mail/message status.
     """
     config = _load_cartero_config()
-    if not config or not _gmail_config():
+    if not config or not _has_any_source():
         return
 
     if not _is_running():
@@ -367,14 +563,17 @@ def startup_cartero():
         time.sleep(1)
 
     state = _read_state()
-    gmail = state.get("gmail", {})
-    total = gmail.get("total", 0)
-    if total > 0:
-        parts = [f"{n} ({c})" for n, c in gmail.get("counts", {}).items() if c > 0]
-        detail = ", ".join(parts)
-        print(f"  📬 Cartero activo ({detail})")
+    parts = []
+    for source in ("gmail", "slack"):
+        src = state.get(source, {})
+        for name, count in src.get("counts", {}).items():
+            if count > 0:
+                prefix = "#" if source == "slack" else ""
+                parts.append(f"{prefix}{name} ({count})")
+    if parts:
+        print(f"  📬 Cartero activo ({', '.join(parts)})")
     else:
-        print(f"  📬 Cartero activo (sin correos)")
+        print(f"  📬 Cartero activo (sin mensajes)")
 
 
 # ── CLI command: orbit mail ─────────────────────────────────────────────────
@@ -391,7 +590,7 @@ def run_mail(status: bool = False, stop: bool = False, start: bool = False) -> i
         return 0
 
     if start:
-        if not config or not _gmail_config():
+        if not config or not _has_any_source():
             print("⚠️  No hay configuración de cartero en orbit.json")
             return 1
         if _is_running():
@@ -404,59 +603,98 @@ def run_mail(status: bool = False, stop: bool = False, start: bool = False) -> i
     if status:
         if _is_running():
             state = _read_state()
-            gmail = state.get("gmail", {})
-            ts = gmail.get("timestamp", "?")
             print(f"📬 Cartero corriendo (PID {state.get('pid', '?')})")
-            print(f"   Último check: {ts}")
-            total = gmail.get("total", 0)
-            if total > 0:
-                for name, count in gmail.get("counts", {}).items():
-                    print(f"   {name:20s} {count}")
-            else:
-                print("   Sin correos no leídos.")
+            for source in ("gmail", "slack"):
+                src = state.get(source, {})
+                if not src:
+                    continue
+                label = "Gmail" if source == "gmail" else "Slack"
+                ts = src.get("timestamp", "?")
+                print(f"   {label} (último check: {ts}):")
+                total = src.get("total", 0)
+                if total > 0:
+                    for name, count in src.get("counts", {}).items():
+                        prefix = "#" if source == "slack" else " "
+                        print(f"     {prefix}{name:20s} {count}")
+                else:
+                    print(f"     Sin mensajes no leídos.")
         else:
             print("📬 Cartero no está corriendo.")
         return 0
 
     # Default: synchronous check
-    gmail_cfg = _gmail_config()
-    if not gmail_cfg:
+    if not _has_any_source():
         print("⚠️  No hay configuración de cartero en orbit.json")
         print()
         print("Añade a orbit.json:")
         print('  "cartero": {')
-        print('    "gmail": {')
-        print('      "labels": ["Importante", "Familia"],')
-        print('      "interval": 600')
-        print('    }')
+        print('    "gmail": { "labels": ["Etiqueta"], "interval": 600 },')
+        print('    "slack": { "channels": ["general"], "interval": 600 }')
         print('  }')
         return 1
 
-    print("📬 Consultando Gmail...")
-    service = _get_gmail_service()
-    if not service:
-        return 1
-
-    label_ids = _resolve_label_ids(service, gmail_cfg.get("labels", []))
-    if not label_ids:
-        print("⚠️  No se encontraron etiquetas configuradas en Gmail.")
-        return 1
-
-    result = _check_gmail(service, label_ids)
-
-    # Update state
     state = _read_state()
-    state["gmail"] = result
-    _write_state(state)
+    has_results = False
 
-    # Display
-    print()
-    print("📬 Correos no leídos:")
-    max_len = max(len(n) for n in result["counts"]) if result["counts"] else 0
-    for name, count in result["counts"].items():
-        print(f"  {name:{max_len}s}  {count:3d}")
-    print(f"  {'─' * (max_len + 5)}")
-    print(f"  {'Total':{max_len}s}  {result['total']:3d}")
-    print()
+    # Gmail check
+    gmail_cfg = _gmail_config()
+    if gmail_cfg:
+        print("📬 Consultando Gmail...")
+        service = _get_gmail_service()
+        if service:
+            label_ids = _resolve_label_ids(service, gmail_cfg.get("labels", []))
+            if label_ids:
+                result = _check_gmail(service, label_ids)
+                state["gmail"] = result
+                has_results = True
+                print()
+                print("📬 Gmail — correos no leídos:")
+                max_len = max(len(n) for n in result["counts"]) if result["counts"] else 0
+                for name, count in result["counts"].items():
+                    print(f"  {name:{max_len}s}  {count:3d}")
+                print(f"  {'─' * (max_len + 5)}")
+                print(f"  {'Total':{max_len}s}  {result['total']:3d}")
+                print()
+
+    # Slack check (multiple workspaces)
+    slack_cfgs = _slack_config()
+    if slack_cfgs:
+        combined_counts = {}
+        combined_total = 0
+        for scfg in slack_cfgs:
+            ws_name = scfg.get("workspace", "slack")
+            token = _get_slack_token(ws_name)
+            if not token:
+                print(f"⚠️  No se encontró token para Slack '{ws_name}'")
+                print(f"   Crea {_slack_token_path(ws_name)} con tu user token (xoxp-...)")
+                continue
+            print(f"📬 Consultando Slack ({ws_name})...")
+            channels = scfg.get("channels", [])
+            channel_ids = _resolve_slack_channels(token, channels) if channels else {}
+            include_dms = scfg.get("dms", False)
+            if channel_ids or include_dms:
+                result = _check_slack_workspace(token, channel_ids, include_dms)
+                for name, count in result["counts"].items():
+                    combined_counts[f"{ws_name}:{name}"] = count
+                combined_total += result["total"]
+        if combined_counts:
+            slack_result = {
+                "counts": combined_counts,
+                "total": combined_total,
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+            }
+            state["slack"] = slack_result
+            has_results = True
+            print()
+            print("📬 Slack — mensajes no leídos:")
+            max_len = max(len(n) for n in combined_counts) if combined_counts else 0
+            for name, count in combined_counts.items():
+                print(f"  #{name:{max_len}s}  {count:3d}")
+            print(f"  {'─' * (max_len + 6)}")
+            print(f"  {'Total':{max_len + 1}s}  {combined_total:3d}")
+            print()
+
+    if has_results:
+        _write_state(state)
 
     return 0
