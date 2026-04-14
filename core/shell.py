@@ -55,6 +55,16 @@ def _run_startup():
             print(f"  {len(unfixable)} problema{'s' if len(unfixable) != 1 else ''} requiere{'n' if len(unfixable) != 1 else ''} corrección manual.")
             print()
 
+    # 1.5. Auto-advance past recurring items
+    from core.agenda_cmds import startup_advance_past_recurring
+    adv = startup_advance_past_recurring()
+    if adv:
+        n = len(adv)
+        print(f"  🔄 {n} cita{'s' if n != 1 else ''} recurrente{'s' if n != 1 else ''} avanzada{'s' if n != 1 else ''}:")
+        for info in adv:
+            print(f"     {info}")
+        print()
+
     # 2. Cloud sync check — warn if last background sync failed
     from core.cloudsync import startup_cloud_check
     startup_cloud_check()

@@ -1801,3 +1801,119 @@ def run_reminder_log(project: Optional[str], text: Optional[str]) -> int:
 
     print("No se encontró el recordatorio.")
     return 1
+
+
+# ── Startup: auto-advance past recurring items ───────────────────────────
+
+def _advance_to_today_or_future(item_date: str, recur: str,
+                                 until: Optional[str]) -> tuple:
+    """Advance a recurrence date forward until it reaches today or beyond.
+
+    Returns (next_date_str, ended) where ended=True if series exceeded until.
+    Handles cases where the user was away for multiple recurrence periods.
+    """
+    today = date.today()
+    current = item_date
+    while True:
+        nxt = _next_occurrence(current, recur, today.isoformat())
+        if until and date.fromisoformat(nxt) > date.fromisoformat(until):
+            return nxt, True
+        if date.fromisoformat(nxt) >= today:
+            return nxt, False
+        current = nxt
+
+
+def startup_advance_past_recurring() -> list:
+    """Auto-advance recurring items with dates strictly before today.
+
+    Called at shell startup. For each local project, advances recurring
+    items whose date is in the past:
+      - Events: pop old, append new occurrence
+      - Reminders: advance date in-place
+      - Tasks/milestones: cancel old, append new occurrence
+
+    Advances multiple steps if needed (e.g. user was away for weeks).
+    Returns list of info strings like "[project] Título → 2026-04-22".
+    """
+    from core.config import iter_project_dirs
+    from core.log import resolve_file
+
+    today = date.today()
+    advanced = []
+
+    for project_dir in iter_project_dirs():
+        agenda_path = resolve_file(project_dir, "agenda")
+        if not agenda_path.exists():
+            continue
+
+        data = _read_agenda(agenda_path)
+        modified = False
+        proj_name = project_dir.name
+
+        for type_name, cfg in _TYPE_CONFIG.items():
+            items = data[cfg["key"]]
+            to_advance = []
+
+            for i, item in enumerate(items):
+                if not item.get("recur") or not item.get("date"):
+                    continue
+                try:
+                    item_date = date.fromisoformat(item["date"])
+                except ValueError:
+                    continue
+                if item_date >= today:
+                    continue
+                # Skip done/cancelled
+                if cfg["has_status"] and item.get("status") != "pending":
+                    continue
+                if item.get("cancelled"):
+                    continue
+                to_advance.append(i)
+
+            # Process in reverse to preserve indices when popping
+            for i in reversed(to_advance):
+                item = items[i]
+                desc = item["desc"]
+                next_due, ended = _advance_to_today_or_future(
+                    item["date"], item["recur"], item.get("until"))
+
+                if ended:
+                    # Series exceeded until limit
+                    if cfg["drop_action"] == "pop":
+                        items.pop(i)
+                    elif cfg["drop_action"] == "cancel_bool":
+                        item["cancelled"] = True
+                    else:
+                        item["status"] = "cancelled"
+                    info = f" — serie finalizada ({item.get('until')})"
+                elif cfg["drop_action"] == "pop":
+                    # Events: pop old, create new with next_due
+                    popped = items.pop(i)
+                    new_item = {k: v for k, v in popped.items() if k != "synced"}
+                    new_item["date"] = next_due
+                    items.append(new_item)
+                    info = f" → {next_due}"
+                elif cfg["drop_action"] == "cancel_bool":
+                    # Reminders: advance date in-place
+                    item["date"] = next_due
+                    info = f" → {next_due}"
+                else:
+                    # Tasks/milestones: cancel old, create new
+                    item["status"] = "cancelled"
+                    new_item = {"desc": desc, "date": next_due,
+                                "recur": item["recur"],
+                                "until": item.get("until"),
+                                "notes": list(item.get("notes") or []),
+                                "status": "pending"}
+                    if item.get("ring"):
+                        new_item["ring"] = item["ring"]
+                    items.append(new_item)
+                    info = f" → {next_due}"
+
+                modified = True
+                advanced.append(f"[{proj_name}] {desc}{info}")
+
+        if modified:
+            _write_agenda(agenda_path, data)
+
+    return advanced
