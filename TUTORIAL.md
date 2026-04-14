@@ -497,7 +497,8 @@ Y una notificación macOS cuando lleguen mensajes nuevos.
 **Comandos manuales**:
 
 ```bash
-mail                       # check ahora: muestra conteo por fuente
+mail                       # check ahora: muestra conteo por fuente (detallado)
+mail --summary             # check en vivo, resumen compacto (una línea por fuente)
 mail --status              # ¿está corriendo el background?
 mail --stop                # para el background
 mail --start               # arranca el background

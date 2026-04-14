@@ -824,6 +824,7 @@ def cmd_mail(args):
         status=getattr(args, "status", False),
         stop=getattr(args, "stop", False),
         start=getattr(args, "start", False),
+        summary=getattr(args, "summary", False),
     )
 
 
@@ -1300,6 +1301,8 @@ def _build_parser():
                         help="Stop background cartero process")
     mail_p.add_argument("--start", action="store_true",
                         help="Start background cartero process")
+    mail_p.add_argument("--summary", action="store_true",
+                        help="Quick summary from cache (no network)")
 
     # --- doctor ---
     doc_p = subparsers.add_parser("doctor",

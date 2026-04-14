@@ -460,7 +460,8 @@ orbit task add next-kr "Reunión" --date tomorrow --time 10:00 --ring 30m
 ### Cartero — notificaciones de correo
 
 ```bash
-orbit mail                     # check manual: muestra no leídos por etiqueta
+orbit mail                     # check manual: muestra no leídos por etiqueta (detallado)
+orbit mail --summary           # check en vivo, formato compacto (una línea por fuente)
 orbit mail --status            # estado del proceso background
 orbit mail --start             # arranca el proceso background
 orbit mail --stop              # para el proceso background

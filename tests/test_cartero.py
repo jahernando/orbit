@@ -621,3 +621,110 @@ class TestDeltaNotification:
         new_total = 5
         delta = new_total - prev_total
         assert delta == 3  # would notify with "3 correos nuevos"
+
+
+# ── Summary tests ─────────────────────────────────────────────────────────
+
+class TestSummary:
+
+    def test_summary_no_state(self, _isolate, capsys):
+        from core.cartero import _print_summary
+        ret = _print_summary(live=False)
+        assert ret == 0
+        assert "Sin datos" in capsys.readouterr().out
+
+    def test_summary_no_messages(self, _isolate, capsys):
+        from core.cartero import _print_summary, _write_state
+        _write_state({"gmail": {"total": 0, "counts": {}}})
+        ret = _print_summary(live=False)
+        assert ret == 0
+        assert "Sin mensajes" in capsys.readouterr().out
+
+    def test_summary_gmail(self, _isolate, capsys):
+        from core.cartero import _print_summary, _write_state
+        _write_state({"gmail": {"total": 4, "counts": {"Importante": 3, "Familia": 1}}})
+        ret = _print_summary(live=False)
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "Gmail: 4" in out
+        assert "Importante 3" in out
+        assert "Familia 1" in out
+
+    def test_summary_slack(self, _isolate, capsys):
+        from core.cartero import _print_summary, _write_state
+        _write_state({"slack": {"total": 7, "counts": {"next:general": 5, "DMs": 2}}})
+        ret = _print_summary(live=False)
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "Slack: 7" in out
+        assert "#next:general 5" in out
+
+    def test_summary_both_sources(self, _isolate, capsys):
+        from core.cartero import _print_summary, _write_state
+        _write_state({
+            "gmail": {"total": 3, "counts": {"A": 3}},
+            "slack": {"total": 2, "counts": {"ch": 2}},
+        })
+        ret = _print_summary(live=False)
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "Gmail: 3" in out
+        assert "Slack: 2" in out
+
+    def test_summary_federated(self, _isolate, monkeypatch, capsys):
+        from core.cartero import _print_summary
+        fed_path = _isolate / "fed-ws"
+        fed_path.mkdir()
+        (fed_path / ".cartero-state.json").write_text(json.dumps({
+            "gmail": {"total": 5, "counts": {"Inbox": 3, "Work": 2}},
+        }))
+        monkeypatch.setattr("core.cartero._FEDERATED_SPACES", [
+            {"name": "personal", "path": str(fed_path), "emoji": "🌿"}
+        ])
+        ret = _print_summary(live=False)
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "🌿" in out
+        assert "Gmail: 5" in out
+
+    @patch("core.cartero._get_gmail_service")
+    @patch("core.cartero._resolve_label_ids")
+    @patch("core.cartero._check_gmail")
+    def test_summary_live(self, mock_check, mock_resolve, mock_service, _isolate, capsys):
+        from core.cartero import _print_summary
+        mock_service.return_value = MagicMock()
+        mock_resolve.return_value = {"Importante": "L1"}
+        mock_check.return_value = {
+            "counts": {"Importante": 5},
+            "total": 5,
+            "timestamp": "2026-04-14T10:00:00",
+        }
+        ret = _print_summary(live=True)
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "Gmail: 5" in out
+        assert "Importante 5" in out
+
+    def test_summary_via_run_mail(self, _isolate, capsys):
+        """run_mail(summary=True) calls _print_summary with live=True."""
+        from core.cartero import run_mail, _write_state
+        _write_state({"gmail": {"total": 2, "counts": {"A": 2}}})
+        with patch("core.cartero._sync_check") as mock_sync:
+            mock_sync.return_value = {"gmail": {"total": 2, "counts": {"A": 2}}}
+            ret = run_mail(summary=True)
+        assert ret == 0
+        assert "Gmail: 2" in capsys.readouterr().out
+
+    def test_format_source_summary_empty(self):
+        from core.cartero import _format_source_summary
+        assert _format_source_summary("gmail", {"total": 0, "counts": {}}) == ""
+
+    def test_format_source_summary_gmail(self):
+        from core.cartero import _format_source_summary
+        line = _format_source_summary("gmail", {"total": 4, "counts": {"A": 3, "B": 1}})
+        assert line == "📬 Gmail: 4 (A 3, B 1)"
+
+    def test_format_source_summary_slack(self):
+        from core.cartero import _format_source_summary
+        line = _format_source_summary("slack", {"total": 5, "counts": {"ch": 5}})
+        assert line == "📬 Slack: 5 (#ch 5)"

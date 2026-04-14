@@ -645,9 +645,111 @@ def startup_cartero():
 
 # ── CLI command: orbit mail ─────────────────────────────────────────────────
 
-def run_mail(status: bool = False, stop: bool = False, start: bool = False) -> int:
+def _format_source_summary(source: str, src: dict) -> str:
+    """Format a single source summary line.
+
+    Returns e.g. "📬 Gmail: 4 (Importante 3, Familia 1)" or "" if no counts.
+    """
+    counts = src.get("counts", {})
+    total = src.get("total", 0)
+    if total == 0:
+        return ""
+    label = "Gmail" if source == "gmail" else "Slack"
+    prefix = "#" if source == "slack" else ""
+    parts = [f"{prefix}{n} {c}" for n, c in counts.items() if c > 0]
+    return f"📬 {label}: {total} ({', '.join(parts)})"
+
+
+def _sync_check() -> dict:
+    """Run a synchronous check of all configured sources.
+
+    Returns updated state dict.  Prints progress messages.
+    """
+    state = _read_state()
+
+    gmail_cfg = _gmail_config()
+    if gmail_cfg:
+        print("📬 Consultando Gmail...")
+        service = _get_gmail_service()
+        if service:
+            label_ids = _resolve_label_ids(service, gmail_cfg.get("labels", []))
+            if label_ids:
+                state["gmail"] = _check_gmail(service, label_ids)
+
+    slack_cfgs = _slack_config()
+    if slack_cfgs:
+        combined_counts = {}
+        combined_total = 0
+        for scfg in slack_cfgs:
+            ws_name = scfg.get("workspace", "slack")
+            token = _get_slack_token(ws_name)
+            if not token:
+                print(f"⚠️  No se encontró token para Slack '{ws_name}'")
+                continue
+            print(f"📬 Consultando Slack ({ws_name})...")
+            channels = scfg.get("channels", [])
+            channel_ids = _resolve_slack_channels(token, channels) if channels else {}
+            include_dms = scfg.get("dms", False)
+            if channel_ids or include_dms:
+                result = _check_slack_workspace(token, channel_ids, include_dms)
+                for name, count in result["counts"].items():
+                    combined_counts[f"{ws_name}:{name}"] = count
+                combined_total += result["total"]
+        if combined_counts:
+            state["slack"] = {
+                "counts": combined_counts,
+                "total": combined_total,
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+            }
+
+    _write_state(state)
+    return state
+
+
+def _print_summary(live: bool = True) -> int:
+    """Print compact summary — one line per source (local + federated).
+
+    If live=True, runs a synchronous check first.
+    If live=False, reads from cached state only.
+    """
+    if live and _has_any_source():
+        state = _sync_check()
+    else:
+        state = _read_state()
+
+    fed_states = _read_federated_states()
+    has_any = False
+
+    for source in ("gmail", "slack"):
+        src = state.get(source, {})
+        line = _format_source_summary(source, src)
+        if line:
+            print(line)
+            has_any = True
+
+    for emoji, fed_state in fed_states:
+        for source in ("gmail", "slack"):
+            src = fed_state.get(source, {})
+            line = _format_source_summary(source, src)
+            if line:
+                print(f"{emoji}{line}")
+                has_any = True
+
+    if not has_any:
+        if not state and not fed_states:
+            print("📬 Sin datos — ejecuta `orbit mail` o arranca el cartero.")
+        else:
+            print("📬 Sin mensajes no leídos.")
+    return 0
+
+
+def run_mail(status: bool = False, stop: bool = False, start: bool = False,
+             summary: bool = False) -> int:
     """Handle `orbit mail` command."""
     config = _load_cartero_config()
+
+    if summary:
+        return _print_summary()
 
     if stop:
         if _stop_background():
@@ -689,7 +791,7 @@ def run_mail(status: bool = False, stop: bool = False, start: bool = False) -> i
             print("📬 Cartero no está corriendo.")
         return 0
 
-    # Default: synchronous check
+    # Default: synchronous check with detailed output
     if not _has_any_source():
         print("⚠️  No hay configuración de cartero en orbit.json")
         print()
@@ -700,74 +802,27 @@ def run_mail(status: bool = False, stop: bool = False, start: bool = False) -> i
         print('  }')
         return 1
 
-    state = _read_state()
-    has_results = False
+    state = _sync_check()
 
-    # Gmail check
-    gmail_cfg = _gmail_config()
-    if gmail_cfg:
-        print("📬 Consultando Gmail...")
-        service = _get_gmail_service()
-        if service:
-            label_ids = _resolve_label_ids(service, gmail_cfg.get("labels", []))
-            if label_ids:
-                result = _check_gmail(service, label_ids)
-                state["gmail"] = result
-                has_results = True
-                print()
-                print("📬 Gmail — correos no leídos:")
-                max_len = max(len(n) for n in result["counts"]) if result["counts"] else 0
-                for name, count in result["counts"].items():
-                    print(f"  {name:{max_len}s}  {count:3d}")
-                print(f"  {'─' * (max_len + 5)}")
-                print(f"  {'Total':{max_len}s}  {result['total']:3d}")
-                print()
-
-    # Slack check (multiple workspaces)
-    slack_cfgs = _slack_config()
-    if slack_cfgs:
-        combined_counts = {}
-        combined_total = 0
-        for scfg in slack_cfgs:
-            ws_name = scfg.get("workspace", "slack")
-            token = _get_slack_token(ws_name)
-            if not token:
-                print(f"⚠️  No se encontró token para Slack '{ws_name}'")
-                print(f"   Crea {_slack_token_path(ws_name)} con tu user token (xoxp-...)")
-                continue
-            print(f"📬 Consultando Slack ({ws_name})...")
-            channels = scfg.get("channels", [])
-            channel_ids = _resolve_slack_channels(token, channels) if channels else {}
-            include_dms = scfg.get("dms", False)
-            if channel_ids or include_dms:
-                result = _check_slack_workspace(token, channel_ids, include_dms)
-                for name, count in result["counts"].items():
-                    combined_counts[f"{ws_name}:{name}"] = count
-                combined_total += result["total"]
-        if combined_counts:
-            slack_result = {
-                "counts": combined_counts,
-                "total": combined_total,
-                "timestamp": datetime.now().isoformat(timespec="seconds"),
-            }
-            state["slack"] = slack_result
-            has_results = True
-            print()
-            print("📬 Slack — mensajes no leídos:")
-            max_len = max(len(n) for n in combined_counts) if combined_counts else 0
-            for name, count in combined_counts.items():
-                print(f"  #{name:{max_len}s}  {count:3d}")
-            print(f"  {'─' * (max_len + 6)}")
-            print(f"  {'Total':{max_len + 1}s}  {combined_total:3d}")
-            print()
-
-    if has_results:
-        _write_state(state)
+    # Detailed output for local sources
+    for source in ("gmail", "slack"):
+        src = state.get(source, {})
+        if not src or not src.get("counts"):
+            continue
+        label = "Gmail" if source == "gmail" else "Slack"
+        prefix = "#" if source == "slack" else ""
+        print()
+        print(f"📬 {label} — mensajes no leídos:")
+        max_len = max(len(n) for n in src["counts"]) if src["counts"] else 0
+        for name, count in src["counts"].items():
+            print(f"  {prefix}{name:{max_len}s}  {count:3d}")
+        print(f"  {'─' * (max_len + 5)}")
+        print(f"  {'Total':{max_len}s}  {src['total']:3d}")
+        print()
 
     # Federated workspaces (read-only, no polling)
     fed_states = _read_federated_states()
     for emoji, fed_state in fed_states:
-        fed_parts = []
         for source in ("gmail", "slack"):
             src = fed_state.get(source, {})
             if not src or not src.get("counts"):
