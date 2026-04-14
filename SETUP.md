@@ -105,6 +105,16 @@ Recarga con `source ~/.zshrc` y ejecuta `worbit` para entrar en la shell.
 
 ## 4. Configuracion del workspace
 
+La forma mas rapida de configurar un workspace es el asistente interactivo:
+
+```bash
+orbit setup
+```
+
+Te guia por todas las secciones: emoji, tipos, editor, Google Sync, cartero y federacion.
+Cada seccion es opcional. Si `orbit.json` ya existe, muestra los valores actuales como defaults.
+
+Tambien puedes configurar manualmente editando los ficheros.
 Todos estos ficheros viven en el workspace, no en el codigo.
 
 ### orbit.json — tipos de proyecto

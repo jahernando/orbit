@@ -828,6 +828,11 @@ def cmd_mail(args):
     )
 
 
+def cmd_setup(args):
+    from core.setup import run_setup
+    return run_setup()
+
+
 def cmd_history(args):
     to_file = getattr(args, "open", False) or getattr(args, "log", None)
     fn = lambda: run_history(
@@ -1304,6 +1309,9 @@ def _build_parser():
     mail_p.add_argument("--summary", action="store_true",
                         help="Quick summary from cache (no network)")
 
+    # --- setup ---
+    subparsers.add_parser("setup", help="Interactive workspace configuration wizard")
+
     # --- doctor ---
     doc_p = subparsers.add_parser("doctor",
                                    help="Check syntax of project files (logbook, agenda, highlights)")
@@ -1688,7 +1696,7 @@ _COMMANDS = {
     "panel": cmd_panel, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "mail": cmd_mail,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "mail": cmd_mail, "setup": cmd_setup,
     "crono": cmd_crono,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,

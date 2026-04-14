@@ -16,15 +16,15 @@ source /ruta/a/orbit/orbit.sh
 
 Esto te da los comandos `worbit` (workspace de trabajo) y `porbit` (workspace personal).
 
-Configura tu editor de markdown preferido en el `orbit.json` de cada workspace:
+Ejecuta `orbit setup` para configurar el workspace de forma interactiva:
 
-```json
-{
-  "editor": "obsidian"
-}
+```bash
+orbit setup
 ```
 
-Si no configuras editor, Orbit usa el abridor del sistema (`open` en macOS). Puedes usar `--open obsidian` en cualquier comando para una apertura puntual con otro editor.
+El asistente te guía por: emoji del workspace, tipos de proyecto, editor, Google Sync, cartero (Gmail/Slack) y federación. Cada sección es opcional — pulsa Enter para saltar.
+
+Si prefieres configurar manualmente, edita `orbit.json` directamente (ver SETUP.md).
 
 ### Entrar en Orbit
 

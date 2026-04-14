@@ -457,6 +457,17 @@ orbit task add next-kr "Reunión" --date tomorrow --time 10:00 --ring 30m
 - Al entrar en la shell, se programan las notificaciones del día de todos los workspaces
 - Valores: `1d` (1 día antes), `2h`, `30m`, `HH:MM` (hora fija), `YYYY-MM-DD HH:MM`
 
+### Setup — configuración interactiva
+
+```bash
+orbit setup                    # asistente interactivo de configuración
+```
+
+- Guía paso a paso: workspace, tipos, editor, Google Sync, cartero (Gmail/Slack), federación
+- Si `orbit.json` ya existe, muestra valores actuales como defaults
+- Cada sección es opcional — Enter para saltar
+- Genera/actualiza `orbit.json` y `federation.json`
+
 ### Cartero — notificaciones de correo
 
 ```bash
