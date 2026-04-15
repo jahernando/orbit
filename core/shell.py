@@ -11,10 +11,38 @@ Startup flow:
 import readline
 import shlex
 import sys
+import threading
 from datetime import date as _date
 from pathlib import Path
 
 from core.config import ORBIT_HOME as ORBIT_DIR, ORBIT_CODE, ORBIT_PROMPT
+
+
+# ── Background dash refresh ─────────────────────────────────────────────────
+
+_dash_stop = threading.Event()
+
+DASH_INTERVAL = 3600  # seconds (1 hour)
+_DASH_STAMP = ORBIT_DIR / ".dash-stamp"
+
+
+def _dash_background_loop():
+    """Refresh dash files every hour in background.
+
+    Uses a timestamp file so multiple shells don't duplicate work.
+    """
+    import time
+    while not _dash_stop.wait(DASH_INTERVAL):
+        try:
+            if _DASH_STAMP.exists():
+                age = time.time() - _DASH_STAMP.stat().st_mtime
+                if age < DASH_INTERVAL * 0.9:
+                    continue
+            from orbit import run_dash
+            run_dash(silent=True)
+            _DASH_STAMP.touch()
+        except Exception:
+            pass
 
 
 # ── Startup sequence ─────────────────────────────────────────────────────────
@@ -98,13 +126,18 @@ def _run_startup():
     from core.cartero import startup_cartero
     startup_cartero()
 
-    # 8. Dash — refresh panel.md + agenda.md and show calendar
+    # 8. Dash — refresh panel.md + agenda.md + calendar.md
     try:
         from orbit import run_dash
         print()
         run_dash(silent=False)
     except Exception:
         pass
+
+    # 9. Background dash refresh every hour
+    _dash_stop.clear()
+    t = threading.Thread(target=_dash_background_loop, daemon=True)
+    t.start()
 
     print()
 
@@ -256,6 +289,8 @@ def run_shell(editor: str = ""):
                         run_command(new_tokens)
                     except SystemExit:
                         pass
+
+    _dash_stop.set()  # stop background dash refresh
 
     readline.write_history_file(history_file)
 

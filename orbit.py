@@ -194,7 +194,7 @@ _VERB_ENTITY_SWAP = {
     "priority": {"project"},
 }
 
-_NOTE_SUBCOMMANDS = {"create", "open", "list", "drop"}
+_NOTE_SUBCOMMANDS = {"create", "open", "list", "drop", "import"}
 
 def _fix_argv(argv: list) -> list:
     """Normalize argv: fix single-dash options, swap verb-entity order."""
@@ -784,41 +784,43 @@ def cmd_panel(args):
 
 
 def run_dash(silent: bool = False):
-    """Run dash: panel today → panel.md, agenda 2 weeks → agenda.md, cal → terminal.
+    """Refresh panel.md, agenda.md (2 weeks), calendar.md (3 months).
 
-    silent=True suppresses terminal output (used in shutdown before commit).
+    silent=True suppresses all terminal output (used in background refresh and shutdown).
     """
     from datetime import date as _date_cls, timedelta
+    import calendar as _calmod
     from core.panel import run_panel
     from core.agenda_view import run_agenda, run_cal
 
     today = _date_cls.today()
-    two_weeks_end = (today + timedelta(days=13)).isoformat()
     today_str = today.isoformat()
+    two_weeks_end = (today + timedelta(days=13)).isoformat()
+    m1 = today.replace(day=1)
+    m3_month = (m1.month + 2 - 1) % 12 + 1
+    m3_year = m1.year + (m1.month + 2 - 1) // 12
+    m3_end = _date_cls(m3_year, m3_month, _calmod.monthrange(m3_year, m3_month)[1])
 
     # 1. Panel today → panel.md
     with capture_output() as buf:
         run_panel(period="today")
     (ORBIT_DIR / "panel.md").write_text(buf.getvalue())
-    if not silent:
-        print("  ✓ panel.md actualizado")
 
     # 2. Agenda 2 weeks → agenda.md
     with capture_output() as buf:
         run_agenda(date_from=today_str, date_to=two_weeks_end, markdown=True)
     (ORBIT_DIR / "agenda.md").write_text(buf.getvalue())
-    if not silent:
-        print("  ✓ agenda.md actualizado (2 semanas)")
 
-    # 3. Calendar 3 months → terminal (only when interactive)
+    # 3. Calendar 3 months → calendar.md
+    with capture_output() as buf:
+        run_cal(date_from=m1.isoformat(), date_to=m3_end.isoformat(), markdown=True)
+    (ORBIT_DIR / "calendar.md").write_text(buf.getvalue())
+
+    # Touch stamp so background dash in other shells skips redundant refreshes
+    (ORBIT_DIR / ".dash-stamp").touch()
+
     if not silent:
-        import calendar as _calmod
-        m1 = today.replace(day=1)
-        m3_month = (m1.month + 2 - 1) % 12 + 1
-        m3_year = m1.year + (m1.month + 2 - 1) // 12
-        m3_end = _date_cls(m3_year, m3_month, _calmod.monthrange(m3_year, m3_month)[1])
-        print()
-        run_cal(date_from=m1.isoformat(), date_to=m3_end.isoformat())
+        print("  ✓ dash actualizado (panel.md + agenda.md + calendar.md)")
 
     return 0
 
