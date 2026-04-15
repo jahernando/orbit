@@ -98,6 +98,14 @@ def _run_startup():
     from core.cartero import startup_cartero
     startup_cartero()
 
+    # 8. Dash — refresh panel.md + agenda.md and show calendar
+    try:
+        from orbit import run_dash
+        print()
+        run_dash(silent=False)
+    except Exception:
+        pass
+
     print()
 
 
