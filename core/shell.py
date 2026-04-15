@@ -104,9 +104,17 @@ def _run_startup():
 # ── Shutdown sequence ────────────────────────────────────────────────────────
 
 def _run_shutdown():
-    """Offer to commit + push pending changes before exiting the shell."""
+    """Refresh dash files + offer to commit + push pending changes before exiting the shell."""
     from core.commit import startup_untracked_check, startup_commit_offer
     print()
+    # Refresh panel.md and agenda.md so they're up-to-date for commit & cloud render
+    try:
+        from orbit import run_dash
+        run_dash(silent=True)
+        print("  ✓ dash actualizado (panel.md + agenda.md)")
+        print()
+    except Exception:
+        pass
     startup_untracked_check()
     startup_commit_offer()
 
@@ -125,7 +133,7 @@ def run_shell(editor: str = ""):
     readline.set_history_length(500)
 
     COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "deliver", "recloud", "migrate",
-                "import", "ls", "log", "search", "open", "report", "agenda",
+                "import", "ls", "log", "search", "open", "report", "agenda", "dash",
                 "gsync", "mail", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
 
     # Shell commands allowed to run from the Orbit REPL

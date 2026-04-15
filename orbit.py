@@ -783,6 +783,50 @@ def cmd_panel(args):
                           open_file_path=ORBIT_HOME / "panel.md")
 
 
+def run_dash(silent: bool = False):
+    """Run dash: panel today → panel.md, agenda 2 weeks → agenda.md, cal → terminal.
+
+    silent=True suppresses terminal output (used in shutdown before commit).
+    """
+    from datetime import date as _date_cls, timedelta
+    from core.panel import run_panel
+    from core.agenda_view import run_agenda, run_cal
+
+    today = _date_cls.today()
+    two_weeks_end = (today + timedelta(days=13)).isoformat()
+    today_str = today.isoformat()
+
+    # 1. Panel today → panel.md
+    with capture_output() as buf:
+        run_panel(period="today")
+    (ORBIT_DIR / "panel.md").write_text(buf.getvalue())
+    if not silent:
+        print("  ✓ panel.md actualizado")
+
+    # 2. Agenda 2 weeks → agenda.md
+    with capture_output() as buf:
+        run_agenda(date_from=today_str, date_to=two_weeks_end, markdown=True)
+    (ORBIT_DIR / "agenda.md").write_text(buf.getvalue())
+    if not silent:
+        print("  ✓ agenda.md actualizado (2 semanas)")
+
+    # 3. Calendar 3 months → terminal (only when interactive)
+    if not silent:
+        import calendar as _calmod
+        m1 = today.replace(day=1)
+        m3_month = (m1.month + 2 - 1) % 12 + 1
+        m3_year = m1.year + (m1.month + 2 - 1) // 12
+        m3_end = _date_cls(m3_year, m3_month, _calmod.monthrange(m3_year, m3_month)[1])
+        print()
+        run_cal(date_from=m1.isoformat(), date_to=m3_end.isoformat())
+
+    return 0
+
+
+def cmd_dash(args):
+    return run_dash(silent=False)
+
+
 def cmd_report(args):
     projects = getattr(args, "projects", None) or None
     date_str = getattr(args, "date", None)
@@ -1230,6 +1274,9 @@ def _build_parser():
                        help="Open in editor (optionally specify editor name)")
     _add_log_args(pan_p)
     _add_fed_args(pan_p)
+
+    # --- dash ---
+    subparsers.add_parser("dash", help="Refresh dashboard: panel.md + agenda.md (2 weeks) + calendar")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")
@@ -1693,7 +1740,7 @@ _COMMANDS = {
     "clip": cmd_clip,
     "cloud": cmd_cloud, "render": cmd_render, "recloud": cmd_recloud,
     "log": cmd_log, "search": cmd_search,
-    "panel": cmd_panel, "report": cmd_report, "open": cmd_open,
+    "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
     "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "mail": cmd_mail, "setup": cmd_setup,
