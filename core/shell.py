@@ -141,7 +141,7 @@ def run_shell(editor: str = ""):
     readline.set_history_length(500)
 
     COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "deliver", "recloud", "migrate",
-                "import", "ls", "log", "search", "open", "report", "agenda", "dash",
+                "import", "ls", "log", "search", "open", "report", "agenda", "dash", "wks",
                 "gsync", "mail", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
 
     # Shell commands allowed to run from the Orbit REPL
@@ -200,6 +200,13 @@ def run_shell(editor: str = ""):
             tokens = shlex.split(line)
         except ValueError as e:
             print(f"Error al parsear: {e}")
+            continue
+
+        # wks — delegate to ~/work/scripts/wks
+        if tokens[0] == "wks":
+            import subprocess
+            wks_script = Path.home() / "work" / "scripts" / "wks"
+            subprocess.run([str(wks_script)] + tokens[1:], cwd=ORBIT_DIR)
             continue
 
         # Dispatch whitelisted shell commands directly
