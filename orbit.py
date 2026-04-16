@@ -909,7 +909,8 @@ def cmd_crono(args):
     """Cronograma subcommand dispatcher."""
     from core.cronograma import (
         run_crono_add, run_crono_show, run_crono_check,
-        run_crono_list, run_crono_done,
+        run_crono_list, run_crono_done, run_crono_gantt,
+        run_crono_edit, run_crono_reindex,
     )
     action = _ga(args, "action")
     if action == "add":
@@ -923,8 +924,22 @@ def cmd_crono(args):
         fn = lambda: run_crono_list(project=args.project)
         return _handle_output(args, fn, "crono list")
     if action == "done":
-        return run_crono_done(project=args.project, name=args.name, index=args.index)
-    print("Uso: crono add|show|check|list|done ...")
+        return run_crono_done(project=args.project, name=args.name,
+                              index=getattr(args, "index", None))
+    if action == "edit":
+        editor = getattr(args, "open", "") or ""
+        return run_crono_edit(project=args.project, name=args.name, editor=editor)
+    if action == "reindex":
+        return run_crono_reindex(project=args.project, name=args.name)
+    if action == "gantt":
+        mode = None
+        if getattr(args, "progress", False):
+            mode = "progress"
+        elif getattr(args, "timeline", False):
+            mode = "timeline"
+        fn = lambda: run_crono_gantt(project=args.project, name=args.name, mode=mode)
+        return _handle_output(args, fn, "crono gantt")
+    print("Uso: crono add|show|edit|check|list|done|reindex|gantt ...")
     return 1
 
 
@@ -1712,10 +1727,32 @@ def _build_parser():
     cr_list.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
     _add_log_args(cr_list)
 
+    cr_edit = crono_sub.add_parser("edit", help="Abrir cronograma en el editor")
+    cr_edit.add_argument("project", help="Project name")
+    cr_edit.add_argument("name", help="Cronograma name (partial match)")
+    cr_edit.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                         help="Editor (default: configured editor)")
+
     cr_done = crono_sub.add_parser("done", help="Marcar tarea de cronograma como completada")
     cr_done.add_argument("project", help="Project name")
     cr_done.add_argument("name", help="Cronograma name")
-    cr_done.add_argument("index", help="Task index (e.g. 1.2)")
+    cr_done.add_argument("index", nargs="?", default=None,
+                         help="Task index, partial text, or omit for interactive")
+
+    cr_reindex = crono_sub.add_parser("reindex", help="Renumerar índices del cronograma")
+    cr_reindex.add_argument("project", help="Project name")
+    cr_reindex.add_argument("name", help="Cronograma name (partial match)")
+
+    cr_gantt = crono_sub.add_parser("gantt", help="Visualizar cronograma como Gantt")
+    cr_gantt.add_argument("project", help="Project name")
+    cr_gantt.add_argument("name", help="Cronograma name (partial match)")
+    cr_gantt_mode = cr_gantt.add_mutually_exclusive_group()
+    cr_gantt_mode.add_argument("--progress", action="store_true",
+                               help="Forzar vista de progreso (barras + checkboxes)")
+    cr_gantt_mode.add_argument("--timeline", action="store_true",
+                               help="Forzar vista temporal (Gantt con eje de fechas)")
+    cr_gantt.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
+    _add_log_args(cr_gantt)
 
     # --- undo ---
     subparsers.add_parser("undo", help="Undo the last operation")

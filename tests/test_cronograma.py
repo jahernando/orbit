@@ -128,6 +128,24 @@ class TestParsing:
         assert t1["depth"] == 1
         assert t2["depth"] == 2
 
+    def test_parse_task_line_tab_indent(self):
+        from core.cronograma import _parse_crono_task_line
+        t0 = _parse_crono_task_line("- [ ] 1 Root", indent_unit=1)
+        t1 = _parse_crono_task_line("\t- [ ] 1.1 Child", indent_unit=1)
+        t2 = _parse_crono_task_line("\t\t- [ ] 1.1.1 Grandchild", indent_unit=1)
+        assert t0["depth"] == 0
+        assert t1["depth"] == 1
+        assert t2["depth"] == 2
+
+    def test_parse_task_line_4space_indent(self):
+        from core.cronograma import _parse_crono_task_line
+        t0 = _parse_crono_task_line("- [ ] 1 Root", indent_unit=4)
+        t1 = _parse_crono_task_line("    - [ ] 1.1 Child", indent_unit=4)
+        t2 = _parse_crono_task_line("        - [ ] 1.1.1 Grandchild", indent_unit=4)
+        assert t0["depth"] == 0
+        assert t1["depth"] == 1
+        assert t2["depth"] == 2
+
     def test_parse_crono_file(self, tmp_path):
         from core.cronograma import _parse_crono_file
         path = tmp_path / "crono-test.md"
@@ -143,6 +161,33 @@ class TestParsing:
         assert data["name"] == "Mi Plan"
         assert len(data["tasks"]) == 3
         assert data["tasks"][1]["notes"] == ["Nota sobre tarea A."]
+
+    def test_parse_crono_file_tab_indent(self, tmp_path):
+        from core.cronograma import _parse_crono_file
+        path = tmp_path / "crono-test.md"
+        path.write_text("# Cronograma: Tabs\n\n"
+                        "- [ ] 1 Root\n"
+                        "\t- [ ] 1.1 Child A\n"
+                        "\t- [ ] 1.2 Child B\n"
+                        "\t\t- [ ] 1.2.1 Grandchild\n")
+        data = _parse_crono_file(path)
+        assert len(data["tasks"]) == 4
+        assert data["tasks"][0]["depth"] == 0
+        assert data["tasks"][1]["depth"] == 1
+        assert data["tasks"][3]["depth"] == 2
+
+    def test_parse_crono_file_4space_indent(self, tmp_path):
+        from core.cronograma import _parse_crono_file
+        path = tmp_path / "crono-test.md"
+        path.write_text("# Cronograma: 4sp\n\n"
+                        "- [ ] 1 Root\n"
+                        "    - [ ] 1.1 Child\n"
+                        "        - [ ] 1.1.1 Grandchild\n")
+        data = _parse_crono_file(path)
+        assert len(data["tasks"]) == 3
+        assert data["tasks"][0]["depth"] == 0
+        assert data["tasks"][1]["depth"] == 1
+        assert data["tasks"][2]["depth"] == 2
 
     def test_build_tree(self):
         from core.cronograma import _parse_crono_task_line, _build_tree
@@ -588,6 +633,51 @@ class TestCommands:
         result = run_crono_done(project=proj.name, name="test", index="99")
         assert result == 1
 
+    def test_crono_done_partial_title(self, projects_dir, capsys):
+        from core.cronograma import run_crono_done
+        proj = _make_project(projects_dir)
+        _write_crono(proj, "test", """\
+            # Cronograma: Test
+
+            - [ ] 1 Root
+              - [ ] 1.1 Alpha task
+              - [ ] 1.2 Beta task
+        """)
+        result = run_crono_done(project=proj.name, name="test", index="Alpha")
+        assert result == 0
+        content = (proj / "cronos" / "crono-test.md").read_text()
+        assert "[x] 1.1" in content
+        assert "[ ] 1.2" in content
+
+    def test_crono_done_partial_index(self, projects_dir, capsys):
+        from core.cronograma import run_crono_done
+        proj = _make_project(projects_dir)
+        _write_crono(proj, "test", """\
+            # Cronograma: Test
+
+            - [ ] 1 Root
+              - [ ] 1.1 A
+              - [ ] 1.2 B
+        """)
+        # "1.2" matches exactly one pending leaf
+        result = run_crono_done(project=proj.name, name="test", index="1.2")
+        assert result == 0
+        content = (proj / "cronos" / "crono-test.md").read_text()
+        assert "[x] 1.2" in content
+
+    def test_crono_done_all_complete(self, projects_dir, capsys):
+        from core.cronograma import run_crono_done
+        proj = _make_project(projects_dir)
+        _write_crono(proj, "test", """\
+            # Cronograma: Test
+
+            - [x] 1 Done
+        """)
+        result = run_crono_done(project=proj.name, name="test")
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "completadas" in out.lower()
+
     def test_crono_check_clean(self, projects_dir, capsys):
         from core.cronograma import run_crono_add, run_crono_check
         proj = _make_project(projects_dir)
@@ -606,6 +696,12 @@ class TestCommands:
             - [ ] 1 A | after:99 | 1W
         """)
         result = run_crono_check(project=proj.name, name="bad")
+        assert result == 1
+
+    def test_crono_edit_not_found(self, projects_dir, capsys):
+        from core.cronograma import run_crono_edit
+        proj = _make_project(projects_dir)
+        result = run_crono_edit(project=proj.name, name="nonexistent")
         assert result == 1
 
     def test_crono_not_found(self, projects_dir, capsys):
@@ -815,3 +911,253 @@ class TestFormat:
         assert _format_duration(date(2026, 1, 5), date(2026, 1, 11)) == "1W"
         assert _format_duration(date(2026, 1, 5), date(2026, 1, 9)) == "5d"
         assert _format_duration(None, None) == ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 9. Gantt
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestGantt:
+    def test_gantt_dag_only(self, tmp_path):
+        from core.cronograma import _parse_crono_file, _compute_dates, _format_gantt
+        path = tmp_path / "crono-test.md"
+        path.write_text(textwrap.dedent("""\
+            # Cronograma: DAG
+
+            - [ ] 1 Root
+              - [x] 1.1 Done task
+              - [ ] 1.2 Pending | after:1.1
+        """))
+        data = _parse_crono_file(path)
+        _compute_dates(data["tasks"], data["metadata"])
+        output = _format_gantt(data)
+        assert "DAG" in output
+        assert "1/2" in output
+        assert "░" in output
+        assert "█" in output
+        # No date columns in DAG mode
+        assert "Inicio" not in output
+
+    def test_gantt_dated(self, tmp_path):
+        from core.cronograma import _parse_crono_file, _compute_dates, _format_gantt
+        path = tmp_path / "crono-test.md"
+        path.write_text(textwrap.dedent("""\
+            # Cronograma: Dated
+
+            - [ ] 1 Root
+              - [x] 1.1 A | 2026-01-05 | 1W
+              - [ ] 1.2 B | after:1.1 | 3d
+        """))
+        data = _parse_crono_file(path)
+        _compute_dates(data["tasks"], data["metadata"])
+        output = _format_gantt(data, today=date(2026, 1, 10))
+        assert "Dated" in output
+        assert "█" in output
+        assert "[x]" in output
+        assert "[ ]" in output
+
+    def test_gantt_empty(self, tmp_path):
+        from core.cronograma import _parse_crono_file, _format_gantt
+        path = tmp_path / "crono-test.md"
+        path.write_text("# Cronograma: Empty\n")
+        data = _parse_crono_file(path)
+        output = _format_gantt(data)
+        assert "vacío" in output
+
+    def test_gantt_colorblind_safe(self, tmp_path):
+        from core.cronograma import _parse_crono_file, _compute_dates, _format_gantt
+        path = tmp_path / "crono-test.md"
+        path.write_text(textwrap.dedent("""\
+            # Cronograma: Colors
+
+            - [ ] 1 Root
+              - [x] 1.1 Done | 2026-01-05 | 3d
+              - [ ] 1.2 Overdue | after:1.1 | 3d
+        """))
+        data = _parse_crono_file(path)
+        _compute_dates(data["tasks"], data["metadata"])
+        output = _format_gantt(data, today=date(2026, 1, 20))
+        # No red or green ANSI codes
+        assert "\033[31m" not in output
+        assert "\033[32m" not in output
+
+    def test_gantt_force_progress(self, tmp_path):
+        from core.cronograma import _parse_crono_file, _compute_dates, _format_gantt
+        path = tmp_path / "crono-test.md"
+        path.write_text(textwrap.dedent("""\
+            # Cronograma: Dated
+
+            - [ ] 1 Root
+              - [x] 1.1 A | 2026-01-05 | 1W
+              - [ ] 1.2 B | after:1.1 | 3d
+        """))
+        data = _parse_crono_file(path)
+        _compute_dates(data["tasks"], data["metadata"])
+        output = _format_gantt(data, mode="progress")
+        # Progress mode: no date columns, has progress bars
+        assert "░" in output or "█" in output
+        assert "1/2" in output
+
+    def test_run_crono_gantt(self, projects_dir, capsys):
+        from core.cronograma import run_crono_add, run_crono_gantt
+        proj = _make_project(projects_dir)
+        run_crono_add(project=proj.name, name="Test")
+        result = run_crono_gantt(project=proj.name, name="test")
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Test" in out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 10. Reindex
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestReindex:
+    def test_reindex_gaps(self):
+        from core.cronograma import _reindex_lines
+        lines = [
+            "# Cronograma: test",
+            "",
+            "- [ ] 1 Root",
+            "  - [ ] 1.1 A",
+            "  - [ ] 1.3 B",
+            "  - [ ] 1.5 C",
+        ]
+        new_lines, renames = _reindex_lines(lines)
+        assert renames["1.3"] == "1.2"
+        assert renames["1.5"] == "1.3"
+        assert "1.2 B" in new_lines[4]
+        assert "1.3 C" in new_lines[5]
+
+    def test_reindex_updates_after_refs(self):
+        from core.cronograma import _reindex_lines
+        lines = [
+            "- [ ] 1 Root",
+            "  - [ ] 1.1 A",
+            "  - [ ] 1.3 B | after:1.1",
+            "    - [ ] 1.3.2 C",
+            "    - [ ] 1.3.3 D | after:1.3.2",
+        ]
+        new_lines, renames = _reindex_lines(lines)
+        assert renames["1.3"] == "1.2"
+        assert renames["1.3.2"] == "1.2.1"
+        assert renames["1.3.3"] == "1.2.2"
+        assert "after:1.1" in new_lines[2]       # unchanged ref
+        assert "after:1.2.1" in new_lines[4]     # updated ref
+
+    def test_reindex_already_correct(self):
+        from core.cronograma import _reindex_lines
+        lines = [
+            "- [ ] 1 Root",
+            "  - [ ] 1.1 A",
+            "  - [ ] 1.2 B",
+        ]
+        _, renames = _reindex_lines(lines)
+        changes = sum(1 for o, n in renames.items() if o != n)
+        assert changes == 0
+
+    def test_reindex_deep_nesting(self):
+        from core.cronograma import _reindex_lines
+        lines = [
+            "- [ ] 1 L0",
+            "  - [ ] 1.5 L1",
+            "    - [ ] 1.5.3 L2",
+        ]
+        _, renames = _reindex_lines(lines)
+        assert renames["1.5"] == "1.1"
+        assert renames["1.5.3"] == "1.1.1"
+
+    def test_run_crono_reindex(self, projects_dir, capsys):
+        from core.cronograma import run_crono_add, run_crono_reindex
+        proj = _make_project(projects_dir)
+        run_crono_add(project=proj.name, name="Test")
+
+        # Manually mess up the indices
+        crono_path = proj / "cronos" / "crono-test.md"
+        crono_path.write_text(
+            "# Cronograma: Test\n\n"
+            "- [ ] 1 Root\n"
+            "  - [ ] 1.1 A\n"
+            "  - [ ] 1.5 B\n"
+        )
+        result = run_crono_reindex(project=proj.name, name="test")
+        assert result == 0
+        content = crono_path.read_text()
+        assert "1.2 B" in content
+        assert "1.5" not in content
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 11. Inherit after: from parent
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestInheritAfter:
+    def test_leaf_inherits_after_from_parent(self):
+        from core.cronograma import _parse_crono_task_line, _compute_dates
+        tasks = [
+            _parse_crono_task_line("- [ ] 1 Root"),
+            _parse_crono_task_line("  - [ ] 1.1 A | 2026-01-05 | 3d"),
+            _parse_crono_task_line("  - [ ] 1.2 B | after:1.1"),      # parent with after:
+            _parse_crono_task_line("    - [ ] 1.2.1 Sub | | 2d"),     # inherits after:1.1
+            _parse_crono_task_line("    - [ ] 1.2.2 Sub2 | after:1.2.1 | 2d"),
+        ]
+        _compute_dates(tasks, {}, today=date(2026, 1, 5))
+        # 1.1 ends Jan 7. 1.2.1 should start Jan 8 (inherited after:1.1)
+        assert tasks[3]["start_date"] == date(2026, 1, 8)
+        assert tasks[3]["end_date"] == date(2026, 1, 9)
+        # 1.2.2 chains from 1.2.1
+        assert tasks[4]["start_date"] == date(2026, 1, 10)
+
+    def test_leaf_with_own_start_not_overridden(self):
+        from core.cronograma import _parse_crono_task_line, _compute_dates
+        tasks = [
+            _parse_crono_task_line("- [ ] 1 Root"),
+            _parse_crono_task_line("  - [ ] 1.1 A | 2026-01-05 | 3d"),
+            _parse_crono_task_line("  - [ ] 1.2 B | after:1.1"),
+            _parse_crono_task_line("    - [ ] 1.2.1 Sub | 2026-02-01 | 2d"),  # explicit start
+        ]
+        _compute_dates(tasks, {}, today=date(2026, 1, 5))
+        # Should keep its own explicit start, not inherit
+        assert tasks[3]["start_date"] == date(2026, 2, 1)
+
+    def test_doctor_no_warn_inherited_after(self, tmp_path):
+        from core.cronograma import _check_cronograma
+        path = tmp_path / "crono-test.md"
+        path.write_text(textwrap.dedent("""\
+            # Cronograma: Test
+
+            - [ ] 1 Root
+              - [ ] 1.1 A | 2026-01-05 | 3d
+              - [ ] 1.2 B | after:1.1
+                - [ ] 1.2.1 Sub | | 2d
+        """))
+        issues = _check_cronograma("proj", path)
+        # No "sin inicio" warning for 1.2.1 (inherits from parent)
+        # No "padre con inicio" warning for 1.2 (after: is valid on parents)
+        assert len(issues) == 0
+
+    def test_doctor_warns_absolute_date_on_parent(self, tmp_path):
+        from core.cronograma import _check_cronograma
+        path = tmp_path / "crono-test.md"
+        path.write_text(textwrap.dedent("""\
+            # Cronograma: Test
+
+            - [ ] 1 Root | 2026-01-01
+              - [ ] 1.1 A | 2026-01-05 | 3d
+        """))
+        issues = _check_cronograma("proj", path)
+        msgs = [i.msg for i in issues]
+        assert any("padre con inicio" in m.lower() for m in msgs)
+
+    def test_grandparent_inheritance(self):
+        from core.cronograma import _parse_crono_task_line, _compute_dates
+        tasks = [
+            _parse_crono_task_line("- [ ] 1 Root | after:0"),  # won't resolve (no 0)
+            _parse_crono_task_line("  - [ ] 1.1 Phase | after:0"),  # grandparent
+            _parse_crono_task_line("    - [ ] 1.1.1 Group"),        # parent (no after)
+            _parse_crono_task_line("      - [ ] 1.1.1.1 Leaf | | 2d"),  # should inherit from 1.1
+        ]
+        # The leaf should get _inherited_after from grandparent 1.1
+        _compute_dates(tasks, {}, today=date(2026, 1, 5))
+        # after:0 won't resolve (no task 0), so start_date stays None
+        assert tasks[3]["start_date"] is None

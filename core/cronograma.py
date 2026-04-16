@@ -41,7 +41,27 @@ _META_RE = re.compile(r"^(\w[\w-]*):\s*(.+)$")
 
 # ── Parsing ──────────────────────────────────────────────────────────────────
 
-def _parse_crono_task_line(line: str) -> Optional[dict]:
+def _detect_indent_unit(lines: list) -> int:
+    """Auto-detect indent unit from the first indented task line.
+
+    Supports 2-space, 4-space, and tab indentation.
+    Returns number of characters per indent level (tab counts as 1).
+    Defaults to 2 if no indented lines found.
+    """
+    for line in lines:
+        m = _TASK_LINE_RE.match(line)
+        if m:
+            indent = m.group(1)
+            if indent:
+                # First indented task line determines the unit
+                # Tab = 1 char per level, spaces = count of leading spaces
+                if "\t" in indent:
+                    return 1
+                return len(indent)
+    return 2
+
+
+def _parse_crono_task_line(line: str, indent_unit: int = 2) -> Optional[dict]:
     """Parse a single cronograma task line.
 
     Format: '- [ ] 1.1 Title | start | duration'
@@ -51,7 +71,9 @@ def _parse_crono_task_line(line: str) -> Optional[dict]:
     if not m:
         return None
     indent, done_ch, index, rest = m.groups()
-    depth = len(indent) // 2  # 2-space indent per level
+    # Normalize: expand tabs to indent_unit spaces for counting
+    raw_len = len(indent.replace("\t", " " * indent_unit)) if "\t" in indent else len(indent)
+    depth = raw_len // indent_unit if indent_unit > 0 else 0
 
     parts = [p.strip() for p in rest.split("|")]
     title = parts[0]
@@ -173,19 +195,23 @@ def _parse_crono_file(path: Path) -> dict:
 
     metadata = _parse_metadata(meta_lines)
 
+    # Detect indent unit from task lines
+    indent_unit = _detect_indent_unit(lines)
+
     # Parse tasks
     tasks = []
     for i, line in enumerate(lines):
-        task = _parse_crono_task_line(line)
+        task = _parse_crono_task_line(line, indent_unit)
         if task:
             task["line_num"] = i + 1  # 1-indexed
             tasks.append(task)
         elif tasks and line.strip() and not line.strip().startswith("#"):
             # Note line: indented text under last task
-            indent = len(line) - len(line.lstrip())
+            raw_indent = line[:len(line) - len(line.lstrip())]
+            indent_len = len(raw_indent.replace("\t", " " * indent_unit)) if "\t" in raw_indent else len(raw_indent)
             last = tasks[-1]
-            task_indent = last["depth"] * 2
-            if indent > task_indent:
+            task_indent = last["depth"] * indent_unit
+            if indent_len > task_indent:
                 last["notes"].append(line.strip())
 
     return {"name": name, "metadata": metadata, "tasks": tasks, "lines": lines}
@@ -347,6 +373,19 @@ def _compute_dates(tasks: list, metadata: dict = None, today: date = None):
         t["duration_raw"] is None
         for t in tasks if _is_leaf(t, parents)
     )
+
+    # Inherit after: from parent — if a parent has after:X and a leaf child
+    # has no start_raw, the child inherits the parent's dependency.
+    for t in tasks:
+        if not _is_leaf(t, parents) and t["start_raw"]:
+            parent_start = _resolve_start(t["start_raw"], today)
+            if isinstance(parent_start, tuple) and parent_start[0] == "after":
+                for child in tasks:
+                    if (child["index"].startswith(t["index"] + ".")
+                            and _is_leaf(child, parents)
+                            and not child["start_raw"]):
+                        child["start_raw"] = t["start_raw"]
+                        child["_inherited_after"] = True
 
     # Build dependency graph for topological sort
     # deps[idx] = set of indices this task depends on (via after:)
@@ -525,13 +564,23 @@ def _check_cronograma(project_name: str, path: Path) -> list:
         for t in tasks:
             if _is_leaf(t, parents):
                 if not t["start_raw"]:
-                    # Check if it would get initial-time
-                    parent_idx = t["index"].rsplit(".", 1)[0] if "." in t["index"] else None
-                    if parent_idx and parent_idx in by_index:
-                        issues.append(Issue(
-                            project_name, fname, t["line_num"], "",
-                            f"Tarea hoja sin inicio: {t['index']} {t['title']}"
-                        ))
+                    # Check if an ancestor has after: (will be inherited at compute time)
+                    has_ancestor_after = False
+                    idx = t["index"]
+                    while "." in idx:
+                        idx = idx.rsplit(".", 1)[0]
+                        ancestor = by_index.get(idx)
+                        if ancestor and ancestor["start_raw"] and _AFTER_RE.match(ancestor["start_raw"]):
+                            has_ancestor_after = True
+                            break
+                    if not has_ancestor_after:
+                        # Check if it would get initial-time
+                        parent_idx = t["index"].rsplit(".", 1)[0] if "." in t["index"] else None
+                        if parent_idx and parent_idx in by_index:
+                            issues.append(Issue(
+                                project_name, fname, t["line_num"], "",
+                                f"Tarea hoja sin inicio: {t['index']} {t['title']}"
+                            ))
                 if not t["duration_raw"]:
                     issues.append(Issue(
                         project_name, fname, t["line_num"], "",
@@ -539,9 +588,11 @@ def _check_cronograma(project_name: str, path: Path) -> list:
                     ))
 
     # Rule 6: Parent with explicit start/duration (warning)
+    # after: on parents is OK — it gets inherited by leaf children.
+    # Only warn about absolute dates or durations on parents (those are ignored).
     for t in tasks:
         if not _is_leaf(t, parents):
-            if t["start_raw"]:
+            if t["start_raw"] and not _AFTER_RE.match(t["start_raw"]):
                 issues.append(Issue(
                     project_name, fname, t["line_num"], "",
                     f"⚠️ Tarea padre con inicio explícito (se ignora): {t['index']}"
@@ -659,6 +710,209 @@ def _format_show(data: dict, today: date = None) -> str:
     return "\n".join(lines)
 
 
+# ── Gantt formatting ────────────────────────────────────────────────────────
+
+# Colorblind-safe palette (no red/green)
+_BLUE = "\033[34m"
+_YELLOW = "\033[33m"
+_GREY = "\033[90m"
+_RESET = "\033[0m"
+_BOLD = "\033[1m"
+
+
+def _progress_bar(done: int, total: int, width: int = 30) -> str:
+    """Render a progress bar using block chars. Blue=done, grey=remaining."""
+    if total == 0:
+        return ""
+    filled = round(done / total * width)
+    bar = f"{_BLUE}{'█' * filled}{_RESET}{_GREY}{'░' * (width - filled)}{_RESET}"
+    pct = done * 100 // total
+    return f"{bar} {pct}%"
+
+
+def _format_gantt_dag(data: dict) -> str:
+    """Format DAG-only cronograma as a progress view."""
+    tasks = data["tasks"]
+    name = data["name"]
+
+    if not tasks:
+        return f"📊 {name}\n\n(vacío)"
+
+    parents = _parent_indices(tasks)
+    by_index = {t["index"]: t for t in tasks}
+
+    total_all = sum(1 for t in tasks if _is_leaf(t, parents))
+    done_all = sum(1 for t in tasks if _is_leaf(t, parents) and t["done"])
+
+    lines = [f"{_BOLD}📊 {name}{_RESET}  {done_all}/{total_all}", ""]
+
+    for t in tasks:
+        indent = "  " * t["depth"]
+        is_parent = not _is_leaf(t, parents)
+
+        if is_parent:
+            # Count leaves under this parent
+            descendants = [d for d in tasks
+                           if d["index"].startswith(t["index"] + ".")
+                           and _is_leaf(d, parents)]
+            d_total = len(descendants)
+            d_done = sum(1 for d in descendants if d["done"])
+            bar = _progress_bar(d_done, d_total, width=20)
+            lines.append(f"{indent}{_BOLD}{t['index']}{_RESET} {t['title']}  {bar}  {d_done}/{d_total}")
+        else:
+            # Leaf: show checkbox
+            if t["done"]:
+                mark = f"{_BLUE}[x]{_RESET}"
+            else:
+                mark = f"{_GREY}[ ]{_RESET}"
+            lines.append(f"{indent}{t['index']} {t['title']}  {mark}")
+
+    return "\n".join(lines)
+
+
+def _format_gantt_dated(data: dict, today: date = None, width: int = 50) -> str:
+    """Format dated cronograma as an ANSI Gantt chart."""
+    tasks = data["tasks"]
+    name = data["name"]
+
+    if today is None:
+        today = date.today()
+
+    if not tasks:
+        return f"📊 {name}\n\n(vacío)"
+
+    parents = _parent_indices(tasks)
+
+    # Collect all dates for axis range
+    all_dates = []
+    for t in tasks:
+        if t["start_date"]:
+            all_dates.append(t["start_date"])
+        if t["end_date"]:
+            all_dates.append(t["end_date"])
+
+    if not all_dates:
+        return _format_gantt_dag(data)
+
+    min_date = min(all_dates)
+    max_date = max(all_dates)
+    total_days = (max_date - min_date).days + 1
+    if total_days < 1:
+        total_days = 1
+
+    def date_to_col(d: date) -> int:
+        col = int((d - min_date).days / total_days * width)
+        return max(0, min(col, width - 1))
+
+    # Build axis header
+    label_width = 40
+    axis_line = [" "] * width
+    # Mark today
+    if min_date <= today <= max_date:
+        tc = date_to_col(today)
+        axis_line[tc] = "▼"
+
+    # Date labels on axis
+    step = max(1, total_days // 5)
+    date_labels = " " * label_width + " "
+    label_positions = []
+    d = min_date
+    while d <= max_date:
+        col = date_to_col(d)
+        label = d.strftime("%m-%d")
+        label_positions.append((col, label))
+        d += timedelta(days=step)
+
+    # Build label line
+    label_line = [" "] * width
+    for col, label in label_positions:
+        end = min(col + len(label), width)
+        for i, ch in enumerate(label):
+            if col + i < width:
+                label_line[col + i] = ch
+
+    total_leaves = sum(1 for t in tasks if _is_leaf(t, parents))
+    done_leaves = sum(1 for t in tasks if _is_leaf(t, parents) and t["done"])
+
+    lines = [
+        f"{_BOLD}📊 {name}{_RESET}  {done_leaves}/{total_leaves}",
+        "",
+        " " * label_width + " " + "".join(label_line),
+        " " * label_width + " " + f"{_YELLOW}{''.join(axis_line)}{_RESET}",
+    ]
+
+    for t in tasks:
+        is_parent = not _is_leaf(t, parents)
+        indent = "  " * t["depth"]
+        title = f"{indent}{t['index']} {t['title']}"
+        if len(title) > label_width:
+            title = title[:label_width - 1] + "…"
+
+        if is_parent:
+            # Parent: just show title with counts
+            descendants = [d for d in tasks
+                           if d["index"].startswith(t["index"] + ".")
+                           and _is_leaf(d, parents)]
+            d_total = len(descendants)
+            d_done = sum(1 for d in descendants if d["done"])
+            lines.append(f"{_BOLD}{title:<{label_width}}{_RESET} {d_done}/{d_total}")
+        else:
+            # Leaf: show bar
+            bar = [" "] * width
+            if t["start_date"] and t["end_date"]:
+                sc = date_to_col(t["start_date"])
+                ec = date_to_col(t["end_date"])
+                if ec < sc:
+                    ec = sc
+                # Pick color
+                if t["done"]:
+                    color = _BLUE
+                elif t["end_date"] < today:
+                    color = _YELLOW  # overdue
+                else:
+                    color = _GREY
+                for i in range(sc, ec + 1):
+                    if i < width:
+                        bar[i] = "█"
+                bar_str = "".join(bar)
+                # Color the filled portion
+                bar_str = bar_str.replace("█" * (ec - sc + 1),
+                                          f"{color}{'█' * (ec - sc + 1)}{_RESET}", 1)
+            else:
+                bar_str = "".join(bar)
+
+            status = "[x]" if t["done"] else "[ ]"
+            lines.append(f"{title:<{label_width}} {bar_str} {status}")
+
+    return "\n".join(lines)
+
+
+def _format_gantt(data: dict, today: date = None, mode: str = None) -> str:
+    """Format cronograma as a Gantt chart.
+
+    mode: None (auto-detect), "progress", or "timeline".
+    """
+    tasks = data["tasks"]
+    if not tasks:
+        return f"📊 {data['name']}\n\n(vacío)"
+
+    if mode == "progress":
+        return _format_gantt_dag(data)
+    if mode == "timeline":
+        return _format_gantt_dated(data, today)
+
+    # Auto-detect
+    parents = _parent_indices(tasks)
+    dag_only = all(
+        t["duration_raw"] is None
+        for t in tasks if _is_leaf(t, parents)
+    )
+
+    if dag_only:
+        return _format_gantt_dag(data)
+    return _format_gantt_dated(data, today)
+
+
 # ── Commands ─────────────────────────────────────────────────────────────────
 
 def run_crono_add(project: str, name: str) -> int:
@@ -749,6 +1003,29 @@ def run_crono_show(project: str, name: str) -> int:
     return 0
 
 
+def run_crono_gantt(project: str, name: str, mode: str = None) -> int:
+    """Show cronograma as a Gantt chart (progress view or timeline).
+
+    mode: None (auto-detect), "progress", or "timeline".
+    """
+    project_dir = _find_new_project(project)
+    if not project_dir:
+        print(f"Proyecto no encontrado: {project}")
+        return 1
+
+    path = _find_crono_file(project_dir, name)
+    if not path:
+        print(f"Cronograma no encontrado: {name}")
+        return 1
+
+    data = _parse_crono_file(path)
+    if data["tasks"]:
+        _compute_dates(data["tasks"], data["metadata"])
+
+    print(_format_gantt(data, mode=mode))
+    return 0
+
+
 def run_crono_check(project: str, name: str) -> int:
     """Run doctor validation on a cronograma."""
     project_dir = _find_new_project(project)
@@ -799,8 +1076,79 @@ def run_crono_list(project: str) -> int:
     return 0
 
 
-def run_crono_done(project: str, name: str, index: str) -> int:
-    """Mark a cronograma task as done."""
+def run_crono_edit(project: str, name: str, editor: str = "") -> int:
+    """Open a cronograma file in the editor."""
+    from core.open import open_file
+
+    project_dir = _find_new_project(project)
+    if not project_dir:
+        print(f"Proyecto no encontrado: {project}")
+        return 1
+
+    path = _find_crono_file(project_dir, name)
+    if not path:
+        print(f"Cronograma no encontrado: {name}")
+        return 1
+
+    return open_file(path, editor)
+
+
+def _reindex_lines(lines: list) -> tuple:
+    """Reindex task lines based on position and depth.
+
+    Returns (new_lines, rename_map) where rename_map is {old_index: new_index}.
+    Preserves non-task lines as-is. Updates after: references.
+    """
+    indent_unit = _detect_indent_unit(lines)
+    # First pass: parse tasks and compute new indices
+    counters = {}  # depth -> current counter
+    rename_map = {}  # old_index -> new_index
+    task_infos = []  # (line_idx, old_index, new_index)
+
+    for i, line in enumerate(lines):
+        task = _parse_crono_task_line(line, indent_unit)
+        if not task:
+            continue
+        depth = task["depth"]
+
+        # Reset deeper counters
+        for d in list(counters.keys()):
+            if d > depth:
+                del counters[d]
+
+        # Increment counter at this depth
+        counters[depth] = counters.get(depth, 0) + 1
+
+        # Build new index from parent chain
+        parts = []
+        for d in range(depth + 1):
+            parts.append(str(counters.get(d, 1)))
+        new_index = ".".join(parts)
+
+        rename_map[task["index"]] = new_index
+        task_infos.append((i, task["index"], new_index))
+
+    # Sort renames by length descending to avoid partial replacements
+    # (e.g. replacing "1.3" before "1.3.2" would corrupt "after:1.3.2")
+    sorted_renames = sorted(rename_map.items(), key=lambda x: len(x[0]), reverse=True)
+
+    # Second pass: rewrite lines with new indices and updated after: references
+    new_lines = list(lines)
+    for line_idx, old_idx, new_idx in task_infos:
+        line = new_lines[line_idx]
+        m = _TASK_LINE_RE.match(line)
+        if m:
+            indent, done_ch, _old, rest = m.groups()
+            # Update after: references in rest (longest first)
+            for old_ref, new_ref in sorted_renames:
+                rest = rest.replace(f"after:{old_ref}", f"after:{new_ref}")
+            new_lines[line_idx] = f"{indent}- [{done_ch}] {new_idx} {rest}"
+
+    return new_lines, rename_map
+
+
+def run_crono_reindex(project: str, name: str) -> int:
+    """Reindex a cronograma — renumber all task indices sequentially."""
     project_dir = _find_new_project(project)
     if not project_dir:
         print(f"Proyecto no encontrado: {project}")
@@ -812,25 +1160,144 @@ def run_crono_done(project: str, name: str, index: str) -> int:
         return 1
 
     lines = path.read_text(encoding="utf-8").splitlines()
-    found = False
-    for i, line in enumerate(lines):
-        task = _parse_crono_task_line(line)
-        if task and task["index"] == index:
-            if task["done"]:
-                print(f"Ya completada: {index} {task['title']}")
-                return 0
-            # Replace [ ] with [x]
-            lines[i] = line.replace("- [ ]", "- [x]", 1)
-            found = True
-            print(f"✓ [{project_dir.name}] completada: {index} {task['title']}")
-            break
+    new_lines, rename_map = _reindex_lines(lines)
 
-    if not found:
-        print(f"Tarea no encontrada: {index}")
+    # Count actual changes
+    changes = sum(1 for old, new in rename_map.items() if old != new)
+    if changes == 0:
+        print(f"✓ [{project_dir.name}] {path.name}: índices ya correctos")
+        return 0
+
+    path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+    for old, new in rename_map.items():
+        if old != new:
+            print(f"  {old} → {new}")
+    print(f"\n✓ [{project_dir.name}] {changes} índice(s) renumerado(s)")
+    return 0
+
+
+def run_crono_done(project: str, name: str, index: str = None) -> int:
+    """Mark a cronograma task as done.
+
+    If index is None, show interactive selection of pending tasks.
+    If index matches partially (by index or title), disambiguate.
+    """
+    import sys
+
+    project_dir = _find_new_project(project)
+    if not project_dir:
+        print(f"Proyecto no encontrado: {project}")
         return 1
+
+    path = _find_crono_file(project_dir, name)
+    if not path:
+        print(f"Cronograma no encontrado: {name}")
+        return 1
+
+    data = _parse_crono_file(path)
+    parents = _parent_indices(data["tasks"])
+    pending = [t for t in data["tasks"]
+               if not t["done"] and _is_leaf(t, parents)]
+
+    if not pending:
+        print(f"✓ [{project_dir.name}] Todas las tareas completadas")
+        return 0
+
+    # Resolve which task to mark done
+    target = None
+    if index:
+        # Try exact index match first
+        exact = [t for t in pending if t["index"] == index]
+        if exact:
+            target = exact[0]
+        else:
+            # Partial match on index or title
+            matches = [t for t in pending
+                       if index.lower() in t["index"].lower()
+                       or index.lower() in t["title"].lower()]
+            if len(matches) == 1:
+                target = matches[0]
+            elif len(matches) > 1:
+                target = _pick_crono_task(matches)
+            else:
+                print(f"No se encontró '{index}' entre las tareas pendientes")
+                return 1
+    else:
+        # Interactive selection
+        target = _pick_crono_task(pending)
+
+    if not target:
+        return 1
+
+    # Mark done in file
+    lines = path.read_text(encoding="utf-8").splitlines()
+    indent_unit = _detect_indent_unit(lines)
+    for i, line in enumerate(lines):
+        task = _parse_crono_task_line(line, indent_unit)
+        if task and task["index"] == target["index"]:
+            lines[i] = line.replace("- [ ]", "- [x]", 1)
+            print(f"✓ [{project_dir.name}] completada: {target['index']} {target['title']}")
+            break
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return 0
+
+
+def _pick_crono_task(tasks: list) -> Optional[dict]:
+    """Interactive selection from a list of cronograma tasks."""
+    import sys
+
+    print(f"\nTareas pendientes:")
+    for i, t in enumerate(tasks, 1):
+        indent = "  " * t["depth"]
+        print(f"  {i}. {indent}{t['index']} {t['title']}")
+    print()
+
+    if not sys.stdin.isatty():
+        return None
+
+    try:
+        raw = input("Selecciona (número, índice o texto): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+
+    if not raw:
+        return None
+
+    # Try as number
+    if raw.isdigit():
+        idx = int(raw) - 1
+        if 0 <= idx < len(tasks):
+            return tasks[idx]
+        print(f"Fuera de rango (1–{len(tasks)})")
+        return None
+
+    # Try as index or text match
+    matches = [t for t in tasks
+               if raw.lower() in t["index"].lower()
+               or raw.lower() in t["title"].lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        print(f"Múltiples coincidencias para '{raw}':")
+        for j, t in enumerate(matches, 1):
+            print(f"  {j}. {t['index']} {t['title']}")
+        try:
+            raw2 = input("Selecciona (#): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if raw2.isdigit():
+            idx = int(raw2) - 1
+            if 0 <= idx < len(matches):
+                return matches[idx]
+        print("Cancelado.")
+        return None
+
+    print(f"Sin coincidencias para '{raw}'")
+    return None
 
 
 def _find_crono_file(project_dir: Path, name: str) -> Optional[Path]:

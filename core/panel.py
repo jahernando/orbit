@@ -277,6 +277,34 @@ def _print_calendar(start, end):
         _print_calendar_grid_md(dirs, cal_start, cal_end)
 
 
+def _collect_cronogramas(include_federated=True):
+    """Collect cronograma progress across all projects.
+
+    Returns list of (project_dir, crono_name, done, total) sorted by project.
+    Only includes cronogramas that have tasks.
+    """
+    from core.cronograma import _parse_crono_file, _parent_indices, _is_leaf
+
+    results = []
+    for project_dir in iter_federated_project_dirs(include_federated):
+        if not _is_new_project(project_dir):
+            continue
+        cronos_dir = project_dir / "cronos"
+        if not cronos_dir.exists():
+            continue
+        for crono_file in sorted(cronos_dir.glob("crono-*.md")):
+            data = _parse_crono_file(crono_file)
+            tasks = data["tasks"]
+            if not tasks:
+                continue
+            parents = _parent_indices(tasks)
+            leaves = [t for t in tasks if _is_leaf(t, parents)]
+            total = len(leaves)
+            done = sum(1 for t in leaves if t["done"])
+            results.append((project_dir, data["name"], done, total))
+    return results
+
+
 def run_panel(period=None, include_federated=True,
               date_from=None, date_to=None) -> int:
     """Print dashboard as markdown."""
@@ -349,7 +377,21 @@ def run_panel(period=None, include_federated=True,
         print("(sin citas)")
     print("\n---")
 
-    # ── 3. Actividad ──
+    # ── 3. Cronogramas ──
+    cronogramas = _collect_cronogramas(include_federated)
+    if cronogramas:
+        print(f"\n## 📊 Cronogramas\n")
+        print("| Proyecto | Cronograma | Progreso | |")
+        print("|----------|------------|----------|---|")
+        for project_dir, crono_name, done, total in cronogramas:
+            pct = done * 100 // total if total else 0
+            filled = round(pct / 10)
+            bar = "█" * filled + "░" * (10 - filled)
+            proj = _project_link(project_dir)
+            print(f"| {proj} | {crono_name} | {bar} | {done}/{total} ({pct}%) |")
+        print("\n---")
+
+    # ── 4. Actividad ──
     activity = _collect_activity(start, end, include_federated)
 
     print(f"\n## Actividad\n")
