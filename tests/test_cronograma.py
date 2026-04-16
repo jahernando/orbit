@@ -1161,3 +1161,92 @@ class TestInheritAfter:
         _compute_dates(tasks, {}, today=date(2026, 1, 5))
         # after:0 won't resolve (no task 0), so start_date stays None
         assert tasks[3]["start_date"] is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 12. Deadline
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestDeadline:
+    def test_resolve_deadline_iso_date(self):
+        from core.cronograma import _resolve_deadline
+        meta = {"deadline": "2026-04-20"}
+        assert _resolve_deadline(meta) == date(2026, 4, 20)
+
+    def test_resolve_deadline_empty(self):
+        from core.cronograma import _resolve_deadline
+        assert _resolve_deadline({}) is None
+        assert _resolve_deadline({"deadline": ""}) is None
+
+    def test_resolve_deadline_invalid(self):
+        from core.cronograma import _resolve_deadline
+        assert _resolve_deadline({"deadline": "not-a-date"}) is None
+
+    def test_deadline_status_on_track(self):
+        from core.cronograma import _deadline_status
+        # 5 done, 10 total, 10 days left → 0.5/day, on track
+        status = _deadline_status(5, 10, date(2026, 1, 15), today=date(2026, 1, 5))
+        assert "deadline" in status
+        assert "10d" in status
+
+    def test_deadline_status_overdue(self):
+        from core.cronograma import _deadline_status
+        status = _deadline_status(3, 10, date(2026, 1, 1), today=date(2026, 1, 5))
+        assert "vencido" in status
+
+    def test_deadline_status_complete(self):
+        from core.cronograma import _deadline_status
+        status = _deadline_status(10, 10, date(2026, 1, 15), today=date(2026, 1, 5))
+        assert "✓" in status
+
+    def test_deadline_status_today(self):
+        from core.cronograma import _deadline_status
+        status = _deadline_status(3, 10, date(2026, 1, 5), today=date(2026, 1, 5))
+        assert "hoy" in status
+
+    def test_show_includes_deadline(self, tmp_path):
+        from core.cronograma import _parse_crono_file, _compute_dates, _format_show
+        path = tmp_path / "crono-test.md"
+        path.write_text(textwrap.dedent("""\
+            # Cronograma: Test
+
+            deadline: 2026-05-01
+
+            - [ ] 1 A
+              - [ ] 1.1 Sub
+        """))
+        data = _parse_crono_file(path)
+        _compute_dates(data["tasks"], data["metadata"])
+        output = _format_show(data, today=date(2026, 4, 16))
+        assert "deadline" in output
+        assert "2026-05-01" in output
+
+    def test_gantt_includes_deadline(self, tmp_path):
+        from core.cronograma import _parse_crono_file, _compute_dates, _format_gantt
+        path = tmp_path / "crono-test.md"
+        path.write_text(textwrap.dedent("""\
+            # Cronograma: Test
+
+            deadline: 2026-05-01
+
+            - [ ] 1 A
+              - [x] 1.1 Done
+              - [ ] 1.2 Pending
+        """))
+        data = _parse_crono_file(path)
+        _compute_dates(data["tasks"], data["metadata"])
+        output = _format_gantt(data, today=date(2026, 4, 16))
+        assert "deadline" in output
+
+    def test_no_deadline_no_status(self, tmp_path):
+        from core.cronograma import _parse_crono_file, _compute_dates, _format_show
+        path = tmp_path / "crono-test.md"
+        path.write_text(textwrap.dedent("""\
+            # Cronograma: Test
+
+            - [ ] 1 A
+        """))
+        data = _parse_crono_file(path)
+        _compute_dates(data["tasks"], data["metadata"])
+        output = _format_show(data, today=date(2026, 4, 16))
+        assert "deadline" not in output

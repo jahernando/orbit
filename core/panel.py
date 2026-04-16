@@ -280,12 +280,14 @@ def _print_calendar(start, end):
 def _collect_cronogramas(include_federated=True):
     """Collect cronograma progress across all projects.
 
-    Returns list of (project_dir, crono_name, done, total) sorted by project.
-    Only includes cronogramas that have tasks.
+    Returns list of (project_dir, crono_name, done, total, deadline)
+    sorted by project. Only includes cronogramas with pending tasks.
     """
-    from core.cronograma import _parse_crono_file, _parent_indices, _is_leaf
+    from core.cronograma import (_parse_crono_file, _parent_indices,
+                                 _is_leaf, _resolve_deadline)
 
     results = []
+    today = date.today()
     for project_dir in iter_federated_project_dirs(include_federated):
         if not _is_new_project(project_dir):
             continue
@@ -301,7 +303,10 @@ def _collect_cronogramas(include_federated=True):
             leaves = [t for t in tasks if _is_leaf(t, parents)]
             total = len(leaves)
             done = sum(1 for t in leaves if t["done"])
-            results.append((project_dir, data["name"], done, total))
+            if done == total:
+                continue  # skip completed cronogramas
+            deadline = _resolve_deadline(data["metadata"], project_dir, today)
+            results.append((project_dir, data["name"], done, total, deadline))
     return results
 
 
@@ -380,15 +385,33 @@ def run_panel(period=None, include_federated=True,
     # ── 3. Cronogramas ──
     cronogramas = _collect_cronogramas(include_federated)
     if cronogramas:
+        today = date.today()
         print(f"\n## 📊 Cronogramas\n")
-        print("| Proyecto | Cronograma | Progreso | |")
-        print("|----------|------------|----------|---|")
-        for project_dir, crono_name, done, total in cronogramas:
+        print("| Proyecto | Cronograma | Progreso | | Deadline |")
+        print("|----------|------------|----------|---|----------|")
+        for project_dir, crono_name, done, total, deadline in cronogramas:
             pct = done * 100 // total if total else 0
             filled = round(pct / 10)
             bar = "█" * filled + "░" * (10 - filled)
             proj = _project_link(project_dir)
-            print(f"| {proj} | {crono_name} | {bar} | {done}/{total} ({pct}%) |")
+            if deadline:
+                days_left = (deadline - today).days
+                remaining = total - done
+                if days_left < 0:
+                    dl_str = f"⚠️ vencido ({-days_left}d)"
+                elif days_left == 0:
+                    dl_str = f"⚠️ hoy — {remaining} pend."
+                else:
+                    pace = remaining / days_left
+                    if pace > 2:
+                        dl_str = f"⚠️ {deadline.isoformat()} ({days_left}d)"
+                    elif pace > 1:
+                        dl_str = f"{deadline.isoformat()} ({days_left}d)"
+                    else:
+                        dl_str = f"{deadline.isoformat()} ({days_left}d)"
+            else:
+                dl_str = ""
+            print(f"| {proj} | {crono_name} | {bar} | {done}/{total} ({pct}%) | {dl_str} |")
         print("\n---")
 
     # ── 4. Actividad ──

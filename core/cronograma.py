@@ -643,6 +643,80 @@ def _check_cronograma(project_name: str, path: Path) -> list:
 
 # ── Show formatting ──────────────────────────────────────────────────────────
 
+def _resolve_deadline(metadata: dict, project_dir: Path = None,
+                      today: date = None) -> Optional[date]:
+    """Resolve deadline from metadata.
+
+    Accepts ISO date ('2026-04-20') or milestone name (looks up in agenda).
+    Returns date or None.
+    """
+    raw = metadata.get("deadline", "")
+    if not raw:
+        return None
+    if today is None:
+        today = date.today()
+
+    # Try ISO date
+    if _ISO_DATE_RE.match(raw):
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            return None
+
+    # Try milestone name lookup
+    if project_dir:
+        try:
+            from core.agenda_cmds import _read_agenda
+            agenda_path = resolve_file(project_dir, "agenda")
+            if agenda_path.exists():
+                data = _read_agenda(agenda_path)
+                for m in data.get("milestones", []):
+                    if (raw.lower() in m.get("desc", "").lower()
+                            and m.get("date")):
+                        try:
+                            return date.fromisoformat(m["date"])
+                        except ValueError:
+                            pass
+        except Exception:
+            pass
+
+    return None
+
+
+def _deadline_status(done: int, total: int, deadline: date,
+                     today: date = None) -> str:
+    """Build a deadline status string with pace warning.
+
+    Returns string like '⚠️ deadline 2026-04-20 (4d) — ritmo: 5/día'
+    or '✓ deadline 2026-04-20' if on track or complete.
+    """
+    if today is None:
+        today = date.today()
+
+    remaining = total - done
+    days_left = (deadline - today).days
+
+    if remaining == 0:
+        return f"✓ deadline {deadline.isoformat()}"
+
+    if days_left < 0:
+        return f"⚠️ deadline {deadline.isoformat()} (vencido hace {-days_left}d) — {remaining} pendientes"
+
+    if days_left == 0:
+        return f"⚠️ deadline hoy — {remaining} pendientes"
+
+    pace = remaining / days_left
+    if pace <= 1:
+        icon = "📅"
+    elif pace <= 2:
+        icon = "⚠️"
+    else:
+        icon = "⚠️"
+
+    pace_str = f"{pace:.1f}/día" if pace != int(pace) else f"{int(pace)}/día"
+    return f"{icon} deadline {deadline.isoformat()} ({days_left}d) — {remaining} pendientes, ritmo: {pace_str}"
+
+
 def _format_duration(start: date, end: date) -> str:
     """Format duration as human-readable string."""
     if not start or not end:
@@ -653,10 +727,13 @@ def _format_duration(start: date, end: date) -> str:
     return f"{days}d"
 
 
-def _format_show(data: dict, today: date = None) -> str:
+def _format_show(data: dict, today: date = None, project_dir: Path = None) -> str:
     """Format cronograma as a table for terminal display."""
     tasks = data["tasks"]
     name = data["name"]
+
+    if today is None:
+        today = date.today()
 
     if not tasks:
         return f"📊 {name}\n\n(vacío)"
@@ -667,7 +744,15 @@ def _format_show(data: dict, today: date = None) -> str:
         for t in tasks if _is_leaf(t, parents)
     )
 
-    lines = [f"📊 {name}", ""]
+    # Deadline
+    deadline = _resolve_deadline(data["metadata"], project_dir, today)
+    total_leaves = sum(1 for t in tasks if _is_leaf(t, parents))
+    done_leaves = sum(1 for t in tasks if _is_leaf(t, parents) and t["done"])
+
+    lines = [f"📊 {name}  {done_leaves}/{total_leaves}"]
+    if deadline:
+        lines.append(_deadline_status(done_leaves, total_leaves, deadline, today))
+    lines.append("")
 
     if dag_only:
         # DAG-only: show structure without dates
@@ -730,10 +815,14 @@ def _progress_bar(done: int, total: int, width: int = 30) -> str:
     return f"{bar} {pct}%"
 
 
-def _format_gantt_dag(data: dict) -> str:
+def _format_gantt_dag(data: dict, today: date = None,
+                      project_dir: Path = None) -> str:
     """Format DAG-only cronograma as a progress view."""
     tasks = data["tasks"]
     name = data["name"]
+
+    if today is None:
+        today = date.today()
 
     if not tasks:
         return f"📊 {name}\n\n(vacío)"
@@ -744,7 +833,12 @@ def _format_gantt_dag(data: dict) -> str:
     total_all = sum(1 for t in tasks if _is_leaf(t, parents))
     done_all = sum(1 for t in tasks if _is_leaf(t, parents) and t["done"])
 
-    lines = [f"{_BOLD}📊 {name}{_RESET}  {done_all}/{total_all}", ""]
+    deadline = _resolve_deadline(data["metadata"], project_dir, today)
+
+    lines = [f"{_BOLD}📊 {name}{_RESET}  {done_all}/{total_all}"]
+    if deadline:
+        lines.append(_deadline_status(done_all, total_all, deadline, today))
+    lines.append("")
 
     for t in tasks:
         indent = "  " * t["depth"]
@@ -770,7 +864,8 @@ def _format_gantt_dag(data: dict) -> str:
     return "\n".join(lines)
 
 
-def _format_gantt_dated(data: dict, today: date = None, width: int = 50) -> str:
+def _format_gantt_dated(data: dict, today: date = None, width: int = 50,
+                        project_dir: Path = None) -> str:
     """Format dated cronograma as an ANSI Gantt chart."""
     tasks = data["tasks"]
     name = data["name"]
@@ -834,8 +929,13 @@ def _format_gantt_dated(data: dict, today: date = None, width: int = 50) -> str:
     total_leaves = sum(1 for t in tasks if _is_leaf(t, parents))
     done_leaves = sum(1 for t in tasks if _is_leaf(t, parents) and t["done"])
 
-    lines = [
-        f"{_BOLD}📊 {name}{_RESET}  {done_leaves}/{total_leaves}",
+    deadline = _resolve_deadline(data["metadata"], project_dir, today)
+
+    header_lines = [f"{_BOLD}📊 {name}{_RESET}  {done_leaves}/{total_leaves}"]
+    if deadline:
+        header_lines.append(_deadline_status(done_leaves, total_leaves, deadline, today))
+
+    lines = header_lines + [
         "",
         " " * label_width + " " + "".join(label_line),
         " " * label_width + " " + f"{_YELLOW}{''.join(axis_line)}{_RESET}",
@@ -887,7 +987,8 @@ def _format_gantt_dated(data: dict, today: date = None, width: int = 50) -> str:
     return "\n".join(lines)
 
 
-def _format_gantt(data: dict, today: date = None, mode: str = None) -> str:
+def _format_gantt(data: dict, today: date = None, mode: str = None,
+                  project_dir: Path = None) -> str:
     """Format cronograma as a Gantt chart.
 
     mode: None (auto-detect), "progress", or "timeline".
@@ -897,9 +998,9 @@ def _format_gantt(data: dict, today: date = None, mode: str = None) -> str:
         return f"📊 {data['name']}\n\n(vacío)"
 
     if mode == "progress":
-        return _format_gantt_dag(data)
+        return _format_gantt_dag(data, today, project_dir)
     if mode == "timeline":
-        return _format_gantt_dated(data, today)
+        return _format_gantt_dated(data, today, project_dir=project_dir)
 
     # Auto-detect
     parents = _parent_indices(tasks)
@@ -909,8 +1010,8 @@ def _format_gantt(data: dict, today: date = None, mode: str = None) -> str:
     )
 
     if dag_only:
-        return _format_gantt_dag(data)
-    return _format_gantt_dated(data, today)
+        return _format_gantt_dag(data, today, project_dir)
+    return _format_gantt_dated(data, today, project_dir=project_dir)
 
 
 # ── Commands ─────────────────────────────────────────────────────────────────
@@ -999,7 +1100,7 @@ def run_crono_show(project: str, name: str) -> int:
     if data["tasks"]:
         _compute_dates(data["tasks"], data["metadata"])
 
-    print(_format_show(data))
+    print(_format_show(data, project_dir=project_dir))
     return 0
 
 
@@ -1022,7 +1123,7 @@ def run_crono_gantt(project: str, name: str, mode: str = None) -> int:
     if data["tasks"]:
         _compute_dates(data["tasks"], data["metadata"])
 
-    print(_format_gantt(data, mode=mode))
+    print(_format_gantt(data, mode=mode, project_dir=project_dir))
     return 0
 
 
