@@ -252,6 +252,7 @@ orbit crono gantt   <project> "<name>" [--open]           # visualizar como Gant
 ```markdown
 # Cronograma: nombre del cronograma
 
+deadline: 2026-05-30
 exclude: sat, sun
 
 - [ ] 1 Fase 1 título
@@ -266,10 +267,14 @@ exclude: sat, sun
 - **Tareas padre** calculan su inicio/fin de las hijas
 - **`after:` en padres**: se hereda a las hojas sin inicio propio (`2.1` hereda `after:1` de `2`)
 - **Modo DAG**: sin duraciones — solo estructura y dependencias, útil para seguimiento de progreso
-- **Metadatos**: `exclude: sat, sun` (excluir fines de semana), `initial-time: 2026-06-01` (inicio por defecto)
+- **Deadline**: fecha límite del cronograma. Muestra ritmo necesario y avisa si vas retrasado:
+  `⚠️ deadline 2026-05-30 (4d) — 12 pendientes, ritmo: 3/día`
+  Acepta fecha ISO o nombre de hito del proyecto (busca la fecha en la agenda)
+- **Metadatos**: `deadline`, `exclude: sat, sun` (excluir fines de semana), `initial-time: 2026-06-01` (inicio por defecto)
 - **Indentación**: soporta 2 espacios, 4 espacios o tabs (autodetección)
 - `check` valida: índices únicos, dependencias válidas, sin ciclos, hojas con inicio+duración
-- El progreso de los cronogramas se muestra en `orbit panel`
+- El progreso y deadline de los cronogramas se muestran en `orbit panel`
+- Cronogramas completados (100%) se ocultan del panel automáticamente
 
 ---
 

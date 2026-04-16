@@ -232,7 +232,8 @@ orbit crono list    <project> [--open]              # listar cronogramas
 
 Tareas anidadas con dependencias y duracion. Fichero: `cronos/crono-<nombre>.md`.
 Soporta tabs/2-space/4-space, herencia de `after:` en padres, modo DAG (sin fechas).
-Progreso visible en `orbit panel`.
+Metadato `deadline: YYYY-MM-DD` activa seguimiento de ritmo y avisos.
+Progreso y deadline visibles en `orbit panel`; completados se ocultan automaticamente.
 
 ### Render — vista HTML para móvil
 

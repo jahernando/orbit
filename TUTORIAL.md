@@ -406,10 +406,12 @@ crono edit next-kr "paper"
 
 **2. Editar el fichero en Obsidian/editor:**
 
-Puedes empezar en modo DAG (solo estructura, sin fechas) para pensar en las subtareas:
+Puedes empezar en modo DAG (solo estructura, sin fechas) para pensar en las subtareas. Añade `deadline` para activar el seguimiento de ritmo:
 
 ```markdown
 # Cronograma: paper-jinst
+
+deadline: 2026-05-30
 
 - [ ] 1 Paper JINST
   - [ ] 1.1 Analisis
@@ -448,6 +450,7 @@ crono done next-kr "paper" 1.1.2      # por indice exacto
 **5. Cuando quieras añadir fechas**, edita el fichero y pon duraciones en las hojas:
 
 ```markdown
+deadline: 2026-05-30
 exclude: sat, sun
 
 - [ ] 1 Paper JINST
@@ -468,7 +471,7 @@ Ahora `crono gantt --timeline` muestra un Gantt con eje temporal y `crono show` 
 crono reindex next-kr "paper"   # corrige huecos, actualiza after:
 ```
 
-El progreso del cronograma aparece automaticamente en `orbit panel`.
+El progreso del cronograma aparece automaticamente en `orbit panel`. Con `deadline`, orbit calcula el ritmo necesario y avisa si vas retrasado (`⚠️ deadline 2026-05-30 (14d) — 8 pendientes, ritmo: 0.6/dia`). Los cronogramas completados al 100% se ocultan del panel automaticamente.
 
 ### Listados
 
