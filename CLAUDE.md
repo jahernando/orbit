@@ -94,10 +94,23 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - Inicio: fecha ISO, semana ISO, semana+día (`2026-W12-wed`), o `after:<índice>`
 - Duración: `Nd`, `NW`; tareas padre se calculan de hijas
 - Doctor: índices únicos, deps válidas, sin ciclos, hojas con inicio+duración
-- Fase 1: parser, cálculo fechas, doctor, `crono show/add/list/done/check`
-- Fase 2: Gantt ANSI terminal
+- Fase 1: parser, cálculo fechas, doctor, `crono show/add/list/done/check` ✅
+- Fase 2: Gantt ANSI terminal, reindex, edit, after herencia, panel progress, done interactivo ✅
 - Fase 3: gsync (pendiente de decisión)
 - Diseño completo en `~/🚀orbit-ws/💻software/💻orbit/notes/2026-03-21_output_cronograma.md`
+
+### v0.27.0 (2026-04-16)
+- **Cronogramas fase 2**: gantt, reindex, edit, after herencia, panel progress, done interactivo
+  - `crono gantt`: vista progreso (DAG) o timeline (fechas), `--progress`/`--timeline`
+  - `crono reindex`: renumera índices y actualiza `after:` automáticamente
+  - `crono edit`: abre cronograma en editor
+  - `crono done` interactivo: sin índice muestra lista, acepta texto parcial
+  - Herencia de `after:` del padre a hojas sin inicio propio
+  - Indentación flexible: 2-space, 4-space, tabs (autodetección)
+  - Panel: sección `📊 Cronogramas` con barra de progreso por cronograma
+  - Colores daltonismo-safe: azul/amarillo/gris (sin rojo/verde)
+- **gsync**: flags `sync_tasks`/`sync_milestones` independientes en `google-sync.json`
+  - Permite desactivar tasks pero mantener milestones en Google Tasks
 
 ### v0.26.0 (2026-03-26)
 - **Federación de workspaces**: lectura cruzada entre workspaces via `federation.json`

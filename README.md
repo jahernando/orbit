@@ -220,14 +220,19 @@ orbit clip catedra notes/tramos.md --from complementos  # enlace relativo entre 
 ### Cronogramas
 
 ```bash
-orbit crono add   <project> "<name>"             # crear cronograma
-orbit crono show  <project> "<name>" [--open]    # mostrar con fechas calculadas
-orbit crono check <project> "<name>"             # validar
-orbit crono list  <project> [--open]             # listar cronogramas
-orbit crono done  <project> "<name>" <index>     # marcar tarea completada
+orbit crono add     <project> "<name>"              # crear cronograma
+orbit crono show    <project> "<name>" [--open]     # mostrar con fechas calculadas
+orbit crono edit    <project> "<name>"              # abrir en editor
+orbit crono gantt   <project> "<name>" [--open]     # visualizar progreso o timeline
+orbit crono done    <project> "<name>" [index|text] # marcar tarea (interactivo sin args)
+orbit crono check   <project> "<name>"              # validar
+orbit crono reindex <project> "<name>"              # renumerar indices
+orbit crono list    <project> [--open]              # listar cronogramas
 ```
 
-Tareas anidadas con dependencias y duración. Fichero: `cronos/crono-<nombre>.md`.
+Tareas anidadas con dependencias y duracion. Fichero: `cronos/crono-<nombre>.md`.
+Soporta tabs/2-space/4-space, herencia de `after:` en padres, modo DAG (sin fechas).
+Progreso visible en `orbit panel`.
 
 ### Render — vista HTML para móvil
 

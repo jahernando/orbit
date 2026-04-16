@@ -85,6 +85,7 @@ panel --open               # escribe a panel.md y abre en editor (fijable en Obs
 Secciones del panel:
 - **Prioridad**: proyectos 🔴 alta, 🔶 urgentes (con citas/vencidas), 🏁 hitos del mes
 - **Agenda**: tabla con las citas del periodo (tipo, hora, descripción, proyecto)
+- **📊 Cronogramas**: barra de progreso por cronograma (solo si hay cronogramas activos)
 - **Actividad**: entradas de logbook del periodo por proyecto
 
 ### Agenda — las citas del día
@@ -372,15 +373,22 @@ clip next-kr notes/result.md  # enlace a un fichero del proyecto
 
 ### Cronogramas
 
-Tareas anidadas con dependencias y duración temporal:
+Tareas anidadas con dependencias y duración temporal. Útiles para descomponer metas grandes en subtareas y seguir el progreso:
 
 ```bash
-crono add next-kr "plan-calibracion"    # crea cronograma y abre en editor
+crono add next-kr "plan-calibracion"    # crea cronograma
 crono show next-kr "plan"               # muestra con fechas calculadas
+crono edit next-kr "plan"               # abre en editor
+crono gantt next-kr "plan"              # visualiza progreso o timeline
+crono done next-kr "plan"               # selección interactiva de tarea
+crono done next-kr "plan" 1.2           # marca tarea 1.2 directamente
+crono done next-kr "plan" katrin        # busca por texto parcial
 crono check next-kr "plan"              # valida dependencias y ciclos
+crono reindex next-kr "plan"            # renumera índices automáticamente
 crono list next-kr                      # lista cronogramas del proyecto
-crono done next-kr "plan" 1.2           # marca tarea 1.2 como completada
 ```
+
+El fichero es markdown plano editable en Obsidian (los checkboxes son clickables). Soporta tabs, 2 o 4 espacios de indentación. Si pones `after:` en un padre, las hojas sin inicio propio heredan la dependencia. El progreso se muestra en `orbit panel`.
 
 ### Listados
 

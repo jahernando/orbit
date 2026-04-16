@@ -230,29 +230,46 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 Cronogramas: tareas anidadas con dependencias y duración temporal. Se almacenan en `cronos/crono-<nombre>.md` dentro del proyecto, enlazados desde `## 📊 Cronogramas` en agenda.md.
 
 ```bash
-orbit crono add   <project> "<name>"                    # crear cronograma (abre en editor)
-orbit crono show  <project> "<name>" [--open]           # mostrar con fechas calculadas
-orbit crono check <project> "<name>"                    # validar (doctor)
-orbit crono list  <project> [--open]                    # listar cronogramas del proyecto
-orbit crono done  <project> "<name>" <index>            # marcar tarea como completada
+orbit crono add     <project> "<name>"                    # crear cronograma
+orbit crono show    <project> "<name>" [--open]           # mostrar con fechas calculadas
+orbit crono edit    <project> "<name>" [--open [EDITOR]]  # abrir en editor
+orbit crono check   <project> "<name>"                    # validar (doctor)
+orbit crono list    <project> [--open]                    # listar cronogramas del proyecto
+orbit crono done    <project> "<name>" [<index|texto>]    # marcar tarea como completada
+orbit crono reindex <project> "<name>"                    # renumerar índices automáticamente
+orbit crono gantt   <project> "<name>" [--open]           # visualizar como Gantt
 ```
+
+- `done` sin argumento: selección interactiva de tareas pendientes
+- `done` con texto parcial: busca por índice o título
+- `gantt`: auto-detecta modo DAG (progreso) o con fechas (timeline)
+- `gantt --progress`: fuerza vista de progreso (barras + checkboxes)
+- `gantt --timeline`: fuerza vista temporal (eje de fechas)
+- `reindex`: corrige huecos e inconsistencias en la numeración (actualiza `after:`)
 
 ### Formato del fichero
 
 ```markdown
-# Crono: nombre del cronograma
+# Cronograma: nombre del cronograma
 
-- [ ] 1. Fase 1 título
+exclude: sat, sun
+
+- [ ] 1 Fase 1 título
   - [ ] 1.1 Subtarea | 2026-03-20 | 2W
   - [ ] 1.2 Otra subtarea | after:1.1 | 3d
-- [ ] 2. Fase 2
-  - [ ] 2.1 Siguiente | after:1 | 1W
+- [ ] 2 Fase 2 | after:1
+  - [ ] 2.1 Siguiente | | 1W
 ```
 
-- Inicio: fecha ISO (`2026-03-20`), semana ISO (`2026-W12`), semana+día (`2026-W12-wed`), o dependencia (`after:<índice>`)
-- Duración: `Nd` (días), `NW` (semanas)
-- Tareas padre calculan su inicio/fin de las hijas
+- **Inicio**: fecha ISO (`2026-03-20`), semana ISO (`2026-W12`), semana+día (`2026-W12-wed`), o dependencia (`after:<índice>`)
+- **Duración**: `Nd` (días), `NW` (semanas)
+- **Tareas padre** calculan su inicio/fin de las hijas
+- **`after:` en padres**: se hereda a las hojas sin inicio propio (`2.1` hereda `after:1` de `2`)
+- **Modo DAG**: sin duraciones — solo estructura y dependencias, útil para seguimiento de progreso
+- **Metadatos**: `exclude: sat, sun` (excluir fines de semana), `initial-time: 2026-06-01` (inicio por defecto)
+- **Indentación**: soporta 2 espacios, 4 espacios o tabs (autodetección)
 - `check` valida: índices únicos, dependencias válidas, sin ciclos, hojas con inicio+duración
+- El progreso de los cronogramas se muestra en `orbit panel`
 
 ---
 
@@ -355,10 +372,11 @@ orbit panel --no-fed                               # sin proyectos federados
 orbit panel --append mission:W12                   # añade a una nota
 ```
 
-Dashboard con tres secciones (formato tabla markdown):
+Dashboard con cuatro secciones (formato tabla markdown):
 
 - **Prioridad**: tabla con 🔴 alta, 🔶 urgente (citas/vencidas en periodo), 🏁 hitos del mes
 - **Agenda**: tabla por día con columnas: tipo, hora, descripción, proyecto (con link)
+- **📊 Cronogramas**: barra de progreso por cronograma (solo si hay cronogramas activos)
 - **Actividad**: entradas de logbook del periodo por proyecto
 
 `--open` escribe a `panel.md` (fijable en Obsidian). `--no-fed` excluye federados.
@@ -421,6 +439,8 @@ orbit gsync --migrate-recurring    # migrar eventos recurrentes viejos a RRULE
 
 - Tareas e hitos → Google Tasks (una lista por tipo: `🚀[📚Docencia]`, `🚀[🌀Investigacion]`, etc.)
 - Eventos → Google Calendar (un calendario por tipo, configurable en `google-sync.json`)
+- `"sync_tasks": false` en `google-sync.json` desactiva la sincronización de tareas (hitos siguen)
+- `"sync_milestones": false` desactiva la sincronización de hitos
 - Eventos recurrentes → serie RRULE en Google Calendar (una sola entrada en agenda.md, serie completa en Google)
 - Títulos en Google: `🚀[proyecto] descripción` (eventos y tareas)
 - Sincronización automática: al iniciar la shell + al añadir/completar/editar/eliminar items
@@ -638,7 +658,7 @@ Sin especificar editor, se usa el editor por defecto (en orden de prioridad):
 2. `"editor"` en `orbit.json` (por workspace)
 3. Abridor del sistema (`open` en macOS)
 
-Comandos que lo admiten: `ls` · `view` · `search` · `report` · `agenda` · `panel` · `help` · `history` · `crono show/list` · `note list`
+Comandos que lo admiten: `ls` · `view` · `search` · `report` · `agenda` · `panel` · `help` · `history` · `crono show/list/gantt` · `note list`
 
 Los comandos que abren ficheros directamente usan `--editor E` (no `--open`): `open`, `note create/open/import`, `hl edit`, `project edit`, `shell`.
 
