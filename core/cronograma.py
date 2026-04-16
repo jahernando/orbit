@@ -1342,6 +1342,10 @@ def run_crono_done(project: str, name: str, index: str = None) -> int:
             break
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # Log to logbook
+    crono_name = _parse_crono_file(path)["name"]
+    _log_crono_done(project_dir, crono_name, target["index"], target["title"])
     return 0
 
 
@@ -1399,6 +1403,76 @@ def _pick_crono_task(tasks: list) -> Optional[dict]:
 
     print(f"Sin coincidencias para '{raw}'")
     return None
+
+
+def _log_crono_done(project_dir: Path, crono_name: str,
+                    index: str, title: str) -> None:
+    """Log a cronograma task completion to the project's logbook."""
+    try:
+        from core.log import resolve_file, _append_entry, format_entry
+        logbook_path = resolve_file(project_dir, "logbook")
+        msg = f"[📊{crono_name}] {index} {title}"
+        entry = format_entry(msg, "apunte", None, None)
+        _append_entry(logbook_path, entry)
+    except Exception:
+        pass  # never crash on logging
+
+
+def detect_crono_completions() -> list:
+    """Detect cronograma tasks completed manually (via git diff).
+
+    Compares staged+unstaged changes in crono files. Returns list of
+    (project_dir, crono_name, index, title) for newly completed tasks.
+    """
+    import subprocess
+    from core.config import iter_project_dirs
+    from core.project import _is_new_project
+
+    results = []
+    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+
+    for project_dir in dirs:
+        cronos_dir = project_dir / _CRONO_DIR
+        if not cronos_dir.exists():
+            continue
+        for crono_file in cronos_dir.glob("crono-*.md"):
+            try:
+                # Get diff for this file (staged + unstaged)
+                diff = subprocess.run(
+                    ["git", "diff", "HEAD", "--", str(crono_file)],
+                    capture_output=True, text=True, cwd=project_dir,
+                    timeout=5,
+                )
+                if diff.returncode != 0 or not diff.stdout:
+                    continue
+
+                # Parse diff: look for lines that changed from [ ] to [x]
+                data = _parse_crono_file(crono_file)
+                crono_name = data["name"]
+                indent_unit = _detect_indent_unit(
+                    crono_file.read_text().splitlines())
+
+                for line in diff.stdout.splitlines():
+                    if line.startswith("+") and not line.startswith("+++"):
+                        task = _parse_crono_task_line(line[1:], indent_unit)
+                        if task and task["done"]:
+                            # Check the removed line had [ ]
+                            results.append((
+                                project_dir, crono_name,
+                                task["index"], task["title"]
+                            ))
+            except Exception:
+                continue
+
+    return results
+
+
+def log_crono_completions() -> int:
+    """Detect and log manually completed crono tasks. Called from commit."""
+    completions = detect_crono_completions()
+    for project_dir, crono_name, index, title in completions:
+        _log_crono_done(project_dir, crono_name, index, title)
+    return len(completions)
 
 
 def _find_crono_file(project_dir: Path, name: str) -> Optional[Path]:

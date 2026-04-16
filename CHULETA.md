@@ -242,6 +242,8 @@ orbit crono gantt   <project> "<name>" [--open]           # visualizar como Gant
 
 - `done` sin argumento: selección interactiva de tareas pendientes
 - `done` con texto parcial: busca por índice o título
+- `done` registra la completación en el logbook del proyecto (`📊crono] idx título #apunte`)
+- Las tareas completadas manualmente en Obsidian (clic en checkbox) se detectan y registran automáticamente al hacer `commit`
 - `gantt`: auto-detecta modo DAG (progreso) o con fechas (timeline)
 - `gantt --progress`: fuerza vista de progreso (barras + checkboxes)
 - `gantt --timeline`: fuerza vista temporal (eje de fechas)

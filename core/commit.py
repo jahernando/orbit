@@ -292,6 +292,16 @@ def run_commit(message: Optional[str] = None) -> int:
     except Exception:
         pass
 
+    # Log manually completed crono tasks before doctor checks
+    try:
+        from core.cronograma import log_crono_completions
+        n_crono = log_crono_completions()
+        if n_crono:
+            print(f"  📊 {n_crono} tarea{'s' if n_crono != 1 else ''} de cronograma registrada{'s' if n_crono != 1 else ''} en logbook")
+            _git_add_all_tracked()  # re-stage logbook changes
+    except Exception:
+        pass
+
     # Run doctor checks before committing
     try:
         from core.doctor import check_all_projects

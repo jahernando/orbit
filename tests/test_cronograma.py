@@ -665,6 +665,22 @@ class TestCommands:
         content = (proj / "cronos" / "crono-test.md").read_text()
         assert "[x] 1.2" in content
 
+    def test_crono_done_logs_to_logbook(self, projects_dir, capsys):
+        from core.cronograma import run_crono_done
+        proj = _make_project(projects_dir)
+        _write_crono(proj, "test", """\
+            # Cronograma: Test
+
+            - [ ] 1 Root
+              - [ ] 1.1 Alpha task
+              - [ ] 1.2 Beta task
+        """)
+        run_crono_done(project=proj.name, name="test", index="1.1")
+        base = _strip_emoji(proj.name)
+        logbook = (proj / f"{base}-logbook.md").read_text()
+        assert "📊Test" in logbook
+        assert "1.1 Alpha task" in logbook
+
     def test_crono_done_all_complete(self, projects_dir, capsys):
         from core.cronograma import run_crono_done
         proj = _make_project(projects_dir)
