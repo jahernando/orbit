@@ -102,9 +102,20 @@ def _load_config() -> dict:
     config = {
         "calendars": {},
         "task_lists": {},
+        "sync_tasks": True,
     }
     _save_config(config)
     return config
+
+
+def _sync_tasks_enabled(config: dict) -> bool:
+    """Check if task sync is enabled. Default True for backwards compat."""
+    return config.get("sync_tasks", True)
+
+
+def _sync_milestones_enabled(config: dict) -> bool:
+    """Check if milestone sync is enabled. Default True for backwards compat."""
+    return config.get("sync_milestones", True)
 
 
 def _save_config(config: dict) -> None:
@@ -347,7 +358,15 @@ def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
 
 def _sync_tasks_for_project(tasks_service, project_dir: Path,
                             config: dict, dry_run: bool) -> tuple:
-    """Sync all tasks and milestones for a project. Returns (created, updated, skipped)."""
+    """Sync tasks and/or milestones for a project. Returns (created, updated, skipped).
+
+    Respects sync_tasks and sync_milestones config flags independently.
+    """
+    do_tasks = _sync_tasks_enabled(config)
+    do_milestones = _sync_milestones_enabled(config)
+    if not do_tasks and not do_milestones:
+        return 0, 0, 0
+
     tipo = _get_project_tipo(project_dir)
     if not tipo:
         return 0, 0, 0
@@ -369,10 +388,13 @@ def _sync_tasks_for_project(tasks_service, project_dir: Path,
     any_changed = False
     any_ids_changed = False
 
-    for items, is_milestone, label in [
-        (data["tasks"], False, "tarea"),
-        (data["milestones"], True, "hito"),
-    ]:
+    sync_pairs = []
+    if do_tasks:
+        sync_pairs.append((data["tasks"], False, "tarea"))
+    if do_milestones:
+        sync_pairs.append((data["milestones"], True, "hito"))
+
+    for items, is_milestone, label in sync_pairs:
         sync_fn = lambda item, _ms=is_milestone: _sync_one_task(
             tasks_service, tasklist_id, item,
             project_name, _ms, description, dry_run)
@@ -653,6 +675,9 @@ def check_gsync_drift() -> list:
 
     Returns list of (project_name, item_desc, diffs) tuples.
     """
+    config = _load_config()
+    do_tasks = _sync_tasks_enabled(config)
+    do_milestones = _sync_milestones_enabled(config)
     results = []
     dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
     for project_dir in dirs:
@@ -661,11 +686,11 @@ def check_gsync_drift() -> list:
             continue
         agenda_path = resolve_file(project_dir, "agenda")
         data = _read_agenda(agenda_path)
-        all_items = (
-            [(t, "tarea") for t in data["tasks"]]
-            + [(m, "hito") for m in data["milestones"]]
-            + [(e, "evento") for e in data["events"]]
-        )
+        all_items = [(e, "evento") for e in data["events"]]
+        if do_tasks:
+            all_items = [(t, "tarea") for t in data["tasks"]] + all_items
+        if do_milestones:
+            all_items = [(m, "hito") for m in data["milestones"]] + all_items
         for item, kind in all_items:
             key = _item_key(item)
             saved = ids.get(key, {}).get("snapshot")
@@ -698,6 +723,9 @@ def reconcile_gsync_renames() -> list:
 
     Returns list of (project_name, old_desc, new_desc) for each reconciled rename.
     """
+    config = _load_config()
+    do_tasks = _sync_tasks_enabled(config)
+    do_milestones = _sync_milestones_enabled(config)
     results = []
     dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
     for project_dir in dirs:
@@ -706,11 +734,11 @@ def reconcile_gsync_renames() -> list:
             continue
         agenda_path = resolve_file(project_dir, "agenda")
         data = _read_agenda(agenda_path)
-        all_items = (
-            [(t, "task") for t in data["tasks"]]
-            + [(m, "milestone") for m in data["milestones"]]
-            + [(e, "event") for e in data["events"]]
-        )
+        all_items = [(e, "event") for e in data["events"]]
+        if do_tasks:
+            all_items = [(t, "task") for t in data["tasks"]] + all_items
+        if do_milestones:
+            all_items = [(m, "milestone") for m in data["milestones"]] + all_items
 
         # Build set of current item keys
         current_keys = {}
@@ -818,9 +846,11 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
         print(f"   Las tareas/hitos se sincronizan igualmente.\n")
 
     # Get services
-    tasks_service = _get_tasks_service()
+    do_gtasks_api = _sync_tasks_enabled(config) or _sync_milestones_enabled(config)
+    tasks_service = _get_tasks_service() if do_gtasks_api else None
     cal_service = _get_calendar_service() if has_calendars else None
-    if not tasks_service:
+    if not tasks_service and not cal_service:
+        print("⚠️  No hay servicios configurados (tasks/milestones desactivados, sin calendarios)")
         return 1
 
     label = "  [dry-run]" if dry_run else ""
@@ -837,12 +867,13 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
         tipo = _get_project_tipo(project_dir)
 
         # Tasks + milestones
-        c, u, s = _sync_tasks_for_project(tasks_service, project_dir, config, dry_run)
-        if c or u:
-            print(f"  [{project_dir.name}] tareas/hitos: {c} nuevas, {u} actualizadas")
-        total_created += c
-        total_updated += u
-        total_skipped += s
+        if tasks_service:
+            c, u, s = _sync_tasks_for_project(tasks_service, project_dir, config, dry_run)
+            if c or u:
+                print(f"  [{project_dir.name}] tareas/hitos: {c} nuevas, {u} actualizadas")
+            total_created += c
+            total_updated += u
+            total_skipped += s
 
         # Events
         if cal_service:
@@ -957,6 +988,10 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
             key = _item_key(item)
 
             if kind in ("task", "milestone"):
+                if kind == "task" and not _sync_tasks_enabled(config):
+                    return
+                if kind == "milestone" and not _sync_milestones_enabled(config):
+                    return
                 service = _get_tasks_service()
                 if not service:
                     return
@@ -1107,19 +1142,21 @@ def gsync_background() -> "threading.Thread | None":
         try:
             config = _load_config()
             has_calendars = any(v for v in config.get("calendars", {}).values())
+            do_gtasks_api = _sync_tasks_enabled(config) or _sync_milestones_enabled(config)
 
-            tasks_service = _get_tasks_service()
+            tasks_service = _get_tasks_service() if do_gtasks_api else None
             cal_service = _get_calendar_service() if has_calendars else None
-            if not tasks_service:
+            if not tasks_service and not cal_service:
                 return
 
             dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
 
             total = 0
             for project_dir in dirs:
-                c, u, _ = _sync_tasks_for_project(
-                    tasks_service, project_dir, config, dry_run=False)
-                total += c + u
+                if tasks_service:
+                    c, u, _ = _sync_tasks_for_project(
+                        tasks_service, project_dir, config, dry_run=False)
+                    total += c + u
                 if cal_service:
                     tipo = _get_project_tipo(project_dir)
                     cal_id = config.get("calendars", {}).get(tipo)
