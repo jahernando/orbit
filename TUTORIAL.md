@@ -388,7 +388,87 @@ crono reindex next-kr "plan"            # renumera índices automáticamente
 crono list next-kr                      # lista cronogramas del proyecto
 ```
 
-El fichero es markdown plano editable en Obsidian (los checkboxes son clickables). Soporta tabs, 2 o 4 espacios de indentación. Si pones `after:` en un padre, las hojas sin inicio propio heredan la dependencia. El progreso se muestra en `orbit panel`.
+#### Ejemplo: construir un cronograma paso a paso
+
+Supongamos que tienes un hito "paper deadline" el 30 de mayo y quieres desglosar el trabajo:
+
+**1. Crear el cronograma:**
+
+```bash
+crono add next-kr "paper-jinst"
+```
+
+Esto crea `cronos/crono-paper-jinst.md` con una plantilla. Ábrelo:
+
+```bash
+crono edit next-kr "paper"
+```
+
+**2. Editar el fichero en Obsidian/editor:**
+
+Puedes empezar en modo DAG (solo estructura, sin fechas) para pensar en las subtareas:
+
+```markdown
+# Cronograma: paper-jinst
+
+- [ ] 1 Paper JINST
+  - [ ] 1.1 Analisis
+    - [ ] 1.1.1 Reproducir resultados MC
+    - [ ] 1.1.2 Fit sistematicos
+    - [ ] 1.1.3 Tablas y figuras finales
+  - [ ] 1.2 Escritura | after:1.1
+    - [ ] 1.2.1 Introduccion y estado del arte
+    - [ ] 1.2.2 Seccion de metodo
+    - [ ] 1.2.3 Resultados y discusion
+    - [ ] 1.2.4 Conclusiones
+  - [ ] 1.3 Revision | after:1.2
+    - [ ] 1.3.1 Revision interna del grupo
+    - [ ] 1.3.2 Correciones
+    - [ ] 1.3.3 Revision de ingles
+  - [ ] 1.4 Envio | after:1.3
+```
+
+Nota: `after:` en los padres (`1.2`, `1.3`) se hereda a sus hojas. No necesitas repetirlo en cada subtarea.
+
+**3. Ver el progreso:**
+
+```bash
+crono gantt next-kr "paper"     # barra de progreso por seccion
+crono show next-kr "paper"      # tabla con estado
+```
+
+**4. Ir completando tareas:**
+
+```bash
+crono done next-kr "paper"            # elige de la lista interactiva
+crono done next-kr "paper" MC         # busca "MC" entre las pendientes
+crono done next-kr "paper" 1.1.2      # por indice exacto
+```
+
+**5. Cuando quieras añadir fechas**, edita el fichero y pon duraciones en las hojas:
+
+```markdown
+exclude: sat, sun
+
+- [ ] 1 Paper JINST
+  - [ ] 1.1 Analisis
+    - [ ] 1.1.1 Reproducir resultados MC | 2026-05-05 | 3d
+    - [ ] 1.1.2 Fit sistematicos | after:1.1.1 | 2d
+    - [ ] 1.1.3 Tablas y figuras finales | after:1.1.2 | 2d
+  - [ ] 1.2 Escritura | after:1.1
+    - [ ] 1.2.1 Introduccion y estado del arte | | 2d
+    ...
+```
+
+Ahora `crono gantt --timeline` muestra un Gantt con eje temporal y `crono show` calcula las fechas.
+
+**6. Si renumeras o reorganizas**, usa `crono reindex` para arreglar los indices:
+
+```bash
+crono reindex next-kr "paper"   # corrige huecos, actualiza after:
+```
+
+El progreso del cronograma aparece automaticamente en `orbit panel`.
 
 ### Listados
 
