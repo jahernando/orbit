@@ -1789,6 +1789,10 @@ _COMMANDS = {
 }
 
 
+# Commands that modify agenda state → trigger silent dash refresh
+_DASH_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono"}
+
+
 def run_command(argv: list) -> int:
     """Execute an orbit command from a list of arguments. Returns exit code."""
     parser = _build_parser()
@@ -1800,7 +1804,12 @@ def run_command(argv: list) -> int:
         run_shell()
         return 0
     if args.command in _COMMANDS:
-        return _COMMANDS[args.command](args) or 0
+        result = _COMMANDS[args.command](args) or 0
+        # Refresh dash in background after state-changing commands
+        if args.command in _DASH_TRIGGERS and result == 0:
+            import threading
+            threading.Thread(target=run_dash, args=(True,), daemon=True).start()
+        return result
     if args.command == "shell":
         run_shell(editor=_editor_from_args(args))
         return 0
