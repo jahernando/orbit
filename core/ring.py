@@ -26,6 +26,62 @@ from core.log import resolve_file
 from core.config import ORBIT_HOME as ORBIT_DIR
 REMINDERS_LIST  = "Orbit"
 
+_WEEKDAYS_ABBR_ES = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
+
+
+def _appointment_dt(due_date: str, time_str: Optional[str]) -> Optional[datetime]:
+    """Compute the appointment datetime from due date + optional time.
+
+    Events may store time as 'HH:MM-HH:MM'; only the start is used.
+    Falls back to 09:00 when no time is set (matches ring resolution).
+    """
+    try:
+        d = date.fromisoformat(due_date)
+    except ValueError:
+        return None
+    if time_str:
+        start = time_str.split("-")[0]
+        try:
+            h, m = map(int, start.split(":"))
+            return datetime(d.year, d.month, d.day, h, m)
+        except ValueError:
+            pass
+    return datetime(d.year, d.month, d.day, 9, 0)
+
+
+def _ring_hint(ring: Optional[str]) -> str:
+    """Return '🔔<offset>' for non-trivial rings (Nh, Nd), '' otherwise.
+
+    Minutes-based rings are hidden because 5m/10m are the common default.
+    """
+    if not ring:
+        return ""
+    m = re.match(r"^(\d+)([hd])$", ring.strip())
+    if m:
+        return f"🔔{ring.strip()}"
+    return ""
+
+
+def _format_appt(appt_dt: datetime, today: date) -> str:
+    """Format appointment datetime relative to today.
+
+    - today              → 'HH:MM'
+    - tomorrow           → 'mañana HH:MM'
+    - within 7 days      → '<dow> HH:MM' (e.g. 'jue 09:00')
+    - further / past     → 'YYYY-MM-DD HH:MM'
+    """
+    hhmm = appt_dt.strftime("%H:%M")
+    d = appt_dt.date()
+    delta = (d - today).days
+    if delta == 0:
+        return hhmm
+    if delta == 1:
+        return f"mañana {hhmm}"
+    if 2 <= delta <= 7:
+        return f"{_WEEKDAYS_ABBR_ES[d.weekday()]} {hhmm}"
+    return f"{d.isoformat()} {hhmm}"
+
+
 # ── Ring datetime resolution ───────────────────────────────────────────────────
 
 def _parse_ring(ring: str) -> Optional[dict]:
@@ -197,6 +253,7 @@ def _tasks_ringing_on(project_dir: Path, target: date) -> list:
             "ring":    task["ring"],
             "recur":   task.get("recur"),
             "ring_dt": ring_dt,
+            "appt_dt": _appointment_dt(task["date"], task.get("time")),
         })
 
     return results
@@ -235,6 +292,7 @@ def _milestones_ringing_on(project_dir: Path, target: date) -> list:
             "ring":    ms["ring"],
             "recur":   ms.get("recur"),
             "ring_dt": ring_dt,
+            "appt_dt": _appointment_dt(ms["date"], ms.get("time")),
         })
 
     return results
@@ -263,6 +321,7 @@ def _events_ringing_on(project_dir: Path, target: date) -> list:
             "ring":    ev["ring"],
             "recur":   ev.get("recur"),
             "ring_dt": ring_dt,
+            "appt_dt": _appointment_dt(ev["date"], ev.get("time")),
         })
 
     return results
@@ -319,6 +378,7 @@ def _reminders_on(project_dir: Path, target: date) -> list:
             "time":    rem["time"],
             "recur":   rem.get("recur"),
             "ring_dt": fire_dt,
+            "appt_dt": fire_dt,
             "is_reminder": True,
         })
 
@@ -353,14 +413,20 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             continue
         federated = is_federated(project_dir)
 
+        def _print_scheduled(emoji: str, item: dict) -> None:
+            appt = item.get("appt_dt") or item["ring_dt"]
+            label = _format_appt(appt, target)
+            hint = _ring_hint(item.get("ring"))
+            suffix = f"  {hint}" if hint else ""
+            print(f"  {emoji} {label}  {project_dir.name}  {item['desc']}{suffix}")
+
         # Schedule ring tasks
         tasks = _tasks_ringing_on(project_dir, target)
         for t in tasks:
             ring_dt = t["ring_dt"] if t["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(t["desc"], project_dir.name, ring_dt, kind="task")
             if ok:
-                print(f"  ✅ {t['ring_dt'].strftime('%H:%M')}  "
-                      f"{project_dir.name}  {t['desc']}")
+                _print_scheduled("✅", t)
                 if not t.get("recur") and not federated:
                     _clear_ring(project_dir, t["index"])
                 scheduled.append({**t, "project": project_dir.name})
@@ -373,8 +439,7 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             ring_dt = m["ring_dt"] if m["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(m["desc"], project_dir.name, ring_dt, kind="milestone")
             if ok:
-                print(f"  🏁 {m['ring_dt'].strftime('%H:%M')}  "
-                      f"{project_dir.name}  {m['desc']}")
+                _print_scheduled("🏁", m)
                 scheduled.append({**m, "project": project_dir.name})
             else:
                 print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {m['desc']}")
@@ -385,8 +450,7 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             ring_dt = e["ring_dt"] if e["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(e["desc"], project_dir.name, ring_dt, kind="event")
             if ok:
-                print(f"  📅 {e['ring_dt'].strftime('%H:%M')}  "
-                      f"{project_dir.name}  {e['desc']}")
+                _print_scheduled("📅", e)
                 scheduled.append({**e, "project": project_dir.name})
             else:
                 print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {e['desc']}")
@@ -397,8 +461,7 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             ring_dt = r["ring_dt"] if r["ring_dt"] > now else now + timedelta(minutes=1)
             ok = _schedule_reminder(r['desc'], project_dir.name, ring_dt, kind="reminder")
             if ok:
-                print(f"  💬 {r['ring_dt'].strftime('%H:%M')}  "
-                      f"{project_dir.name}  {r['desc']}")
+                _print_scheduled("💬", r)
                 scheduled.append({**r, "project": project_dir.name})
             else:
                 print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {r['desc']}")
