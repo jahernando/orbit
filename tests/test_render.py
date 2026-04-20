@@ -170,11 +170,6 @@ class TestRenderIndex:
         assert "agenda.html" in html
         assert "proyectos.html" in html
 
-    def test_has_inbox_link(self, cloud_env):
-        render_index(cloud_env["cloud"])
-        html = (cloud_env["cloud"] / "index.html").read_text()
-        assert "inbox.txt" in html
-
 
 class TestRenderProyectos:
     def test_creates_proyectos(self, cloud_env):

@@ -119,9 +119,6 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
             if depth > 0:
                 proj_name = "../" + proj_name
             nav_links += f' <a href="{proj_name}">📋 Proyecto</a>'
-        # Link to project inbox
-        inbox_rel = "inbox.txt" if depth == 0 else "../inbox.txt"
-        nav_links += f' <a href="{inbox_rel}">📬 Buzón</a>'
         _render_file(src, dest, css_rel, nav_links)
         rendered += 1
 
@@ -212,7 +209,6 @@ def render_index(cloud_root: Optional[Path] = None) -> bool:
         "## 📋 Navegación\n",
         "- [📅 Agenda — esta semana y la siguiente](agenda.html)",
         "- [📂 Proyectos — estado y enlaces](proyectos.html)",
-        "- [📬 Buzón general](inbox.txt) — captura ideas desde el móvil",
         "",
     ]
 
@@ -400,7 +396,6 @@ def run_render(project: Optional[str] = None, full: bool = False,
     elif full:
         n = render_all(cloud_root)
         _render_dashboard(cloud_root)
-        ensure_cloud_inboxes(cloud_root)
         print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''} (todos)")
     else:
         n = render_changed(cloud_root)

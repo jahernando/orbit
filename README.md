@@ -245,8 +245,6 @@ orbit render --full           # renderiza todo (primera vez)
 
 Tras cada `commit`, Orbit renderiza los `.md` modificados a HTML y los copia al cloud (OneDrive/Google Drive). Desde el móvil/tablet, abre `index.html` en la app de cloud para navegar proyectos, agendas, logbooks y notas — con soporte LaTeX (KaTeX).
 
-Los `inbox.md` en cloud permiten capturar ideas desde el móvil; Orbit los recoge al arrancar la shell.
-
 ### Deliver — entregar ficheros a la nube
 
 ```bash

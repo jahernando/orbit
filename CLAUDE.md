@@ -87,6 +87,11 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 
 ## Estado actual (v0.26.0, 2026-03-26)
 
+### Deprecado: Buzón (inbox)
+- `core/inbox.py` sigue en el repo pero ya no se llama desde shell/render/cloudsync
+- Motivo: los visores móviles de Drive/OneDrive no permiten editar `inbox.txt` cómodamente
+- Reactivar requiere: restaurar `startup_inbox_check()` en shell, `ensure_cloud_inboxes()` en render/cloudsync, link "📬 Buzón" en nav/dashboard
+
 ### Próximo: Cronogramas (diseño cerrado, pendiente de implementar)
 - Nuevo tipo: cronograma = tareas anidadas con dependencias y duración temporal
 - Fichero propio: `cronos/crono-<nombre>.md`, enlazado desde `## 📊 Cronogramas` en agenda.md

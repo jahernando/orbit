@@ -97,10 +97,6 @@ def _run_startup():
     from core.cloudsync import startup_cloud_check
     startup_cloud_check()
 
-    # 3. Inbox — check cloud inboxes for mobile captures
-    from core.inbox import startup_inbox_check
-    startup_inbox_check()
-
     # 3. Untracked files — prompt to stage new files
     from core.commit import startup_untracked_check, startup_commit_offer
     startup_untracked_check()

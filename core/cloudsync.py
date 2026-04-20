@@ -6,10 +6,8 @@ to the cloud directory for reading from mobile devices.
 Cloud structure:
   cloud_root/index.html                          ← project dashboard
   cloud_root/orbit.css                           ← shared stylesheet
-  cloud_root/inbox.md                            ← global mobile inbox
   cloud_root/{type_dir}/{project_dir}/*.html     ← rendered project files
   cloud_root/{type_dir}/{project_dir}/notes/*.html
-  cloud_root/{type_dir}/{project_dir}/inbox.md   ← per-project mobile inbox
   cloud_root/{type_dir}/{project_dir}/cloud/     ← delivered files (logs, hls)
 """
 
@@ -100,7 +98,7 @@ def sync_to_cloud() -> int:
 
     Returns the number of files rendered.
     """
-    from core.render import render_changed, _render_dashboard, ensure_cloud_inboxes
+    from core.render import render_changed, _render_dashboard
     cloud_root = _find_cloud_root()
     if not cloud_root:
         _write_sync_status(0, error="cloud_root no encontrado")
@@ -109,7 +107,6 @@ def sync_to_cloud() -> int:
     try:
         n = render_changed(cloud_root)
         _render_dashboard(cloud_root)
-        ensure_cloud_inboxes(cloud_root)
         _write_sync_status(n)
         return n
     except Exception as e:
@@ -147,14 +144,13 @@ def sync_all_to_cloud(dry_run: bool = False) -> int:
 
     Returns the number of files rendered.
     """
-    from core.render import render_all, _render_dashboard, ensure_cloud_inboxes
+    from core.render import render_all, _render_dashboard
     cloud_root = _find_cloud_root()
     if not cloud_root:
         return 0
 
     n = render_all(cloud_root)
     _render_dashboard(cloud_root)
-    ensure_cloud_inboxes(cloud_root)
     return n
 
 
