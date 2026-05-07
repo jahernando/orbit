@@ -241,6 +241,34 @@ class TestDeliverFile:
         assert dest.name == f"{date.today().isoformat()}_lista4ti"
         assert dest.is_dir()
 
+    def test_md_file_renders_html_sibling(self, orbit_env, tmp_path):
+        """Delivered .md files must produce sibling .html so logbook links work."""
+        from core.deliver import deliver_file
+        src_md = tmp_path / "nota.md"
+        src_md.write_text("# Nota\n\nContenido de prueba.\n")
+        dest = deliver_file(
+            orbit_env["proj"], src_md, subdir="logs", date_prefix=True,
+        )
+        assert dest is not None
+        assert dest.suffix == ".md"
+        html = dest.with_suffix(".html")
+        assert html.exists(), f"expected sibling HTML at {html}"
+        body = html.read_text()
+        assert "Contenido de prueba" in body
+        assert "orbit.css" in body
+
+    def test_directory_md_children_render_html(self, orbit_env, tmp_path):
+        """Delivered directories with .md inside also get html siblings."""
+        from core.deliver import deliver_file
+        src = tmp_path / "pack"
+        src.mkdir()
+        (src / "readme.md").write_text("# Pack\n\ntexto\n")
+        (src / "data.pdf").write_bytes(b"%PDF")
+        dest = deliver_file(orbit_env["proj"], src, subdir="logs")
+        assert dest is not None
+        assert (dest / "readme.md").exists()
+        assert (dest / "readme.html").exists()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # run_deliver

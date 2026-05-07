@@ -910,7 +910,7 @@ def cmd_crono(args):
     from core.cronograma import (
         run_crono_add, run_crono_show, run_crono_check,
         run_crono_list, run_crono_done, run_crono_gantt,
-        run_crono_edit, run_crono_reindex,
+        run_crono_edit, run_crono_reindex, run_crono_mermaid,
     )
     action = _ga(args, "action")
     if action == "add":
@@ -939,7 +939,10 @@ def cmd_crono(args):
             mode = "timeline"
         fn = lambda: run_crono_gantt(project=args.project, name=args.name, mode=mode)
         return _handle_output(args, fn, "crono gantt")
-    print("Uso: crono add|show|edit|check|list|done|reindex|gantt ...")
+    if action == "mermaid":
+        return run_crono_mermaid(project=args.project, name=args.name,
+                                  table=getattr(args, "table", False))
+    print("Uso: crono add|show|edit|check|list|done|reindex|gantt|mermaid ...")
     return 1
 
 
@@ -1753,6 +1756,13 @@ def _build_parser():
                                help="Forzar vista temporal (Gantt con eje de fechas)")
     cr_gantt.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
     _add_log_args(cr_gantt)
+
+    cr_mermaid = crono_sub.add_parser("mermaid",
+                                       help="Embeber visualización (gantt/tabla) en el crono md")
+    cr_mermaid.add_argument("project", help="Project name")
+    cr_mermaid.add_argument("name", help="Cronograma name (partial match)")
+    cr_mermaid.add_argument("--table", action="store_true",
+                             help="Tabla markdown (renderer-agnóstico, sin Mermaid)")
 
     # --- undo ---
     subparsers.add_parser("undo", help="Undo the last operation")

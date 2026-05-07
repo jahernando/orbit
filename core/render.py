@@ -42,6 +42,17 @@ _HTML_TEMPLATE = """\
     {{left:'$$',right:'$$',display:true}},
     {{left:'$',right:'$',display:false}}
   ]}})"></script>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  document.querySelectorAll('pre code.language-mermaid').forEach(el => {{
+    const div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = el.textContent;
+    el.parentElement.replaceWith(div);
+  }});
+  mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
+  await mermaid.run();
+</script>
 </body>
 </html>"""
 
@@ -123,6 +134,39 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
         rendered += 1
 
     return rendered
+
+
+def render_delivered_md(project_dir: Path, dest_md: Path,
+                        cloud_root: Path) -> bool:
+    """Render a .md file delivered into cloud/ to its sibling .html.
+
+    dest_md must live under cloud_root/{type}/{project}/cloud/…/file.md
+    (as produced by deliver_file). Writes file.html next to it with
+    css/nav links pointing back to the cloud root.
+    """
+    if dest_md.suffix.lower() != ".md":
+        return False
+    cloud_dir = _project_cloud_dir(project_dir, cloud_root)
+    if not cloud_dir:
+        return False
+    try:
+        rel = dest_md.relative_to(cloud_dir)
+    except ValueError:
+        return False
+
+    _sync_css(cloud_root)
+    dest_html = dest_md.with_suffix(".html")
+    depth = _depth(rel)
+    css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
+    nav_links = f'<a href="{"../" * (depth + 2)}index.html">🏠 Inicio</a>'
+    project_html = list(project_dir.glob("*-project.md"))
+    if project_html:
+        proj_name = project_html[0].stem + ".html"
+        if depth > 0:
+            proj_name = ("../" * depth) + proj_name
+        nav_links += f' <a href="{proj_name}">📋 Proyecto</a>'
+    _render_file(dest_md, dest_html, css_rel, nav_links)
+    return True
 
 
 def render_all(cloud_root: Optional[Path] = None) -> int:

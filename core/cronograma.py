@@ -198,9 +198,13 @@ def _parse_crono_file(path: Path) -> dict:
     # Detect indent unit from task lines
     indent_unit = _detect_indent_unit(lines)
 
-    # Parse tasks
+    # Parse tasks. Stop at the first H2 heading — that's where embedded
+    # visualizations (e.g. "## 📊 Visualización") live; they must not be
+    # parsed as tasks or attached as notes.
     tasks = []
     for i, line in enumerate(lines):
+        if line.lstrip().startswith("## "):
+            break
         task = _parse_crono_task_line(line, indent_unit)
         if task:
             task["line_num"] = i + 1  # 1-indexed
@@ -987,6 +991,226 @@ def _format_gantt_dated(data: dict, today: date = None, width: int = 50,
     return "\n".join(lines)
 
 
+def _mermaid_id(index: str) -> str:
+    return "t_" + index.replace(".", "_")
+
+
+def _mermaid_label(text: str) -> str:
+    """Sanitize text for use inside a Mermaid node label (quoted)."""
+    return text.replace('"', "'").replace("\n", " ")
+
+
+def _compute_mermaid_levels(tasks: list) -> dict:
+    """Compute dependency level per task from ``after:X`` chains.
+
+    Level = 1 + level(X) for ``after:X``; 0 otherwise. Call after
+    ``_compute_dates`` to pick up parent-inherited ``after:`` refs.
+    Unknown deps and cycles resolve to 0 (safe fallback; doctor flags them).
+    """
+    by_index = {t["index"]: t for t in tasks}
+    levels: dict = {}
+    visiting: set = set()
+
+    def resolve(idx: str) -> int:
+        if idx in levels:
+            return levels[idx]
+        if idx in visiting:
+            return 0
+        visiting.add(idx)
+        t = by_index.get(idx)
+        lvl = 0
+        if t:
+            raw = (t.get("start_raw") or "").strip()
+            m = _AFTER_RE.match(raw)
+            if m:
+                dep = m.group(1).strip()
+                if dep in by_index:
+                    lvl = resolve(dep) + 1
+        levels[idx] = lvl
+        visiting.discard(idx)
+        return lvl
+
+    for t in tasks:
+        resolve(t["index"])
+    return levels
+
+
+def _format_crono_table(data: dict) -> str:
+    """Markdown table with columns = dep levels, one leaf per cell.
+
+    Rows stack tasks within each level; if some levels have more tasks
+    than others, empty cells fill the gap. Done tasks rendered with
+    ~~strikethrough~~.
+    """
+    tasks = data["tasks"]
+    name = data["name"]
+    if not tasks:
+        return f"_{name}_ (vacío)"
+
+    # Propagate parent-inherited after: refs so leaves inherit level from parent
+    try:
+        _compute_dates(tasks, data["metadata"])
+    except Exception:
+        pass
+
+    parents = _parent_indices(tasks)
+    levels = _compute_mermaid_levels(tasks)
+
+    roots_ordered: list = []
+    for t in tasks:
+        root = t["index"].split(".", 1)[0]
+        if root not in roots_ordered:
+            roots_ordered.append(root)
+
+    by_level: dict = {}
+    for t in tasks:
+        if not _is_leaf(t, parents):
+            continue
+        lvl = levels.get(t["index"], 0)
+        by_level.setdefault(lvl, []).append(t)
+
+    if not by_level:
+        return f"_{name}_ (sin hojas)"
+
+    for bucket in by_level.values():
+        bucket.sort(key=lambda t: (roots_ordered.index(t["index"].split(".", 1)[0]),
+                                    t["index"]))
+
+    max_lvl = max(by_level.keys())
+    max_rows = max(len(b) for b in by_level.values())
+
+    headers = [f"Nivel {l}" for l in range(max_lvl + 1)]
+    out = ["| " + " | ".join(headers) + " |",
+           "|" + "|".join(["---"] * (max_lvl + 1)) + "|"]
+
+    for row in range(max_rows):
+        cells = []
+        for lvl in range(max_lvl + 1):
+            bucket = by_level.get(lvl, [])
+            if row < len(bucket):
+                t = bucket[row]
+                text = f"{t['index']} {t['title']}".replace("|", "\\|")
+                if t["done"]:
+                    text = f"~~{text}~~"
+                cells.append(text)
+            else:
+                cells.append("")
+        out.append("| " + " | ".join(cells) + " |")
+
+    return "\n".join(out)
+
+
+def _format_mermaid_levels(data: dict, today: date = None) -> str:
+    """Emit a Mermaid ``gantt`` using dep levels as X-axis (no real dates).
+
+    Fake dates from ``today``: level N → day today+N, bar width 1d.
+    Sections by root index (auto-color = "color por bloque 1.X").
+    Leaves only. Axis shows day-of-month (``%d``) ≈ level+1.
+    """
+    tasks = data["tasks"]
+    name = data["name"]
+    if not tasks:
+        return f"```mermaid\ngantt\n    title {name} (vacío)\n    dateFormat YYYY-MM-DD\n```"
+
+    # Propagate parent-inherited after: refs (v0.27.0 semantic) so leaves
+    # without their own start_raw still get the right level via their parent.
+    try:
+        _compute_dates(tasks, data["metadata"])
+    except Exception:
+        pass
+
+    by_index = {t["index"]: t for t in tasks}
+    parents = _parent_indices(tasks)
+    levels = _compute_mermaid_levels(tasks)
+
+    if today is None:
+        today = date.today()
+
+    out = ["```mermaid", "gantt", f"    title {name} — eje X: nivel de dependencia",
+           "    dateFormat YYYY-MM-DD",
+           "    axisFormat %d",
+           ""]
+
+    def _root_of(idx: str) -> str:
+        return idx.split(".", 1)[0]
+
+    current_root = None
+    for t in tasks:
+        if not _is_leaf(t, parents):
+            continue
+        lvl = levels.get(t["index"], 0)
+        bar_start = today + timedelta(days=lvl)
+
+        root_idx = _root_of(t["index"])
+        if root_idx != current_root:
+            root_task = by_index.get(root_idx)
+            label = f"{root_idx} {root_task['title']}" if root_task else root_idx
+            out.append(f"    section {label}")
+            current_root = root_idx
+
+        flags = ["done"] if t["done"] else []
+        prefix = (", ".join(flags) + ", ") if flags else ""
+        bar_id = _mermaid_id(t["index"])
+        title = _mermaid_label(f"{t['index']} {t['title']}")
+        title = title.replace(":", "—").replace("#", "·")
+        out.append(f"        {title} :{prefix}{bar_id}, "
+                   f"{bar_start.isoformat()}, 1d")
+
+    out.append("```")
+    return "\n".join(out)
+
+
+def _format_mermaid(data: dict) -> str:
+    """Emit a Mermaid ```gantt``` block from a parsed crono.
+
+    Roots become sections (section = '<index> <title>'). Leaves render as bars
+    in their root's section, using the full index as prefix so depth is visible.
+    Parents are not emitted as bars (their span is implicit from children).
+    """
+    tasks = data["tasks"]
+    name = data["name"]
+    if not tasks:
+        return f"```mermaid\ngantt\n    title {name} (vacío)\n    dateFormat YYYY-MM-DD\n```"
+
+    parents = _parent_indices(tasks)
+    by_index = {t["index"]: t for t in tasks}
+
+    def _root_of(idx: str) -> str:
+        return idx.split(".", 1)[0]
+
+    out = ["```mermaid", "gantt", f"    title {name}",
+           "    dateFormat YYYY-MM-DD", "    axisFormat %m-%d", ""]
+
+    current_root = None
+    for t in tasks:
+        if not _is_leaf(t, parents):
+            continue
+        if not t["start_date"] or not t["end_date"]:
+            continue
+
+        root_idx = _root_of(t["index"])
+        if root_idx != current_root:
+            root_task = by_index.get(root_idx)
+            label = f"{root_idx} {root_task['title']}" if root_task else root_idx
+            out.append(f"    section {label}")
+            current_root = root_idx
+
+        days = (t["end_date"] - t["start_date"]).days + 1
+        if days < 1:
+            days = 1
+
+        flags = ["done"] if t["done"] else []
+        prefix = (", ".join(flags) + ", ") if flags else ""
+        bar_id = _mermaid_id(t["index"])
+        title = _mermaid_label(f"{t['index']} {t['title']}")
+        title = title.replace(":", "—").replace("#", "·")
+        out.append(f"        {title} :{prefix}{bar_id}, "
+                   f"{t['start_date'].isoformat()}, {days}d")
+
+    out.append("```")
+    return "\n".join(out)
+
+
 def _format_gantt(data: dict, today: date = None, mode: str = None,
                   project_dir: Path = None) -> str:
     """Format cronograma as a Gantt chart.
@@ -1127,6 +1351,71 @@ def run_crono_gantt(project: str, name: str, mode: str = None) -> int:
     return 0
 
 
+_VIZ_HEADER = "## 📊 Visualización"
+
+
+def _embed_visualization(path: Path, block: str) -> None:
+    """Regenerate the ``## 📊 Visualización`` section at the end of the crono.
+
+    Everything from the first ``## `` heading onwards is replaced. If no
+    ``## `` exists, the section is appended. The parser stops at ``## ``,
+    so this keeps the embedded block invisible to ``show``/``gantt``/``done``.
+    """
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    cut = None
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("## "):
+            cut = i
+            break
+
+    head = "\n".join(lines[:cut] if cut is not None else lines).rstrip()
+    new_text = f"{head}\n\n{_VIZ_HEADER}\n\n{block}\n"
+    path.write_text(new_text, encoding="utf-8")
+
+
+def run_crono_mermaid(project: str, name: str, table: bool = False) -> int:
+    """Embed a visualization of the crono inside the crono md file.
+
+    Writes/replaces the ``## 📊 Visualización`` section at the end of
+    ``crono-<name>.md``. Default: gantt with real dates (if leaves have
+    durations) or gantt with fake dates by dep-level (DAG-only).
+    ``table=True``: markdown table (renderer-agnostic, works without Mermaid).
+    """
+    project_dir = _find_new_project(project)
+    if not project_dir:
+        print(f"Proyecto no encontrado: {project}")
+        return 1
+
+    path = _find_crono_file(project_dir, name)
+    if not path:
+        print(f"Cronograma no encontrado: {name}")
+        return 1
+
+    data = _parse_crono_file(path)
+
+    if table:
+        block = _format_crono_table(data)
+        kind = "tabla"
+    else:
+        parents = _parent_indices(data["tasks"])
+        dag_only = all(t["duration_raw"] is None
+                       for t in data["tasks"] if _is_leaf(t, parents))
+        if dag_only:
+            block = _format_mermaid_levels(data)
+            kind = "gantt (niveles)"
+        else:
+            if data["tasks"]:
+                _compute_dates(data["tasks"], data["metadata"])
+            block = _format_mermaid(data)
+            kind = "gantt (fechas)"
+
+    _embed_visualization(path, block)
+    print(f"✓ [{project_dir.name}] {kind} embebido en {path.name}")
+    return 0
+
+
 def run_crono_check(project: str, name: str) -> int:
     """Run doctor validation on a cronograma."""
     project_dir = _find_new_project(project)
@@ -1207,6 +1496,8 @@ def _reindex_lines(lines: list) -> tuple:
     task_infos = []  # (line_idx, old_index, new_index)
 
     for i, line in enumerate(lines):
+        if line.lstrip().startswith("## "):
+            break  # stop at embedded viz section
         task = _parse_crono_task_line(line, indent_unit)
         if not task:
             continue

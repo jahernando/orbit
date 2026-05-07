@@ -142,14 +142,25 @@ def deliver_file(project_dir: Path, src: Path, subdir: str = "",
             shutil.rmtree(str(dest))
         shutil.copytree(str(src), str(dest))
         print(f"  📦 {src.name}/ → {dest.parent}/")
+        _render_md_tree(project_dir, dest, cloud_root)
     else:
         shutil.copy2(str(src), str(dest))
         print(f"  📦 {src.name} → {dest.parent}/")
+        if dest.suffix.lower() == ".md":
+            from core.render import render_delivered_md
+            render_delivered_md(project_dir, dest, cloud_root)
 
     # Ensure per-project cloud symlink
     ensure_project_cloud_symlink(project_dir)
 
     return dest
+
+
+def _render_md_tree(project_dir: Path, root: Path, cloud_root: Path) -> None:
+    """Render every .md under a delivered directory to sibling .html."""
+    from core.render import render_delivered_md
+    for md in root.rglob("*.md"):
+        render_delivered_md(project_dir, md, cloud_root)
 
 
 def relative_cloud_link(subdir: str, filename: str) -> str:
