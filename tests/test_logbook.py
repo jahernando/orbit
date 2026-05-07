@@ -100,6 +100,21 @@ class TestFormatEntry:
         assert "evaluacion" in VALID_TYPES
         assert "tarea" in VALID_TYPES  # kept for backwards compat
 
+    def test_extra_tags_appended(self):
+        e = format_entry("X", "referencia", None, "2026-03-09",
+                         extra_tags=["headline"])
+        assert "#referencia #headline" in e
+
+    def test_extra_tags_before_orbit_marker(self):
+        e = format_entry("X", "idea", None, "2026-03-09", orbit=True,
+                         extra_tags=["headline"])
+        assert "#idea #headline [O]" in e
+
+    def test_extra_tags_none_keeps_single_tag(self):
+        e = format_entry("X", "apunte", None, "2026-03-09", extra_tags=None)
+        assert "#apunte" in e
+        assert "#apunte #" not in e
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # add_entry
@@ -189,6 +204,20 @@ class TestAddOrbitEntry:
         (logbook_env["proj"] / "testproj-logbook.md").unlink()
         add_orbit_entry(logbook_env["proj"], "Auto entry")
         assert (logbook_env["proj"] / "testproj-logbook.md").exists()
+
+    def test_orbit_entry_with_path(self, logbook_env):
+        add_orbit_entry(logbook_env["proj"], "Highlight: Paper",
+                        tipo="referencia", path="https://x.com")
+        content = (logbook_env["proj"] / "testproj-logbook.md").read_text()
+        assert "[Highlight: Paper](https://x.com)" in content
+        assert "#referencia" in content
+
+    def test_orbit_entry_with_extra_tags(self, logbook_env):
+        add_orbit_entry(logbook_env["proj"], "Highlight: X",
+                        tipo="idea", extra_tags=["headline"])
+        content = (logbook_env["proj"] / "testproj-logbook.md").read_text()
+        assert "#idea #headline" in content
+        assert "[O]" in content
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

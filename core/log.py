@@ -159,12 +159,13 @@ TAG_EMOJI = {
 
 
 def format_entry(message: str, tipo: str, path: Optional[str], fecha: Optional[str],
-                 orbit: bool = False) -> str:
+                 orbit: bool = False, extra_tags: Optional[list] = None) -> str:
     date_str = fecha or date.today().isoformat()
     content  = f"[{message}]({path})" if path else message
     emoji    = TAG_EMOJI.get(tipo, "")
+    tags     = f"#{tipo}" + "".join(f" #{t}" for t in (extra_tags or []))
     suffix   = " [O]" if orbit else ""
-    return f"{date_str} {emoji} {content} #{tipo}{suffix}\n"
+    return f"{date_str} {emoji} {content} {tags}{suffix}\n"
 
 
 def _append_entry(logbook_path: Path, entry: str) -> None:
@@ -330,13 +331,16 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
     return 0
 
 
-def add_orbit_entry(project_dir: Path, message: str, tipo: str = "apunte") -> None:
+def add_orbit_entry(project_dir: Path, message: str, tipo: str = "apunte",
+                    path: Optional[str] = None,
+                    extra_tags: Optional[list] = None) -> None:
     """Write an Orbit-authored entry [O] to the project logbook. Never raises."""
     try:
         logbook_path = resolve_file(project_dir, "logbook")
         if not logbook_path.exists():
             init_logbook(logbook_path, project_dir.name)
-        entry = format_entry(message, tipo, None, None, orbit=True)
+        entry = format_entry(message, tipo, path, None, orbit=True,
+                             extra_tags=extra_tags)
         _append_entry(logbook_path, entry)
     except Exception:
         pass  # lifecycle events must never crash the caller

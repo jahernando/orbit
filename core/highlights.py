@@ -46,6 +46,17 @@ _HEADING_TO_KEY = {v: k for k, v in SECTION_MAP.items()}
 
 VALID_TYPES = list(SECTION_MAP)
 
+# Mapping from highlight type → logbook tipo (for the auto-log entry on hl add)
+_HL_TYPE_TO_LOG_TIPO = {
+    "refs":      "referencia",
+    "results":   "resultado",
+    "decisions": "decision",
+    "ideas":     "idea",
+    "evals":     "evaluacion",
+    "plans":     "plan",
+    "contacts":  "apunte",
+}
+
 
 # ── Item helpers ───────────────────────────────────────────────────────────────
 
@@ -286,6 +297,10 @@ def run_hl_add(project: str, text: str, hl_type: str,
     data    = _read_highlights(hl_path)
     data["sections"][hl_type].append({"text": text, "link": link, "note": None})
     _write_highlights(hl_path, data)
+
+    add_orbit_entry(project_dir, f"Highlight: {text}",
+                    tipo=_HL_TYPE_TO_LOG_TIPO.get(hl_type, "apunte"),
+                    path=link, extra_tags=["headline"])
 
     display = f"[{text}]({link})" if link else text
     print(f"✓ [{project_dir.name}] Highlight ({hl_type}): {display}")

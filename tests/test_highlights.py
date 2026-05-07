@@ -237,6 +237,59 @@ class TestHlAdd:
         data = _read_highlights(proj / "test-project-highlights.md")
         assert data["sections"]["decisions"][0]["text"] == "Decision X"
 
+    def test_add_writes_logbook_with_headline(self, proj, projects_dir):
+        from core.highlights import run_hl_add
+        run_hl_add("test-project", "Great idea", "ideas")
+        log = _log_text(proj)
+        assert "Highlight: Great idea" in log
+        assert "#idea #headline" in log
+        assert "[O]" in log
+
+    def test_add_log_maps_type_refs_to_referencia(self, proj, projects_dir):
+        from core.highlights import run_hl_add
+        run_hl_add("test-project", "Paper Z", "refs")
+        log = _log_text(proj)
+        assert "#referencia #headline" in log
+
+    def test_add_log_maps_all_types(self, proj, projects_dir):
+        from core.highlights import run_hl_add
+        cases = [
+            ("refs",      "#referencia"),
+            ("results",   "#resultado"),
+            ("decisions", "#decision"),
+            ("ideas",     "#idea"),
+            ("evals",     "#evaluacion"),
+            ("plans",     "#plan"),
+            ("contacts",  "#apunte"),
+        ]
+        for hl_type, expected_tag in cases:
+            run_hl_add("test-project", f"item-{hl_type}", hl_type)
+        log = _log_text(proj)
+        for _, expected_tag in cases:
+            assert f"{expected_tag} #headline" in log
+
+    def test_add_with_url_link_in_log(self, proj, projects_dir):
+        from core.highlights import run_hl_add
+        run_hl_add("test-project", "Paper A", "refs",
+                   link="https://example.com/paper")
+        log = _log_text(proj)
+        assert "[Highlight: Paper A](https://example.com/paper)" in log
+        assert "#referencia #headline" in log
+
+    def test_add_with_relative_file_link_in_log(self, proj, projects_dir):
+        from core.highlights import run_hl_add
+        run_hl_add("test-project", "Local note", "refs",
+                   link="./refs/x.pdf")
+        log = _log_text(proj)
+        assert "[Highlight: Local note](./refs/x.pdf)" in log
+
+    def test_add_without_link_no_link_in_log(self, proj, projects_dir):
+        from core.highlights import run_hl_add
+        run_hl_add("test-project", "Plain idea", "ideas")
+        log = _log_text(proj)
+        # plain text, not a markdown link
+        assert "Highlight: Plain idea #idea #headline" in log
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # run_hl_drop
