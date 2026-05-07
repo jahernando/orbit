@@ -15,9 +15,18 @@ __pycache__/
 credentials.json
 token.json
 
+# Slack / cloud sync state (sensitive or local)
+.slack-token
+.cloud-sync.json
+google-sync.json
+
 # Shell personal (contiene config local)
 orbit.sh
 
 # Temp output
 cmd.md
 .dash-stamp
+agenda.md
+calendar.md
+panel.md
+history.md
