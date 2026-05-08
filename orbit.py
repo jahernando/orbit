@@ -501,6 +501,8 @@ def cmd_ev(args):
     if action == "add":
         kw = _add_args(args)
         kw["end_date"] = _d(_ga(args, "end"))
+        kw["agenda"] = _ga(args, "agenda")
+        kw["room"]   = _ga(args, "room")
         # --end-time → merge into --time as HH:MM-HH:MM
         end_time = _ga(args, "end_time")
         if end_time:
@@ -511,6 +513,8 @@ def cmd_ev(args):
     if action == "edit":
         kw = _edit_args(args)
         kw["new_end"] = _d(_ga(args, "new_end")) or _ga(args, "new_end")
+        kw["new_agenda"] = _ga(args, "new_agenda")
+        kw["new_room"]   = _ga(args, "new_room")
         # --end-time → merge into --time as HH:MM-HH:MM
         new_end_time = _ga(args, "new_end_time")
         if new_end_time:
@@ -1496,6 +1500,10 @@ def _build_parser():
     _add_add_args(ev_add, date_required=True)
     ev_add.add_argument("--end", "--end-date", default=None, help="End date YYYY-MM-DD")
     ev_add.add_argument("--end-time", default=None, dest="end_time", help="End time HH:MM")
+    ev_add.add_argument("--agenda", default=None, metavar="URL",
+                        help="Agenda/indico URL (📋 note under event)")
+    ev_add.add_argument("--room", default=None, metavar="URL",
+                        help="Room URL: zoom, meet, teams (🚪 note under event)")
 
     ev_drop = ev_sub.add_parser("drop", help="Remove an event")
     _add_project_text(ev_drop, project_required=False)
@@ -1504,6 +1512,10 @@ def _build_parser():
     ev_edit = ev_sub.add_parser("edit", help="Edit an event")
     _add_project_text(ev_edit, project_required=False)
     _add_edit_args(ev_edit, has_end=True, has_end_time=True)
+    ev_edit.add_argument("--agenda", dest="new_agenda", default=None, metavar="URL|none",
+                         help="New agenda URL (or 'none' to remove)")
+    ev_edit.add_argument("--room", dest="new_room", default=None, metavar="URL|none",
+                         help="New room URL (or 'none' to remove)")
 
     ev_log = ev_sub.add_parser("log", help="Create logbook entry from an event")
     _add_project_text(ev_log, project_required=False)

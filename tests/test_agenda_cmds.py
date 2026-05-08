@@ -1684,3 +1684,136 @@ class TestReminderLog:
                          time_val="10:00")
         rc = run_reminder_log("test-project", "Ghost")
         assert rc == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# _upsert_emoji_note + ev --agenda/--room
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestUpsertEmojiNote:
+    def test_insert_when_absent(self):
+        from core.agenda_cmds import _upsert_emoji_note
+        out = _upsert_emoji_note(["Plain note"], "🚪 ", "https://zoom/x")
+        assert out == ["Plain note", "🚪 https://zoom/x"]
+
+    def test_replace_when_present(self):
+        from core.agenda_cmds import _upsert_emoji_note
+        out = _upsert_emoji_note(["d", "🚪 https://old"], "🚪 ", "https://new")
+        assert out == ["d", "🚪 https://new"]
+
+    def test_remove_with_none(self):
+        from core.agenda_cmds import _upsert_emoji_note
+        out = _upsert_emoji_note(["d", "🚪 https://x"], "🚪 ", "none")
+        assert out == ["d"]
+
+    def test_value_none_means_no_change(self):
+        from core.agenda_cmds import _upsert_emoji_note
+        out = _upsert_emoji_note(["d", "🚪 https://x"], "🚪 ", None)
+        assert out == ["d", "🚪 https://x"]
+
+    def test_does_not_touch_other_prefixes(self):
+        from core.agenda_cmds import _upsert_emoji_note
+        out = _upsert_emoji_note(["📋 https://agenda", "🚪 https://room"],
+                                 "🚪 ", "none")
+        assert out == ["📋 https://agenda"]
+
+
+class TestEventAgendaRoomFlags:
+    def test_add_with_room(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        run_ev_add("test-project", "Reunión", "2026-05-10", time_val="12:00",
+                   room="https://zoom.us/j/123")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        assert "🚪 https://zoom.us/j/123" in ev["notes"]
+
+    def test_add_with_agenda(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        run_ev_add("test-project", "WG12", "2026-05-08",
+                   agenda="https://indico/event/17950")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        assert "📋 https://indico/event/17950" in ev["notes"]
+
+    def test_add_with_desc_agenda_room_in_order(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        run_ev_add("test-project", "Mtg", "2026-05-08",
+                   desc="Reunión semanal",
+                   agenda="https://indico/x", room="https://zoom/y")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        assert ev["notes"] == [
+            "Reunión semanal",
+            "📋 https://indico/x",
+            "🚪 https://zoom/y",
+        ]
+
+    def test_edit_adds_room_to_event_without_one(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Mtg", "2026-05-10")
+        run_ev_edit("test-project", "Mtg", new_room="https://zoom/abc")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        assert "🚪 https://zoom/abc" in ev["notes"]
+
+    def test_edit_replaces_existing_room(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Mtg", "2026-05-10",
+                   room="https://zoom/old")
+        run_ev_edit("test-project", "Mtg", new_room="https://zoom/new")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        rooms = [n for n in ev["notes"] if n.startswith("🚪 ")]
+        assert rooms == ["🚪 https://zoom/new"]
+
+    def test_edit_room_none_removes_it(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Mtg", "2026-05-10",
+                   room="https://zoom/x")
+        run_ev_edit("test-project", "Mtg", new_room="none")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        notes = ev.get("notes") or []
+        assert not any(n.startswith("🚪 ") for n in notes)
+
+    def test_edit_desc_preserves_room_and_agenda(self, proj, projects_dir):
+        """A `--desc` edit on an event must NOT drop existing 📋/🚪 notes."""
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Mtg", "2026-05-10",
+                   desc="vieja desc",
+                   agenda="https://indico/x", room="https://zoom/y")
+        run_ev_edit("test-project", "Mtg", new_desc="nueva desc")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        assert ev["notes"] == [
+            "nueva desc",
+            "📋 https://indico/x",
+            "🚪 https://zoom/y",
+        ]
+
+    def test_edit_desc_on_task_does_not_preserve_anything(self, proj, projects_dir):
+        """Tasks must keep the old replace-all semantics for --desc."""
+        from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
+        run_task_add("test-project", "Tsk", date_val="2026-05-10",
+                     desc="vieja")
+        run_task_edit("test-project", "Tsk", new_desc="nueva")
+        task = _read_agenda(proj / "test-project-agenda.md")["tasks"][0]
+        assert task["notes"] == ["nueva"]
+
+    def test_agenda_and_room_persist_to_disk(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add
+        run_ev_add("test-project", "X", "2026-05-10",
+                   agenda="https://indico/z", room="https://meet/k")
+        text = (proj / "test-project-agenda.md").read_text()
+        assert "📋 https://indico/z" in text
+        assert "🚪 https://meet/k" in text
+
+    def test_edit_room_on_recurring_occurrence(self, proj, projects_dir):
+        """Editing room on a single occurrence of a recurring event keeps
+        the room in the new non-recurring copy and advances the series."""
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Weekly", "2026-05-08", recur="weekly")
+        run_ev_edit("test-project", "Weekly",
+                    new_room="https://zoom/once",
+                    occurrence=True)
+        evs = _read_agenda(proj / "test-project-agenda.md")["events"]
+        # one with room (the edited occurrence), one recurring next week
+        with_room = [e for e in evs if any(n.startswith("🚪 ") for n in (e.get("notes") or []))]
+        recurring = [e for e in evs if e.get("recur")]
+        assert len(with_room) == 1
+        assert len(recurring) == 1
+        assert with_room[0]["date"] == "2026-05-08"
+        assert recurring[0]["date"] == "2026-05-15"

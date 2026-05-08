@@ -914,17 +914,55 @@ def _validate_edit_params(new_date=None, new_until=None, new_recur=None,
     return None
 
 
-def _apply_edits(item: dict, edits: dict):
-    """Apply edit fields to item in place. 'none' → None."""
+# Note prefixes for structured event metadata. Lines indented under an event
+# starting with one of these emojis are treated as typed fields by orbit
+# (📋 agenda/indico, 🚪 room/zoom) and preserved across `--desc` edits.
+_AGENDA_NOTE_PREFIX = "📋 "
+_ROOM_NOTE_PREFIX   = "🚪 "
+_STRUCTURED_PREFIXES = (_AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX)
+
+
+def _upsert_emoji_note(notes: list, prefix: str, value: Optional[str]) -> list:
+    """Insert/replace/remove a note line that starts with *prefix*.
+
+    - value is None        → no change
+    - value == "none"      → remove all notes with this prefix
+    - otherwise            → replace the first matching note, or append
+    """
+    if value is None:
+        return notes
+    out = [n for n in notes if not n.startswith(prefix)]
+    if value != "none":
+        # Insert in the position of the first matching note, or append
+        idx = next((i for i, n in enumerate(notes) if n.startswith(prefix)), len(out))
+        out.insert(min(idx, len(out)), f"{prefix}{value}")
+    return out
+
+
+def _apply_edits(item: dict, edits: dict, type_name: Optional[str] = None):
+    """Apply edit fields to item in place. 'none' → None.
+
+    For events, when ``notes`` is replaced, structured-prefix notes
+    (📋 agenda, 📺 room) are preserved so a `--desc` edit doesn't drop them.
+    """
     for key, val in edits.items():
         if val is not None:
             if key == "notes":
-                item["notes"] = [val] if val and val != "none" else []
+                preserved = []
+                if type_name == "event":
+                    existing = item.get("notes") or []
+                    preserved = [n for n in existing
+                                 if n.startswith(_STRUCTURED_PREFIXES)]
+                if val and val != "none":
+                    item["notes"] = [val] + preserved
+                else:
+                    item["notes"] = preserved
             else:
                 item[key] = None if val == "none" else val
 
 
-def _make_edit_occurrence(item, data_list, cfg, edits: dict):
+def _make_edit_occurrence(item, data_list, cfg, edits: dict,
+                          type_name: Optional[str] = None):
     """Create edited occurrence copy + advance series.
 
     Returns (new_item_dict, next_info_str).
@@ -940,12 +978,22 @@ def _make_edit_occurrence(item, data_list, cfg, edits: dict):
             new_item[field] = None if edits[field] == "none" else edits[field]
         elif item.get(field) is not None:
             new_item[field] = item.get(field)
-    # Notes
+    # Notes — for events, preserve structured-prefix notes (📋, 📺) across
+    # a `--desc` edit so user doesn't lose room/agenda inadvertently.
     new_desc = edits.get("notes")
     if new_desc is not None:
-        new_item["notes"] = [new_desc] if new_desc and new_desc != "none" else []
+        preserved = []
+        if type_name == "event":
+            existing = item.get("notes") or []
+            preserved = [n for n in existing if n.startswith(_STRUCTURED_PREFIXES)]
+        new_item["notes"] = ([new_desc] + preserved) if (new_desc and new_desc != "none") else preserved
     else:
         new_item["notes"] = list(item.get("notes") or [])
+    # Apply structured field edits (only meaningful for events)
+    new_item["notes"] = _upsert_emoji_note(
+        new_item["notes"], _AGENDA_NOTE_PREFIX, edits.get("agenda"))
+    new_item["notes"] = _upsert_emoji_note(
+        new_item["notes"], _ROOM_NOTE_PREFIX, edits.get("room"))
     # Status only for task/ms
     if cfg["has_status"]:
         new_item["status"] = "pending"
@@ -971,7 +1019,9 @@ def _make_edit_occurrence(item, data_list, cfg, edits: dict):
 def _generic_add(type_name: str, project: str, text: str,
                  date_val=None, recur=None, until=None,
                  ring=None, time_val=None, desc=None,
-                 end_date=None) -> int:
+                 end_date=None,
+                 agenda: Optional[str] = None,
+                 room: Optional[str] = None) -> int:
     """Generic add for all 4 appointment types."""
     cfg = _TYPE_CONFIG[type_name]
     if recur:
@@ -995,6 +1045,10 @@ def _generic_add(type_name: str, project: str, text: str,
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
     notes = [desc] if desc else []
+    if agenda:
+        notes.append(f"{_AGENDA_NOTE_PREFIX}{agenda}")
+    if room:
+        notes.append(f"{_ROOM_NOTE_PREFIX}{room}")
 
     # Build item dict
     new_item = {"desc": text, "date": date_val, "recur": recur,
@@ -1146,6 +1200,8 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
                   new_text=None, new_date=None, new_time=None,
                   new_recur=None, new_until=None, new_ring=None,
                   new_desc=None, new_end=None,
+                  new_agenda: Optional[str] = None,
+                  new_room: Optional[str] = None,
                   force=False, occurrence=False, series=False) -> int:
     """Generic edit for all 4 appointment types."""
     cfg = _TYPE_CONFIG[type_name]
@@ -1193,7 +1249,10 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
             if new_ring and cfg["has_ring"]: edits["ring"] = new_ring
             if new_end and cfg["has_end"]: edits["end"] = new_end
             if new_desc is not None: edits["notes"] = new_desc
-            new_item, next_info = _make_edit_occurrence(item, items, cfg, edits)
+            if new_agenda is not None: edits["agenda"] = new_agenda
+            if new_room is not None: edits["room"] = new_room
+            new_item, next_info = _make_edit_occurrence(item, items, cfg, edits,
+                                                        type_name=type_name)
             _write_agenda(agenda_path, data)
             print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['desc']}{next_info}")
             if cfg["has_gsync"]:
@@ -1211,7 +1270,11 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
     if new_ring and cfg["has_ring"]:  edits["ring"]  = new_ring
     if new_end and cfg["has_end"]:    edits["end"]   = new_end
     if new_desc is not None:          edits["notes"] = new_desc
-    _apply_edits(item, edits)
+    _apply_edits(item, edits, type_name=type_name)
+    item["notes"] = _upsert_emoji_note(item.get("notes") or [],
+                                       _AGENDA_NOTE_PREFIX, new_agenda)
+    item["notes"] = _upsert_emoji_note(item["notes"],
+                                       _ROOM_NOTE_PREFIX, new_room)
 
     _write_agenda(agenda_path, data)
     if type_name == "event":
@@ -1547,9 +1610,12 @@ def run_ev_add(project: str, text: str, date_val: str,
                end_date: Optional[str] = None, time_val: Optional[str] = None,
                recur: Optional[str] = None,
                until: Optional[str] = None, ring: Optional[str] = None,
-               desc: Optional[str] = None) -> int:
+               desc: Optional[str] = None,
+               agenda: Optional[str] = None,
+               room: Optional[str] = None) -> int:
     return _generic_add("event", project, text, date_val=date_val, end_date=end_date,
-                        recur=recur, until=until, ring=ring, time_val=time_val, desc=desc)
+                        recur=recur, until=until, ring=ring, time_val=time_val,
+                        desc=desc, agenda=agenda, room=room)
 
 
 def run_ev_drop(project: Optional[str], text: Optional[str],
@@ -1570,6 +1636,8 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
                 new_recur: Optional[str] = None,
                 new_until: Optional[str] = None, new_ring: Optional[str] = None,
                 new_desc: Optional[str] = None,
+                new_agenda: Optional[str] = None,
+                new_room: Optional[str] = None,
                 force: bool = False, occurrence: bool = False,
                 series: bool = False) -> int:
     project_dir = _resolve_project(project)
@@ -1581,6 +1649,7 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
                          new_text=new_text, new_date=new_date, new_end=new_end,
                          new_time=new_time, new_recur=new_recur, new_until=new_until,
                          new_ring=new_ring, new_desc=new_desc,
+                         new_agenda=new_agenda, new_room=new_room,
                          force=force, occurrence=occurrence, series=series)
 
 
