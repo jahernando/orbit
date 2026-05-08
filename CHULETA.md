@@ -107,9 +107,9 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--ti
 ## ev — eventos
 
 ```bash
-orbit ev add  <project> "<text>" --date DATE [--end DATE] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
+orbit ev add  <project> "<text>" --date DATE [--end DATE] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--agenda URL] [--room URL]
 orbit ev drop [<project>] ["<text>"] [--force] [-o] [-s]
-orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
+orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--agenda URL|none] [--room URL|none]
 ```
 
 - `--time`: hora del evento. `HH:MM` (solo inicio, 1h por defecto) o `HH:MM-HH:MM` (inicio-fin)
@@ -119,6 +119,9 @@ orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|
 - `drop` en evento recurrente: pregunta si quitar solo esta ocurrencia o toda la serie; `-o` avanza al próximo, `-s` elimina la serie (sin prompt); `--force` avanza al próximo (seguro por defecto)
 - `drop` pide confirmación (defecto **No**); `--force` la omite
 - `--desc`: descripción (enlaces, notas). Se guarda como líneas indentadas en agenda.md y se propaga a Google Calendar/Tasks. No se muestra en `ls`/`agenda` — solo en el fichero. Aplica también a `task` y `ms`
+- `--agenda URL`: agenda/indico del evento. Se guarda como `📋 URL` indentada bajo el item; en `edit`, `none` la quita
+- `--room URL`: sala (Zoom, Meet, Teams, Webex, Jitsi). Se guarda como `🚪 URL`; `none` la quita
+- Una `--desc` en edit preserva las notas con prefijo `📋`/`🚪` (no las borra)
 
 ---
 
@@ -155,6 +158,7 @@ orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE]
 - `--type`: `refs` (📎) · `results` (📊) · `decisions` (📌) · `ideas` (💡) · `evals` (🔍) · `plans` (🗓️)
 - `--date`: añade fecha al final del texto — `--date` (hoy), `--date tomorrow`, `--date 2026-04-15`
 - `drop` pide confirmación (defecto **No**); `--force` la omite
+- **Auto-log**: cada `hl add` escribe también una entrada en el logbook con tag `#headline` + el tipo mapeado (`refs→#referencia`, `results→#resultado`, `decisions→#decision`, `ideas→#idea`, `evals→#evaluacion`, `plans→#plan`). Si la highlight tiene link, queda también en el log
 
 ---
 
@@ -182,6 +186,32 @@ orbit note drop   <project> [<file>] [--force]
   - `--date D`: genera nombre por fecha (YYYY-MM-DD, YYYY-Wnn, YYYY-MM)
   - Sin nombre ni fecha: selector interactivo
 - **drop**: pide confirmación (defecto **No**); `--force` la omite
+
+---
+
+## email — capturar un email a un proyecto
+
+```bash
+orbit email <project> [--no-note] [--ev] [--mail|--outlook|--gmail|--eml PATH]
+```
+
+- **Default**: guarda el email como `notes/emails/YYYY-MM-DD-<slug>.md` (frontmatter + cuerpo) y añade entry al logbook con doble link: la nota md (inmortal) + `message://<id>` (original; clickeable abre Mail.app, puede romperse si borras el email)
+- Tag de log: `#referencia #email [O]`
+
+**Modos**:
+- `--no-note` — solo entry en log con link al original; sin .md
+- `--ev` — solo crea evento, NO guarda email. Detecta título, fecha, hora, room/agenda del email y propone interactivamente con `[S/n/e=editar]`. Si el .eml trae ICS adjunto se usa primero (más fiable); fallback a heurística sobre body (URLs Zoom/Meet/Teams/Webex/Jitsi como rooms; Indico como agendas). No detecta recurrencia (la editas con `ev edit --recur` después)
+
+**Sources** (mutuamente exclusivos; default según `email_source` en `orbit.json`):
+- `--mail` — Apple Mail.app, mensaje seleccionado (recomendado, robusto)
+- `--outlook` — Microsoft Outlook for Mac (frágil con Outlook 16.x; usa drag→`.eml` si falla)
+- `--gmail` — Gmail (pendiente)
+- `--eml PATH` — parsea un `.eml` exportado de cualquier cliente. En Outlook: arrastra el email al Finder → genera `<subject>.eml`
+
+**Configuración por workspace** (`orbit.json`):
+```json
+"email_source": "mail"   // mail | outlook | gmail
+```
 
 ---
 

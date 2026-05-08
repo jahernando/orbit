@@ -134,7 +134,13 @@ orbit ms list [--open]
 
 orbit ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18 --ring 1d
 orbit ev edit next-kr "Congreso" --date 2026-04-20
+
+orbit ev add next-kr "WG12" --date 2026-05-08 --time 12:00 \
+       --agenda https://indico.cern.ch/event/17950/ \
+       --room https://cern.zoom.us/j/8463658000
 ```
+
+`--agenda` (📋) y `--room` (🚪) se guardan como notas indentadas bajo el evento y se propagan a la descripción de Google Calendar. En `edit`, `none` quita el campo; un `--desc` no borra estos campos estructurados.
 
 ### Recordatorios
 
@@ -155,6 +161,19 @@ orbit note next-kr "Analisis de calibracion"
 orbit note import next-kr "Resultados" ./results.md   # importa + log + clip
 orbit note list next-kr [--open]
 ```
+
+Cada `hl add` deja también una entrada en el logbook con tag `#headline` + el tipo mapeado (refs→referencia, etc.) y conserva el link.
+
+### Email — capturar un mensaje a un proyecto
+
+```bash
+orbit email next-kr                          # nota md + log con doble link
+orbit email next-kr --no-note                # solo log con link al original
+orbit email next-kr --ev                     # solo crea evento (no guarda email)
+orbit email next-kr --eml ~/Desktop/foo.eml  # desde un .eml exportado
+```
+
+Sources: `--mail` (Apple Mail.app, recomendado), `--outlook`, `--gmail`, `--eml PATH`. Default por workspace en `orbit.json`: `"email_source": "mail"`. Con `--ev` orbit detecta título, fecha, agenda (Indico) y room (Zoom/Meet/Teams) — vía adjunto ICS si existe o regex sobre el cuerpo — y propone interactivamente antes de crear.
 
 ### Anotacion y busqueda
 

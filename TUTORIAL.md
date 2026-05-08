@@ -199,13 +199,18 @@ ms done mission "Foco"
 ```bash
 ev add next-kr "Congreso JINST" --date 2026-04-15 --end 2026-04-18 --ring 1d
 ev add next-kr "Seminario" --date 2026-03-20 --time 10:00-11:00 --recur weekly
-ev add next-kr "Dentista" --date 2026-03-25 --time 16:00
-ev edit next-kr "Congreso" --date 2026-04-20
+ev add next-kr "WG12" --date 2026-05-08 --time 12:00 \
+       --agenda https://indico.cern.ch/event/17950/ \
+       --room https://cern.zoom.us/j/8463658000
+ev edit next-kr "WG12" --room none      # quitar la sala
 ```
 
 - `--time HH:MM` — evento con hora de inicio (1h por defecto en Google Calendar)
 - `--time HH:MM-HH:MM` — evento con hora de inicio y fin
 - Sin `--time` — evento de día completo (o multi-día con `--end`)
+- `--agenda URL` (📋) — agenda/indico del evento; queda como nota indentada
+- `--room URL` (🚪) — sala (Zoom, Meet, Teams, Webex, Jitsi)
+- En `edit`, `none` quita el campo. `--desc` no borra estos campos estructurados
 
 Los cuatro tipos comparten `--date`, `--recur`, `--until`. Tasks, hitos y eventos aceptan `--ring`.
 Las tareas y hitos recurrentes avanzan automáticamente al completarlas.
@@ -258,9 +263,32 @@ hl list next-kr
 
 Tipos: `refs` · `results` · `decisions` · `ideas` · `evals`
 
+Cada `hl add` deja también una entrada en el logbook con tag `#headline` + el tipo mapeado (refs→#referencia, results→#resultado, etc.). El link, si lo hay, queda en la entrada del log también — no necesitas hacer un `note` adicional.
+
 ---
 
-## 8. Buscar
+## 8. Capturar emails a un proyecto
+
+A veces recibes un email importante (una invitación, un paper, un acuerdo). Lo conviertes en nota md + entry de log en un comando:
+
+```bash
+# Selecciona el email en Mail.app y desde orbit:
+email next-kr                     # nota md + log con doble link
+email next-kr --no-note           # solo log (link clickeable, abre Mail.app)
+email next-kr --ev                # SOLO crea evento (no guarda email)
+
+# Desde un .eml exportado (Outlook → drag al Finder):
+email next-kr --eml ~/Desktop/"Invite WG12.eml"
+email next-kr --eml ~/Desktop/foo.eml --ev
+```
+
+- El log queda con `📎 [Email: subject](nota.md) ✉️ [original](message://...)` → la nota es para siempre, el link al original puede romperse si borras el email
+- `--ev` detecta título, fecha, hora, agenda (Indico) y room (Zoom/Meet/Teams) — vía adjunto ICS si existe, o regex sobre el cuerpo. Te muestra preview y pregunta `[S/n/e=editar]` antes de crear
+- Source default por workspace en `orbit.json`: `"email_source": "mail"` (recomendado, Apple Mail.app)
+
+---
+
+## 9. Buscar
 
 ```bash
 search "calibración"                                # en todos los proyectos
@@ -273,7 +301,7 @@ search "calibración" --notes                        # incluir notas/
 
 ---
 
-## 9. Ver proyectos
+## 10. Ver proyectos
 
 ```bash
 view next-kr              # resumen en terminal: estado, tareas, hitos, últimas entradas
@@ -284,7 +312,7 @@ open next-kr highlights   # abre highlights en el editor
 
 ---
 
-## 10. Al final del día — report
+## 11. Al final del día — report
 
 ```bash
 report
@@ -312,7 +340,7 @@ hl add mission "Semana productiva en next-kr, retrasar hk-sources" --type evals
 
 ---
 
-## 11. Flujo de trabajo completo — ejemplo típico
+## 12. Flujo de trabajo completo — ejemplo típico
 
 ```
 Lunes por la mañana
@@ -351,7 +379,7 @@ Viernes por la tarde
 
 ---
 
-## 12. Otros comandos útiles
+## 13. Otros comandos útiles
 
 ### Notas libres
 
@@ -497,7 +525,7 @@ help tutorial --open       # abre TUTORIAL.md en el editor
 
 ---
 
-## 13. Servicios externos y mantenimiento
+## 14. Servicios externos y mantenimiento
 
 Orbit gestiona automáticamente la conexión con servicios externos: sincroniza citas con Google, versiona con git, renderiza a cloud y programa notificaciones en el Mac. No necesitas pensar en ello durante el día — Orbit se encarga al arrancar la shell, al operar sobre citas y al hacer commit.
 
@@ -614,7 +642,7 @@ archive next-kr --months 3 # solo un proyecto, antigüedad 3 meses
 
 ---
 
-## 14. Federación de workspaces — ver citas de otro espacio
+## 15. Federación de workspaces — ver citas de otro espacio
 
 Si tienes más de un workspace (por ejemplo, uno de trabajo y otro personal), puedes federar uno desde el otro para ver sus citas en panel, agenda y otros comandos de lectura.
 
