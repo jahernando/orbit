@@ -874,6 +874,25 @@ def cmd_mail(args):
     )
 
 
+def cmd_email(args):
+    from core.email import run_email
+    source = None
+    if getattr(args, "outlook", False):
+        source = "outlook"
+    elif getattr(args, "mail", False):
+        source = "mail"
+    elif getattr(args, "gmail", False):
+        source = "gmail"
+    return run_email(
+        project=args.project,
+        query=getattr(args, "query", None),
+        msg_id=getattr(args, "id", None),
+        source=source,
+        no_note=getattr(args, "no_note", False),
+        eml_path=getattr(args, "eml", None),
+    )
+
+
 def cmd_setup(args):
     from core.setup import run_setup
     return run_setup()
@@ -1376,6 +1395,25 @@ def _build_parser():
     mail_p.add_argument("--summary", action="store_true",
                         help="Quick summary from cache (no network)")
 
+    email_p = subparsers.add_parser("email",
+        help="Capture an email into a project note + logbook entry")
+    email_p.add_argument("project", help="Project name")
+    email_p.add_argument("query", nargs="?", default=None,
+                         help="Subject substring (pending)")
+    email_p.add_argument("--id", default=None, metavar="MSG_ID",
+                         help="Exact message-id (pending)")
+    email_p.add_argument("--eml", default=None, metavar="PATH",
+                         help="Parse a .eml file exported from any client")
+    email_p.add_argument("--no-note", action="store_true",
+                         help="Only logbook entry, skip the .md note")
+    src = email_p.add_mutually_exclusive_group()
+    src.add_argument("--outlook", action="store_true",
+                     help="Microsoft Outlook for Mac (default if no cartero.gmail)")
+    src.add_argument("--mail", action="store_true",
+                     help="Apple Mail.app")
+    src.add_argument("--gmail", action="store_true",
+                     help="Chrome+Gmail API (default if cartero.gmail set)")
+
     # --- setup ---
     subparsers.add_parser("setup", help="Interactive workspace configuration wizard")
 
@@ -1792,7 +1830,7 @@ _COMMANDS = {
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "mail": cmd_mail, "setup": cmd_setup,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,

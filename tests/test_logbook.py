@@ -115,6 +115,24 @@ class TestFormatEntry:
         assert "#apunte" in e
         assert "#apunte #" not in e
 
+    def test_secondary_link_appended_after_primary(self):
+        e = format_entry("Email: Subj", "referencia", "./notes/x.md",
+                         "2026-03-09",
+                         secondary_link=("✉️", "original", "message://abc"))
+        assert "[Email: Subj](./notes/x.md) ✉️ [original](message://abc)" in e
+
+    def test_secondary_link_without_primary(self):
+        e = format_entry("Plain msg", "apunte", None, "2026-03-09",
+                         secondary_link=("→", "ref", "https://x.com"))
+        assert "Plain msg → [ref](https://x.com)" in e
+
+    def test_secondary_link_with_extra_tags_and_orbit(self):
+        e = format_entry("Email: Y", "referencia", "./n.md", "2026-03-09",
+                         orbit=True, extra_tags=["email"],
+                         secondary_link=("✉️", "original", "message://z"))
+        assert "✉️ [original](message://z)" in e
+        assert "#referencia #email [O]" in e
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # add_entry
