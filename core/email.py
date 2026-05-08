@@ -382,6 +382,24 @@ def _extract_eml_body(msg) -> str:
     return text
 
 
+def _extract_ics_attachment(msg) -> str:
+    """Return the raw text of any text/calendar part in a multipart message."""
+    if not msg.is_multipart():
+        if msg.get_content_type() == "text/calendar":
+            payload = msg.get_payload(decode=True)
+            if payload:
+                charset = msg.get_content_charset() or "utf-8"
+                return payload.decode(charset, errors="replace")
+        return ""
+    for part in msg.walk():
+        if part.get_content_type() == "text/calendar":
+            payload = part.get_payload(decode=True)
+            if payload:
+                charset = part.get_content_charset() or "utf-8"
+                return payload.decode(charset, errors="replace")
+    return ""
+
+
 def _capture_eml(eml_path: Path) -> Optional[dict]:
     """Parse a .eml file into the standard email dict."""
     if not eml_path.exists():
@@ -409,6 +427,7 @@ def _capture_eml(eml_path: Path) -> Optional[dict]:
         "date":    iso_date,
         "msg_id":  msg_id,
         "body":    _extract_eml_body(msg),
+        "ics":     _extract_ics_attachment(msg),
         "source":  "eml",
     }
 
@@ -460,7 +479,8 @@ def run_email(project: str, query: Optional[str] = None,
               msg_id: Optional[str] = None,
               source: Optional[str] = None,
               no_note: bool = False,
-              eml_path: Optional[str] = None) -> int:
+              eml_path: Optional[str] = None,
+              as_ev: bool = False) -> int:
     project_dir = find_project(project)
     if not project_dir:
         return 1
@@ -469,6 +489,8 @@ def run_email(project: str, query: Optional[str] = None,
         email = _capture_eml(Path(eml_path).expanduser())
         if not email:
             return 1
+        if as_ev:
+            return _emit_event_from_email(project_dir, email)
         return _emit_email(project_dir, email, no_note=no_note)
 
     src = source or _default_source()
@@ -491,7 +513,344 @@ def run_email(project: str, query: Optional[str] = None,
 
     if not email:
         return 1
+    if as_ev:
+        return _emit_event_from_email(project_dir, email)
     return _emit_email(project_dir, email, no_note=no_note)
+
+
+# ── Event detection from email ────────────────────────────────────────────────
+
+_ROOM_URL_PATTERNS = [
+    r"https?://[A-Za-z0-9.-]*zoom\.us/j/[^\s>\"')]+",
+    r"https?://meet\.google\.com/[A-Za-z0-9-]+",
+    r"https?://teams\.microsoft\.com/l/meetup-join/[^\s>\"')]+",
+    r"https?://[A-Za-z0-9.-]*webex\.com/[^\s>\"')]+",
+    r"https?://meet\.jit\.si/[^\s>\"')]+",
+]
+
+_AGENDA_URL_PATTERNS = [
+    r"https?://indico\.[A-Za-z0-9.-]+/event/[^\s>\"')]+",
+    r"https?://[A-Za-z0-9.-]*indico[A-Za-z0-9.-]*/event/[^\s>\"')]+",
+]
+
+
+def _extract_urls(text: str, patterns: list) -> list:
+    """Return unique URLs in text matching any pattern, in first-seen order."""
+    if not text:
+        return []
+    seen = []
+    for pat in patterns:
+        for m in re.finditer(pat, text):
+            url = m.group(0).rstrip(".,;:>)\"']")
+            if url not in seen:
+                seen.append(url)
+    return seen
+
+
+def _parse_ics_dt(value: str) -> tuple:
+    """Return (date_str, time_str) from an ICS DTSTART/DTEND value.
+
+    ICS formats:
+      - 20260508T120000Z       → ("2026-05-08", "12:00") [UTC, kept as-is]
+      - 20260508T120000        → ("2026-05-08", "12:00") [floating local]
+      - 20260508               → ("2026-05-08", None)    [date-only]
+    """
+    if not value:
+        return (None, None)
+    v = value.strip().rstrip("Z")
+    m = re.match(r"^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?", v)
+    if not m:
+        return (None, None)
+    y, mo, d, h, mi = m.groups()
+    date_s = f"{y}-{mo}-{d}"
+    time_s = f"{h}:{mi}" if h and mi else None
+    return (date_s, time_s)
+
+
+def _parse_ics(ics_text: str) -> Optional[dict]:
+    """Minimalist ICS parser. Returns dict with title/date/time/end/url/description.
+
+    Only handles the first VEVENT block. No recurrence, no timezone conversion
+    (DTSTART times are kept literal — UTC marker stripped, no offset applied).
+    """
+    if not ics_text:
+        return None
+    m = re.search(r"BEGIN:VEVENT(.+?)END:VEVENT", ics_text, re.DOTALL | re.IGNORECASE)
+    if not m:
+        return None
+    block = m.group(1)
+    # Unfold continuation lines (RFC 5545: a line starting with WS continues prev)
+    block = re.sub(r"\r?\n[ \t]", "", block)
+
+    def field(name):
+        rx = re.compile(rf"^{name}(?:;[^:\r\n]*)?:(.+)$",
+                        re.MULTILINE | re.IGNORECASE)
+        match = rx.search(block)
+        return match.group(1).strip() if match else None
+
+    dtstart = field("DTSTART")
+    dtend   = field("DTEND")
+    s_date, s_time = _parse_ics_dt(dtstart)
+    e_date, e_time = _parse_ics_dt(dtend)
+
+    summary = field("SUMMARY") or ""
+    # ICS escapes \, → ',' and \n → newline. Reverse minimal subset.
+    summary = summary.replace("\\,", ",").replace("\\;", ";")
+
+    url = field("URL")
+    location = field("LOCATION")
+
+    return {
+        "title":    summary or None,
+        "date":     s_date,
+        "time":     s_time,
+        "end_date": e_date if e_date and e_date != s_date else None,
+        "end_time": e_time,
+        "url":      url,
+        "location": location,
+    }
+
+
+def _clean_subject(subject: str) -> str:
+    """Strip Re:/Fwd: prefixes from subject."""
+    if not subject:
+        return ""
+    return re.sub(r"^(?:re|fwd|fw|aw|sv|tr)\s*:\s*", "", subject,
+                  flags=re.IGNORECASE).strip()
+
+
+def _detect_event_data(email: dict) -> dict:
+    """Build a proposal dict from a captured email.
+
+    Resolution:
+      1. ICS attachment (most reliable: title, date, time)
+      2. Heuristics on body + subject (URLs, fallback to email date)
+
+    URL extraction always runs (even with ICS) and merges results so multiple
+    rooms/agendas in the body get included.
+    """
+    proposal = {
+        "title":   None,
+        "date":    None,
+        "time":    None,
+        "end_time": None,
+        "rooms":   [],
+        "agendas": [],
+    }
+
+    # 1. ICS — overrides title/date/time when present
+    ics = _parse_ics(email.get("ics") or "")
+    if ics:
+        proposal["title"] = ics.get("title")
+        proposal["date"]  = ics.get("date")
+        proposal["time"]  = ics.get("time")
+        proposal["end_time"] = ics.get("end_time")
+        if ics.get("url"):
+            # ICS URL is usually the canonical agenda or room
+            url = ics["url"]
+            if any(re.search(p, url) for p in _ROOM_URL_PATTERNS):
+                proposal["rooms"].append(url)
+            elif any(re.search(p, url) for p in _AGENDA_URL_PATTERNS):
+                proposal["agendas"].append(url)
+            else:
+                proposal["agendas"].append(url)
+        if ics.get("location"):
+            loc = ics["location"]
+            if loc.startswith("http"):
+                if any(re.search(p, loc) for p in _ROOM_URL_PATTERNS):
+                    if loc not in proposal["rooms"]:
+                        proposal["rooms"].append(loc)
+
+    # 2. Heuristics — fill what ICS didn't, always merge URLs
+    body = email.get("body") or ""
+    subject = email.get("subject") or ""
+
+    if not proposal["title"]:
+        proposal["title"] = _clean_subject(subject) or "(sin asunto)"
+
+    if not proposal["date"]:
+        # Fallback to email Date header (first 10 chars of ISO format)
+        edate = (email.get("date") or "")[:10]
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", edate):
+            proposal["date"] = edate
+
+    # Body URL extraction: append any not already present
+    for url in _extract_urls(body, _ROOM_URL_PATTERNS):
+        if url not in proposal["rooms"]:
+            proposal["rooms"].append(url)
+    for url in _extract_urls(body, _AGENDA_URL_PATTERNS):
+        if url not in proposal["agendas"]:
+            proposal["agendas"].append(url)
+
+    return proposal
+
+
+def _has_event_signal(proposal: dict) -> bool:
+    """True if proposal has at least one piece of event info worth showing."""
+    return bool(proposal.get("date") or proposal.get("rooms")
+                or proposal.get("agendas"))
+
+
+def _print_proposal(proposal: dict) -> None:
+    """Print a human-readable preview of the detected event."""
+    print()
+    print("Detectada posible cita en este email:")
+    print(f"  título:  {proposal.get('title') or '(sin título)'}")
+    print(f"  fecha:   {proposal.get('date') or '(no detectada)'}")
+    print(f"  hora:    {proposal.get('time') or '(no detectada)'}")
+    if proposal.get("end_time"):
+        print(f"  fin:     {proposal['end_time']}")
+    agendas = proposal.get("agendas") or []
+    if agendas:
+        print(f"  📋 agenda{'s' if len(agendas) > 1 else ''}:")
+        for a in agendas:
+            print(f"    • {a}")
+    else:
+        print("  📋 agenda:  -")
+    rooms = proposal.get("rooms") or []
+    if rooms:
+        print(f"  🚪 room{'s' if len(rooms) > 1 else ''}:")
+        for r in rooms:
+            print(f"    • {r}")
+    else:
+        print("  🚪 room:    -")
+    print()
+
+
+def _prompt_with_default(label: str, default: str) -> str:
+    """Prompt for *label*; Enter keeps *default*."""
+    try:
+        ans = input(f"  {label} [{default}]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return default
+    return ans or default
+
+
+def _edit_proposal(proposal: dict) -> Optional[dict]:
+    """Interactive prompt to edit each field. Returns dict or None on cancel."""
+    print("\nEditar campos (Enter mantiene el valor actual; vacío = quitar):")
+    title = _prompt_with_default("título", proposal.get("title") or "")
+    date  = _prompt_with_default("fecha (YYYY-MM-DD)", proposal.get("date") or "")
+    time_v = _prompt_with_default("hora (HH:MM o vacío)", proposal.get("time") or "")
+
+    rooms = list(proposal.get("rooms") or [])
+    if len(rooms) > 1:
+        print(f"  rooms detectadas: {len(rooms)}")
+        for i, r in enumerate(rooms, 1):
+            print(f"    {i}. {r}")
+        ans = _prompt_with_default("quitar rooms (ej. 2,3 o vacío)", "")
+        if ans:
+            try:
+                drop = sorted({int(x.strip()) for x in ans.split(",")}, reverse=True)
+                for i in drop:
+                    if 1 <= i <= len(rooms):
+                        rooms.pop(i - 1)
+            except ValueError:
+                pass
+
+    agendas = list(proposal.get("agendas") or [])
+    if len(agendas) > 1:
+        print(f"  agendas detectadas: {len(agendas)}")
+        for i, a in enumerate(agendas, 1):
+            print(f"    {i}. {a}")
+        ans = _prompt_with_default("quitar agendas (ej. 2 o vacío)", "")
+        if ans:
+            try:
+                drop = sorted({int(x.strip()) for x in ans.split(",")}, reverse=True)
+                for i in drop:
+                    if 1 <= i <= len(agendas):
+                        agendas.pop(i - 1)
+            except ValueError:
+                pass
+
+    if not title or not date:
+        print("⚠️  Título y fecha son obligatorios. Cancelado.")
+        return None
+
+    return {
+        "title":   title,
+        "date":    date,
+        "time":    time_v or None,
+        "end_time": proposal.get("end_time"),
+        "rooms":   rooms,
+        "agendas": agendas,
+    }
+
+
+def _propose_event(proposal: dict) -> Optional[dict]:
+    """Show preview, ask user to confirm/edit/cancel. Returns confirmed dict."""
+    _print_proposal(proposal)
+    if not sys.stdin.isatty():
+        print("(modo no-interactivo — cancelado)")
+        return None
+    try:
+        ans = input("¿Crear evento? [S/n/e=editar]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+    if ans in ("n", "no"):
+        return None
+    if ans == "e":
+        return _edit_proposal(proposal)
+    if not proposal.get("title") or not proposal.get("date"):
+        print("⚠️  Faltan título o fecha. Usa 'e' para editarlos.")
+        return None
+    return proposal
+
+
+def _create_event_from_proposal(project_dir: Path, proposal: dict) -> int:
+    """Call run_ev_add with the first room/agenda; append extras directly."""
+    from core.agenda_cmds import (
+        run_ev_add, _read_agenda, _write_agenda, resolve_file,
+        _AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX,
+    )
+
+    rooms = proposal.get("rooms") or []
+    agendas = proposal.get("agendas") or []
+
+    rc = run_ev_add(
+        project=project_dir.name,
+        text=proposal["title"],
+        date_val=proposal["date"],
+        time_val=proposal.get("time"),
+        agenda=agendas[0] if agendas else None,
+        room=rooms[0] if rooms else None,
+    )
+    if rc != 0:
+        return rc
+
+    # Append extras (multiple rooms/agendas) directly to the just-created event
+    extras_room = rooms[1:]
+    extras_agenda = agendas[1:]
+    if not extras_room and not extras_agenda:
+        return 0
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    for ev in reversed(data["events"]):
+        if ev.get("desc") == proposal["title"] and ev.get("date") == proposal["date"]:
+            notes = ev.setdefault("notes", [])
+            for a in extras_agenda:
+                notes.append(f"{_AGENDA_NOTE_PREFIX}{a}")
+            for r in extras_room:
+                notes.append(f"{_ROOM_NOTE_PREFIX}{r}")
+            break
+    _write_agenda(agenda_path, data)
+    return 0
+
+
+def _emit_event_from_email(project_dir: Path, email: dict) -> int:
+    """Detect event in email, propose to user, create if confirmed."""
+    proposal = _detect_event_data(email)
+    if not _has_event_signal(proposal):
+        print("⚠️  No se detectó información de cita en este email.")
+        print("    Usa `ev add` manualmente.")
+        return 1
+    confirmed = _propose_event(proposal)
+    if not confirmed:
+        print("Cancelado.")
+        return 0
+    return _create_event_from_proposal(project_dir, confirmed)
 
 
 def _emit_email(project_dir: Path, email: dict, no_note: bool = False) -> int:

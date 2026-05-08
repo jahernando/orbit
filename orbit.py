@@ -894,6 +894,7 @@ def cmd_email(args):
         source=source,
         no_note=getattr(args, "no_note", False),
         eml_path=getattr(args, "eml", None),
+        as_ev=getattr(args, "ev", False),
     )
 
 
@@ -1410,6 +1411,8 @@ def _build_parser():
                          help="Parse a .eml file exported from any client")
     email_p.add_argument("--no-note", action="store_true",
                          help="Only logbook entry, skip the .md note")
+    email_p.add_argument("--ev", action="store_true",
+                         help="Skip email save: detect event in this email and create it")
     src = email_p.add_mutually_exclusive_group()
     src.add_argument("--outlook", action="store_true",
                      help="Microsoft Outlook for Mac (default if no cartero.gmail)")

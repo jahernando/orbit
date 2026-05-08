@@ -403,6 +403,314 @@ class TestEmlBackend:
         assert len(notes) == 1
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Event detection from email
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Future date so `_generic_add`'s "fecha en el pasado" guard doesn't trigger.
+_SAMPLE_ICS = """BEGIN:VCALENDAR
+PRODID:-//orbit test//
+VERSION:2.0
+BEGIN:VEVENT
+UID:abc@example.com
+DTSTAMP:20300507T120000Z
+DTSTART:20300508T120000Z
+DTEND:20300508T130000Z
+SUMMARY:Reunión WG12 de CNID
+LOCATION:https://cern.zoom.us/j/8463658000
+URL:https://indico.global/event/17950/
+DESCRIPTION:Reunión semanal del WG12.
+END:VEVENT
+END:VCALENDAR
+"""
+
+
+class TestExtractUrls:
+    def test_zoom(self):
+        from core.email import _extract_urls, _ROOM_URL_PATTERNS
+        body = "Hola\nJoin: https://cern.zoom.us/j/8463658000?pwd=foo\nbye"
+        assert _extract_urls(body, _ROOM_URL_PATTERNS) == [
+            "https://cern.zoom.us/j/8463658000?pwd=foo"
+        ]
+
+    def test_meet_teams_jitsi(self):
+        from core.email import _extract_urls, _ROOM_URL_PATTERNS
+        body = ("a https://meet.google.com/abc-defg-hij b "
+                "https://teams.microsoft.com/l/meetup-join/19%3aXX "
+                "https://meet.jit.si/MyRoom")
+        urls = _extract_urls(body, _ROOM_URL_PATTERNS)
+        assert any("meet.google.com" in u for u in urls)
+        assert any("teams.microsoft.com" in u for u in urls)
+        assert any("meet.jit.si" in u for u in urls)
+
+    def test_indico(self):
+        from core.email import _extract_urls, _AGENDA_URL_PATTERNS
+        body = "ver agenda en https://indico.cern.ch/event/12345/ por favor"
+        assert _extract_urls(body, _AGENDA_URL_PATTERNS) == [
+            "https://indico.cern.ch/event/12345/"
+        ]
+
+    def test_dedupes(self):
+        from core.email import _extract_urls, _ROOM_URL_PATTERNS
+        body = "https://meet.google.com/abc-defg-hij twice https://meet.google.com/abc-defg-hij"
+        urls = _extract_urls(body, _ROOM_URL_PATTERNS)
+        assert len(urls) == 1
+
+    def test_strips_trailing_punctuation(self):
+        from core.email import _extract_urls, _ROOM_URL_PATTERNS
+        body = "Click https://meet.google.com/abc-defg-hij."
+        urls = _extract_urls(body, _ROOM_URL_PATTERNS)
+        assert urls == ["https://meet.google.com/abc-defg-hij"]
+
+
+class TestParseIcsDt:
+    def test_full_utc(self):
+        from core.email import _parse_ics_dt
+        assert _parse_ics_dt("20300508T120000Z") == ("2030-05-08", "12:00")
+
+    def test_full_local(self):
+        from core.email import _parse_ics_dt
+        assert _parse_ics_dt("20300508T120000") == ("2030-05-08", "12:00")
+
+    def test_date_only(self):
+        from core.email import _parse_ics_dt
+        assert _parse_ics_dt("20300508") == ("2030-05-08", None)
+
+    def test_empty(self):
+        from core.email import _parse_ics_dt
+        assert _parse_ics_dt("") == (None, None)
+
+
+class TestParseIcs:
+    def test_full_event(self):
+        from core.email import _parse_ics
+        d = _parse_ics(_SAMPLE_ICS)
+        assert d is not None
+        assert d["title"] == "Reunión WG12 de CNID"
+        assert d["date"] == "2030-05-08"
+        assert d["time"] == "12:00"
+        assert d["end_time"] == "13:00"
+        assert d["url"] == "https://indico.global/event/17950/"
+        assert d["location"] == "https://cern.zoom.us/j/8463658000"
+
+    def test_returns_none_for_empty(self):
+        from core.email import _parse_ics
+        assert _parse_ics("") is None
+        assert _parse_ics("garbage") is None
+
+    def test_handles_continuation_lines(self):
+        from core.email import _parse_ics
+        # RFC 5545: line starting with WS continues previous
+        ics = ("BEGIN:VEVENT\nDTSTART:20260101T100000\n"
+               "SUMMARY:A long\n  title across lines\n"
+               "END:VEVENT\n")
+        d = _parse_ics(ics)
+        assert d["title"] == "A long title across lines"
+
+    def test_unescapes_commas(self):
+        from core.email import _parse_ics
+        ics = ("BEGIN:VEVENT\nDTSTART:20260101T100000\n"
+               "SUMMARY:Hola\\, mundo\nEND:VEVENT\n")
+        d = _parse_ics(ics)
+        assert d["title"] == "Hola, mundo"
+
+
+class TestDetectEventData:
+    def test_from_ics(self):
+        from core.email import _detect_event_data
+        em = {"subject": "Re: WG12", "body": "", "ics": _SAMPLE_ICS,
+              "date": "2030-05-07T10:00"}
+        d = _detect_event_data(em)
+        assert d["title"] == "Reunión WG12 de CNID"
+        assert d["date"] == "2030-05-08"
+        assert d["time"] == "12:00"
+        # Both URL fields from ICS classify correctly
+        assert "https://cern.zoom.us/j/8463658000" in d["rooms"]
+        assert "https://indico.global/event/17950/" in d["agendas"]
+
+    def test_from_body_only(self):
+        from core.email import _detect_event_data
+        em = {"subject": "Re: meeting",
+              "body": ("Cita el 8 a las 12.\n"
+                       "Zoom: https://cern.zoom.us/j/123\n"
+                       "Indico: https://indico.cern.ch/event/9/\n"),
+              "date": "2030-05-08T09:00", "ics": ""}
+        d = _detect_event_data(em)
+        assert d["title"] == "meeting"  # Re: stripped
+        assert d["date"] == "2030-05-08"  # from email date
+        assert "https://cern.zoom.us/j/123" in d["rooms"]
+        assert "https://indico.cern.ch/event/9/" in d["agendas"]
+
+    def test_multiple_rooms(self):
+        from core.email import _detect_event_data
+        em = {"subject": "X",
+              "body": ("https://cern.zoom.us/j/111 backup "
+                       "https://meet.google.com/abc-defg-hij"),
+              "date": "2030-05-08T09:00", "ics": ""}
+        d = _detect_event_data(em)
+        assert len(d["rooms"]) == 2
+
+    def test_no_signal(self):
+        from core.email import _detect_event_data, _has_event_signal
+        em = {"subject": "hola", "body": "qué tal", "date": "", "ics": ""}
+        d = _detect_event_data(em)
+        # No date, no URLs → no signal
+        assert not _has_event_signal(d)
+
+    def test_subject_strips_prefixes(self):
+        from core.email import _detect_event_data
+        for prefix in ("Re: ", "RE: ", "Fwd: ", "FW: "):
+            em = {"subject": f"{prefix}meeting", "body": "",
+                  "date": "2030-05-08T09:00", "ics": ""}
+            d = _detect_event_data(em)
+            assert d["title"] == "meeting"
+
+
+_FUTURE_EMAIL_DATE = "2030-05-07T10:00"
+
+
+class TestExtractIcsAttachment:
+    def test_multipart_with_calendar(self, tmp_path):
+        """Parse a .eml that has both text/plain and text/calendar parts."""
+        eml = tmp_path / "invite.eml"
+        boundary = "BOUND"
+        body = f"""From: alice@x.com
+To: bob@y.com
+Subject: =?UTF-8?B?SW52aXRlOiBSZXVuacOzbg==?=
+Date: Wed, 07 May 2026 10:00:00 +0000
+Message-ID: <evt-1@x.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="{boundary}"
+
+--{boundary}
+Content-Type: text/plain; charset=utf-8
+
+You are invited.
+
+--{boundary}
+Content-Type: text/calendar; charset=utf-8
+
+{_SAMPLE_ICS}
+--{boundary}--
+"""
+        eml.write_bytes(body.encode("utf-8"))
+        from core.email import _capture_eml
+        d = _capture_eml(eml)
+        assert d is not None
+        assert "BEGIN:VEVENT" in (d.get("ics") or "")
+        assert "WG12" in d["ics"]
+
+
+class TestEmitEventFromEmail:
+    def _email(self, **over):
+        base = {
+            "subject": "Re: WG12 reunion",
+            "from":    "alice@x.com",
+            "date":    _FUTURE_EMAIL_DATE,
+            "msg_id":  "evt@x.com",
+            "body":    ("Cita.\nZoom: https://cern.zoom.us/j/12345\n"
+                        "Indico: https://indico.cern.ch/event/9/\n"),
+            "ics":     "",
+            "source":  "eml",
+        }
+        base.update(over)
+        return base
+
+    def test_creates_event_with_room_and_agenda(self, env, monkeypatch):
+        from core import email as email_mod
+        # Auto-confirm proposal
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *_: "")  # accept default
+        rc = email_mod._emit_event_from_email(env["proj"], self._email())
+        assert rc == 0
+        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        assert "WG12 reunion" in agenda_md
+        assert "🚪 https://cern.zoom.us/j/12345" in agenda_md
+        assert "📋 https://indico.cern.ch/event/9/" in agenda_md
+
+    def test_event_uses_ics_when_present(self, env, monkeypatch):
+        from core import email as email_mod
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *_: "")
+        em = self._email(ics=_SAMPLE_ICS, body="")
+        rc = email_mod._emit_event_from_email(env["proj"], em)
+        assert rc == 0
+        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        assert "Reunión WG12 de CNID" in agenda_md
+        # ICS URL goes to agendas, ICS LOCATION (zoom) goes to rooms
+        assert "📋 https://indico.global/event/17950/" in agenda_md
+        assert "🚪 https://cern.zoom.us/j/8463658000" in agenda_md
+
+    def test_no_signal_returns_error(self, env, capsys):
+        from core import email as email_mod
+        em = self._email(body="just chatting", ics="", date="")
+        rc = email_mod._emit_event_from_email(env["proj"], em)
+        assert rc == 1
+        assert "no se detectó" in capsys.readouterr().out.lower()
+
+    def test_user_cancels(self, env, monkeypatch, capsys):
+        from core import email as email_mod
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *_: "n")
+        rc = email_mod._emit_event_from_email(env["proj"], self._email())
+        assert rc == 0
+        assert "cancelado" in capsys.readouterr().out.lower()
+        # No event should be created
+        agenda_path = env["proj"] / "test-project-agenda.md"
+        if agenda_path.exists():
+            assert "WG12" not in agenda_path.read_text()
+
+    def test_multiple_rooms_all_persisted(self, env, monkeypatch):
+        from core import email as email_mod
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *_: "")
+        em = self._email(body=(
+            "Sala 1: https://cern.zoom.us/j/111\n"
+            "Sala 2: https://meet.google.com/abc-defg-hij\n"
+        ))
+        rc = email_mod._emit_event_from_email(env["proj"], em)
+        assert rc == 0
+        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        assert "🚪 https://cern.zoom.us/j/111" in agenda_md
+        assert "🚪 https://meet.google.com/abc-defg-hij" in agenda_md
+
+
+class TestRunEmailAsEvent:
+    """Integration: full run_email(..., as_ev=True) with .eml capture."""
+
+    def test_eml_with_ics(self, env, tmp_path, monkeypatch):
+        from core.email import run_email
+        eml = tmp_path / "invite.eml"
+        body = f"""From: alice@x.com
+To: bob@y.com
+Subject: Invite
+Date: Wed, 07 May 2026 10:00:00 +0000
+Message-ID: <evt@x.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BB"
+
+--BB
+Content-Type: text/plain; charset=utf-8
+
+invite text
+
+--BB
+Content-Type: text/calendar; charset=utf-8
+
+{_SAMPLE_ICS}
+--BB--
+"""
+        eml.write_bytes(body.encode("utf-8"))
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *_: "")
+        rc = run_email("test-project", eml_path=str(eml), as_ev=True)
+        assert rc == 0
+        # No email .md note should be created
+        assert not (env["proj"] / "notes" / "emails").exists()
+        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        assert "Reunión WG12 de CNID" in agenda_md
+
+
 class TestHtmlToText:
     def test_strips_tags(self):
         from core.email import _html_to_text
