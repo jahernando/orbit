@@ -19,6 +19,7 @@ token.json
 .slack-token
 .cloud-sync.json
 google-sync.json
+calendar-sync.json
 
 # Shell personal (contiene config local)
 orbit.sh

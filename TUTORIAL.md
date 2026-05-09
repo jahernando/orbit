@@ -545,18 +545,30 @@ undo                       # deshacer la última operación de Orbit
 
 Para hacer push al remoto, usa `orbit_push` desde la terminal del sistema (fuera de la shell). Si hay cambios sin commit, hace commit primero.
 
-### Google Calendar/Tasks
+### Calendar.app + Google Tasks
 
-Orbit sincroniza las citas con Google automáticamente: tareas e hitos van a Google Tasks, eventos a Google Calendar. No necesitas ejecutar nada — ocurre al arrancar y tras cada `add`, `done`, `drop` o `edit`. Los items sincronizados muestran `[G]` en `agenda.md`.
+Orbit sincroniza automáticamente al arrancar y tras cada `add`, `done`, `drop` o `edit`. Los items sincronizados muestran ☁️ en `agenda.md`. Dos backends:
 
-**Configuración**: `google-sync.json` en la raíz del workspace (mapa tipo → calendario).
+- **Eventos → Calendar.app** vía AppleScript. Sin OAuth: orbit habla con la app local y Calendar.app se encarga de propagar al backend que tenga la cuenta (Google, iCloud, Exchange). Requiere Calendar.app abierto. El `--room` del evento (zoom/meet/teams) se convierte en la propiedad `url` del evento → botón clickable en la app móvil/desktop
+- **Tareas e hitos → Google Tasks** (legacy). Requiere `credentials.json` + `token.json`. Una lista por tipo de proyecto
 
-**Si algo falla** (token expirado, error de red):
+**Configuración**: `calendar-sync.json` en la raíz del workspace. Calendars con su nombre tal cual aparece en Calendar.app, no IDs:
+
+```json
+{
+  "calendars": {
+    "investigacion": "🌀 Investigacion",
+    "default": "🌿 orbit-ps"
+  }
+}
+```
+
+**Si algo falla**:
 
 ```bash
 gsync                      # forzar sincronización manual
-gsync --dry-run             # ver qué se sincronizaría sin hacerlo
-gsync --list-calendars      # listar calendarios disponibles en Google
+gsync --dry-run            # ver qué se sincronizaría sin hacerlo
+gsync --list-calendars     # listar calendarios de Calendar.app
 ```
 
 ### Cloud (OneDrive/Google Drive)

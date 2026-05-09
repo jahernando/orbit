@@ -465,25 +465,35 @@ orbit commit ["<mensaje>"]
 - Ejecuta reconciliación gsync: detecta renombramientos de citas en el markdown y migra IDs de Google
 - Push al remoto: `orbit_push` desde la terminal del sistema (fuera de la shell)
 
-### Google Calendar/Tasks — gsync
+### Calendar.app + Google Tasks — gsync
 
 ```bash
-orbit gsync                        # sincroniza tareas/hitos/eventos con Google
+orbit gsync                        # sincroniza eventos a Calendar.app + tareas/hitos a Google Tasks
 orbit gsync --dry-run              # preview sin escribir
-orbit gsync --list-calendars       # muestra calendarios disponibles
-orbit gsync --migrate-recurring    # migrar eventos recurrentes viejos a RRULE
+orbit gsync --list-calendars       # lista calendarios de Calendar.app
 ```
 
-- Tareas e hitos → Google Tasks (una lista por tipo: `🚀[📚Docencia]`, `🚀[🌀Investigacion]`, etc.)
-- Eventos → Google Calendar (un calendario por tipo, configurable en `google-sync.json`)
-- `"sync_tasks": false` en `google-sync.json` desactiva la sincronización de tareas (hitos siguen)
-- `"sync_milestones": false` desactiva la sincronización de hitos
-- Eventos recurrentes → serie RRULE en Google Calendar (una sola entrada en agenda.md, serie completa en Google)
-- Títulos en Google: `🚀[proyecto] descripción` (eventos y tareas)
-- Sincronización automática: al iniciar la shell + al añadir/completar/editar/eliminar items
-- IDs de sincronización en `.gsync-ids.json` por proyecto (no en agenda.md)
-- Items recurrentes usan clave estable (`desc::🔄recur`) para que al avanzar la fecha no se dupliquen en Google
-- Items sincronizados muestran `[G]` en agenda.md
+- **Eventos → Calendar.app vía AppleScript** (un calendar por tipo de proyecto, nombre tal cual aparece en Calendar.app). Sin OAuth ni credenciales — Calendar.app sincroniza después con el backend que tenga la cuenta (Google, iCloud, Exchange). Requiere Calendar.app abierto
+- **Tareas e hitos → Google Tasks** (legacy, sigue requiriendo `credentials.json` + `token.json`). Una lista por tipo
+- `"sync_tasks": false` en `calendar-sync.json` desactiva tareas (hitos siguen)
+- `"sync_milestones": false` desactiva hitos
+- Eventos recurrentes → serie con RRULE en Calendar.app (una sola entrada en agenda.md)
+- Títulos: `🚀[proyecto] descripción`
+- `--room` URL del evento se propaga a la propiedad `url` del evento de Calendar.app (botón clickable en la app móvil/desktop)
+- Sincronización automática: al iniciar la shell + tras añadir/completar/editar/eliminar items
+- IDs de sincronización en `.gsync-ids.json` por proyecto (los de eventos guardan el `uid` AppleScript de Calendar.app)
+- Items sincronizados muestran ☁️ en agenda.md
+- Config: `calendar-sync.json` (auto-migrado desde `google-sync.json` si existe). Calendars con nombre, no ID:
+
+```json
+{
+  "calendars": {
+    "investigacion": "🌀 Investigacion",
+    "default": "🌿 orbit-ps"
+  },
+  "task_lists": { "investigacion": "<google-tasklist-id>" }
+}
+```
 
 ### Cloud (OneDrive/Google Drive) — render y deliver
 
