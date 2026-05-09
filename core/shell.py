@@ -199,7 +199,7 @@ def run_shell(editor: str = ""):
         # Midnight check — auto-advance recurrentes + programar recordatorios del nuevo día
         if _date.today() != shell_start_date:
             print()
-            print("🌅 Nuevo día. Avanzando recurrentes y programando recordatorios...")
+            print("☀️ Nuevo día. Avanzando recurrentes y programando recordatorios...")
             from core.agenda_cmds import startup_advance_past_recurring
             from core.ring import schedule_new_format_reminders
             adv = startup_advance_past_recurring()
