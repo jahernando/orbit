@@ -269,31 +269,38 @@ class TestRunEmail:
             "source":  "mac",
         }
 
-    def test_creates_note_and_log_entry(self, env, monkeypatch):
+    def test_default_logs_email_link_without_note(self, env, monkeypatch):
+        """Default: log entry only, with the email link as primary; no .md note."""
         from core import email as email_mod
         monkeypatch.setattr(email_mod, "_capture_outlook_selected",
                             lambda: self._email())
         rc = email_mod.run_email("test-project", source="outlook")
         assert rc == 0
         log = (env["proj"] / "test-project-logbook.md").read_text()
-        assert "[Email: Capa 7 down]" in log
-        assert "✉️ [original](message://%3Cevt99@example.com%3E)" in log
+        # Email link is the primary [text](url) and the line starts with ✉️
+        assert "✉️ [Email: Capa 7 down](message://%3Cevt99@example.com%3E)" in log
+        # No "secondary" link of the form '✉️ [original](...)' since the
+        # primary IS the email
+        assert "[original](message://" not in log
         assert "#referencia #email" in log
         assert "[O]" in log
-        notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
-        assert len(notes) == 1
-        assert "2026-04-02" in notes[0].name
+        # No note created
+        assert not (env["proj"] / "notes" / "emails").exists()
 
-    def test_no_note_skips_md(self, env, monkeypatch):
+    def test_with_note_creates_md_and_double_link(self, env, monkeypatch):
+        """--note: also save .md note; log carries both note and email links."""
         from core import email as email_mod
         monkeypatch.setattr(email_mod, "_capture_outlook_selected",
                             lambda: self._email())
-        rc = email_mod.run_email("test-project", source="outlook", no_note=True)
+        rc = email_mod.run_email("test-project", source="outlook", with_note=True)
         assert rc == 0
-        assert not (env["proj"] / "notes" / "emails").exists()
         log = (env["proj"] / "test-project-logbook.md").read_text()
-        # Without a note, the message has no primary path link, only secondary.
-        assert "Email: Capa 7 down ✉️ [original](message://" in log
+        # Primary link is the note, secondary is the email
+        assert "[Email: Capa 7 down](./notes/emails/" in log
+        assert "✉️ [original](message://%3Cevt99@example.com%3E)" in log
+        notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
+        assert len(notes) == 1
+        assert "2026-04-02" in notes[0].name
 
     def test_capture_returns_none(self, env, monkeypatch):
         from core import email as email_mod
@@ -391,13 +398,26 @@ class TestEmlBackend:
         assert "no existe" in capsys.readouterr().out
 
     def test_run_email_with_eml(self, env, tmp_path):
+        """Default --eml: log entry with email link as primary; no md note."""
         from core.email import run_email
         eml = tmp_path / "msg.eml"
         _write_eml(eml, subject="From eml", msg_id="<eml-id@x.com>")
         rc = run_email("test-project", eml_path=str(eml))
         assert rc == 0
         log = (env["proj"] / "test-project-logbook.md").read_text()
-        assert "[Email: From eml]" in log
+        assert "[Email: From eml](message://%3Ceml-id@x.com%3E)" in log
+        # Without --note, no .md saved
+        assert not (env["proj"] / "notes" / "emails").exists()
+
+    def test_run_email_with_eml_and_note(self, env, tmp_path):
+        """--eml --note: also save .md with double link in log."""
+        from core.email import run_email
+        eml = tmp_path / "msg.eml"
+        _write_eml(eml, subject="From eml", msg_id="<eml-id@x.com>")
+        rc = run_email("test-project", eml_path=str(eml), with_note=True)
+        assert rc == 0
+        log = (env["proj"] / "test-project-logbook.md").read_text()
+        assert "[Email: From eml](./notes/emails/" in log
         assert "✉️ [original](message://%3Ceml-id@x.com%3E)" in log
         notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
         assert len(notes) == 1
@@ -705,8 +725,48 @@ Content-Type: text/calendar; charset=utf-8
         monkeypatch.setattr("builtins.input", lambda *_: "")
         rc = run_email("test-project", eml_path=str(eml), as_ev=True)
         assert rc == 0
-        # No email .md note should be created
+        # --ev still logs the email (no longer skips it); no md note unless --note
         assert not (env["proj"] / "notes" / "emails").exists()
+        log = (env["proj"] / "test-project-logbook.md").read_text()
+        assert "[Email: Invite](message://%3Cevt@x.com%3E)" in log
+        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        assert "Reunión WG12 de CNID" in agenda_md
+
+    def test_eml_with_ics_and_note(self, env, tmp_path, monkeypatch):
+        """--note + --ev: log with double link, save md, propose event."""
+        from core.email import run_email
+        eml = tmp_path / "invite.eml"
+        body = f"""From: alice@x.com
+To: bob@y.com
+Subject: Invite WG12
+Date: Wed, 07 May 2026 10:00:00 +0000
+Message-ID: <evt2@x.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BB"
+
+--BB
+Content-Type: text/plain; charset=utf-8
+
+invite text
+
+--BB
+Content-Type: text/calendar; charset=utf-8
+
+{_SAMPLE_ICS}
+--BB--
+"""
+        eml.write_bytes(body.encode("utf-8"))
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *_: "")
+        rc = run_email("test-project", eml_path=str(eml),
+                       with_note=True, as_ev=True)
+        assert rc == 0
+        # All three artefacts present:
+        log = (env["proj"] / "test-project-logbook.md").read_text()
+        assert "[Email: Invite WG12](./notes/emails/" in log
+        assert "✉️ [original](message://%3Cevt2@x.com%3E)" in log
+        notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
+        assert len(notes) == 1
         agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
         assert "Reunión WG12 de CNID" in agenda_md
 

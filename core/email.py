@@ -478,9 +478,17 @@ def _save_email_note(project_dir: Path, email: dict) -> Optional[Path]:
 def run_email(project: str, query: Optional[str] = None,
               msg_id: Optional[str] = None,
               source: Optional[str] = None,
-              no_note: bool = False,
+              with_note: bool = False,
               eml_path: Optional[str] = None,
               as_ev: bool = False) -> int:
+    """Capture an email; always log a link to the original.
+
+    Modifiers (combinable):
+      with_note=True  → also save the email body as notes/emails/<...>.md and
+                        add the markdown-note link as the primary link in the
+                        log entry (the original keeps the secondary slot)
+      as_ev=True      → also propose creating an event from the email content
+    """
     project_dir = find_project(project)
     if not project_dir:
         return 1
@@ -489,9 +497,8 @@ def run_email(project: str, query: Optional[str] = None,
         email = _capture_eml(Path(eml_path).expanduser())
         if not email:
             return 1
-        if as_ev:
-            return _emit_event_from_email(project_dir, email)
-        return _emit_email(project_dir, email, no_note=no_note)
+        return _process_email(project_dir, email, with_note=with_note,
+                              as_ev=as_ev)
 
     src = source or _default_source()
 
@@ -513,9 +520,21 @@ def run_email(project: str, query: Optional[str] = None,
 
     if not email:
         return 1
+    return _process_email(project_dir, email, with_note=with_note, as_ev=as_ev)
+
+
+def _process_email(project_dir: Path, email: dict,
+                   with_note: bool = False, as_ev: bool = False) -> int:
+    """Always log; optionally save md note; optionally propose event."""
+    rc = _emit_email(project_dir, email, with_note=with_note)
+    if rc != 0:
+        return rc
     if as_ev:
-        return _emit_event_from_email(project_dir, email)
-    return _emit_email(project_dir, email, no_note=no_note)
+        ev_rc = _emit_event_from_email(project_dir, email)
+        if ev_rc != 0:
+            # Event creation failed/cancelled — log entry is already written
+            return ev_rc
+    return 0
 
 
 # ── Event detection from email ────────────────────────────────────────────────
@@ -853,26 +872,44 @@ def _emit_event_from_email(project_dir: Path, email: dict) -> int:
     return _create_event_from_proposal(project_dir, confirmed)
 
 
-def _emit_email(project_dir: Path, email: dict, no_note: bool = False) -> int:
-    """Write the captured email's note (optional) and the logbook entry."""
+def _emit_email(project_dir: Path, email: dict, with_note: bool = False) -> int:
+    """Write the logbook entry (always) and the markdown note (only with_note).
+
+    The log link layout:
+      - default            → primary link is the email itself (message://<id>)
+      - with_note=True     → primary link is the .md note;
+                              the email original goes as secondary  ✉️
+    """
     note_link = None
-    if not no_note:
+    if with_note:
         note_path = _save_email_note(project_dir, email)
         if note_path:
             note_link = "./" + str(note_path.relative_to(project_dir))
 
     mail_link = f"message://%3C{email['msg_id']}%3E" if email.get("msg_id") else None
-    secondary = ("✉️", "original", mail_link) if mail_link else None
+
+    if note_link:
+        # With note: primary = note (📎 default), secondary = email original ✉️
+        path = note_link
+        secondary = ("✉️", "original", mail_link) if mail_link else None
+        emoji = None  # default 📎 from tipo=referencia
+    else:
+        # Default: primary = email original; use ✉️ to flag "this points at a mail"
+        path = mail_link
+        secondary = None
+        emoji = "✉️"
+
     add_orbit_entry(
         project_dir,
         f"Email: {email['subject']}",
         tipo="referencia",
-        path=note_link,
+        path=path,
         extra_tags=["email"],
         secondary_link=secondary,
+        emoji_override=emoji,
     )
 
-    print(f"✓ [{project_dir.name}] Email guardado: {email['subject']}")
+    print(f"✓ [{project_dir.name}] Email registrado: {email['subject']}")
     if note_link:
         print(f"  📝 {note_link}")
     if mail_link:
