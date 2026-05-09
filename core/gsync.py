@@ -1,22 +1,27 @@
-"""gsync — push Orbit tasks, milestones and events to Google Tasks/Calendar.
+"""gsync — push Orbit tasks, milestones and events to local apps + Google.
 
-  orbit gsync                    # push pending items to Google
+  orbit gsync                    # push pending items
   orbit gsync --dry-run          # preview without writing
-  orbit gsync --list-calendars   # show available Google Calendars with IDs
+  orbit gsync --list-calendars   # show available Calendar.app calendars
 
 Architecture:
+  - Events → Calendar.app via AppleScript (one calendar per project type)
+              The calendar's backing account (Google, iCloud, Exchange…)
+              is irrelevant — orbit just talks to Calendar.app.
   - Tasks + Milestones → Google Tasks API (one TaskList per project type)
-  - Events → Google Calendar Events API (one calendar per project type)
+              Legacy; will move to Reminders.app via AppleScript later.
   - Orbit is the source of truth (one-directional sync)
   - Sync IDs stored in .gsync-ids.json per project (not in agenda.md)
   - Synced items show ☁️ marker in agenda.md
-  - Recurring events use RRULE in Google Calendar
+  - Recurring events use RRULE
   - Snapshots stored in .gsync-ids.json for drift detection
 
-Config file: google-sync.json in ORBIT_HOME
+Config file: calendar-sync.json in ORBIT_HOME (auto-migrated from
+google-sync.json on first read).
 """
 
 import json
+import subprocess
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -27,7 +32,8 @@ from core.config import iter_project_dirs
 from core.project import _find_new_project, _is_new_project, _read_project_meta
 from core.agenda_cmds import _read_agenda, _write_agenda
 
-CONFIG_PATH = ORBIT_HOME / "google-sync.json"
+CONFIG_PATH        = ORBIT_HOME / "calendar-sync.json"
+_LEGACY_CONFIG     = ORBIT_HOME / "google-sync.json"
 
 _IDS_FILE = ".gsync-ids.json"
 
@@ -95,10 +101,17 @@ def _normalize_tipo(tipo_label: str) -> str:
 
 
 def _load_config() -> dict:
-    """Load google-sync.json config. Create default if missing."""
+    """Load calendar-sync.json config. Migrate from google-sync.json if needed."""
     if CONFIG_PATH.exists():
         return json.loads(CONFIG_PATH.read_text())
-    # Generate default config
+    if _LEGACY_CONFIG.exists():
+        # One-time auto-migration; user is told to update calendar names.
+        config = json.loads(_LEGACY_CONFIG.read_text())
+        _save_config(config)
+        print(f"ℹ️  Config migrada: {_LEGACY_CONFIG.name} → {CONFIG_PATH.name}")
+        print(f"   Cambia los IDs de Google Calendar por los nombres tal como")
+        print(f"   aparecen en Calendar.app (e.g. \"🚀 orbit-ws\").")
+        return config
     config = {
         "calendars": {},
         "task_lists": {},
@@ -179,7 +192,144 @@ def _item_description(item: dict, base_desc: str, html: bool = False) -> str:
         return f"{notes_text}\n\n{base_desc}"
 
 
-# ── Google API helpers ──────────────────────────────────────────────────────
+# ── Calendar.app (AppleScript) helpers ─────────────────────────────────────
+
+def _osa(script: str, timeout: int = 30) -> Optional[str]:
+    """Run osascript and return stdout (stripped) or None on error."""
+    try:
+        r = subprocess.run(["osascript", "-e", script],
+                           capture_output=True, text=True, timeout=timeout)
+        if r.returncode != 0:
+            return None
+        return r.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
+def _calendar_app_running() -> bool:
+    out = _osa('tell application "System Events" to (exists process "Calendar")')
+    return out == "true"
+
+
+def _esc(s: str) -> str:
+    """Escape a string for AppleScript double-quoted literal."""
+    return (s or "").replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _build_date_var(var: str, iso_dt: str, all_day: bool = False) -> str:
+    """AppleScript snippet that sets *var* to the given ISO date/time."""
+    if "T" in iso_dt:
+        date_part, time_part = iso_dt.split("T", 1)
+        h, m = (time_part.split(":") + ["0", "0"])[:2]
+    else:
+        date_part = iso_dt
+        h, m = "0", "0"
+    y, mo, d = date_part.split("-")
+    return (
+        f'set {var} to current date\n'
+        f'        set year of {var} to {int(y)}\n'
+        f'        set month of {var} to {int(mo)}\n'
+        f'        set day of {var} to {int(d)}\n'
+        f'        set hours of {var} to {int(h)}\n'
+        f'        set minutes of {var} to {int(m)}\n'
+        f'        set seconds of {var} to 0'
+    )
+
+
+def _list_calendar_app_calendars() -> list:
+    """Return list of calendar titles available in Calendar.app."""
+    out = _osa('tell application "Calendar" to get title of every calendar')
+    if not out:
+        return []
+    # AppleScript returns "name1, name2, name3"
+    return [n.strip() for n in out.split(",") if n.strip()]
+
+
+def _create_calendar_event(calendar_name: str, props: dict) -> Optional[str]:
+    """Create event in Calendar.app and return its uid. None on error."""
+    cal = _esc(calendar_name)
+    sumr = _esc(props.get("summary", ""))
+    desc = _esc(props.get("description", ""))
+    loc  = _esc(props.get("location", ""))
+    url  = _esc(props.get("url", ""))
+    rrule = _esc(props.get("rrule", ""))
+
+    extras = []
+    if desc:  extras.append(f'set description of newEv to "{desc}"')
+    if loc:   extras.append(f'set location of newEv to "{loc}"')
+    if url:   extras.append(f'set url of newEv to "{url}"')
+    if rrule: extras.append(f'set recurrence of newEv to "{rrule}"')
+    extras_block = "\n        ".join(extras) or "-- no extras"
+
+    script = (
+        f'tell application "Calendar"\n'
+        f'    tell calendar "{cal}"\n'
+        f'        {_build_date_var("startD", props["start_iso"])}\n'
+        f'        {_build_date_var("endD", props["end_iso"])}\n'
+        f'        set newEv to make new event with properties '
+        f'{{summary:"{sumr}", start date:startD, end date:endD}}\n'
+        f'        {extras_block}\n'
+        f'        return uid of newEv\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    return _osa(script)
+
+
+def _update_calendar_event(uid: str, calendar_name: str, props: dict) -> bool:
+    """Update an existing event by uid. Returns True on success."""
+    cal = _esc(calendar_name)
+    uid_esc = _esc(uid)
+    sumr = _esc(props.get("summary", ""))
+    desc = _esc(props.get("description", ""))
+    loc  = _esc(props.get("location", ""))
+    url  = _esc(props.get("url", ""))
+    rrule = _esc(props.get("rrule", ""))
+
+    script = (
+        f'tell application "Calendar"\n'
+        f'    tell calendar "{cal}"\n'
+        f'        try\n'
+        f'            set ev to first event whose uid is "{uid_esc}"\n'
+        f'        on error\n'
+        f'            return "missing"\n'
+        f'        end try\n'
+        f'        set summary of ev to "{sumr}"\n'
+        f'        {_build_date_var("startD", props["start_iso"])}\n'
+        f'        {_build_date_var("endD", props["end_iso"])}\n'
+        f'        set start date of ev to startD\n'
+        f'        set end date of ev to endD\n'
+        f'        set description of ev to "{desc}"\n'
+        f'        set location of ev to "{loc}"\n'
+        f'        set url of ev to "{url}"\n'
+        f'        set recurrence of ev to "{rrule}"\n'
+        f'        return "ok"\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    return _osa(script) == "ok"
+
+
+def _delete_calendar_event(uid: str, calendar_name: str) -> bool:
+    """Delete event by uid. Returns True if deleted (or already absent)."""
+    cal = _esc(calendar_name)
+    uid_esc = _esc(uid)
+    script = (
+        f'tell application "Calendar"\n'
+        f'    tell calendar "{cal}"\n'
+        f'        try\n'
+        f'            delete (first event whose uid is "{uid_esc}")\n'
+        f'            return "ok"\n'
+        f'        on error\n'
+        f'            return "missing"\n'
+        f'        end try\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    return _osa(script) in ("ok", "missing")
+
+
+# ── Google API helpers (legacy: tasks/milestones only) ─────────────────────
 
 def _get_tasks_service():
     from core.calendar_sync import _build_service
@@ -187,6 +337,9 @@ def _get_tasks_service():
 
 
 def _get_calendar_service():
+    """DEPRECATED — kept only because run_gsync_migrate_recurring (one-shot
+    legacy migration) still references it. Events now flow through
+    Calendar.app via AppleScript."""
     from core.calendar_sync import _build_service
     return _build_service("calendar", "v3")
 
@@ -338,14 +491,17 @@ def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
             skipped += 1
             continue
 
-        if new_id and not item.get(temp_key):
+        old_id = item.get(temp_key)
+        if new_id and new_id != old_id:
+            # Either no prior id (true create) or fallback-recreate (relink to fresh uid).
+            # Always overwrite so the saved id matches what's actually in the backend.
             ids.setdefault(key, {})[id_key] = new_id
             ids[key]["snapshot"] = _make_snapshot(item)
             item["synced"] = True
             created += 1
             changed = True
             ids_changed = True
-        elif item.get(temp_key):
+        elif old_id:
             ids.setdefault(key, {})["snapshot"] = _make_snapshot(item)
             updated += 1
             ids_changed = True
@@ -462,123 +618,105 @@ def _recur_to_rrule(recur: str, until: str = None) -> list:
     return [rule]
 
 
-# ── Event sync ──────────────────────────────────────────────────────────────
+# ── Event sync (Calendar.app via AppleScript) ──────────────────────────────
 
-def _sync_one_event(service, calendar_id: str, ev: dict,
-                    project_name: str, description: str,
-                    dry_run: bool) -> Optional[str]:
-    """Sync a single event to Google Calendar. Returns Google Calendar event ID."""
+def _ev_props_for_calendar_app(ev: dict, project_name: str,
+                               base_description: str) -> dict:
+    """Build the property dict consumed by _create/_update_calendar_event."""
+    from datetime import timedelta, datetime
+
     summary = f"{ORBIT_PROMPT}[{project_name}] {ev['desc']}"
-
     start_date = ev["date"]
-    from datetime import timedelta
-
-    # Build start/end for Google Calendar API
     time_val = ev.get("time")
-    if time_val:
-        # Timed event — use dateTime
-        tz = "Europe/Madrid"
-        parts = time_val.split("-")
-        start_time = parts[0]   # HH:MM
-        gcal_start = {"dateTime": f"{start_date}T{start_time}:00", "timeZone": tz}
-        if len(parts) == 2:
-            end_time = parts[1]
-            end_dt_date = ev.get("end") or start_date
-            gcal_end = {"dateTime": f"{end_dt_date}T{end_time}:00", "timeZone": tz}
-        else:
-            # No end time — default to 1 hour
-            from datetime import datetime
-            dt = datetime.fromisoformat(f"{start_date}T{start_time}:00")
-            dt_end = dt + timedelta(hours=1)
-            gcal_end = {"dateTime": dt_end.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": tz}
-    else:
-        # All-day event — use date (Google uses exclusive end)
-        if ev.get("end"):
-            end_d = date.fromisoformat(ev["end"])
-            end_date = (end_d + timedelta(days=1)).isoformat()
-        else:
-            end_d = date.fromisoformat(start_date)
-            end_date = (end_d + timedelta(days=1)).isoformat()
-        gcal_start = {"date": start_date}
-        gcal_end = {"date": end_date}
 
-    body = {
-        "summary": summary,
-        "description": _item_description(ev, description, html=True),
-        "start": gcal_start,
-        "end": gcal_end,
+    if time_val:
+        parts = time_val.split("-")
+        start_time = parts[0]
+        start_iso = f"{start_date}T{start_time}"
+        if len(parts) == 2:
+            end_iso = f"{ev.get('end') or start_date}T{parts[1]}"
+        else:
+            dt = datetime.fromisoformat(f"{start_date}T{start_time}:00")
+            end_dt = dt + timedelta(hours=1)
+            end_iso = end_dt.strftime("%Y-%m-%dT%H:%M")
+    else:
+        # All-day: AppleScript needs explicit start/end dates; use 00:00→23:59
+        start_iso = f"{start_date}T00:00"
+        end_d = ev.get("end") or start_date
+        end_iso = f"{end_d}T23:59"
+
+    rrule_list = _recur_to_rrule(ev["recur"], ev.get("until")) if ev.get("recur") else []
+    # gsync's _recur_to_rrule returns ['RRULE:...'] — strip the prefix for AppleScript
+    rrule = rrule_list[0].removeprefix("RRULE:") if rrule_list else ""
+
+    # Pull a room URL out of the event notes (📋/🚪 prefixes) into the
+    # event's `url` property — Calendar.app shows it as a clickable button.
+    from core.agenda_cmds import event_room_urls, event_agenda_urls
+    rooms = event_room_urls(ev)
+    agendas = event_agenda_urls(ev)
+    url = rooms[0] if rooms else (agendas[0] if agendas else "")
+
+    return {
+        "summary":     summary,
+        "start_iso":   start_iso,
+        "end_iso":     end_iso,
+        "description": _item_description(ev, base_description, html=False),
+        "url":         url,
+        "rrule":       rrule,
     }
 
-    # Add RRULE for recurring events
-    if ev.get("recur"):
-        rrule = _recur_to_rrule(ev["recur"], ev.get("until"))
-        if rrule:
-            body["recurrence"] = rrule
 
-    gcal_id = ev.get("_gcal_id")  # looked up from .gsync-ids.json
-    if gcal_id:
+def _sync_one_event(calendar_name: str, ev: dict,
+                    project_name: str, description: str,
+                    dry_run: bool) -> Optional[str]:
+    """Sync one event to Calendar.app. Returns the AppleScript-side uid."""
+    props = _ev_props_for_calendar_app(ev, project_name, description)
+    summary = props["summary"]
+    uid = ev.get("_gcal_id")
+    if uid:
         if dry_run:
-            print(f"  ~ actualizar: 📅 {start_date} — {summary}")
-            return gcal_id
-        try:
-            # Use update (PUT) instead of patch: Google Calendar rejects patch
-            # when switching between all-day (date) and timed (dateTime) because
-            # the old start/end fields linger. update replaces the full resource
-            # so we fetch first, then overwrite start/end completely.
-            existing = service.events().get(
-                calendarId=calendar_id, eventId=gcal_id
-            ).execute()
-            existing["summary"] = body["summary"]
-            existing["description"] = body["description"]
-            existing["start"] = body["start"]
-            existing["end"] = body["end"]
-            # Update recurrence (add, change, or remove)
-            if "recurrence" in body:
-                existing["recurrence"] = body["recurrence"]
-            else:
-                existing.pop("recurrence", None)
-            service.events().update(
-                calendarId=calendar_id, eventId=gcal_id, body=existing
-            ).execute()
-            return gcal_id
-        except Exception as e:
-            print(f"  ⚠️  Error actualizando evento '{summary}': {e}")
-            return gcal_id
-    else:
+            print(f"  ~ actualizar: 📅 {ev['date']} — {summary}")
+            return uid
+        if _update_calendar_event(uid, calendar_name, props):
+            return uid
+        # If update failed (e.g. the user deleted the event in Calendar.app),
+        # fall through to creating a fresh one so re-sync repairs the link.
+        print(f"  ⚠️  No se encontró evento uid={uid}; lo recreo")
+        uid = None
+    if not uid:
         if dry_run:
-            print(f"  ~ crear: 📅 {start_date} — {summary}")
+            print(f"  ~ crear: 📅 {ev['date']} — {summary}")
             return None
-        try:
-            result = service.events().insert(
-                calendarId=calendar_id, body=body
-            ).execute()
-            return result["id"]
-        except Exception as e:
-            print(f"  ⚠️  Error creando evento '{summary}': {e}")
-            return None
+        new_uid = _create_calendar_event(calendar_name, props)
+        if not new_uid:
+            print(f"  ⚠️  Error creando evento '{summary}' en \"{calendar_name}\"")
+        return new_uid
 
 
-def _sync_events_for_project(cal_service, project_dir: Path,
-                             config: dict, dry_run: bool) -> tuple:
-    """Sync all events for a project. Returns (created, updated, skipped)."""
+def _sync_events_for_project(project_dir: Path, config: dict,
+                             dry_run: bool) -> tuple:
+    """Sync all events for a project to Calendar.app.
+
+    Returns (created, updated, skipped).
+    """
     tipo = _get_project_tipo(project_dir)
-    calendar_id = config.get("calendars", {}).get(tipo)
-    if not calendar_id:
-        calendar_id = config.get("calendars", {}).get("default")
-    if not calendar_id:
+    calendar_name = config.get("calendars", {}).get(tipo)
+    if not calendar_name:
+        calendar_name = config.get("calendars", {}).get("default")
+    if not calendar_name:
         return 0, 0, 0
 
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
     project_name = project_dir.name
-    description = _project_description(project_dir, config, html=True)
+    description = _project_description(project_dir, config, html=False)
 
     ids = _load_ids(project_dir)
     _migrate_recurring_keys(data["events"], ids)
 
     seen_recur_keys = set()
     sync_fn = lambda ev: _sync_one_event(
-        cal_service, calendar_id, ev, project_name, description, dry_run)
+        calendar_name, ev, project_name, description, dry_run)
     created, updated, skipped, changed, ids_changed = _sync_item_loop(
         data["events"], sync_fn, "gcal_id", "evento",
         project_name, ids, seen_recur_keys, dry_run)
@@ -594,9 +732,15 @@ def _sync_events_for_project(cal_service, project_dir: Path,
 # ── List calendars ──────────────────────────────────────────────────────────
 
 def run_gsync_migrate_recurring(dry_run: bool = False) -> int:
-    """One-time migration: mark old single-event recurring items in Google Calendar
-    with ⚠️ ANTIGUO prefix and clear their gcal_id so gsync re-creates them as RRULE series.
+    """One-time legacy migration that needed Google Calendar API.
+
+    No-op now that events flow through Calendar.app. Kept for argparse
+    compatibility; returns 0 immediately.
     """
+    print("ℹ️  Esta migración aplicaba a la antigua sincronización con Google "
+          "Calendar API. Con Calendar.app no se necesita; ignorada.")
+    return 0
+    # ── unreachable: original Google-API body retained below for reference ──
     config = _load_config()
     cal_service = _get_calendar_service()
     if not cal_service:
@@ -809,52 +953,55 @@ def reconcile_gsync_renames() -> list:
 
 
 def run_list_calendars() -> int:
-    """List available Google Calendars with their IDs."""
-    service = _get_calendar_service()
-    if not service:
+    """List calendars available in Calendar.app."""
+    if not _calendar_app_running():
+        print("⚠️  Calendar.app no está corriendo. Ábrela y reintenta.")
         return 1
-
-    calendars = service.calendarList().list().execute().get("items", [])
-    print("Calendarios de Google disponibles:")
+    cals = _list_calendar_app_calendars()
+    if not cals:
+        print("⚠️  No se encontraron calendarios en Calendar.app.")
+        return 1
+    print("Calendarios disponibles en Calendar.app:")
     print("─" * 60)
-    for cal in sorted(calendars, key=lambda c: c.get("summary", "")):
-        primary = " (primary)" if cal.get("primary") else ""
-        print(f"  {cal.get('summary', '?')}{primary}")
-        print(f"    ID: {cal['id']}")
+    for name in cals:
+        print(f"  {name}")
     print("─" * 60)
-    print(f"\nCopia los IDs al fichero de configuración:")
-    print(f"  {CONFIG_PATH}")
+    print(f"\nUsa el nombre tal cual aparece arriba en {CONFIG_PATH}:")
+    print('  "calendars": {')
+    print('    "investigacion": "🌀 Investigacion",')
+    print('    "default": "🌿 orbit-ps"')
+    print('  }')
     return 0
 
 
 # ── Main entry point ────────────────────────────────────────────────────────
 
 def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
-    """Push Orbit tasks/milestones/events to Google Tasks/Calendar."""
+    """Push Orbit events to Calendar.app and tasks/milestones to Google Tasks."""
     if list_calendars:
         return run_list_calendars()
 
     config = _load_config()
 
-    # Check if calendars are configured
     has_calendars = any(v for v in config.get("calendars", {}).values())
+    cal_app_ok = _calendar_app_running() if has_calendars else False
+    if has_calendars and not cal_app_ok:
+        print("⚠️  Calendar.app no está corriendo — los eventos no se sincronizan.")
+        print("   Abre Calendar.app y vuelve a ejecutar.")
+
     if not has_calendars:
         print(f"⚠️  No hay calendarios configurados en {CONFIG_PATH}")
-        print(f"   Ejecuta: orbit gsync --list-calendars")
-        print(f"   Y luego edita {CONFIG_PATH} con los IDs de tus calendarios.")
-        print(f"   Los eventos se sincronizarán cuando configures los calendarios.")
-        print(f"   Las tareas/hitos se sincronizan igualmente.\n")
+        print(f"   Ejecuta: orbit gsync --list-calendars  (lista Calendar.app)")
+        print(f"   Y edita {CONFIG_PATH} con los nombres de tus calendarios.\n")
 
-    # Get services
     do_gtasks_api = _sync_tasks_enabled(config) or _sync_milestones_enabled(config)
     tasks_service = _get_tasks_service() if do_gtasks_api else None
-    cal_service = _get_calendar_service() if has_calendars else None
-    if not tasks_service and not cal_service:
-        print("⚠️  No hay servicios configurados (tasks/milestones desactivados, sin calendarios)")
+    if not tasks_service and not (has_calendars and cal_app_ok):
+        print("⚠️  Nada que sincronizar (Calendar.app no disponible y tasks desactivadas)")
         return 1
 
     label = "  [dry-run]" if dry_run else ""
-    print(f"Sincronizando Orbit → Google{label}")
+    print(f"Sincronizando Orbit → Calendar.app + Google Tasks{label}")
     print("─" * 50)
 
     dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
@@ -866,7 +1013,7 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
     for project_dir in dirs:
         tipo = _get_project_tipo(project_dir)
 
-        # Tasks + milestones
+        # Tasks + milestones (Google Tasks, legacy)
         if tasks_service:
             c, u, s = _sync_tasks_for_project(tasks_service, project_dir, config, dry_run)
             if c or u:
@@ -875,20 +1022,18 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
             total_updated += u
             total_skipped += s
 
-        # Events
-        if cal_service:
-            calendar_id = config.get("calendars", {}).get(tipo)
-            if not calendar_id:
-                calendar_id = config.get("calendars", {}).get("default")
-            if not calendar_id:
-                # Check if project has events
+        # Events (Calendar.app via AppleScript)
+        if has_calendars and cal_app_ok:
+            calendar_name = config.get("calendars", {}).get(tipo)
+            if not calendar_name:
+                calendar_name = config.get("calendars", {}).get("default")
+            if not calendar_name:
                 agenda_path = resolve_file(project_dir, "agenda")
                 data = _read_agenda(agenda_path)
                 if data["events"]:
                     no_calendar_tipos.add(tipo or project_dir.name)
             else:
-                c, u, s = _sync_events_for_project(cal_service, project_dir,
-                                                    config, dry_run)
+                c, u, s = _sync_events_for_project(project_dir, config, dry_run)
                 if c or u:
                     print(f"  [{project_dir.name}] eventos: {c} nuevos, {u} actualizados")
                 events_created += c
@@ -919,9 +1064,16 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
 # ── Helpers for hooks ──────────────────────────────────────────────────────
 
 def _is_gsync_configured() -> bool:
-    """Check if gsync is ready (credentials + config exist)."""
+    """True if any backend is usable (Calendar.app for events, OR Google for tasks)."""
+    if not CONFIG_PATH.exists():
+        return False
+    config = _load_config()
+    has_calendars = any(v for v in config.get("calendars", {}).values())
+    if has_calendars:
+        return True
+    # No event sync configured — but tasks via Google may still be set up
     from core.calendar_sync import CREDENTIALS_PATH, TOKEN_PATH
-    return CREDENTIALS_PATH.exists() and TOKEN_PATH.exists() and CONFIG_PATH.exists()
+    return CREDENTIALS_PATH.exists() and TOKEN_PATH.exists()
 
 
 # ── Delete from Google ──────────────────────────────────────────────────────
@@ -943,17 +1095,13 @@ def delete_gcal_event(project_dir: Path, ev: dict) -> None:
         try:
             config = _load_config()
             tipo = _get_project_tipo(project_dir)
-            cal_id = config.get("calendars", {}).get(tipo)
-            if not cal_id:
-                cal_id = config.get("calendars", {}).get("default")
-            if not cal_id:
+            cal_name = config.get("calendars", {}).get(tipo)
+            if not cal_name:
+                cal_name = config.get("calendars", {}).get("default")
+            if not cal_name:
                 return
-            service = _get_calendar_service()
-            if service:
-                service.events().delete(
-                    calendarId=cal_id, eventId=gcal_id
-                ).execute()
-            # Remove from IDs file
+            if _calendar_app_running():
+                _delete_calendar_event(gcal_id, cal_name)
             ids_data = _load_ids(project_dir)
             ids_data.pop(key, None)
             _save_ids(project_dir, ids_data)
@@ -1020,18 +1168,17 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                 item.pop("_gtask_id", None)
 
             elif kind == "event":
-                cal_id = config.get("calendars", {}).get(tipo)
-                if not cal_id:
-                    cal_id = config.get("calendars", {}).get("default")
-                if not cal_id:
+                cal_name = config.get("calendars", {}).get(tipo)
+                if not cal_name:
+                    cal_name = config.get("calendars", {}).get("default")
+                if not cal_name:
                     return
-                service = _get_calendar_service()
-                if not service:
+                if not _calendar_app_running():
                     return
                 project_name = project_dir.name
-                description = _project_description(project_dir, config, html=True)
+                description = _project_description(project_dir, config, html=False)
                 item["_gcal_id"] = ids.get(key, {}).get("gcal_id")
-                new_id = _sync_one_event(service, cal_id, item,
+                new_id = _sync_one_event(cal_name, item,
                                          project_name, description,
                                          dry_run=False)
                 if new_id and not item.get("_gcal_id"):
@@ -1145,8 +1292,8 @@ def gsync_background() -> "threading.Thread | None":
             do_gtasks_api = _sync_tasks_enabled(config) or _sync_milestones_enabled(config)
 
             tasks_service = _get_tasks_service() if do_gtasks_api else None
-            cal_service = _get_calendar_service() if has_calendars else None
-            if not tasks_service and not cal_service:
+            cal_app_ok = _calendar_app_running() if has_calendars else False
+            if not tasks_service and not (has_calendars and cal_app_ok):
                 return
 
             dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
@@ -1157,18 +1304,18 @@ def gsync_background() -> "threading.Thread | None":
                     c, u, _ = _sync_tasks_for_project(
                         tasks_service, project_dir, config, dry_run=False)
                     total += c + u
-                if cal_service:
+                if has_calendars and cal_app_ok:
                     tipo = _get_project_tipo(project_dir)
-                    cal_id = config.get("calendars", {}).get(tipo)
-                    if not cal_id:
-                        cal_id = config.get("calendars", {}).get("default")
-                    if cal_id:
+                    cal_name = config.get("calendars", {}).get(tipo)
+                    if not cal_name:
+                        cal_name = config.get("calendars", {}).get("default")
+                    if cal_name:
                         c, u, _ = _sync_events_for_project(
-                            cal_service, project_dir, config, dry_run=False)
+                            project_dir, config, dry_run=False)
                         total += c + u
 
             if total:
-                print(f"\n  ☁️  gsync: {total} items sincronizados con Google")
+                print(f"\n  ☁️  gsync: {total} items sincronizados")
 
         except Exception:
             pass  # fail silently — user can run gsync manually
