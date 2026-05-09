@@ -186,6 +186,8 @@ def _collect_agenda(start, end, include_federated=True):
     dirs = [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
     collected = _collect_data(dirs, start, end, dated_only=True)
 
+    from core.agenda_cmds import event_indicators
+
     by_day = {}  # date_str → [(sort_key, icon, time, desc, proj_link)]
     for project_dir, tasks, events, milestones in collected:
         proj = _project_link(project_dir)
@@ -193,8 +195,9 @@ def _collect_agenda(start, end, include_federated=True):
             day = e.get("date", "")
             time = e.get("time", "")
             key = time if time else "zz"
+            ind = event_indicators(e, markdown=True)
             by_day.setdefault(day, []).append(
-                (key, "📅", time, e["desc"], proj))
+                (key, "📅", time, f"{e['desc']}{ind}", proj))
         for m in milestones:
             day = m.get("date", "")
             overdue = ""

@@ -784,6 +784,7 @@ def _format_item_line(kind, item, proj_tag, markdown=False):
     check = "☐" if markdown else "[ ]"
 
     if kind == "event":
+        from core.agenda_cmds import event_indicators
         time_s = f" {item['time']}" if item.get("time") else ""
         end_s = f" → {item['end']}" if item.get("end") else ""
         recur_s = ""
@@ -791,7 +792,8 @@ def _format_item_line(kind, item, proj_tag, markdown=False):
             recur_s = f" 🔄{item['recur']}"
             if item.get("until"):
                 recur_s += f":{item['until']}"
-        return f"{pfx}📅{time_s} — {item['desc']}{end_s}{recur_s}  {proj_tag}"
+        ind = event_indicators(item, markdown=markdown)
+        return f"{pfx}📅{time_s} — {item['desc']}{end_s}{recur_s}{ind}  {proj_tag}"
 
     elif kind == "milestone":
         overdue = ""
@@ -823,6 +825,7 @@ def _item_to_table_row(kind, item, proj_tag):
     """Convert an agenda item to a table row: (icon, time, desc, proj)."""
     today = date.today()
     if kind == "event":
+        from core.agenda_cmds import event_indicators
         time_s = item.get("time", "")
         end_s = f" → {item['end']}" if item.get("end") else ""
         recur_s = ""
@@ -830,7 +833,8 @@ def _item_to_table_row(kind, item, proj_tag):
             recur_s = f" 🔄{item['recur']}"
             if item.get("until"):
                 recur_s += f":{item['until']}"
-        return "📅", time_s, f"{item['desc']}{end_s}{recur_s}", proj_tag
+        ind = event_indicators(item, markdown=True)
+        return "📅", time_s, f"{item['desc']}{end_s}{recur_s}{ind}", proj_tag
     elif kind == "milestone":
         overdue = ""
         if item.get("date"):

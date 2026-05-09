@@ -1718,6 +1718,79 @@ class TestUpsertEmojiNote:
         assert out == ["📋 https://agenda"]
 
 
+class TestEventIndicators:
+    def test_no_notes_returns_empty(self):
+        from core.agenda_cmds import event_indicators
+        assert event_indicators({}) == ""
+        assert event_indicators({"notes": []}) == ""
+
+    def test_only_room_terminal(self):
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["plain description", "🚪 https://zoom"]}
+        assert event_indicators(item, markdown=False) == " 🚪"
+
+    def test_room_and_agenda_terminal(self):
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["📋 https://x", "🚪 https://y"]}
+        assert event_indicators(item, markdown=False) == " 🚪 📋"
+
+    def test_markdown_links(self):
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["📋 https://indico", "🚪 https://zoom"]}
+        out = event_indicators(item, markdown=True)
+        assert out == " [🚪](https://zoom) [📋](https://indico)"
+
+    def test_multiple_rooms_markdown(self):
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["🚪 https://zoom1", "🚪 https://zoom2"]}
+        out = event_indicators(item, markdown=True)
+        assert out == " [🚪](https://zoom1) [🚪](https://zoom2)"
+
+    def test_url_helpers(self):
+        from core.agenda_cmds import event_room_urls, event_agenda_urls
+        item = {"notes": ["desc libre", "📋 https://a", "🚪 https://r1",
+                          "🚪 https://r2"]}
+        assert event_room_urls(item) == ["https://r1", "https://r2"]
+        assert event_agenda_urls(item) == ["https://a"]
+
+    def test_format_item_line_terminal_includes_emojis(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        from core.agenda_view import _format_item_line
+        run_ev_add("test-project", "Mtg", "2030-05-10", time_val="12:00",
+                   agenda="https://x", room="https://y")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        line = _format_item_line("event", ev, "[p]", markdown=False)
+        assert "🚪" in line and "📋" in line
+        assert "https://x" not in line  # no URL in terminal output
+
+    def test_format_item_line_markdown_includes_links(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        from core.agenda_view import _format_item_line
+        run_ev_add("test-project", "Mtg", "2030-05-10", time_val="12:00",
+                   agenda="https://indico/x", room="https://zoom/y")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        line = _format_item_line("event", ev, "[p]", markdown=True)
+        assert "[🚪](https://zoom/y)" in line
+        assert "[📋](https://indico/x)" in line
+
+    def test_table_row_includes_md_links(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        from core.agenda_view import _item_to_table_row
+        run_ev_add("test-project", "Mtg", "2030-05-10", time_val="12:00",
+                   room="https://zoom/y")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        _, _, desc, _ = _item_to_table_row("event", ev, "[p]")
+        assert "[🚪](https://zoom/y)" in desc
+
+    def test_event_without_room_or_agenda_no_indicator(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        from core.agenda_view import _format_item_line
+        run_ev_add("test-project", "Plain mtg", "2030-05-10", time_val="12:00")
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        line = _format_item_line("event", ev, "[p]", markdown=False)
+        assert "🚪" not in line and "📋" not in line
+
+
 class TestEventAgendaRoomFlags:
     def test_add_with_room(self, proj, projects_dir):
         from core.agenda_cmds import run_ev_add, _read_agenda

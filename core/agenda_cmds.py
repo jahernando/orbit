@@ -922,6 +922,45 @@ _ROOM_NOTE_PREFIX   = "🚪 "
 _STRUCTURED_PREFIXES = (_AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX)
 
 
+def event_room_urls(item: dict) -> list:
+    """Return list of room URLs (🚪) attached to an event item."""
+    return [n[len(_ROOM_NOTE_PREFIX):] for n in (item.get("notes") or [])
+            if n.startswith(_ROOM_NOTE_PREFIX)]
+
+
+def event_agenda_urls(item: dict) -> list:
+    """Return list of agenda URLs (📋) attached to an event item."""
+    return [n[len(_AGENDA_NOTE_PREFIX):] for n in (item.get("notes") or [])
+            if n.startswith(_AGENDA_NOTE_PREFIX)]
+
+
+def event_indicators(item: dict, markdown: bool = False) -> str:
+    """Return a leading-space suffix flagging room/agenda presence on an event.
+
+    - markdown=False  → ' 🚪 📋'              (terminal-friendly, plain emoji)
+    - markdown=True   → ' [🚪](url) [📋](url)' (clickable in HTML/Obsidian)
+
+    Multiple rooms/agendas all appear (one bracketed link each).
+    Returns empty string if no structured notes.
+    """
+    rooms = event_room_urls(item)
+    agendas = event_agenda_urls(item)
+    if not rooms and not agendas:
+        return ""
+    parts = []
+    if markdown:
+        for u in rooms:
+            parts.append(f"[🚪]({u})")
+        for u in agendas:
+            parts.append(f"[📋]({u})")
+    else:
+        if rooms:
+            parts.append("🚪")
+        if agendas:
+            parts.append("📋")
+    return " " + " ".join(parts)
+
+
 def _upsert_emoji_note(notes: list, prefix: str, value: Optional[str]) -> list:
     """Insert/replace/remove a note line that starts with *prefix*.
 
