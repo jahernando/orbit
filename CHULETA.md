@@ -192,15 +192,15 @@ orbit note drop   <project> [<file>] [--force]
 ## email — capturar un email a un proyecto
 
 ```bash
-orbit email <project> [--no-note] [--ev] [--mail|--outlook|--gmail|--eml PATH]
+orbit email <project> [--note] [--ev] [--mail|--outlook|--gmail|--eml PATH]
 ```
 
-- **Default**: guarda el email como `notes/emails/YYYY-MM-DD-<slug>.md` (frontmatter + cuerpo) y añade entry al logbook con doble link: la nota md (inmortal) + `message://<id>` (original; clickeable abre Mail.app, puede romperse si borras el email)
+- **Default**: añade entry al logbook con link al email original (`message://<id>`, abre Mail.app). Sin nota md.
 - Tag de log: `#referencia #email [O]`
 
-**Modos**:
-- `--no-note` — solo entry en log con link al original; sin .md
-- `--ev` — solo crea evento, NO guarda email. Detecta título, fecha, hora, room/agenda del email y propone interactivamente con `[S/n/e=editar]`. Si el .eml trae ICS adjunto se usa primero (más fiable); fallback a heurística sobre body (URLs Zoom/Meet/Teams/Webex/Jitsi como rooms; Indico como agendas). No detecta recurrencia (la editas con `ev edit --recur` después)
+**Modificadores aditivos** (combinables):
+- `--note` — además guarda la nota `notes/emails/YYYY-MM-DD-<slug>.md` (frontmatter + cuerpo) y la entry pasa a doble link: `[Email: subject](nota.md) ✉️ [original](message://...)`. Con esto la nota es inmortal aunque borres el email original
+- `--ev` — además propone crear un evento con los datos detectados: título, fecha, hora, room/agenda. Confirmación interactiva `[S/n/e=editar]`. Si el .eml trae ICS adjunto se usa primero (más fiable); fallback a heurística sobre body (URLs Zoom/Meet/Teams/Webex/Jitsi como rooms; Indico como agendas). No detecta recurrencia (la editas con `ev edit --recur` después)
 
 **Sources** (mutuamente exclusivos; default según `email_source` en `orbit.json`):
 - `--mail` — Apple Mail.app, mensaje seleccionado (recomendado, robusto)
@@ -535,7 +535,7 @@ orbit mail --start             # arranca el proceso background
 orbit mail --stop              # para el proceso background
 ```
 
-- Vigila Gmail y/o Slack y avisa de mensajes no leídos
+- Vigila Mail.app, Gmail (legacy) y/o Slack y avisa de mensajes no leídos
 - Indicador en el prompt: `🚀[📬7] >` (suma de todas las fuentes, solo si hay mensajes)
 - Notificación macOS cuando llegan mensajes nuevos (solo al subir el conteo, no en cada check)
 - Proceso background: se lanza al entrar en la shell, un solo proceso por workspace (PID lock)
@@ -543,8 +543,11 @@ orbit mail --stop              # para el proceso background
 
 ```json
 "cartero": {
-  "gmail": {
-    "labels": ["🏠 hogar", "🤗  Eva y familia"],
+  "mail": {
+    "watch": [
+      {"account": "🏛️ USC",     "mailbox": "Inbox"},
+      {"account": "🏠 Personal", "mailbox": "🏠 hogar"}
+    ],
     "interval": 600
   },
   "slack": {
@@ -554,8 +557,11 @@ orbit mail --stop              # para el proceso background
 }
 ```
 
-- **Gmail**: `labels` = etiquetas a vigilar (nombres exactos de la API, pueden tener emojis). Requiere `credentials.json` + API de Gmail habilitada en Google Cloud Console
-- **Slack**: `channels` = canales a vigilar. Requiere token de usuario en `ORBIT_HOME/.slack-token` (una línea, `xoxp-...`)
+- **Mail (recomendado)**: AppleScript a Mail.app. `watch` lista pares `{account, mailbox}` — los nombres son los que muestra Mail.app (los Gmail labels aparecen como mailboxes IMAP dentro de la cuenta Gmail). Sin OAuth, sin tokens. Requiere Mail.app abierto y sincronizado; si no está corriendo, cartero salta esa fuente sin error
+  - Listar tus cuentas: `osascript -e 'tell application "Mail" to get name of every account'`
+  - Listar mailboxes: `osascript -e 'tell application "Mail" to get name of every mailbox of account "X"'`
+- **Gmail (legacy)**: `labels` = etiquetas a vigilar. Requiere `credentials.json` + API de Gmail habilitada en Google Cloud Console. Mantener solo si no migras a Mail.app
+- **Slack**: `channels` = canales a vigilar. Requiere token de usuario en `ORBIT_HOME/.slack-token` (una línea, `xoxp-...`). Slack para Mac no expone AppleScript útil — la API es la única vía con conteo por canal
 - `interval`: segundos entre checks (default: 600 = 10 min)
 - Estado en `ORBIT_HOME/.cartero-state.json`, PID en `ORBIT_HOME/.cartero.pid`
 

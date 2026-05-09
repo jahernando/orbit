@@ -167,13 +167,14 @@ Cada `hl add` deja también una entrada en el logbook con tag `#headline` + el t
 ### Email — capturar un mensaje a un proyecto
 
 ```bash
-orbit email next-kr                          # nota md + log con doble link
-orbit email next-kr --no-note                # solo log con link al original
-orbit email next-kr --ev                     # solo crea evento (no guarda email)
+orbit email next-kr                          # log con link al email (default, ligero)
+orbit email next-kr --note                   # ↑ + guarda nota md (cuerpo del email)
+orbit email next-kr --ev                     # ↑ + propone crear evento de la cita
+orbit email next-kr --note --ev              # los tres
 orbit email next-kr --eml ~/Desktop/foo.eml  # desde un .eml exportado
 ```
 
-Sources: `--mail` (Apple Mail.app, recomendado), `--outlook`, `--gmail`, `--eml PATH`. Default por workspace en `orbit.json`: `"email_source": "mail"`. Con `--ev` orbit detecta título, fecha, agenda (Indico) y room (Zoom/Meet/Teams) — vía adjunto ICS si existe o regex sobre el cuerpo — y propone interactivamente antes de crear.
+Sources: `--mail` (Apple Mail.app, recomendado), `--outlook`, `--gmail`, `--eml PATH`. Default por workspace en `orbit.json`: `"email_source": "mail"`. Sin flags el log lleva un link clickeable al email original; con `--note` se añade nota md y el log pasa a doble link (nota + email). Con `--ev` orbit detecta título, fecha, agenda (Indico) y room (Zoom/Meet/Teams) — vía adjunto ICS si existe o regex sobre el cuerpo — y propone interactivamente antes de crear.
 
 ### Anotacion y busqueda
 

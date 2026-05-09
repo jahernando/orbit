@@ -269,21 +269,23 @@ Cada `hl add` deja también una entrada en el logbook con tag `#headline` + el t
 
 ## 8. Capturar emails a un proyecto
 
-A veces recibes un email importante (una invitación, un paper, un acuerdo). Lo conviertes en nota md + entry de log en un comando:
+A veces recibes un email importante (una invitación, un paper, un acuerdo). Lo registras en un proyecto en un comando:
 
 ```bash
 # Selecciona el email en Mail.app y desde orbit:
-email next-kr                     # nota md + log con doble link
-email next-kr --no-note           # solo log (link clickeable, abre Mail.app)
-email next-kr --ev                # SOLO crea evento (no guarda email)
+email next-kr                     # log con link al email (default, ligero)
+email next-kr --note              # ↑ + guarda nota md (cuerpo del email)
+email next-kr --ev                # ↑ + propone crear evento de la cita
+email next-kr --note --ev         # los tres: log + nota + evento
 
 # Desde un .eml exportado (Outlook → drag al Finder):
 email next-kr --eml ~/Desktop/"Invite WG12.eml"
 email next-kr --eml ~/Desktop/foo.eml --ev
 ```
 
-- El log queda con `📎 [Email: subject](nota.md) ✉️ [original](message://...)` → la nota es para siempre, el link al original puede romperse si borras el email
-- `--ev` detecta título, fecha, hora, agenda (Indico) y room (Zoom/Meet/Teams) — vía adjunto ICS si existe, o regex sobre el cuerpo. Te muestra preview y pregunta `[S/n/e=editar]` antes de crear
+- **Default**: el log lleva `✉️ [Email: subject](message://<id>)` — clickeable, abre Mail.app en el mensaje. Si después borras el email, el link se rompe pero el asunto y la fecha quedan registrados. El prefijo ✉️ marca "esto apunta a un mensaje"
+- **Con `--note`**: el log pasa a doble link `📎 [Email: subject](nota.md) ✉️ [original](message://...)`. El 📎 (clip = fichero) marca el primario que apunta a la nota md; ✉️ queda como secundario al original. La nota es inmortal aunque borres el email
+- **Con `--ev`**: detecta título, fecha, hora, agenda (Indico) y room (Zoom/Meet/Teams) — vía adjunto ICS si existe, o regex sobre el cuerpo. Te muestra preview y pregunta `[S/n/e=editar]`
 - Source default por workspace en `orbit.json`: `"email_source": "mail"` (recomendado, Apple Mail.app)
 
 ---
