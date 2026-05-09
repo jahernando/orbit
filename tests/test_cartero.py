@@ -728,3 +728,125 @@ class TestSummary:
         from core.cartero import _format_source_summary
         line = _format_source_summary("slack", {"total": 5, "counts": {"ch": 5}})
         assert line == "📬 Slack: 5 (#ch 5)"
+
+
+class TestMailConfig:
+    def test_mail_config_present(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({
+            "cartero": {"mail": {"watch": [
+                {"account": "🏛️ USC", "mailbox": "Inbox"},
+                {"account": "🏠 Personal", "mailbox": "🏠 hogar"},
+            ]}}
+        }))
+        from core.cartero import _mail_config
+        watch = _mail_config()
+        assert watch == [
+            {"account": "🏛️ USC", "mailbox": "Inbox"},
+            {"account": "🏠 Personal", "mailbox": "🏠 hogar"},
+        ]
+
+    def test_mail_config_absent(self, _isolate):
+        from core.cartero import _mail_config
+        # Default fixture has only `gmail`; no `mail`
+        assert _mail_config() is None
+
+    def test_mail_config_empty_watch(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({
+            "cartero": {"mail": {"watch": []}}
+        }))
+        from core.cartero import _mail_config
+        assert _mail_config() is None
+
+    def test_mail_config_drops_invalid_entries(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({
+            "cartero": {"mail": {"watch": [
+                {"account": "X"},                 # missing mailbox
+                {"mailbox": "Y"},                 # missing account
+                {"account": "X", "mailbox": "Y"}, # valid
+            ]}}
+        }))
+        from core.cartero import _mail_config
+        assert _mail_config() == [{"account": "X", "mailbox": "Y"}]
+
+    def test_has_any_source_includes_mail(self, _isolate):
+        (_isolate / "orbit.json").write_text(json.dumps({
+            "cartero": {"mail": {"watch": [
+                {"account": "A", "mailbox": "B"}
+            ]}}
+        }))
+        from core.cartero import _has_any_source
+        assert _has_any_source() is True
+
+
+class TestMailBackend:
+    def test_check_mail_skipped_when_not_running(self, _isolate, monkeypatch):
+        from core import cartero
+        monkeypatch.setattr(cartero, "_mail_app_running", lambda: False)
+        result = cartero._check_mail([{"account": "A", "mailbox": "B"}])
+        assert result["total"] == 0
+        assert result["counts"] == {}
+        assert "skipped" in result
+
+    def test_check_mail_aggregates_counts(self, _isolate, monkeypatch):
+        from core import cartero
+        monkeypatch.setattr(cartero, "_mail_app_running", lambda: True)
+        # Simulate: USC/Inbox=3, Personal/🏠 hogar=2
+        def fake_count(acc, mb):
+            return {("USC", "Inbox"): 3,
+                    ("Personal", "🏠 hogar"): 2}.get((acc, mb), 0)
+        monkeypatch.setattr(cartero, "_count_mail_unread", fake_count)
+        result = cartero._check_mail([
+            {"account": "USC", "mailbox": "Inbox"},
+            {"account": "Personal", "mailbox": "🏠 hogar"},
+        ])
+        assert result["counts"] == {"USC/Inbox": 3, "Personal/🏠 hogar": 2}
+        assert result["total"] == 5
+
+    def test_count_mail_unread_handles_garbage_output(self, monkeypatch):
+        from core import cartero
+        monkeypatch.setattr(cartero, "_osascript_text", lambda s, **k: "not a number")
+        assert cartero._count_mail_unread("A", "B") == 0
+
+    def test_count_mail_unread_handles_negative_error_sentinel(self, monkeypatch):
+        from core import cartero
+        monkeypatch.setattr(cartero, "_osascript_text", lambda s, **k: "-1")
+        assert cartero._count_mail_unread("A", "B") == 0
+
+    def test_count_mail_unread_returns_int(self, monkeypatch):
+        from core import cartero
+        monkeypatch.setattr(cartero, "_osascript_text", lambda s, **k: "7")
+        assert cartero._count_mail_unread("A", "B") == 7
+
+    def test_count_mail_unread_escapes_quotes_in_names(self, monkeypatch):
+        """Names with double quotes must not break the AppleScript."""
+        from core import cartero
+        captured = {}
+        def fake_osa(script, **k):
+            captured["script"] = script
+            return "0"
+        monkeypatch.setattr(cartero, "_osascript_text", fake_osa)
+        cartero._count_mail_unread('Bad"Name', 'Mb"X')
+        # Quotes inside names are escaped (\\") so the surrounding "..." stays valid
+        assert '\\"' in captured["script"]
+
+
+class TestMailSummary:
+    def test_format_source_summary_mail_strips_account_prefix(self):
+        from core.cartero import _format_source_summary
+        line = _format_source_summary("mail", {
+            "total": 5,
+            "counts": {"USC/Inbox": 3, "Personal/🏠 hogar": 2},
+        })
+        # Account prefix dropped; mailbox name kept
+        assert "Inbox 3" in line
+        assert "🏠 hogar 2" in line
+        assert line.startswith("📬 Mail: 5 (")
+
+    def test_prompt_indicator_includes_mail_total(self, _isolate):
+        from core import cartero
+        cartero._write_state({"mail": {"total": 4},
+                              "gmail": {"total": 1},
+                              "slack": {"total": 0}})
+        ind = cartero.get_prompt_indicator()
+        # Total is 4 + 1 + 0 = 5
+        assert "📬5" in ind

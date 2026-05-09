@@ -1,13 +1,20 @@
 """cartero — background mail/messaging notifier for Orbit.
 
-Polls Gmail and/or Slack for unread messages and:
+Polls Mail.app, Gmail (legacy) and/or Slack for unread messages and:
   - Updates a shared state file (ORBIT_HOME/.cartero-state.json)
   - Shows a prompt indicator [📬N] in the Orbit shell
   - Sends macOS notifications when new messages arrive
 
-Configuration in orbit.json:
+Configuration in orbit.json (any subset; `mail` is preferred over `gmail`):
   "cartero": {
-    "gmail": {
+    "mail": {
+      "watch": [
+        {"account": "🏠 Personal", "mailbox": "🏠 hogar"},
+        {"account": "🏛️ USC",     "mailbox": "Inbox"}
+      ],
+      "interval": 600
+    },
+    "gmail": {                 // DEPRECATED — use `mail` instead
       "labels": ["Importante", "Familia"],
       "interval": 600
     },
@@ -18,6 +25,7 @@ Configuration in orbit.json:
   }
 
 Slack token: ORBIT_HOME/.slack-token (one line, xoxp-... user token)
+Mail.app: AppleScript, no token. Mail.app must be running and synced.
 """
 
 import json
@@ -54,12 +62,23 @@ def _load_cartero_config() -> dict:
 
 
 def _gmail_config() -> Optional[dict]:
-    """Return gmail sub-config or None if not configured."""
+    """Return gmail sub-config or None if not configured. DEPRECATED."""
     cfg = _load_cartero_config()
     gmail = cfg.get("gmail")
     if not gmail or not gmail.get("labels"):
         return None
     return gmail
+
+
+def _mail_config() -> Optional[list]:
+    """Return list of {account, mailbox} from cartero.mail.watch, or None."""
+    cfg = _load_cartero_config()
+    mail = cfg.get("mail")
+    if not mail:
+        return None
+    watch = mail.get("watch") or []
+    valid = [w for w in watch if w.get("account") and w.get("mailbox")]
+    return valid or None
 
 
 def _slack_config() -> Optional[list]:
@@ -83,7 +102,74 @@ def _slack_config() -> Optional[list]:
 
 def _has_any_source() -> bool:
     """Return True if any cartero source is configured."""
-    return _gmail_config() is not None or _slack_config() is not None
+    return (_mail_config() is not None
+            or _gmail_config() is not None
+            or _slack_config() is not None)
+
+
+# ── Mail.app (AppleScript) ──────────────────────────────────────────────────
+
+def _osascript_text(script: str, timeout: int = 10) -> Optional[str]:
+    """Run osascript safely; return stdout stripped or None on error."""
+    import subprocess
+    try:
+        r = subprocess.run(["osascript", "-e", script],
+                           capture_output=True, text=True, timeout=timeout)
+        if r.returncode != 0:
+            return None
+        return r.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
+def _mail_app_running() -> bool:
+    """True if Mail.app is currently running. Avoids launching it just to count."""
+    out = _osascript_text(
+        'tell application "System Events" to (exists process "Mail")')
+    return out == "true"
+
+
+def _count_mail_unread(account: str, mailbox: str) -> int:
+    """Return unread count for one (account, mailbox) pair. 0 on any error."""
+    acc_esc = account.replace('\\', '\\\\').replace('"', '\\"')
+    mb_esc  = mailbox.replace('\\', '\\\\').replace('"', '\\"')
+    script = (
+        'tell application "Mail"\n'
+        '    try\n'
+        f'        set acc to first account whose name is "{acc_esc}"\n'
+        f'        set mb to first mailbox of acc whose name is "{mb_esc}"\n'
+        '        return unread count of mb\n'
+        '    on error\n'
+        '        return -1\n'
+        '    end try\n'
+        'end tell\n'
+    )
+    out = _osascript_text(script)
+    if out is None or not out.lstrip("-").isdigit():
+        return 0
+    return max(int(out), 0)
+
+
+def _check_mail(watch: list) -> dict:
+    """Count unread per (account, mailbox) via AppleScript to Mail.app.
+
+    Skips silently if Mail.app is not running (counts stay at 0).
+    Label format in counts: "<account>/<mailbox>".
+    """
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    if not _mail_app_running():
+        return {"counts": {}, "total": 0, "timestamp": timestamp,
+                "skipped": "Mail.app no está corriendo"}
+    counts = {}
+    for item in watch:
+        acc = item["account"]
+        mb  = item["mailbox"]
+        counts[f"{acc}/{mb}"] = _count_mail_unread(acc, mb)
+    return {
+        "counts": counts,
+        "total": sum(counts.values()),
+        "timestamp": timestamp,
+    }
 
 
 # ── Gmail API ───────────────────────────────────────────────────────────────
@@ -370,7 +456,7 @@ def _federated_total() -> tuple:
     total = 0
     for emoji, state in _read_federated_states():
         fed_total = 0
-        for source in ("gmail", "slack"):
+        for source in ("mail", "gmail", "slack"):
             fed_total += state.get(source, {}).get("total", 0)
         if fed_total > 0:
             parts.append(f"{emoji}📬{fed_total}")
@@ -385,7 +471,8 @@ def get_prompt_indicator() -> str:
     Reads local files only — no network I/O.
     """
     state = _read_state()
-    local_total = (state.get("gmail", {}).get("total", 0)
+    local_total = (state.get("mail", {}).get("total", 0)
+                   + state.get("gmail", {}).get("total", 0)
                    + state.get("slack", {}).get("total", 0))
     fed_total, fed_parts = _federated_total()
 
@@ -465,6 +552,7 @@ def _background_loop(config: dict):
     Polls all configured sources (Gmail, Slack).
     """
     interval = config.get("interval", DEFAULT_INTERVAL)
+    mail_watch = _mail_config()
     gmail_cfg = config.get("gmail")
     slack_cfgs = _slack_config()  # list of workspace configs or None
 
@@ -494,7 +582,19 @@ def _background_loop(config: dict):
             state["workspace"] = str(ORBIT_HOME.name)
             notify_parts = []
 
-            # ── Gmail ───────────────────────────────────────────
+            # ── Mail.app ────────────────────────────────────────
+            if mail_watch:
+                result = _check_mail(mail_watch)
+                prev_total = prev_state.get("mail", {}).get("total", 0)
+                delta = result["total"] - prev_total
+                state["mail"] = result
+                if delta > 0:
+                    parts = [f"{n.split('/')[-1]} ({c})"
+                             for n, c in result["counts"].items() if c > 0]
+                    notify_parts.append(
+                        f"{delta} correo{'s' if delta != 1 else ''}: {', '.join(parts)}")
+
+            # ── Gmail (legacy) ──────────────────────────────────
             if gmail_cfg and gmail_cfg.get("labels"):
                 if gmail_service is None:
                     gmail_service = _get_gmail_service()
@@ -621,7 +721,7 @@ def startup_cartero():
     # Local sources
     state = _read_state()
     parts = []
-    for source in ("gmail", "slack"):
+    for source in ("mail", "gmail", "slack"):
         src = state.get(source, {})
         for name, count in src.get("counts", {}).items():
             if count > 0:
@@ -630,7 +730,7 @@ def startup_cartero():
 
     # Federated sources
     for emoji, fed_state in _read_federated_states():
-        for source in ("gmail", "slack"):
+        for source in ("mail", "gmail", "slack"):
             src = fed_state.get(source, {})
             for name, count in src.get("counts", {}).items():
                 if count > 0:
@@ -645,18 +745,26 @@ def startup_cartero():
 
 # ── CLI command: orbit mail ─────────────────────────────────────────────────
 
+_SOURCE_LABELS = {"mail": "Mail", "gmail": "Gmail", "slack": "Slack"}
+
+
 def _format_source_summary(source: str, src: dict) -> str:
     """Format a single source summary line.
 
     Returns e.g. "📬 Gmail: 4 (Importante 3, Familia 1)" or "" if no counts.
+    For mail, the per-mailbox key is "<account>/<mailbox>" — we strip the
+    account prefix in the displayed parts to keep the line compact.
     """
     counts = src.get("counts", {})
     total = src.get("total", 0)
     if total == 0:
         return ""
-    label = "Gmail" if source == "gmail" else "Slack"
+    label = _SOURCE_LABELS.get(source, source)
     prefix = "#" if source == "slack" else ""
-    parts = [f"{prefix}{n} {c}" for n, c in counts.items() if c > 0]
+    if source == "mail":
+        parts = [f"{n.split('/', 1)[-1]} {c}" for n, c in counts.items() if c > 0]
+    else:
+        parts = [f"{prefix}{n} {c}" for n, c in counts.items() if c > 0]
     return f"📬 {label}: {total} ({', '.join(parts)})"
 
 
@@ -667,9 +775,17 @@ def _sync_check() -> dict:
     """
     state = _read_state()
 
+    mail_watch = _mail_config()
+    if mail_watch:
+        print("📬 Consultando Mail.app...")
+        result = _check_mail(mail_watch)
+        if result.get("skipped"):
+            print(f"   ⚠️  {result['skipped']}")
+        state["mail"] = result
+
     gmail_cfg = _gmail_config()
     if gmail_cfg:
-        print("📬 Consultando Gmail...")
+        print("📬 Consultando Gmail (legacy OAuth)...")
         service = _get_gmail_service()
         if service:
             label_ids = _resolve_label_ids(service, gmail_cfg.get("labels", []))
@@ -720,7 +836,7 @@ def _print_summary(live: bool = True) -> int:
     fed_states = _read_federated_states()
     has_any = False
 
-    for source in ("gmail", "slack"):
+    for source in ("mail", "gmail", "slack"):
         src = state.get(source, {})
         line = _format_source_summary(source, src)
         if line:
@@ -728,7 +844,7 @@ def _print_summary(live: bool = True) -> int:
             has_any = True
 
     for emoji, fed_state in fed_states:
-        for source in ("gmail", "slack"):
+        for source in ("mail", "gmail", "slack"):
             src = fed_state.get(source, {})
             line = _format_source_summary(source, src)
             if line:
@@ -773,7 +889,7 @@ def run_mail(status: bool = False, stop: bool = False, start: bool = False,
         if _is_running():
             state = _read_state()
             print(f"📬 Cartero corriendo (PID {state.get('pid', '?')})")
-            for source in ("gmail", "slack"):
+            for source in ("mail", "gmail", "slack"):
                 src = state.get(source, {})
                 if not src:
                     continue
@@ -805,7 +921,7 @@ def run_mail(status: bool = False, stop: bool = False, start: bool = False,
     state = _sync_check()
 
     # Detailed output for local sources
-    for source in ("gmail", "slack"):
+    for source in ("mail", "gmail", "slack"):
         src = state.get(source, {})
         if not src or not src.get("counts"):
             continue
@@ -823,7 +939,7 @@ def run_mail(status: bool = False, stop: bool = False, start: bool = False,
     # Federated workspaces (read-only, no polling)
     fed_states = _read_federated_states()
     for emoji, fed_state in fed_states:
-        for source in ("gmail", "slack"):
+        for source in ("mail", "gmail", "slack"):
             src = fed_state.get(source, {})
             if not src or not src.get("counts"):
                 continue
