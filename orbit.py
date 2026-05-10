@@ -875,6 +875,7 @@ def cmd_reorganize(args):
         type_filter=getattr(args, "type", None),
         project=getattr(args, "project", None),
         period=getattr(args, "period", "today"),
+        include_undated=getattr(args, "undated", False),
     )
 
 
@@ -1399,6 +1400,8 @@ def _build_parser():
                          help="Filtrar por proyecto (substring match)")
     reorg_p.add_argument("--period", "-P", default="today",
                          help="Periodo: today (default, incluye vencidas) | week | month | YYYY-MM-DD | YYYY-Wnn")
+    reorg_p.add_argument("--undated", action="store_true", dest="undated",
+                         help="Incluir tareas/hitos sin fecha (futuribles)")
 
     # --- gsync ---
     gsync_p = subparsers.add_parser("gsync",

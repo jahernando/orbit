@@ -98,7 +98,8 @@ def _resolve_period(period: str) -> tuple:
 # ── Item collection ────────────────────────────────────────────────────────
 
 def _item_in_period(item: dict, kind: str, lo: date, hi: date,
-                    include_overdue: bool) -> bool:
+                    include_overdue: bool,
+                    include_undated: bool = False) -> bool:
     """Decide whether *item* should appear in the listing."""
     # Skip cancelled items always.
     if item.get("cancelled"):
@@ -108,9 +109,8 @@ def _item_in_period(item: dict, kind: str, lo: date, hi: date,
 
     raw = item.get("date")
     if not raw:
-        # Tasks/ms without date — only listed when period is "today" with
-        # include_overdue=True (the catch-all "to do whenever" pile).
-        return include_overdue and kind in ("task", "ms")
+        # Undated tasks/ms only when explicitly opted in.
+        return include_undated and kind in ("task", "ms")
     try:
         d = date.fromisoformat(raw)
     except ValueError:
@@ -124,7 +124,8 @@ def _item_in_period(item: dict, kind: str, lo: date, hi: date,
 
 def _collect_items(type_filter: Optional[str],
                    project_filter: Optional[str],
-                   period: str) -> list:
+                   period: str,
+                   include_undated: bool = False) -> list:
     """Walk projects and return the items that match the filters.
 
     Returns a list of (kind, project_dir, item) sorted by date (overdue
@@ -153,7 +154,8 @@ def _collect_items(type_filter: Optional[str],
         for kind in kinds:
             section_key = _TYPE_TO_KEY[kind]
             for item in data.get(section_key) or []:
-                if _item_in_period(item, kind, lo, hi, include_overdue):
+                if _item_in_period(item, kind, lo, hi, include_overdue,
+                                    include_undated=include_undated):
                     out.append((kind, project_dir, item))
 
     today = date.today()
@@ -290,11 +292,13 @@ def _action_for(idx: int, items: list) -> Optional[str]:
 
 def run_reorganize(type_filter: Optional[str] = None,
                    project: Optional[str] = None,
-                   period: str = "today") -> int:
+                   period: str = "today",
+                   include_undated: bool = False) -> int:
     """Interactive loop to triage pending items."""
     actions_applied = 0
     while True:
-        items = _collect_items(type_filter, project, period)
+        items = _collect_items(type_filter, project, period,
+                                include_undated=include_undated)
         if not items:
             if actions_applied:
                 print(f"\n✓ {actions_applied} cambio{'s' if actions_applied != 1 else ''} aplicado{'s' if actions_applied != 1 else ''}.")

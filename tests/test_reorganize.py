@@ -78,13 +78,21 @@ class TestItemInPeriod:
         item = {"date": "2026-05-13", "cancelled": True}
         assert not reorganize._item_in_period(item, "reminder", self.lo, self.hi, True)
 
-    def test_undated_task_in_today_with_overdue(self):
+    def test_undated_task_excluded_by_default(self):
+        """Default is to require a date; undated only with explicit opt-in."""
         item = {"date": None, "status": "pending"}
-        assert reorganize._item_in_period(item, "task", self.lo, self.hi, True)
+        assert not reorganize._item_in_period(item, "task", self.lo, self.hi, True)
 
-    def test_undated_event_excluded(self):
+    def test_undated_task_with_opt_in(self):
+        item = {"date": None, "status": "pending"}
+        assert reorganize._item_in_period(item, "task", self.lo, self.hi, True,
+                                            include_undated=True)
+
+    def test_undated_event_excluded_even_with_opt_in(self):
+        """Events without a date are nonsensical — never list."""
         item = {"date": None}
-        assert not reorganize._item_in_period(item, "ev", self.lo, self.hi, True)
+        assert not reorganize._item_in_period(item, "ev", self.lo, self.hi, True,
+                                                include_undated=True)
 
 
 # ── Type alias normalization ──────────────────────────────────────────────
@@ -212,6 +220,31 @@ class TestCollectItems:
         monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
         items = reorganize._collect_items(None, None, "today")
         assert [i["desc"] for _, _, i in items] == ["Overdue", "Today"]
+
+    def test_undated_excluded_by_default(self, tmp_path, monkeypatch):
+        proj = _make_proj(tmp_path, "🌀foo")
+        today = date.today().isoformat()
+        _seed(proj, {"tasks": [
+            {"desc": "Dated",   "date": today, "status": "pending"},
+            {"desc": "Undated", "date": None,  "status": "pending"},
+        ]})
+        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
+        items = reorganize._collect_items(None, None, "today")
+        assert [i["desc"] for _, _, i in items] == ["Dated"]
+
+    def test_undated_included_with_flag(self, tmp_path, monkeypatch):
+        proj = _make_proj(tmp_path, "🌀foo")
+        today = date.today().isoformat()
+        _seed(proj, {"tasks": [
+            {"desc": "Dated",   "date": today, "status": "pending"},
+            {"desc": "Undated", "date": None,  "status": "pending"},
+        ]})
+        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
+        items = reorganize._collect_items(None, None, "today", include_undated=True)
+        descs = sorted(i["desc"] for _, _, i in items)
+        assert descs == ["Dated", "Undated"]
 
 
 # ── Format row (smoke) ────────────────────────────────────────────────────

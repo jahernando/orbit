@@ -2053,7 +2053,12 @@ def delete_gcal_event(project_dir: Path, ev: dict) -> None:
 
 # ── Individual item sync (for add/done/edit/drop hooks) ────────────────────
 
-_SYNC_TIMEOUT = 6  # seconds
+# How long sync_item waits for AppleScript before printing a "still
+# running" notice. The thread keeps going either way; this just bounds
+# how long the CLI blocks. AppleScript reads/writes against Reminders.app
+# can take 10-15s when iCloud is busy, so 20s leaves enough headroom for
+# the typical case without freezing the prompt for ages on real failures.
+_SYNC_TIMEOUT = 20  # seconds
 
 
 def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
@@ -2149,8 +2154,12 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
     t.start()
     t.join(timeout=_SYNC_TIMEOUT)
     if t.is_alive():
-        print("  ⚠️  gsync: timeout (sincronización en background)")
-    elif _do_sync.error:
+        # AppleScript still running — sync continues in background, the
+        # change will land in Reminders/Calendar shortly. Stay quiet here:
+        # the message used to appear under reorganize → commit and looked
+        # alarming even though nothing was wrong.
+        return
+    if _do_sync.error:
         print(f"  ⚠️  gsync: {_do_sync.error}")
 
 
