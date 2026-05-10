@@ -1216,16 +1216,41 @@ def _sync_one_task(service, tasklist_id: str, item: dict,
 
 
 def _migrate_recurring_keys(items: list, ids: dict) -> None:
-    """Migrate old recurring keys (desc::date → desc::🔄recur) in-place."""
+    """Migrate legacy recurring keys to the current format in-place.
+
+    Two historical key formats coexist for recurring items:
+
+      v0  ``desc::date``               (very old — pre-2026)
+      v1  ``desc::🔄recur``             (single key per series, lost identity
+                                         when multiple series shared a desc)
+      v2  ``desc::🔄recur::date``       (current — anchor date is part of
+                                         identity, fixes the natación bug)
+
+    Without this migration, the v1→v2 transition would orphan every
+    recurring item's stored uid+orbit_id, the next sync would think the
+    item is brand new, find_by_orbit_id would miss, find_by_title_date
+    would also miss (because we changed the summary format too), and we'd
+    end up with duplicate Calendar events. That's exactly what happened
+    with the 7 stale `🚀[…]` events in orbit-ws.
+
+    For each recurring item: if its current key is missing from ids but
+    one of the legacy keys exists, rename in place.
+    """
     for item in items:
         if not item.get("recur"):
             continue
         new_key = _item_key(item)
         if new_key in ids:
             continue
-        old_key = f"{item.get('desc', '')}::{item.get('date', '')}"
-        if old_key in ids:
-            ids[new_key] = ids.pop(old_key)
+        # v1 legacy: desc::🔄recur (no anchor date)
+        v1_key = f"{item.get('desc', '')}::🔄{item['recur']}"
+        if v1_key in ids:
+            ids[new_key] = ids.pop(v1_key)
+            continue
+        # v0 legacy: desc::date (treated like a non-recurring at the time)
+        v0_key = f"{item.get('desc', '')}::{item.get('date', '')}"
+        if v0_key in ids:
+            ids[new_key] = ids.pop(v0_key)
 
 
 def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
