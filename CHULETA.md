@@ -492,41 +492,45 @@ orbit commit ["<mensaje>"]
 - Ejecuta reconciliación gsync: detecta renombramientos de citas en el markdown y migra IDs de Google
 - Push al remoto: `orbit_push` desde la terminal del sistema (fuera de la shell)
 
-### Calendar.app + Reminders.app — gsync
+### Calendar.app — gsync
 
 ```bash
-orbit gsync                        # push: todos los proyectos. Eventos → Calendar.app · tareas/hitos/recordatorios → Reminders.app
-orbit gsync <proyecto>             # solo ese proyecto (match por substring)
-orbit gsync --dry-run              # preview sin escribir
-orbit gsync --list-calendars       # lista calendarios de Calendar.app
-
+orbit gsync                                # push: todos los proyectos
+orbit gsync <proyecto>                     # solo ese proyecto (match por substring)
+orbit gsync --dry-run                      # preview sin escribir
+orbit gsync --list-calendars               # lista calendarios de Calendar.app
+orbit gsync --migrate-rem-to-calendar      # one-shot: tasks/ms/rem Reminders.app → calendario agenda
 ```
 
-**Reverse sync deprecado:** orbit es la fuente de verdad. Calendar.app y Reminders.app son render: ves los items y recibes alarmas. Para reorganizar usa `orbit reorganize` (ver abajo) o el comando CLI directo (`task edit`, `ev edit`, …). El módulo `core/gimport.py` y los helpers `_fetch_completed_orbit_ids` / `_fetch_all_events` quedan dormante en el repo por si en el futuro se quiere revivir el flujo Reminders → orbit.
+**Reverse sync deprecado:** orbit es la fuente de verdad. Calendar.app es render: ves los items y recibes alarmas. Para reorganizar usa `orbit reorganize` o `task edit`/`ev edit`. El módulo `core/gimport.py` queda dormante por si se quiere revivir Reminders → orbit.
 
-- **Eventos → Calendar.app vía AppleScript**. Un calendar por tipo de proyecto (nombre como aparece en Calendar.app). Sin OAuth — Calendar.app sincroniza después con la cuenta que tenga (Google/iCloud/Exchange). Requiere Calendar.app abierto.
-- **Tareas/hitos/recordatorios → Reminders.app vía AppleScript**. Una lista por workspace (configurable). Sin OAuth — Reminders.app sincroniza con iCloud nativamente (visible en iPhone/iPad). Requiere Reminders.app abierto.
-- **Cronogramas → Reminders.app**. 1 reminder por `crono-<n>.md` con due = fin de la próxima hoja no completada (`📊 crono-<n>: <hoja>`). Vencidas no avanzan (se quedan visibles); todas hechas → completed. Cronogramas sin fechas se ignoran.
-- Eventos recurrentes → serie con RRULE en Calendar.app
-- `--ring` en eventos → `display alarm` nativo del evento (notificación push en Mac/iPhone/iPad/Android)
-- `--ring` en tareas/hitos → `remind me date` del item en Reminders (notificación push)
-- Títulos: `🚀[proyecto] descripción` con prefijo de tipo (✅ task, 🏁 ms, 💬 reminder, 📊 cronograma, 📅 event)
-- `--room` URL → propiedad `url` del evento (📹 botón cámara clickable). Texto plano (sala física) → 🚪 en notas.
-- `"sync_tasks": false` desactiva tareas; `"sync_milestones": false` desactiva hitos
-- Sincronización: tras añadir/completar/editar/eliminar items + `gsync` manual
-- IDs en `.gsync-ids.json` por proyecto (`gcal_id` para events Calendar.app, `gtask_id` para items Reminders.app, `_cronos` para cronogramas)
-- Items sincronizados muestran ☁️ en agenda.md
+- **Eventos → Calendar.app**. Un calendar por tipo de proyecto.
+- **Tareas/hitos/recordatorios → Calendar.app** (backend `"calendar"`, default). Un único calendario "agenda" por workspace (e.g. `🚀orbit-ws-rem`). Cada item es un evento de 0 min con `display alarm` a la hora de inicio. La alarma la dispara `CalendarAgent` del sistema — Calendar.app no necesita estar abierta.
+  - Backend legacy `"reminders"`: tasks/ms/rem van a Reminders.app vía AppleScript (1 lista por workspace). Se mantiene dormante para fallback durante el periodo de validación.
+  - Cambia con `"reminders_backend": "calendar"|"reminders"` en `calendar-sync.json`.
+- **Cronogramas → Reminders.app**. 1 reminder por `crono-<n>.md` con due = fin de la próxima hoja no completada. (No migrado al backend calendar todavía.)
+- Eventos recurrentes → serie con RRULE en Calendar.app. Tareas/hitos/recordatorios recurrentes → orbit avanza ocurrencias localmente al hacer `done`/`drop`; cada ocurrencia es un evento independiente.
+- `--ring` → `display alarm` del evento (notificación push en Mac/iPhone/iPad/Android).
+- Títulos eventos: `[proyecto] descripción`. Títulos agenda: `[proyecto] {✅|🏁|💬} descripción`.
+- `--room` URL → propiedad `url` del evento (📹 botón cámara). Texto plano (sala física) → 🚪 en notas.
+- `"sync_tasks": false` desactiva tareas; `"sync_milestones": false` desactiva hitos.
+- Sincronización: tras add/done/edit/drop + `gsync` manual.
+- IDs en `.gsync-ids.json` por proyecto. Backend calendar: keys con prefijo `task::`/`milestone::`/`reminder::` para evitar colisión con events. Backend reminders: keys sin prefijo, valor `gtask_id`.
 - Config: `calendar-sync.json` (auto-migrado desde `google-sync.json` si existe):
 
 ```json
 {
   "calendars": {
     "investigacion": "🌀 Investigacion",
-    "default": "🌿 orbit-ps"
+    "default": "🚀 orbit-ws"
   },
-  "reminders_list": "🌿 orbit-ps"
+  "reminders_backend": "calendar",
+  "agenda_calendar": "🚀orbit-ws-rem",
+  "reminders_list": "🚀 orbit-ws"
 }
 ```
+
+**Migración al backend calendar**: si tenías items en Reminders.app y quieres pasar al backend "calendar", crea primero el calendario `agenda_calendar` en Google Calendar (web) con el nombre exacto y espera a que sincronice con Calendar.app. Luego ejecuta `orbit gsync --migrate-rem-to-calendar` (idempotente; usa `--dry-run` para preview). El comando sube los items pending a Calendar, borra los equivalentes en Reminders.app y flippa el flag `reminders_backend` a `"calendar"`.
 
 **Nota legacy**: el código de sincronización con Google Tasks queda dormante en `core/gsync.py` (`_sync_one_task`, `_get_tasks_service`, etc.) por si alguna vez se necesita, pero ya no se llama desde ningún flujo activo.
 

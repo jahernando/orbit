@@ -85,7 +85,19 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.26.0, 2026-03-26)
+## Estado actual (v0.29.0, 2026-05-10)
+
+### v0.29.0 (2026-05-10) — agenda backend = Calendar.app
+- **Nuevo backend único**: tasks/ms/reminders → eventos de 0 min en un calendario "agenda" por workspace (e.g. `🚀orbit-ws-rem`). Alarma vía `display alarm` del evento + CalendarAgent del sistema. Calendar.app no necesita estar abierta. Reminders.app deja de usarse (excepto cronogramas, todavía).
+- **Config**: `reminders_backend: "calendar" | "reminders"` y `agenda_calendar: "<nombre>"` en `calendar-sync.json`. Default `"calendar"` para fresh installs y configs sin la key.
+- **Coexistencia**: el backend `"reminders"` queda dormante en código (rama legacy en `_sync_one_to_reminders` y todo el path `core/ring.py`/`agenda_cmds.py` con guard `_agenda_via_calendar()`). Se puede revertir cambiando el flag.
+- **Migración one-shot**: `orbit gsync --migrate-rem-to-calendar [--dry-run]`. Sube items pending a Calendar, borra los equivalentes en Reminders.app por orbit-id, mueve `gtask_id` → `gcal_id` en `.gsync-ids.json` con prefijo `task::`/`milestone::`/`reminder::`. Idempotente.
+- **Recurrencia**: orbit avanza ocurrencias localmente (un evento por ocurrencia). No se usa RRULE para tasks/ms/rem — solo eventos. Razón: orbit es la verdad y `task done` ya genera la siguiente.
+- **Alarmas**: por defecto al inicio (`alarm_minutes=0`). `--ring 15m` → alarma 15 min antes (mismo cálculo que para events).
+- **Storage key**: `f"{kind}::{_item_key(item)}"` en `.gsync-ids.json` para evitar colisión con events que compartan desc+date.
+- **Done/cancelled → delete**: cuando una task/ms se marca `done`/`cancelled` (o reminder `cancelled`), `sync_item` borra el evento del calendario y limpia su entry de `.gsync-ids.json`. El calendario refleja sólo lo pending.
+
+## Estado anterior (v0.26.0, 2026-03-26)
 
 ### Deprecado: Buzón (inbox)
 - `core/inbox.py` sigue en el repo pero ya no se llama desde shell/render/cloudsync

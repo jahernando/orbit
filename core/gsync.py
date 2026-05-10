@@ -119,6 +119,9 @@ def _load_config() -> dict:
         "calendars": {},
         "task_lists": {},
         "sync_tasks": True,
+        # Default for fresh installs: tasks/ms/reminders go to Calendar.app
+        # as events (alarm via CalendarAgent). See _agenda_backend().
+        "reminders_backend": "calendar",
     }
     _save_config(config)
     return config
@@ -132,6 +135,40 @@ def _sync_tasks_enabled(config: dict) -> bool:
 def _sync_milestones_enabled(config: dict) -> bool:
     """Check if milestone sync is enabled. Default True for backwards compat."""
     return config.get("sync_milestones", True)
+
+
+# ── Agenda backend (tasks/milestones/reminders) ──────────────────────────────
+#
+# Two backends are supported. Choose with `reminders_backend` in
+# calendar-sync.json:
+#
+#   "calendar"  → tasks/ms/rem sync as 0-min events with alarm to a single
+#                 per-workspace calendar (e.g. "🚀orbit-ws-rem"). The alarm
+#                 fires via macOS CalendarAgent (no Calendar.app needed).
+#                 This is the default for new installs.
+#
+#   "reminders" → tasks/ms/rem sync as items in Reminders.app (legacy).
+#                 Kept for fallback during the migration validation period.
+#
+# Existing configs without the key default to "calendar" too — flip back to
+# "reminders" manually if the calendar route breaks something for you.
+
+def _agenda_backend(config: dict) -> str:
+    """Return "calendar" or "reminders" — see module note above."""
+    val = (config.get("reminders_backend") or "calendar").lower()
+    return "reminders" if val == "reminders" else "calendar"
+
+
+def _agenda_calendar_name(config: dict) -> str:
+    """Return the Calendar.app calendar name for tasks/ms/reminders.
+
+    Falls back to ``<workspace-dir-name>-rem`` so a fresh setup just works.
+    Override in calendar-sync.json with ``"agenda_calendar": "..."``.
+    """
+    explicit = config.get("agenda_calendar")
+    if explicit:
+        return explicit
+    return f"{ORBIT_HOME.name}-rem"
 
 
 def _save_config(config: dict) -> None:
@@ -1450,6 +1487,146 @@ def _recur_to_rrule(recur: str, until: str = None) -> list:
     return [rule]
 
 
+# ── Agenda backend: tasks/ms/reminders as 0-min events in Calendar.app ─────
+#
+# When `reminders_backend == "calendar"`, every task/milestone/reminder is
+# rendered as a 0-min event in the per-workspace agenda calendar (e.g.
+# 🚀orbit-ws-rem). The display alarm fires at start via CalendarAgent —
+# Calendar.app does not need to be open. Recurrence is NOT translated to
+# RRULE: orbit advances series locally on `task done`/`drop`, and the next
+# occurrence syncs as a new event.
+
+# Per-session memo of agenda calendars we've already warned about, so the
+# user sees the missing-calendar message at most once per shell session.
+_agenda_calendar_warned: set = set()
+
+
+def _ensure_agenda_calendar(name: str) -> bool:
+    """Return True if the calendar exists in Calendar.app. Print one-time
+    setup instructions otherwise. We do NOT auto-create the calendar:
+    Calendar.app's AppleScript can only create local calendars, and the
+    user wants this calendar to live in their Google account so it shows
+    up on mobile.
+    """
+    if not name:
+        return False
+    if name in _list_calendar_app_calendars():
+        return True
+    if name not in _agenda_calendar_warned:
+        _agenda_calendar_warned.add(name)
+        print(f"⚠️  Calendar \"{name}\" no existe en Calendar.app.")
+        print(f"   Crea uno con ese nombre exacto en Google Calendar")
+        print(f"   (calendar.google.com → +Otros calendarios → Crear) y espera")
+        print(f"   a que sincronice. O cambia 'agenda_calendar' en")
+        print(f"   calendar-sync.json a un calendario que ya tengas.")
+    return False
+
+
+def _agenda_storage_key(item: dict, kind: str) -> str:
+    """Storage key in .gsync-ids.json for a task/ms/rem under the calendar
+    backend. Prefixed with kind so it doesn't collide with an event that
+    happens to share desc+date inside the same project.
+    """
+    return f"{kind}::{_item_key(item)}"
+
+
+def _agenda_props_for_calendar_app(item: dict, project_name: str,
+                                    base_description: str, kind: str) -> dict:
+    """Build property dict for an agenda item rendered as a 0-min event.
+
+    Title carries the kind emoji (✅🏁💬) so users can scan the calendar at
+    a glance even though all three kinds share the same calendar.
+    """
+    from datetime import datetime
+
+    emoji   = _REMINDER_KIND_EMOJI.get(kind, "")
+    summary = f"[{project_name}] {emoji} {item['desc']}".rstrip()
+
+    start_date = item["date"]
+    time_val   = item.get("time")
+    raw_start  = (time_val.split("-")[0] if time_val and "-" in time_val
+                  else time_val)
+    start_time = raw_start or "09:00"
+    start_iso  = f"{start_date}T{start_time}"
+    end_iso    = start_iso  # 0-min event: discrete marker, doesn't block slots
+
+    # Alarm: fire at start by default. If the item has --ring, honour it
+    # (alarm earlier — same semantics as for events).
+    alarm_minutes = 0
+    ring_val = item.get("ring")
+    if ring_val:
+        from core.ring import resolve_ring_datetime
+        ring_dt = resolve_ring_datetime(start_date, ring_val, due_time=start_time)
+        if ring_dt is not None:
+            try:
+                start_dt = datetime.fromisoformat(f"{start_date}T{start_time}:00")
+                delta_min = int((start_dt - ring_dt).total_seconds() / 60)
+                alarm_minutes = max(delta_min, 0)
+            except ValueError:
+                pass
+
+    description = _item_description(item, base_description, html=False)
+    orbit_id = item.get("_orbit_id")
+    if orbit_id:
+        description = _append_orbit_tag(description, _build_orbit_tag(orbit_id))
+
+    return {
+        "summary":       summary,
+        "start_iso":     start_iso,
+        "end_iso":       end_iso,
+        "description":   description,
+        "url":           "",
+        # No RRULE: orbit advances recurring tasks/ms/rem locally on
+        # `done`/`drop`. Each occurrence is a single event.
+        "rrule":         "",
+        "alarm_minutes": alarm_minutes,
+    }
+
+
+def _sync_one_agenda_event(calendar_name: str, item: dict,
+                            project_name: str, description: str,
+                            kind: str, dry_run: bool = False) -> Optional[str]:
+    """Sync a task/ms/rem as a 0-min event. Same resolution order as
+    :func:`_sync_one_event`: orbit-id → stored uid → title+date → create.
+    """
+    props    = _agenda_props_for_calendar_app(item, project_name, description, kind)
+    summary  = props["summary"]
+    orbit_id = item.get("_orbit_id")
+    uid      = item.get("_gcal_id")
+
+    if dry_run:
+        action = "actualizar" if uid else "crear"
+        emoji  = _REMINDER_KIND_EMOJI.get(kind, "")
+        print(f"  ~ {action}: {emoji} {item['date']} — {summary}")
+        return uid
+
+    if orbit_id:
+        found_uid = _find_calendar_event_by_orbit_id(calendar_name, orbit_id)
+        if found_uid:
+            _update_calendar_event(found_uid, calendar_name, props)
+            return found_uid
+
+    if uid and _update_calendar_event(uid, calendar_name, props):
+        return uid
+
+    matched_uid = _find_calendar_event_by_title_date(
+        calendar_name, summary, props["start_iso"])
+    if matched_uid:
+        existing_desc = _read_event_description(matched_uid, calendar_name)
+        recovered_id, _ = _parse_orbit_tag(existing_desc)
+        if recovered_id and recovered_id != orbit_id:
+            item["_orbit_id"] = recovered_id
+            props = _agenda_props_for_calendar_app(item, project_name,
+                                                    description, kind)
+        _update_calendar_event(matched_uid, calendar_name, props)
+        return matched_uid
+
+    new_uid = _create_calendar_event(calendar_name, props)
+    if not new_uid:
+        print(f"  ⚠️  Error creando agenda event '{summary}' en \"{calendar_name}\"")
+    return new_uid
+
+
 # ── Event sync (Calendar.app via AppleScript) ──────────────────────────────
 
 def _alarm_minutes_for_event(start_iso: str, ring: str,
@@ -1644,6 +1821,140 @@ def run_gsync_migrate_recurring(dry_run: bool = False) -> int:
     """
     print("ℹ️  Esta migración aplicaba a la antigua sincronización con Google "
           "Calendar API. Con Calendar.app no se necesita; ignorada.")
+    return 0
+
+
+def run_gsync_migrate_rem_to_calendar(dry_run: bool = False) -> int:
+    """Migrate tasks/milestones/reminders from Reminders.app to the agenda
+    calendar in Calendar.app. After a successful run, flips
+    ``reminders_backend`` to ``"calendar"`` in calendar-sync.json.
+
+    Idempotent: matches existing items by orbit-id, so re-running does not
+    create duplicates. Pending items only — done/cancelled stay where they
+    are (Reminders.app legacy items will simply be removed in batch).
+    """
+    config    = _load_config()
+    cal_name  = _agenda_calendar_name(config)
+    list_name = _reminders_list_name(config)
+
+    if not _calendar_app_running():
+        print("⚠️  Calendar.app no está corriendo. Lánzala antes de migrar.")
+        return 1
+    if not dry_run and not _ensure_agenda_calendar(cal_name):
+        return 1
+
+    rem_running = _reminders_app_running() if not dry_run else False
+    if not dry_run and not rem_running:
+        print("ℹ️  Reminders.app no está corriendo; subo a Calendar pero no")
+        print("    borraré los items legacy. Lanza Reminders y reejecuta para limpiar.")
+
+    print(f"🔄 Migrando tasks/ms/reminders → calendario \"{cal_name}\""
+          + (" [dry-run]" if dry_run else ""))
+
+    total_items    = 0
+    total_uploaded = 0
+    total_deleted  = 0
+
+    for project_dir in iter_project_dirs():
+        if not _is_new_project(project_dir):
+            continue
+        agenda_path = resolve_file(project_dir, "agenda")
+        if not agenda_path.exists():
+            continue
+        data = _read_agenda(agenda_path)
+        ids  = _load_ids(project_dir)
+
+        candidates = []
+        for t in data.get("tasks", []):
+            if t.get("status") == "pending" and t.get("date"):
+                candidates.append((t, "task"))
+        for m in data.get("milestones", []):
+            if m.get("status") == "pending" and m.get("date"):
+                candidates.append((m, "milestone"))
+        for r in data.get("reminders", []):
+            if not r.get("cancelled") and r.get("date"):
+                candidates.append((r, "reminder"))
+
+        if not candidates:
+            continue
+
+        project_name = project_dir.name
+        description  = _project_description(project_dir, config, html=False)
+        print(f"\n[{project_name}] {len(candidates)} item(s)")
+
+        ids_changed = False
+        agenda_changed = False
+        for item, kind in candidates:
+            total_items += 1
+            old_key = _item_key(item)
+            new_key = _agenda_storage_key(item, kind)
+            existing_old = ids.get(old_key, {}) or {}
+            existing_new = ids.get(new_key, {}) or {}
+
+            orbit_id = (item.get("orbit_id")
+                        or existing_new.get("orbit_id")
+                        or existing_old.get("orbit_id")
+                        or _new_orbit_id())
+            item["_orbit_id"] = orbit_id
+            item["_gcal_id"]  = existing_new.get("gcal_id")
+
+            new_uid = _sync_one_agenda_event(cal_name, item, project_name,
+                                              description, kind, dry_run=dry_run)
+            if dry_run:
+                # No AppleScript ran; count would-upload so the summary
+                # reflects what the real run will do.
+                total_uploaded += 1
+            elif new_uid:
+                total_uploaded += 1
+                ids.setdefault(new_key, {})["gcal_id"] = new_uid
+                ids[new_key]["orbit_id"] = orbit_id
+                ids[new_key]["snapshot"] = _make_snapshot(item)
+                ids_changed = True
+                if item.get("orbit_id") != orbit_id:
+                    item["orbit_id"] = orbit_id
+                    agenda_changed = True
+
+            # Delete from Reminders.app — by orbit-id first (survives renames),
+            # then by stored gtask_id as a fallback.
+            if not dry_run and rem_running:
+                deleted = False
+                if orbit_id:
+                    found_uid = _find_reminder_by_orbit_id(list_name, orbit_id)
+                    if found_uid and _delete_reminder_item(found_uid, list_name):
+                        deleted = True
+                old_gtask = existing_old.get("gtask_id")
+                if not deleted and old_gtask:
+                    if _delete_reminder_item(old_gtask, list_name):
+                        deleted = True
+                if deleted:
+                    total_deleted += 1
+                # Drop the legacy ids entry whether or not deletion succeeded —
+                # it points at a defunct gtask_id and would only confuse later
+                # syncs. Calendar entry is the new source of truth.
+                if old_key in ids and old_key != new_key:
+                    ids.pop(old_key, None)
+                    ids_changed = True
+
+            item.pop("_orbit_id", None)
+            item.pop("_gcal_id", None)
+
+        if not dry_run:
+            if ids_changed:
+                _save_ids(project_dir, ids)
+            if agenda_changed:
+                _write_agenda(agenda_path, data)
+
+    print()
+    print(f"✓ {total_uploaded}/{total_items} items en calendario \"{cal_name}\"")
+    print(f"  {total_deleted}/{total_items} items borrados de Reminders.app")
+    if dry_run:
+        print("  (dry-run: ningún cambio escrito)")
+        return 0
+
+    if config.get("reminders_backend") != "calendar":
+        config["reminders_backend"] = "calendar"
+        _save_config(config)
+        print("  ↻ reminders_backend → \"calendar\" en calendar-sync.json")
     return 0
     # ── unreachable: original Google-API body retained below for reference ──
     config = _load_config()
@@ -2057,11 +2368,12 @@ def delete_gcal_event(project_dir: Path, ev: dict) -> None:
 
 # How long sync_item waits for AppleScript before letting the prompt
 # return. The thread keeps running either way; this just bounds how long
-# the CLI blocks. AppleScript reads/writes against Reminders.app commonly
-# take 5-15 s when iCloud is busy. 2 s is enough to surface a fast
-# scripting error (bad list name, syntax) without freezing every CLI
-# action waiting for the network round-trip.
-_SYNC_TIMEOUT = 2  # seconds
+# the CLI blocks. AppleScript reads/writes against Reminders.app/
+# Calendar.app commonly take 5-15 s when iCloud is busy — those finish in
+# the background. 0.15 s is enough to catch fast scripting errors
+# (missing list, syntax — typically <50 ms) without being perceptible at
+# the prompt.
+_SYNC_TIMEOUT = 0.15  # seconds
 
 
 def _purge_orbit_orphans(ids: dict, current_key: str, orbit_id: str) -> bool:
@@ -2110,6 +2422,61 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                     return
                 if kind == "milestone" and not _sync_milestones_enabled(config):
                     return
+
+                # ── Backend = "calendar": render as 0-min event ──────────
+                if _agenda_backend(config) == "calendar":
+                    cal_name = _agenda_calendar_name(config)
+                    if not _calendar_app_running():
+                        return
+                    if not _ensure_agenda_calendar(cal_name):
+                        return
+                    storage_key  = _agenda_storage_key(item, kind)
+
+                    # Done / cancelled / reminder-cancelled → remove the event.
+                    # The agenda calendar should reflect only what's pending;
+                    # otherwise it accumulates crossed-out clutter and the
+                    # alarms (already-fired) hang around in NotificationCenter.
+                    is_terminal = (item.get("status") in ("done", "cancelled")
+                                   or (kind == "reminder" and item.get("cancelled")))
+                    if is_terminal:
+                        existing_uid = ids.get(storage_key, {}).get("gcal_id")
+                        if existing_uid:
+                            _delete_calendar_event(existing_uid, cal_name)
+                            ids.pop(storage_key, None)
+                            _save_ids(project_dir, ids)
+                        return
+
+                    project_name = project_dir.name
+                    description  = _project_description(project_dir, config, html=False)
+                    existing     = ids.get(storage_key, {})
+                    item["_gcal_id"] = existing.get("gcal_id")
+                    item["_orbit_id"] = (item.get("orbit_id")
+                                         or existing.get("orbit_id")
+                                         or _new_orbit_id())
+                    new_uid = _sync_one_agenda_event(cal_name, item,
+                                                     project_name, description,
+                                                     kind, dry_run=False)
+                    if new_uid and new_uid != existing.get("gcal_id"):
+                        ids.setdefault(storage_key, {})["gcal_id"] = new_uid
+                        ids[storage_key]["orbit_id"] = item.get("_orbit_id")
+                        ids[storage_key]["snapshot"] = _make_snapshot(item)
+                        _purge_orbit_orphans(ids, storage_key, item.get("_orbit_id"))
+                        _save_ids(project_dir, ids)
+                        # Persist orbit-id back into agenda.md.
+                        agenda_path = resolve_file(project_dir, "agenda")
+                        data = _read_agenda(agenda_path)
+                        section = {"task": "tasks", "milestone": "milestones",
+                                   "reminder": "reminders"}[kind]
+                        for it in data.get(section, []):
+                            if (it.get("desc") == item["desc"]
+                                    and it.get("date") == item.get("date")):
+                                it["orbit_id"] = item.get("_orbit_id")
+                                break
+                        _write_agenda(agenda_path, data)
+                    item.pop("_gcal_id", None)
+                    return
+
+                # ── Backend = "reminders": legacy Reminders.app path ─────
                 if not _reminders_app_running():
                     return
                 list_name = _reminders_list_name(config)

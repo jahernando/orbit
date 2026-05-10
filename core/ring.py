@@ -168,9 +168,52 @@ def resolve_ring_datetime(due_date: str, ring: str,
 
 _KIND_EMOJI = {"task": "✅", "milestone": "🏁", "event": "📅", "reminder": "💬"}
 
+# Short adaptive timeout for background AppleScript calls. Long enough to
+# catch fast errors (bad list name, syntax — usually <50 ms) but short
+# enough to be imperceptible. iCloud-blocked calls (5-15 s) keep running
+# in the background after we return.
+_BG_TIMEOUT = 0.15  # seconds
+
+
+def _run_osascript_bg(script: str, label: str) -> bool:
+    """Run osascript with a short timeout. Returns True if the script
+    either succeeded quickly or is still running (fire-and-forget). Prints
+    a warning and returns False only on a fast failure.
+    """
+    import threading
+    err = {}
+
+    def _do_run():
+        try:
+            r = subprocess.run(["osascript", "-e", script],
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                err["msg"] = (r.stderr or "").strip() or f"exit {r.returncode}"
+        except FileNotFoundError:
+            err["msg"] = "osascript no encontrado"
+        except Exception as exc:
+            err["msg"] = str(exc)
+
+    t = threading.Thread(target=_do_run, daemon=True)
+    t.start()
+    t.join(timeout=_BG_TIMEOUT)
+    if t.is_alive():
+        return True
+    if err:
+        print(f"  ⚠️  {label}: {err['msg']}")
+        return False
+    return True
+
 def _schedule_reminder(title: str, project: str,
-                        dt: datetime, kind: str = "") -> bool:
-    """Create a reminder in macOS Reminders.app. Returns True on success."""
+                        dt: datetime, kind: str = "",
+                        background: bool = False) -> bool:
+    """Create a reminder in macOS Reminders.app. Returns True on success.
+
+    With ``background=True`` the AppleScript is fired via ``Popen`` and the
+    function returns True immediately — the caller doesn't wait for
+    Reminders.app/iCloud (which can take 5-15 s when busy). Used by
+    interactive add/edit/drop so the prompt comes back instantly.
+    """
     from core.config import ORBIT_PROMPT
     prefix = f"{_KIND_EMOJI[kind]} " if kind in _KIND_EMOJI else ""
     full_title = f"{ORBIT_PROMPT}[{project}] {prefix}{title}"
@@ -191,6 +234,8 @@ tell application "Reminders"
     end tell
 end tell
 """
+    if background:
+        return _run_osascript_bg(script, "reminder")
     try:
         result = subprocess.run(["osascript", "-e", script],
                                 capture_output=True, text=True)
@@ -199,8 +244,13 @@ end tell
         return False
 
 
-def _delete_reminder(title: str, project: str, kind: str = "") -> bool:
-    """Delete a reminder from macOS Reminders.app by title. Returns True on success."""
+def _delete_reminder(title: str, project: str, kind: str = "",
+                      background: bool = False) -> bool:
+    """Delete a reminder from macOS Reminders.app by title. Returns True on success.
+
+    With ``background=True`` the AppleScript runs fire-and-forget — see
+    :func:`_schedule_reminder` for rationale.
+    """
     from core.config import ORBIT_PROMPT
     prefix = f"{_KIND_EMOJI[kind]} " if kind in _KIND_EMOJI else ""
     full_title = f"{ORBIT_PROMPT}[{project}] {prefix}{title}"
@@ -218,6 +268,8 @@ tell application "Reminders"
     end if
 end tell
 """
+    if background:
+        return _run_osascript_bg(script, "reminder")
     try:
         result = subprocess.run(["osascript", "-e", script],
                                 capture_output=True, text=True)

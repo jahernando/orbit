@@ -28,7 +28,8 @@ from core.commit import run_commit
 from core.migrate import run_migrate, run_migrate_all
 from core.agenda_view import run_agenda, run_cal
 from core.ls import run_ls_files, run_ls_notes
-from core.gsync import run_gsync, run_gsync_migrate_recurring
+from core.gsync import (run_gsync, run_gsync_migrate_recurring,
+                        run_gsync_migrate_rem_to_calendar)
 from core.history import log_history, run_history
 from core.claude import run_claude
 from core.deliver import run_deliver
@@ -862,6 +863,10 @@ def cmd_gsync(args):
         return run_gsync_migrate_recurring(
             dry_run=getattr(args, "dry_run", False),
         )
+    if getattr(args, "migrate_rem_to_calendar", False):
+        return run_gsync_migrate_rem_to_calendar(
+            dry_run=getattr(args, "dry_run", False),
+        )
     return run_gsync(
         dry_run=getattr(args, "dry_run", False),
         list_calendars=getattr(args, "list_calendars", False),
@@ -1414,6 +1419,9 @@ def _build_parser():
                          help="List Calendar.app calendars and exit")
     gsync_p.add_argument("--migrate-recurring", action="store_true", dest="migrate_recurring",
                          help="One-time legacy: mark old recurring events for RRULE re-creation")
+    gsync_p.add_argument("--migrate-rem-to-calendar", action="store_true",
+                         dest="migrate_rem_to_calendar",
+                         help="Migrate tasks/ms/reminders from Reminders.app to the agenda calendar in Calendar.app")
 
 
     # --- mail (cartero) ---

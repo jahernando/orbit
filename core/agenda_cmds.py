@@ -796,43 +796,65 @@ def _format_add_attrs(date_val, time_val, recur, until, ring,
     return attrs
 
 
+def _agenda_via_calendar() -> bool:
+    """Return True when tasks/ms/reminders are delivered as Calendar events
+    (alarm via CalendarAgent). Used to short-circuit Reminders.app paths.
+
+    Falls back to False (legacy Reminders.app behaviour) on any config error
+    so a misconfigured workspace still gets its alarms one way or another.
+    """
+    try:
+        from core.gsync import _load_config, _agenda_backend
+        return _agenda_backend(_load_config()) == "calendar"
+    except Exception:
+        return False
+
+
 def _schedule_ring_if_today(text, project_dir, date_val, ring, time_val, kind):
     """Schedule Mac reminder if ring fires today."""
     if not ring:
+        return
+    if _agenda_via_calendar():
+        # Alarm is attached to the Calendar event by gsync; nothing to do.
         return
     from core.ring import resolve_ring_datetime, _schedule_reminder
     ev_time = time_val.split("-")[0] if time_val and "-" in time_val else time_val
     ring_dt = resolve_ring_datetime(date_val, ring, due_time=ev_time)
     if ring_dt and ring_dt.date() == date.today():
-        ok = _schedule_reminder(text, project_dir.name, ring_dt, kind=kind)
-        if ok:
-            print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
+        # Optimistic print: AppleScript runs in background.
+        print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
+        _schedule_reminder(text, project_dir.name, ring_dt, kind=kind, background=True)
 
 
 def _delete_ring_if_today(desc, project_dir, date_val, ring, time_val, kind):
     """Delete Mac reminder if it was firing today."""
     if not ring or not date_val:
         return
+    if _agenda_via_calendar():
+        return
     from core.ring import resolve_ring_datetime, _delete_reminder
     ev_time = time_val.split("-")[0] if time_val and "-" in time_val else time_val
     ring_dt = resolve_ring_datetime(date_val, ring, due_time=ev_time)
     if ring_dt and ring_dt.date() == date.today():
-        _delete_reminder(desc, project_dir.name, kind=kind)
+        _delete_reminder(desc, project_dir.name, kind=kind, background=True)
 
 
 def _update_ring_on_edit(old_desc, item, project_dir, kind, changed_fields):
     """Update Mac reminder on edit: delete old + schedule new if changed."""
     if not item.get("ring") or not item.get("date"):
         return
+    if _agenda_via_calendar():
+        return
     from core.ring import resolve_ring_datetime, _schedule_reminder, _delete_reminder
     ev_time = item.get("time", "").split("-")[0] if item.get("time") and "-" in item.get("time", "") else item.get("time")
     ring_dt = resolve_ring_datetime(item["date"], item["ring"], due_time=ev_time)
     if ring_dt and ring_dt.date() == date.today():
         if any(changed_fields):
-            _delete_reminder(old_desc, project_dir.name, kind=kind)
-        ok = _schedule_reminder(item["desc"], project_dir.name, ring_dt, kind=kind)
-        if ok:
-            print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
+            _delete_reminder(old_desc, project_dir.name, kind=kind, background=True)
+        # Optimistic print: AppleScript runs in background.
+        print(f"  ⏰ Recordatorio programado: {ring_dt.strftime('%H:%M')}")
+        _schedule_reminder(item["desc"], project_dir.name, ring_dt, kind=kind,
+                           background=True)
 
 
 def _sync_to_google(project_dir, item, kind):
@@ -1159,15 +1181,17 @@ def _generic_add(type_name: str, project: str, text: str,
     # Ring scheduling
     if cfg["has_ring"]:
         _schedule_ring_if_today(text, project_dir, date_val, ring, time_val, cfg["kind"])
-    elif type_name == "reminder" and date_val == date.today().isoformat():
+    elif (type_name == "reminder" and date_val == date.today().isoformat()
+            and not _agenda_via_calendar()):
         # Reminders: schedule notification at exact time
         from datetime import datetime
         fire_dt = datetime.fromisoformat(f"{date_val}T{time_val}:00")
         if fire_dt > datetime.now():
             from core.ring import _schedule_reminder
-            ok = _schedule_reminder(text, project_dir.name, fire_dt, kind="reminder")
-            if ok:
-                print(f"  🔔 Notificación programada para hoy a las {time_val}")
+            # Optimistic print: AppleScript runs in background.
+            print(f"  🔔 Notificación programada para hoy a las {time_val}")
+            _schedule_reminder(text, project_dir.name, fire_dt, kind="reminder",
+                                background=True)
 
     # Google sync
     if cfg["has_gsync"]:
@@ -1222,9 +1246,10 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
                 item["date"] = next_due
                 _write_agenda(agenda_path, data)
                 # Delete Mac reminder if for today
-                if date_val_is_today(item.get("date")):
+                if date_val_is_today(item.get("date")) and not _agenda_via_calendar():
                     from core.ring import _delete_reminder
-                    _delete_reminder(item_desc, project_dir.name, kind="reminder")
+                    _delete_reminder(item_desc, project_dir.name, kind="reminder",
+                                      background=True)
                 print(f"✓ [{project_dir.name}] Recordatorio avanzado: {item_desc} → {next_due}")
                 return 0
         else:
@@ -1258,9 +1283,11 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
     if cfg["has_ring"]:
         _delete_ring_if_today(item_desc, project_dir, item.get("date"),
                               item.get("ring"), item.get("time"), cfg["kind"])
-    elif type_name == "reminder" and item.get("date") == date.today().isoformat():
+    elif (type_name == "reminder" and item.get("date") == date.today().isoformat()
+            and not _agenda_via_calendar()):
         from core.ring import _delete_reminder
-        _delete_reminder(item_desc, project_dir.name, kind="reminder")
+        _delete_reminder(item_desc, project_dir.name, kind="reminder",
+                          background=True)
 
     # Google sync (task/ms: sync cancelled item)
     if cfg["has_gsync"] and cfg["drop_action"] == "cancel":
@@ -1365,16 +1392,19 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
     if cfg["has_ring"]:
         _update_ring_on_edit(old_desc, item, project_dir, cfg["kind"],
                              [new_text, new_time, new_ring])
-    elif type_name == "reminder" and item.get("date") and item.get("time"):
+    elif (type_name == "reminder" and item.get("date") and item.get("time")
+            and not _agenda_via_calendar()):
         if item["date"] == date.today().isoformat():
             from core.ring import _schedule_reminder, _delete_reminder
             from datetime import datetime as _dt, time as _time
             fire_dt = _dt.combine(date.today(), _time.fromisoformat(item["time"]))
             if new_text or new_time:
-                _delete_reminder(old_desc, project_dir.name, kind="reminder")
-            ok = _schedule_reminder(item["desc"], project_dir.name, fire_dt, kind="reminder")
-            if ok:
-                print(f"  🔔 Notificación actualizada: {item['time']}")
+                _delete_reminder(old_desc, project_dir.name, kind="reminder",
+                                  background=True)
+            # Optimistic print: AppleScript runs in background.
+            print(f"  🔔 Notificación actualizada: {item['time']}")
+            _schedule_reminder(item["desc"], project_dir.name, fire_dt,
+                                kind="reminder", background=True)
 
     # Google sync
     if cfg["has_gsync"]:
@@ -1823,18 +1853,20 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
             else:
                 rem["date"] = next_due
                 _write_agenda(agenda_path, data)
-                if date_val_is_today(today_str):
+                if date_val_is_today(today_str) and not _agenda_via_calendar():
                     from core.ring import _delete_reminder
-                    _delete_reminder(rem["desc"], project_dir.name, kind="reminder")
+                    _delete_reminder(rem["desc"], project_dir.name,
+                                      kind="reminder", background=True)
                 print(f"✓ [{project_dir.name}] Recordatorio avanzado: {rem['desc']} → {next_due}")
                 return 0
 
         # Cancel
         rem["cancelled"] = True
         _write_agenda(agenda_path, data)
-        if date_val_is_today(rem.get("date")):
+        if date_val_is_today(rem.get("date")) and not _agenda_via_calendar():
             from core.ring import _delete_reminder
-            _delete_reminder(rem["desc"], project_dir.name, kind="reminder")
+            _delete_reminder(rem["desc"], project_dir.name, kind="reminder",
+                              background=True)
         if drop_series:
             print(f"✓ [{project_dir.name}] Serie eliminada: {rem['desc']} ({rem['recur']})")
         else:
