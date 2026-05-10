@@ -202,12 +202,15 @@ def run_shell(editor: str = ""):
             print("☀️ Nuevo día. Avanzando recurrentes y programando recordatorios...")
             from core.agenda_cmds import startup_advance_past_recurring
             from core.ring import schedule_new_format_reminders
+            from core.gsync import gsync_background
             adv = startup_advance_past_recurring()
             if adv:
                 n = len(adv)
                 print(f"  🔄 {n} cita{'s' if n != 1 else ''} recurrente{'s' if n != 1 else ''} avanzada{'s' if n != 1 else ''}:")
                 for info in adv:
                     print(f"     {info}")
+                # Push the advanced dates to Reminders.app / Calendar.app.
+                gsync_background()
             scheduled = schedule_new_format_reminders()
             if scheduled:
                 print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
