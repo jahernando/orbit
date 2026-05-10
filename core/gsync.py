@@ -673,6 +673,160 @@ def _read_event_description(uid: str, calendar_name: str) -> Optional[str]:
     return _osa(script, timeout=30)
 
 
+# ── Bulk fetch helpers (used by reverse sync: backend → orbit) ─────────────
+
+# ASCII control chars used as record/field separators when AppleScript
+# returns a stream of items. They never appear in legitimate user data.
+_FETCH_FIELD_SEP  = "\x1F"  # Unit Separator
+_FETCH_RECORD_SEP = "\x1E"  # Record Separator
+
+
+def _fetch_all_reminders(list_name: str) -> list:
+    """Bulk fetch every reminder from a list with the fields we care about.
+
+    One AppleScript call returns:
+        [{"uid": ..., "name": ..., "due_iso": ..., "completed": bool,
+          "body": ..., "orbit_id": ..., "occurrence": ...}, ...]
+
+    Returns ``[]`` on AppleScript failure.
+    """
+    lst = _esc(list_name)
+    fld = "(ASCII character 31)"
+    rec = "(ASCII character 30)"
+    script = (
+        f'tell application "Reminders"\n'
+        f'    tell list "{lst}"\n'
+        f'        set fld to {fld}\n'
+        f'        set rec to {rec}\n'
+        f'        set out to ""\n'
+        f'        repeat with r in reminders\n'
+        f'            set due_str to ""\n'
+        f'            try\n'
+        f'                set d to due date of r\n'
+        f'                set due_str to (year of d as text) & "-" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (month of d as integer))) & "-" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (day of d))) & "T" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (hours of d))) & ":" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (minutes of d)))\n'
+        f'            end try\n'
+        f'            set body_str to ""\n'
+        f'            try\n'
+        f'                set body_str to body of r\n'
+        f'            end try\n'
+        f'            set out to out & (id of r) & fld & (name of r) & fld ¬\n'
+        f'                & due_str & fld & (completed of r as text) & fld ¬\n'
+        f'                & body_str & rec\n'
+        f'        end repeat\n'
+        f'        return out\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    out = _osa(script, timeout=120)
+    if not out:
+        return []
+    items = []
+    for raw in out.split(_FETCH_RECORD_SEP):
+        if not raw.strip():
+            continue
+        parts = raw.split(_FETCH_FIELD_SEP)
+        if len(parts) < 5:
+            continue
+        uid, name, due_iso, completed, body = parts[:5]
+        oid, occ = _parse_orbit_tag(body)
+        items.append({
+            "uid":        uid,
+            "name":       name,
+            "due_iso":    due_iso or None,
+            "completed":  completed.strip().lower() == "true",
+            "body":       body,
+            "orbit_id":   oid,
+            "occurrence": occ,
+        })
+    return items
+
+
+def _fetch_all_events(calendar_name: str) -> list:
+    """Bulk fetch every event from a calendar.
+
+    Returns list of {"uid", "summary", "description", "start_iso",
+    "end_iso", "all_day", "orbit_id"}. Recurring series surface as one
+    entry per series (the anchor event), not per occurrence.
+
+    Note: Calendar.app expands recurrences when iterating ``events``, so
+    we filter to entries whose start date matches an "anchor" (first
+    occurrence). For our purposes here we use the description's orbit-id
+    to distinguish series — an item we created with [orbit:xxx] has only
+    one such tag for the series, so AppleScript's ``whose description
+    contains`` returns each series exactly once.
+    """
+    cal = _esc(calendar_name)
+    fld = "(ASCII character 31)"
+    rec = "(ASCII character 30)"
+    script = (
+        f'tell application "Calendar"\n'
+        f'    tell calendar "{cal}"\n'
+        f'        set fld to {fld}\n'
+        f'        set rec to {rec}\n'
+        f'        set out to ""\n'
+        f'        repeat with e in (every event whose description contains "[orbit:")\n'
+        f'            set s_str to ""\n'
+        f'            try\n'
+        f'                set sd to start date of e\n'
+        f'                set s_str to (year of sd as text) & "-" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (month of sd as integer))) & "-" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (day of sd))) & "T" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (hours of sd))) & ":" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (minutes of sd)))\n'
+        f'            end try\n'
+        f'            set e_str to ""\n'
+        f'            try\n'
+        f'                set ed to end date of e\n'
+        f'                set e_str to (year of ed as text) & "-" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (month of ed as integer))) & "-" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (day of ed))) & "T" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (hours of ed))) & ":" & ¬\n'
+        f'                  (text -2 thru -1 of ("0" & (minutes of ed)))\n'
+        f'            end try\n'
+        f'            set desc_str to ""\n'
+        f'            try\n'
+        f'                set desc_str to description of e\n'
+        f'            end try\n'
+        f'            set out to out & (uid of e) & fld & (summary of e) & fld ¬\n'
+        f'                & s_str & fld & e_str & fld & desc_str & rec\n'
+        f'        end repeat\n'
+        f'        return out\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    out = _osa(script, timeout=120)
+    if not out:
+        return []
+    items = []
+    seen_uids = set()
+    for raw in out.split(_FETCH_RECORD_SEP):
+        if not raw.strip():
+            continue
+        parts = raw.split(_FETCH_FIELD_SEP)
+        if len(parts) < 5:
+            continue
+        uid, summary, start_iso, end_iso, description = parts[:5]
+        # Calendar.app expands recurring events into one entry per occurrence
+        # when iterating; dedupe by uid (the series uid is shared).
+        if uid in seen_uids:
+            continue
+        seen_uids.add(uid)
+        oid, _ = _parse_orbit_tag(description)
+        items.append({
+            "uid":         uid,
+            "summary":     summary,
+            "start_iso":   start_iso or None,
+            "end_iso":     end_iso or None,
+            "description": description,
+            "orbit_id":    oid,
+        })
+    return items
+
+
 def _delete_reminder_item(uid: str, list_name: str) -> bool:
     """Delete reminder by uid. Idempotent (missing → also true)."""
     lst = _esc(list_name)

@@ -869,6 +869,14 @@ def cmd_gsync(args):
     )
 
 
+def cmd_gpull(args):
+    from core.gimport import import_changes
+    return import_changes(
+        project=getattr(args, "project", None),
+        dry_run=getattr(args, "dry_run", False),
+    )
+
+
 def cmd_mail(args):
     from core.cartero import run_mail
     return run_mail(
@@ -1392,6 +1400,14 @@ def _build_parser():
     gsync_p.add_argument("--migrate-recurring", action="store_true", dest="migrate_recurring",
                          help="One-time legacy: mark old recurring events for RRULE re-creation")
 
+    # --- gpull (reverse sync: backend → agenda.md) ---
+    gpull_p = subparsers.add_parser("gpull",
+                                     help="Pull changes from Reminders.app / Calendar.app back into agenda.md")
+    gpull_p.add_argument("project", nargs="?", default=None,
+                         help="Pull only this project (substring match). Omitted: all.")
+    gpull_p.add_argument("--dry-run", action="store_true", dest="dry_run",
+                         help="Preview without modifying agenda.md")
+
     # --- mail (cartero) ---
     mail_p = subparsers.add_parser("mail", help="Check mail notifications (cartero)")
     mail_p.add_argument("--status", action="store_true",
@@ -1848,7 +1864,7 @@ _COMMANDS = {
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "gpull": cmd_gpull, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,

@@ -568,11 +568,16 @@ Orbit sincroniza automáticamente al arrancar y tras cada `add`, `done`, `drop` 
 **Si algo falla**:
 
 ```bash
-gsync                      # sincronizar todos los proyectos
-gsync santiago             # sincronizar solo un proyecto (substring match)
-gsync --dry-run            # ver qué se sincronizaría sin hacerlo
-gsync --list-calendars     # listar calendarios de Calendar.app
+gsync                      # push: sincroniza todos los proyectos
+gsync santiago             # push: solo un proyecto (substring match)
+gsync --dry-run            # preview sin escribir
+
+gpull                      # pull: trae los ✓ que marcaste en iPhone/Reminders
+gpull santiago             # pull: solo un proyecto
+gpull --dry-run            # preview sin modificar agenda.md
 ```
+
+`gpull` importa solo el toggle `completed` (los recurrentes avanzan a la próxima ocurrencia). Cambios de título/fecha en Reminders se ignoran: agenda.md es la fuente de verdad para metadatos.
 
 ### Cloud (OneDrive/Google Drive)
 

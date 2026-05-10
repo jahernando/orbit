@@ -468,11 +468,17 @@ orbit commit ["<mensaje>"]
 ### Calendar.app + Reminders.app — gsync
 
 ```bash
-orbit gsync                        # todos los proyectos: eventos → Calendar.app · tareas/hitos/recordatorios → Reminders.app
+orbit gsync                        # push: todos los proyectos. Eventos → Calendar.app · tareas/hitos/recordatorios → Reminders.app
 orbit gsync <proyecto>             # solo ese proyecto (match por substring)
 orbit gsync --dry-run              # preview sin escribir
 orbit gsync --list-calendars       # lista calendarios de Calendar.app
+
+orbit gpull                        # pull: trae los `completed` ✓ que marcaste en Reminders.app/iPhone
+orbit gpull <proyecto>             # solo ese proyecto
+orbit gpull --dry-run              # preview sin tocar agenda.md
 ```
+
+**`gpull` (alcance):** importa SOLO la marca `completed` (con avance recurrente). Cambios de título/fecha en Reminders se ignoran — agenda.md sigue siendo la fuente de verdad para metadatos. Si un reminder desaparece de la lista, orbit lo marca `cancelled`.
 
 - **Eventos → Calendar.app vía AppleScript**. Un calendar por tipo de proyecto (nombre como aparece en Calendar.app). Sin OAuth — Calendar.app sincroniza después con la cuenta que tenga (Google/iCloud/Exchange). Requiere Calendar.app abierto.
 - **Tareas/hitos/recordatorios → Reminders.app vía AppleScript**. Una lista por workspace (configurable). Sin OAuth — Reminders.app sincroniza con iCloud nativamente (visible en iPhone/iPad). Requiere Reminders.app abierto.
