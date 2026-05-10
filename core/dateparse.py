@@ -111,6 +111,16 @@ def parse_date(expr: str) -> str:
         return f"{m.group(1)}-{int(m.group(2)):02d}"
 
     today = date.today()
+
+    # ── ±N short form: today shifted N days. Sign required so a bare
+    # `2026` isn't accidentally read as "in 2026 days". ──────────────────
+    m = re.match(r'^([+-])(\d+)$', expr)
+    if m:
+        n_days = int(m.group(2))
+        if m.group(1) == "-":
+            n_days = -n_days
+        return (today + timedelta(days=n_days)).isoformat()
+
     n = _norm(expr)
 
     # ── Simple day ────────────────────────────────────────────────────────

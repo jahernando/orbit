@@ -500,3 +500,24 @@ class TestParseDateEdgeCases:
     def test_mixed_case(self):
         assert parse_date("NEXT FRIDAY") == "2026-03-13"
         assert parse_date("Last Month") == "2026-02"
+
+
+class TestParseDateRelativeDays:
+    """Short ±N form: today shifted N days. Sign is REQUIRED so a bare
+    year like '2026' is not silently interpreted as 2026 days."""
+
+    @_patch_today
+    def test_plus_days(self):
+        assert parse_date("+0") == "2026-03-10"
+        assert parse_date("+1") == "2026-03-11"
+        assert parse_date("+7") == "2026-03-17"
+
+    @_patch_today
+    def test_minus_days(self):
+        assert parse_date("-3") == "2026-03-07"
+
+    @_patch_today
+    def test_bare_number_passthrough(self):
+        # Without a sign, ambiguous → pass through unchanged.
+        assert parse_date("7") == "7"
+        assert parse_date("2026") == "2026"

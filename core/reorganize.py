@@ -23,6 +23,7 @@ from core.agenda_cmds import (
     run_reminder_drop, run_reminder_edit,
 )
 from core.config import iter_project_dirs, normalize as _normalize
+from core.dateparse import parse_date as _parse_date
 from core.log import resolve_file
 from core.project import _is_new_project, _find_new_project
 
@@ -46,6 +47,12 @@ def _canonical_type(t: Optional[str]) -> Optional[str]:
     if not t or t == "all":
         return None
     return _TYPE_ALIASES.get(t, t)
+
+
+def _looks_iso(s: str) -> bool:
+    """Whether *s* matches a standard date form runner-validators accept."""
+    import re as _re
+    return bool(_re.match(r"^\d{4}-\d{2}-\d{2}$", s or ""))
 
 
 # ── Period resolution ──────────────────────────────────────────────────────
@@ -232,8 +239,15 @@ def _apply_action(action: str, kind: str, project_dir: Path, item: dict) -> bool
             return False
         return True
     if action == "f":
-        new_date = _prompt("    nueva fecha (today/tomorrow/+N/YYYY-MM-DD): ")
-        if not new_date:
+        raw = _prompt("    nueva fecha (hoy/mañana/viernes/next monday/+N/YYYY-MM-DD): ")
+        if not raw:
+            return False
+        # Translate natural language ("viernes", "mañana", "next monday", …)
+        # to a standard form before delegating to the runner. Runners use
+        # _valid_date which only accepts ISO.
+        new_date = _parse_date(raw)
+        if new_date == raw and not _looks_iso(new_date):
+            print(f"  ⚠️  Fecha no reconocida: {raw!r}.")
             return False
         if kind == "task":
             run_task_edit(proj, desc, new_date=new_date, force=True)
