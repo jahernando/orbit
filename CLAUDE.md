@@ -104,6 +104,19 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - Fase 3: gsync (pendiente de decisión)
 - Diseño completo en `~/🚀orbit-ws/💻software/💻orbit/notes/2026-03-21_output_cronograma.md`
 
+### v0.28.0 (2026-05-10)
+- **`orbit reorganize`** — modo interactivo para triage de pendientes (drop/done/fecha/hora/skip), con filtros `type`, `--project`, `--period`, y `--undated` para mostrar undated. Refresca dash al salir. Llama por debajo a los runners ya existentes.
+- **`orbit-id` como identidad estable**: tag `[orbit:xxx]` (8 hex) embebido en `agenda.md`, body de Reminder y description de Calendar. Match por id sobrevive renames, cambios de fecha, recurrencia, timeouts AppleScript. Resuelve el bug crónico de duplicados.
+- **Migración de keys recurrentes v1→v2** (`desc::🔄recur::date`): permite múltiples series con el mismo título (e.g. natación lun/mié/vie). `_migrate_recurring_keys` cubre la transición automáticamente.
+- **Drop de markers redundantes**: ☁️/synced y prefijo `🚀`/`🌿` ya no se escriben en agenda.md ni en summaries de Reminder/Calendar (la lista/calendar ya identifica el workspace).
+- **Phase 2A complete**: tasks/ms/reminders/cronogramas → Reminders.app vía AppleScript. Cronograma G: 1 reminder por crono con due = próxima hoja no completada (vencidas no avanzan).
+- **`📹` para meeting URLs**: `--room URL` muestra cámara, `--room "Aula A1-01"` muestra puerta 🚪.
+- **Auto-advance recurrentes vencidas en startup/00:00** (cambio de día detectado al volver al prompt) + gsync_background tras avance.
+- **Fuente de verdad**: orbit es la verdad, Calendar/Reminders son render + alarmas. Reverse-sync (`gpull`) implementado y descartado en la misma sesión — código queda dormante en `core/gimport.py`.
+- **Performance**: `_SYNC_TIMEOUT` reducido a 2s (sync continúa en bg), `gpull` optimizado a 3-5s con server-side filter.
+- **`gsync <project>`**: filtro por proyecto en push.
+- **Parser**: índices con punto final (`1.`), `+N`/`-N` short-form para fechas (suma N días desde hoy), `viernes`/`hoy` ya soportados consistentemente en todos los entry points.
+
 ### v0.27.0 (2026-04-16)
 - **Cronogramas fase 2**: gantt, reindex, edit, after herencia, panel progress, done interactivo
   - `crono gantt`: vista progreso (DAG) o timeline (fechas), `--progress`/`--timeline`
