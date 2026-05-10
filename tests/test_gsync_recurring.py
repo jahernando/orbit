@@ -7,19 +7,28 @@ from core.gsync import _item_key, _make_snapshot
 # ── _item_key: stable keys for recurring items ──────────────────────────────
 
 class TestItemKeyRecurring:
+    """Recurring keys MUST include the anchor date.
+
+    Prior behaviour (desc::🔄recur) collapsed multiple distinct series with
+    the same description (e.g. "🏊 natación" Mon/Wed/Fri) onto a single key
+    and only one synced. The anchor date is part of the identity.
+    """
 
     def test_non_recurring_uses_date(self):
         item = {"desc": "Meeting", "date": "2026-03-20"}
         assert _item_key(item) == "Meeting::2026-03-20"
 
-    def test_recurring_uses_recur_pattern(self):
+    def test_recurring_includes_anchor_date(self):
         item = {"desc": "Standup", "date": "2026-03-20", "recur": "weekly"}
-        assert _item_key(item) == "Standup::🔄weekly"
+        assert _item_key(item) == "Standup::🔄weekly::2026-03-20"
 
-    def test_recurring_key_stable_across_date_changes(self):
-        item1 = {"desc": "Standup", "date": "2026-03-20", "recur": "weekly"}
-        item2 = {"desc": "Standup", "date": "2026-03-27", "recur": "weekly"}
-        assert _item_key(item1) == _item_key(item2)
+    def test_same_desc_different_anchors_distinct(self):
+        """Three series with the same name but different anchors → 3 keys."""
+        mon = {"desc": "🏊 natación", "date": "2026-05-11", "recur": "weekly"}
+        wed = {"desc": "🏊 natación", "date": "2026-05-13", "recur": "weekly"}
+        fri = {"desc": "🏊 natación", "date": "2026-05-15", "recur": "weekly"}
+        keys = {_item_key(mon), _item_key(wed), _item_key(fri)}
+        assert len(keys) == 3
 
     def test_different_recur_patterns_different_keys(self):
         item_w = {"desc": "Sync", "date": "2026-03-20", "recur": "weekly"}
@@ -28,11 +37,11 @@ class TestItemKeyRecurring:
 
     def test_recurring_daily(self):
         item = {"desc": "Plan day", "date": "2026-03-17", "recur": "daily"}
-        assert _item_key(item) == "Plan day::🔄daily"
+        assert _item_key(item) == "Plan day::🔄daily::2026-03-17"
 
     def test_recurring_every_2_weeks(self):
         item = {"desc": "Biweekly", "date": "2026-03-18", "recur": "every-2-weeks"}
-        assert _item_key(item) == "Biweekly::🔄every-2-weeks"
+        assert _item_key(item) == "Biweekly::🔄every-2-weeks::2026-03-18"
 
     def test_recurring_with_none_recur_uses_date(self):
         """recur=None should behave like non-recurring."""
@@ -216,18 +225,14 @@ class TestTaskDropRecurring:
 # ── Deduplication of recurring items in sync ─────────────────────────────────
 
 class TestRecurringDedup:
-    """Test that _item_key produces the same key for duplicate recurring entries,
-    enabling deduplication during sync."""
+    """Sanity checks on _item_key uniqueness across common patterns."""
 
-    def test_duplicate_recurring_events_same_key(self):
+    def test_same_series_different_dates_distinct(self):
+        """Anchor date is part of the key, so dragging the series to a new
+        anchor produces a new key (and a new orbit-id assignment, fine)."""
         ev1 = {"desc": "reunion semanal", "date": "2026-03-20", "recur": "weekly"}
         ev2 = {"desc": "reunion semanal", "date": "2026-03-27", "recur": "weekly"}
-        assert _item_key(ev1) == _item_key(ev2)
-
-    def test_duplicate_recurring_tasks_same_key(self):
-        t1 = {"desc": "Plan day", "date": "2026-03-17", "recur": "daily", "status": "pending"}
-        t2 = {"desc": "Plan day", "date": "2026-03-18", "recur": "daily", "status": "pending"}
-        assert _item_key(t1) == _item_key(t2)
+        assert _item_key(ev1) != _item_key(ev2)
 
     def test_different_desc_different_key(self):
         ev1 = {"desc": "meeting A", "date": "2026-03-20", "recur": "weekly"}
@@ -246,20 +251,21 @@ class TestKeyMigration:
     """Test that old-format keys (desc::date) can be migrated to new format."""
 
     def test_old_key_format(self):
-        """Old format used date; new format uses recur pattern."""
+        """Current format includes anchor date; old format used only date."""
         item = {"desc": "Standup", "date": "2026-03-20", "recur": "weekly"}
-        old_key = f"{item['desc']}::{item['date']}"
+        old_date_key = f"{item['desc']}::{item['date']}"
         new_key = _item_key(item)
-        assert old_key == "Standup::2026-03-20"
-        assert new_key == "Standup::🔄weekly"
-        assert old_key != new_key
+        assert old_date_key == "Standup::2026-03-20"
+        assert new_key == "Standup::🔄weekly::2026-03-20"
+        assert old_date_key != new_key
 
     def test_migration_preserves_data(self):
-        """Simulates the migration logic in _sync_events_for_project.
-        Migration matches old_key = desc::date where date is the current agenda date.
-        """
+        """Simulates migrating from the old recur-only key (without anchor date)
+        to the current format. The match-by-name fallback at sync time recovers
+        the orbit-id from the body, but for ids files this in-memory migration
+        is a one-shot equivalent."""
         ids = {
-            "Standup::2026-03-20": {"gcal_id": "abc123", "snapshot": {"desc": "Standup"}},
+            "Standup::🔄weekly": {"gcal_id": "abc123", "snapshot": {"desc": "Standup"}},
             "One-off::2026-04-01": {"gcal_id": "xyz789", "snapshot": {"desc": "One-off"}},
         }
         events = [
@@ -267,31 +273,26 @@ class TestKeyMigration:
             {"desc": "One-off", "date": "2026-04-01"},
         ]
 
-        # Simulate migration logic
         for ev in events:
             if not ev.get("recur"):
                 continue
             new_key = _item_key(ev)
             if new_key in ids:
                 continue
-            old_key = f"{ev.get('desc', '')}::{ev.get('date', '')}"
-            if old_key in ids:
-                ids[new_key] = ids.pop(old_key)
+            old_recur_key = f"{ev.get('desc', '')}::🔄{ev['recur']}"
+            if old_recur_key in ids:
+                ids[new_key] = ids.pop(old_recur_key)
 
-        # Recurring event migrated to new key
-        assert "Standup::🔄weekly" in ids
-        assert "Standup::2026-03-20" not in ids
-        assert ids["Standup::🔄weekly"]["gcal_id"] == "abc123"
-
-        # Non-recurring event untouched
+        assert "Standup::🔄weekly::2026-03-20" in ids
+        assert "Standup::🔄weekly" not in ids
+        assert ids["Standup::🔄weekly::2026-03-20"]["gcal_id"] == "abc123"
         assert "One-off::2026-04-01" in ids
-        assert ids["One-off::2026-04-01"]["gcal_id"] == "xyz789"
 
     def test_migration_skips_if_new_key_exists(self):
-        """If new-format key already exists, don't overwrite."""
+        """If the new-format key already exists, don't overwrite."""
         ids = {
-            "Standup::2026-03-06": {"gcal_id": "old_id"},
-            "Standup::🔄weekly": {"gcal_id": "new_id"},
+            "Standup::🔄weekly": {"gcal_id": "stale_old_format"},
+            "Standup::🔄weekly::2026-03-13": {"gcal_id": "current"},
         }
         events = [{"desc": "Standup", "date": "2026-03-13", "recur": "weekly"}]
 
@@ -300,10 +301,12 @@ class TestKeyMigration:
                 continue
             new_key = _item_key(ev)
             if new_key in ids:
-                continue
-            old_key = f"{ev.get('desc', '')}::{ev.get('date', '')}"
-            if old_key in ids:
-                ids[new_key] = ids.pop(old_key)
+                continue  # already migrated
+            old_recur_key = f"{ev.get('desc', '')}::🔄{ev['recur']}"
+            if old_recur_key in ids:
+                ids[new_key] = ids.pop(old_recur_key)
 
-        # New key preserved, old key untouched (different date, no match)
-        assert ids["Standup::🔄weekly"]["gcal_id"] == "new_id"
+        # Current key preserved (existed before migration ran)
+        assert ids["Standup::🔄weekly::2026-03-13"]["gcal_id"] == "current"
+        # Old format untouched because new_key was already present
+        assert ids["Standup::🔄weekly"]["gcal_id"] == "stale_old_format"

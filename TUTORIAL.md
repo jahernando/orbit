@@ -209,7 +209,7 @@ ev edit next-kr "WG12" --room none      # quitar la sala
 - `--time HH:MM-HH:MM` — evento con hora de inicio y fin
 - Sin `--time` — evento de día completo (o multi-día con `--end`)
 - `--agenda URL` (📋) — agenda/indico del evento; queda como nota indentada
-- `--room URL` (🚪) — sala (Zoom, Meet, Teams, Webex, Jitsi)
+- `--room` — sala. URL (Zoom/Meet/Teams/Webex) → 📹 cámara (clickable en Calendar.app); texto plano (`Aula A1-01`) → 🚪 puerta (queda en las notas)
 - En `edit`, `none` quita el campo. `--desc` no borra estos campos estructurados
 
 Los cuatro tipos comparten `--date`, `--recur`, `--until`. Tasks, hitos y eventos aceptan `--ring`.
@@ -545,28 +545,31 @@ undo                       # deshacer la última operación de Orbit
 
 Para hacer push al remoto, usa `orbit_push` desde la terminal del sistema (fuera de la shell). Si hay cambios sin commit, hace commit primero.
 
-### Calendar.app + Google Tasks
+### Calendar.app + Reminders.app
 
-Orbit sincroniza automáticamente al arrancar y tras cada `add`, `done`, `drop` o `edit`. Los items sincronizados muestran ☁️ en `agenda.md`. Dos backends:
+Orbit sincroniza automáticamente al arrancar y tras cada `add`, `done`, `drop` o `edit`. Los items sincronizados muestran ☁️ en `agenda.md`. Backends locales (sin OAuth):
 
-- **Eventos → Calendar.app** vía AppleScript. Sin OAuth: orbit habla con la app local y Calendar.app se encarga de propagar al backend que tenga la cuenta (Google, iCloud, Exchange). Requiere Calendar.app abierto. El `--room` del evento (zoom/meet/teams) se convierte en la propiedad `url` del evento → botón clickable en la app móvil/desktop
-- **Tareas e hitos → Google Tasks** (legacy). Requiere `credentials.json` + `token.json`. Una lista por tipo de proyecto
+- **Eventos → Calendar.app** vía AppleScript. Orbit habla con la app local y Calendar.app se encarga de propagar al backend que tenga la cuenta (Google, iCloud, Exchange). Requiere Calendar.app abierto. Si `--room` es una URL (zoom/meet/teams) se promueve a la propiedad `url` del evento → botón cámara 📹 clickable en la app móvil/desktop. Salas físicas (texto plano) se quedan en las notas del evento
+- **Tareas, hitos y recordatorios → Reminders.app** vía AppleScript. Una lista por workspace (`🚀 orbit-ws`, `🌿 orbit-ps`). Sync vía iCloud al iPhone/iPad sin tokens. `--ring` se traduce en `remind me date` (alarma)
+- **Cronogramas → Reminders.app** (1 reminder por cronograma): cada `crono-<n>.md` se sincroniza como una sola entrada `📊 crono-<n>: <hoja siguiente>` con `due date` = fin de la próxima hoja no completada. Vencidas se mantienen (no auto-avanzan); cuando todas las hojas están hechas, el reminder se marca completed. Cronogramas sin fechas se ignoran
 
-**Configuración**: `calendar-sync.json` en la raíz del workspace. Calendars con su nombre tal cual aparece en Calendar.app, no IDs:
+**Configuración**: `calendar-sync.json` en la raíz del workspace. Calendars con su nombre tal cual aparecen en Calendar.app:
 
 ```json
 {
   "calendars": {
     "investigacion": "🌀 Investigacion",
     "default": "🌿 orbit-ps"
-  }
+  },
+  "reminders_list": "🌿 orbit-ps"
 }
 ```
 
 **Si algo falla**:
 
 ```bash
-gsync                      # forzar sincronización manual
+gsync                      # sincronizar todos los proyectos
+gsync santiago             # sincronizar solo un proyecto (substring match)
 gsync --dry-run            # ver qué se sincronizaría sin hacerlo
 gsync --list-calendars     # listar calendarios de Calendar.app
 ```

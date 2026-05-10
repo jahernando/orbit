@@ -140,7 +140,7 @@ orbit ev add next-kr "WG12" --date 2026-05-08 --time 12:00 \
        --room https://cern.zoom.us/j/8463658000
 ```
 
-`--agenda` (📋) y `--room` (🚪) se guardan como notas indentadas bajo el evento y se propagan a Calendar.app: `--room` ocupa la propiedad `url` del evento (botón clickable en la app móvil). En `edit`, `none` quita el campo; un `--desc` no borra estos campos estructurados.
+`--agenda` (📋) y `--room` se guardan como notas indentadas bajo el evento. Si `--room` es una URL (Zoom/Meet/Teams) se promueve a la propiedad `url` del evento → en orbit y en Calendar.app aparece como 📹 (botón cámara). Si es texto plano (`Aula A1-01`) se queda como 🚪 en las notas. En `edit`, `none` quita el campo; un `--desc` no borra estos campos estructurados.
 
 ### Recordatorios
 
@@ -289,7 +289,7 @@ Cada workspace define su `cloud_root` en `orbit.json`. La estructura cloud:
 orbit doctor [project] [--fix]     # validar sintaxis de ficheros
 orbit archive [project] [--months N] [--dry-run] [--force]
                                    # --agenda --logbook --notes para filtrar
-orbit gsync [--dry-run]            # eventos → Calendar.app (AppleScript), tareas → Google Tasks
+orbit gsync [--dry-run]            # eventos → Calendar.app, tareas/hitos/recordatorios/cronogramas → Reminders.app (AppleScript)
 orbit commit ["mensaje"]           # commit + push interactivo
 ```
 
@@ -309,7 +309,7 @@ orbit help --open                  # abre CHULETA.md en el editor
 - Logbook multilinea: lineas indentadas con 2+ espacios son continuacion de la entrada anterior.
 - `notes/` — notas libres, rastreadas opcionalmente en git.
 - `cmd.md` — fichero temporal de salida de comandos con `--open`.
-- `☁️` en agenda.md indica que el item está sincronizado (eventos en Calendar.app, tareas/hitos en Google Tasks). IDs en `.gsync-ids.json`.
+- `☁️` en agenda.md indica que el item está sincronizado (eventos en Calendar.app, tareas/hitos/recordatorios en Reminders.app). IDs en `.gsync-ids.json`.
 - Las operaciones destructivas piden confirmacion (defecto **No**) o requieren `--force`.
 - `--open [EDITOR]` disponible en comandos de consulta; abre resultado en el editor (por defecto o el indicado).
 - `--log PROJECT [--log-entry TYPE]` guarda el output como entrada en el logbook de un proyecto.

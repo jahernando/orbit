@@ -32,7 +32,7 @@ _DAY_MAP = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6
 
 _TASK_LINE_RE = re.compile(
     r"^(\s*)- \[([ x])\]\s+"   # indent + checkbox
-    r"(\d+(?:\.\d+)*)\s+"      # index
+    r"(\d+(?:\.\d+)*)\.?\s+"   # index (optional trailing dot: '1', '1.', '1.1')
     r"(.+)$"                    # rest: title | start | duration
 )
 
@@ -265,6 +265,48 @@ def _parent_indices(tasks: list) -> set:
 def _is_leaf(task: dict, parents: set) -> bool:
     """Check if task is a leaf (not in the parents set). O(1)."""
     return task["index"] not in parents
+
+
+def _leaf_deadline(task: dict):
+    """Effective deadline for a leaf: end_date if computed, else start_date.
+
+    In dag-only cronogramas (no durations) leaves only have start_date —
+    we treat that as the deadline (it's the user-set milestone).
+    """
+    return task.get("end_date") or task.get("start_date")
+
+
+def next_open_leaf(crono_data: dict, today: date = None) -> Optional[dict]:
+    """Return the next non-done leaf with an effective deadline.
+
+    Sorted by deadline ascending. Overdue leaves keep their slot — they
+    do NOT auto-advance, so the user keeps seeing what was missed.
+    Returns None if no open dated leaves (all done, or none have dates).
+
+    Caller must have run _compute_dates() on the tasks beforehand.
+    """
+    tasks = crono_data["tasks"]
+    parents = _parent_indices(tasks)
+    open_leaves = [
+        t for t in tasks
+        if _is_leaf(t, parents)
+        and not t.get("done")
+        and _leaf_deadline(t)
+    ]
+    if not open_leaves:
+        return None
+    open_leaves.sort(key=_leaf_deadline)
+    return open_leaves[0]
+
+
+def cronograma_all_done(crono_data: dict) -> bool:
+    """True if cronograma has at least one leaf and every leaf is done."""
+    tasks = crono_data["tasks"]
+    parents = _parent_indices(tasks)
+    leaves = [t for t in tasks if _is_leaf(t, parents)]
+    if not leaves:
+        return False
+    return all(t.get("done") for t in leaves)
 
 
 # ── Date computation ─────────────────────────────────────────────────────────

@@ -1266,3 +1266,112 @@ class TestDeadline:
         _compute_dates(data["tasks"], data["metadata"])
         output = _format_show(data, today=date(2026, 4, 16))
         assert "deadline" not in output
+
+
+class TestNextOpenLeaf:
+    """next_open_leaf + cronograma_all_done — opción G (gsync → Reminders)."""
+
+    def _build(self, tmp_path, body):
+        from core.cronograma import _parse_crono_file, _compute_dates
+        path = tmp_path / "crono-x.md"
+        path.write_text(textwrap.dedent(body))
+        data = _parse_crono_file(path)
+        _compute_dates(data["tasks"], data["metadata"], today=date(2026, 5, 10))
+        return data
+
+    def test_dotted_index_now_parses(self, tmp_path):
+        """Regression: '1.', '2.' (with trailing dot) used to be skipped."""
+        data = self._build(tmp_path, """\
+            # Cronograma: Dotted
+
+            - [ ] 1. parent
+              - [ ] 1.1 child | 2026-06-01
+        """)
+        idx = {t["index"] for t in data["tasks"]}
+        assert idx == {"1", "1.1"}
+
+    def test_picks_earliest_open_leaf(self, tmp_path):
+        from core.cronograma import next_open_leaf
+        data = self._build(tmp_path, """\
+            # Cronograma: A
+
+            - [ ] 1. parent
+              - [ ] 1.1 later  | 2026-07-01
+              - [ ] 1.2 sooner | 2026-06-01
+        """)
+        leaf = next_open_leaf(data)
+        assert leaf is not None
+        assert leaf["index"] == "1.2"
+
+    def test_overdue_leaf_kept_not_advanced(self, tmp_path):
+        """Vencidas se mantienen — no auto-avanzan a la siguiente."""
+        from core.cronograma import next_open_leaf
+        data = self._build(tmp_path, """\
+            # Cronograma: B
+
+            - [ ] 1. parent
+              - [ ] 1.1 overdue | 2026-04-01
+              - [ ] 1.2 future  | 2026-08-01
+        """)
+        leaf = next_open_leaf(data)
+        assert leaf["index"] == "1.1"
+
+    def test_skips_done_leaves(self, tmp_path):
+        from core.cronograma import next_open_leaf
+        data = self._build(tmp_path, """\
+            # Cronograma: C
+
+            - [ ] 1. parent
+              - [x] 1.1 done    | 2026-04-01
+              - [ ] 1.2 pending | 2026-06-01
+        """)
+        leaf = next_open_leaf(data)
+        assert leaf["index"] == "1.2"
+
+    def test_uses_start_date_when_no_duration(self, tmp_path):
+        """DAG-only cronogramas: no end_date, fallback to start_date."""
+        from core.cronograma import next_open_leaf, _leaf_deadline
+        data = self._build(tmp_path, """\
+            # Cronograma: D
+
+            - [ ] 1. parent
+              - [ ] 1.1 milestone | 2026-06-15
+        """)
+        leaf = next_open_leaf(data)
+        assert leaf is not None
+        assert _leaf_deadline(leaf) == date(2026, 6, 15)
+
+    def test_skip_when_no_dated_leaves(self, tmp_path):
+        """Outline-only cronogramas (no dates anywhere) → None."""
+        from core.cronograma import next_open_leaf
+        data = self._build(tmp_path, """\
+            # Cronograma: E
+
+            - [ ] 1. parent
+              - [ ] 1.1 leaf
+              - [ ] 1.2 leaf
+        """)
+        assert next_open_leaf(data) is None
+
+    def test_all_done_returns_none_and_flag(self, tmp_path):
+        from core.cronograma import next_open_leaf, cronograma_all_done
+        data = self._build(tmp_path, """\
+            # Cronograma: F
+
+            - [ ] 1. parent
+              - [x] 1.1 a | 2026-04-01
+              - [x] 1.2 b | 2026-04-08
+        """)
+        assert next_open_leaf(data) is None
+        assert cronograma_all_done(data) is True
+
+    def test_partial_done_not_all_done(self, tmp_path):
+        from core.cronograma import cronograma_all_done
+        data = self._build(tmp_path, """\
+            # Cronograma: G
+
+            - [ ] 1. parent
+              - [x] 1.1 a | 2026-04-01
+              - [ ] 1.2 b | 2026-04-08
+        """)
+        assert cronograma_all_done(data) is False

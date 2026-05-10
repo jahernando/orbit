@@ -388,13 +388,18 @@ def _reminders_on(project_dir: Path, target: date) -> list:
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def schedule_new_format_reminders(target: Optional[date] = None) -> list:
-    """Scan all new-format projects for ring tasks and reminders firing on *target*.
+    """DEPRECATED: declarative sync model.
 
-    Schedules each via Reminders.app and clears the ring attribute on
-    non-recurring tasks.  Returns list of scheduled task dicts.
-    Skips if reminders were already scheduled today (stamp file).
+    orbit no longer programs daily ring alarms in Reminders.app at startup.
+    Tasks/milestones/reminders flow continuously via gsync (sync_item hooks
+    on add/edit/done) into Reminders.app as completable items with their
+    own native alarms. Events use Calendar.app's native display alarms.
+
+    Kept as a no-op for callers; returns []. Body retained below for the
+    record but never executes.
     """
-    target = target or date.today()
+    return []
+    target = target or date.today()  # unreachable
     now = datetime.now()
 
     # Avoid duplicate scheduling: check stamp file
@@ -444,16 +449,8 @@ def schedule_new_format_reminders(target: Optional[date] = None) -> list:
             else:
                 print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {m['desc']}")
 
-        # Schedule ring events
-        events = _events_ringing_on(project_dir, target)
-        for e in events:
-            ring_dt = e["ring_dt"] if e["ring_dt"] > now else now + timedelta(minutes=1)
-            ok = _schedule_reminder(e["desc"], project_dir.name, ring_dt, kind="event")
-            if ok:
-                _print_scheduled("📅", e)
-                scheduled.append({**e, "project": project_dir.name})
-            else:
-                print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {e['desc']}")
+        # Events: rings are now native alarms in Calendar.app (set by gsync).
+        # No longer programmed in Reminders.app — would duplicate the alert.
 
         # Schedule reminders (💬)
         reminders = _reminders_on(project_dir, target)

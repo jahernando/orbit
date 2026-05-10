@@ -8,6 +8,32 @@ from pathlib import Path
 from datetime import date
 
 
+# ── External side-effect isolation (autouse) ───────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def _isolate_external_side_effects(request, monkeypatch):
+    """Block AppleScript and gsync side-effects in every test by default.
+
+    Without this, end-to-end tests that call ``run_task_add`` / ``run_ev_add``
+    etc. trigger ``sync_item`` → AppleScript → real reminders piling up in the
+    user's Reminders.app "Orbit" list. Tests that explicitly want to exercise
+    ``_osa`` can opt out with ``@pytest.mark.uses_osa``.
+    """
+    try:
+        import core.gsync
+        monkeypatch.setattr(core.gsync, "_is_gsync_configured", lambda: False)
+        if "uses_osa" not in request.keywords:
+            monkeypatch.setattr(core.gsync, "_osa", lambda *a, **k: None)
+    except ImportError:
+        pass
+    if "uses_osa" not in request.keywords:
+        try:
+            import core.ring
+            monkeypatch.setattr(core.ring, "_osa", lambda *a, **k: None)
+        except (ImportError, AttributeError):
+            pass
+
+
 # ── Minimal project template ───────────────────────────────────────────────────
 
 _PROYECTO_TEMPLATE = """\

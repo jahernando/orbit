@@ -1724,27 +1724,53 @@ class TestEventIndicators:
         assert event_indicators({}) == ""
         assert event_indicators({"notes": []}) == ""
 
-    def test_only_room_terminal(self):
+    def test_room_url_renders_video_camera(self):
+        """URL room → 📹 (matches Calendar.app convention)."""
         from core.agenda_cmds import event_indicators
         item = {"notes": ["plain description", "🚪 https://zoom"]}
+        assert event_indicators(item, markdown=False) == " 📹"
+
+    def test_room_physical_renders_door(self):
+        """Plain-text room → 🚪 (physical place)."""
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["🚪 Aula A1-01"]}
         assert event_indicators(item, markdown=False) == " 🚪"
+
+    def test_mixed_rooms_show_both_icons(self):
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["🚪 https://zoom", "🚪 IGFAE-203"]}
+        assert event_indicators(item, markdown=False) == " 📹 🚪"
 
     def test_room_and_agenda_terminal(self):
         from core.agenda_cmds import event_indicators
         item = {"notes": ["📋 https://x", "🚪 https://y"]}
-        assert event_indicators(item, markdown=False) == " 🚪 📋"
+        assert event_indicators(item, markdown=False) == " 📹 📋"
 
-    def test_markdown_links(self):
+    def test_markdown_links_url_room(self):
         from core.agenda_cmds import event_indicators
         item = {"notes": ["📋 https://indico", "🚪 https://zoom"]}
         out = event_indicators(item, markdown=True)
-        assert out == " [🚪](https://zoom) [📋](https://indico)"
+        assert out == " [📹](https://zoom) [📋](https://indico)"
+
+    def test_markdown_links_physical_room(self):
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["🚪 Despacho 5"]}
+        assert event_indicators(item, markdown=True) == " [🚪](Despacho 5)"
 
     def test_multiple_rooms_markdown(self):
         from core.agenda_cmds import event_indicators
         item = {"notes": ["🚪 https://zoom1", "🚪 https://zoom2"]}
         out = event_indicators(item, markdown=True)
-        assert out == " [🚪](https://zoom1) [🚪](https://zoom2)"
+        assert out == " [📹](https://zoom1) [📹](https://zoom2)"
+
+    def test_is_meeting_url(self):
+        from core.agenda_cmds import _is_meeting_url
+        assert _is_meeting_url("https://zoom.us/j/123") is True
+        assert _is_meeting_url("http://meet.google.com/x") is True
+        assert _is_meeting_url("Aula A1-01") is False
+        assert _is_meeting_url("") is False
+        assert _is_meeting_url(None) is False
+        assert _is_meeting_url("  https://x  ") is True  # leading/trailing space ok
 
     def test_url_helpers(self):
         from core.agenda_cmds import event_room_urls, event_agenda_urls
@@ -1760,7 +1786,7 @@ class TestEventIndicators:
                    agenda="https://x", room="https://y")
         ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
         line = _format_item_line("event", ev, "[p]", markdown=False)
-        assert "🚪" in line and "📋" in line
+        assert "📹" in line and "📋" in line
         assert "https://x" not in line  # no URL in terminal output
 
     def test_format_item_line_markdown_includes_links(self, proj, projects_dir):
@@ -1770,7 +1796,7 @@ class TestEventIndicators:
                    agenda="https://indico/x", room="https://zoom/y")
         ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
         line = _format_item_line("event", ev, "[p]", markdown=True)
-        assert "[🚪](https://zoom/y)" in line
+        assert "[📹](https://zoom/y)" in line
         assert "[📋](https://indico/x)" in line
 
     def test_table_row_includes_md_links(self, proj, projects_dir):
@@ -1780,7 +1806,7 @@ class TestEventIndicators:
                    room="https://zoom/y")
         ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
         _, _, desc, _ = _item_to_table_row("event", ev, "[p]")
-        assert "[🚪](https://zoom/y)" in desc
+        assert "[📹](https://zoom/y)" in desc
 
     def test_event_without_room_or_agenda_no_indicator(self, proj, projects_dir):
         from core.agenda_cmds import run_ev_add, _read_agenda

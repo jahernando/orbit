@@ -177,7 +177,7 @@ class TestGsyncReconcileRenames:
     def test_item_key_recurring(self):
         from core.gsync import _item_key
         item = {"desc": "Task", "date": "2026-04-01", "recur": "weekly"}
-        assert _item_key(item) == "Task::🔄weekly"
+        assert _item_key(item) == "Task::🔄weekly::2026-04-01"
 
     def test_secondary_key_nonrecurring(self):
         from core.gsync import _secondary_key
@@ -187,7 +187,7 @@ class TestGsyncReconcileRenames:
     def test_secondary_key_recurring(self):
         from core.gsync import _secondary_key
         item = {"desc": "Task", "date": "2026-04-01", "recur": "weekly"}
-        assert _secondary_key(item) == "🔄weekly"
+        assert _secondary_key(item) == "🔄weekly::2026-04-01"
 
     def test_reconcile_detects_rename(self, projects_dir, monkeypatch):
         """When a title changes in markdown, reconcile should re-link the gsync ID."""
@@ -242,8 +242,11 @@ class TestGsyncReconcileRenames:
         })
         _write_agenda(agenda_path, data)
 
-        old_key = "Weekly standup::🔄weekly"
-        ids = {old_key: {"gtask_id": "g-456", "snapshot": {"desc": "Weekly standup", "recur": "weekly"}}}
+        old_key = "Weekly standup::🔄weekly::2026-04-07"
+        ids = {old_key: {"gtask_id": "g-456",
+                         "snapshot": {"desc": "Weekly standup",
+                                      "date": "2026-04-07",
+                                      "recur": "weekly"}}}
         _save_ids(pd, ids)
 
         renames = reconcile_gsync_renames()
@@ -251,7 +254,7 @@ class TestGsyncReconcileRenames:
         assert renames[0][2] == "Weekly standup v2"
 
         new_ids = _load_ids(pd)
-        assert "Weekly standup v2::🔄weekly" in new_ids
+        assert "Weekly standup v2::🔄weekly::2026-04-07" in new_ids
         assert old_key not in new_ids
 
     def test_reconcile_no_false_positive(self, projects_dir, monkeypatch):

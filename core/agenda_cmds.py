@@ -922,6 +922,16 @@ _ROOM_NOTE_PREFIX   = "🚪 "
 _STRUCTURED_PREFIXES = (_AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX)
 
 
+def _is_meeting_url(s: str) -> bool:
+    s = (s or "").strip()
+    return s.startswith("http://") or s.startswith("https://")
+
+
+def _room_icon(value: str) -> str:
+    """📹 for videoconference URLs, 🚪 for physical rooms / plain text."""
+    return "📹" if _is_meeting_url(value) else "🚪"
+
+
 def event_room_urls(item: dict) -> list:
     """Return list of room URLs (🚪) attached to an event item."""
     return [n[len(_ROOM_NOTE_PREFIX):] for n in (item.get("notes") or [])
@@ -937,10 +947,12 @@ def event_agenda_urls(item: dict) -> list:
 def event_indicators(item: dict, markdown: bool = False) -> str:
     """Return a leading-space suffix flagging room/agenda presence on an event.
 
-    - markdown=False  → ' 🚪 📋'              (terminal-friendly, plain emoji)
-    - markdown=True   → ' [🚪](url) [📋](url)' (clickable in HTML/Obsidian)
+    Room icon adapts to its content: 📹 for URLs (videoconference, like
+    Calendar.app), 🚪 for physical rooms or other plain text.
 
-    Multiple rooms/agendas all appear (one bracketed link each).
+    - markdown=False  → ' 📹 🚪 📋'              (one icon per room/agenda)
+    - markdown=True   → ' [📹](url) [🚪](room) [📋](url)' (clickable links)
+
     Returns empty string if no structured notes.
     """
     rooms = event_room_urls(item)
@@ -950,12 +962,12 @@ def event_indicators(item: dict, markdown: bool = False) -> str:
     parts = []
     if markdown:
         for u in rooms:
-            parts.append(f"[🚪]({u})")
+            parts.append(f"[{_room_icon(u)}]({u})")
         for u in agendas:
             parts.append(f"[📋]({u})")
     else:
-        if rooms:
-            parts.append("🚪")
+        for r in rooms:
+            parts.append(_room_icon(r))
         if agendas:
             parts.append("📋")
     return " " + " ".join(parts)

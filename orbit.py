@@ -865,6 +865,7 @@ def cmd_gsync(args):
     return run_gsync(
         dry_run=getattr(args, "dry_run", False),
         list_calendars=getattr(args, "list_calendars", False),
+        project=getattr(args, "project", None),
     )
 
 
@@ -1381,13 +1382,15 @@ def _build_parser():
 
     # --- gsync ---
     gsync_p = subparsers.add_parser("gsync",
-                                     help="Sync tasks/milestones/events to Google Tasks/Calendar")
+                                     help="Sync events → Calendar.app, tasks/ms/reminders/cronos → Reminders.app")
+    gsync_p.add_argument("project", nargs="?", default=None,
+                         help="Sync only this project (substring match). Omitted: sync all.")
     gsync_p.add_argument("--dry-run", action="store_true", dest="dry_run",
-                         help="Preview sync without writing to Google")
+                         help="Preview sync without writing")
     gsync_p.add_argument("--list-calendars", action="store_true", dest="list_calendars",
-                         help="List available Google Calendars with IDs")
+                         help="List Calendar.app calendars and exit")
     gsync_p.add_argument("--migrate-recurring", action="store_true", dest="migrate_recurring",
-                         help="One-time: mark old recurring events with ⚠️ and reset for RRULE re-creation")
+                         help="One-time legacy: mark old recurring events for RRULE re-creation")
 
     # --- mail (cartero) ---
     mail_p = subparsers.add_parser("mail", help="Check mail notifications (cartero)")

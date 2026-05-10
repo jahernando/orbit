@@ -21,6 +21,8 @@ google-sync.json on first read).
 """
 
 import json
+import re
+import secrets
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -59,11 +61,12 @@ def _save_ids(project_dir: Path, ids: dict) -> None:
 def _item_key(item: dict) -> str:
     """Build a unique key for an item.
 
-    Recurring events use desc::🔄{recur} (stable across date changes).
-    Non-recurring events use desc::date.
+    Recurring items must include the anchor date — otherwise multiple series
+    sharing the same description (e.g. three "🏊 natación" weekly series on
+    Mon/Wed/Fri) collapse onto the same key and only one ever syncs.
     """
     if item.get("recur"):
-        return f"{item.get('desc', '')}::🔄{item['recur']}"
+        return f"{item.get('desc', '')}::🔄{item['recur']}::{item.get('date', '')}"
     return f"{item.get('desc', '')}::{item.get('date', '')}"
 
 
@@ -211,6 +214,64 @@ def _calendar_app_running() -> bool:
     return out == "true"
 
 
+# ── Orbit-id: stable identifier embedded in Reminder body / Calendar description ──
+#
+# Every synced item gets an 8-char hex id assigned the first time it lands in
+# Reminders.app or Calendar.app. The id is embedded as a tag in the item's body
+# (Reminders) or description (Calendar):
+#
+#     [orbit:abc12345]              — non-recurring item or full series
+#     [orbit:abc12345@YYYY-MM-DD]   — specific occurrence of a recurring series
+#                                     (Reminders only — Calendar.app handles
+#                                     recurrence natively as one event with RRULE)
+#
+# Match-by-orbit-id is bullet-proof against AppleScript timeouts, calendar
+# renames, and user-driven title edits. It replaces the fragile match-by-name
+# fallback as the primary lookup path.
+
+_ORBIT_TAG_RE = re.compile(r"\[orbit:([0-9a-f]{8})(?:@(\d{4}-\d{2}-\d{2}))?\]")
+
+
+def _new_orbit_id() -> str:
+    """Generate a fresh 8-char hex id."""
+    return secrets.token_hex(4)
+
+
+def _build_orbit_tag(orbit_id: str, occurrence_date: Optional[str] = None) -> str:
+    """Build the embedded tag. With occurrence_date for recurring Reminders."""
+    if occurrence_date:
+        return f"[orbit:{orbit_id}@{occurrence_date}]"
+    return f"[orbit:{orbit_id}]"
+
+
+def _parse_orbit_tag(text: str) -> tuple:
+    """Extract (orbit_id, occurrence_date) from text. Both None if absent."""
+    m = _ORBIT_TAG_RE.search(text or "")
+    if not m:
+        return None, None
+    return m.group(1), m.group(2)
+
+
+def _append_orbit_tag(body: str, tag: str) -> str:
+    """Embed *tag* in *body*. Replaces any existing tag for the same orbit-id.
+
+    Recurring Reminders advance their occurrence date on every `done`, so
+    the tag changes from ``[orbit:xxx@2026-05-11]`` to
+    ``[orbit:xxx@2026-05-18]``. Without in-place replacement the body would
+    accumulate stale tags forever.
+    """
+    body = body or ""
+    new_id, _ = _parse_orbit_tag(tag)
+    if new_id:
+        existing_re = re.compile(
+            r"\[orbit:" + re.escape(new_id) + r"(?:@\d{4}-\d{2}-\d{2})?\]"
+        )
+        if existing_re.search(body):
+            return existing_re.sub(tag, body)
+    sep = "\n\n" if body.strip() else ""
+    return body + sep + tag
+
+
 def _esc(s: str) -> str:
     """Escape a string for AppleScript double-quoted literal."""
     return (s or "").replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
@@ -253,12 +314,19 @@ def _create_calendar_event(calendar_name: str, props: dict) -> Optional[str]:
     loc  = _esc(props.get("location", ""))
     url  = _esc(props.get("url", ""))
     rrule = _esc(props.get("rrule", ""))
+    alarm_minutes = props.get("alarm_minutes")
 
     extras = []
     if desc:  extras.append(f'set description of newEv to "{desc}"')
     if loc:   extras.append(f'set location of newEv to "{loc}"')
     if url:   extras.append(f'set url of newEv to "{url}"')
     if rrule: extras.append(f'set recurrence of newEv to "{rrule}"')
+    if isinstance(alarm_minutes, int):
+        # Calendar.app trigger interval is in minutes, negative = before event start
+        extras.append(
+            f'make new display alarm at end of display alarms of newEv '
+            f'with properties {{trigger interval:-{int(alarm_minutes)}}}'
+        )
     extras_block = "\n        ".join(extras) or "-- no extras"
 
     script = (
@@ -285,6 +353,18 @@ def _update_calendar_event(uid: str, calendar_name: str, props: dict) -> bool:
     loc  = _esc(props.get("location", ""))
     url  = _esc(props.get("url", ""))
     rrule = _esc(props.get("rrule", ""))
+    alarm_minutes = props.get("alarm_minutes")
+
+    if isinstance(alarm_minutes, int):
+        alarm_block = (
+            f'        delete every display alarm of ev\n'
+            f'        make new display alarm at end of display alarms of ev '
+            f'with properties {{trigger interval:-{int(alarm_minutes)}}}'
+        )
+    else:
+        # No --ring on the orbit item: clear any existing alarm so the event
+        # doesn't keep notifying after the user removed the ring.
+        alarm_block = '        delete every display alarm of ev'
 
     script = (
         f'tell application "Calendar"\n'
@@ -303,11 +383,73 @@ def _update_calendar_event(uid: str, calendar_name: str, props: dict) -> bool:
         f'        set location of ev to "{loc}"\n'
         f'        set url of ev to "{url}"\n'
         f'        set recurrence of ev to "{rrule}"\n'
+        f'{alarm_block}\n'
         f'        return "ok"\n'
         f'    end tell\n'
         f'end tell'
     )
-    return _osa(script) == "ok"
+    return _osa(script, timeout=60) == "ok"
+
+
+def _find_calendar_event_by_title_date(calendar_name: str,
+                                       summary: str,
+                                       start_iso: str) -> Optional[str]:
+    """Find event by exact summary on the start date. Returns uid or None.
+
+    Used as a fallback when an update fails (uid stale after a calendar
+    rename/recreate). Avoids creating duplicates of events that already
+    exist under a fresh uid.
+    """
+    cal = _esc(calendar_name)
+    sumr = _esc(summary)
+    date_part = start_iso.split("T", 1)[0]
+    y, mo, d = date_part.split("-")
+    script = (
+        f'tell application "Calendar"\n'
+        f'    tell calendar "{cal}"\n'
+        f'        set d0 to current date\n'
+        f'        set year of d0 to {int(y)}\n'
+        f'        set month of d0 to {int(mo)}\n'
+        f'        set day of d0 to {int(d)}\n'
+        f'        set hours of d0 to 0\n'
+        f'        set minutes of d0 to 0\n'
+        f'        set seconds of d0 to 0\n'
+        f'        set d1 to d0 + (24 * hours)\n'
+        f'        try\n'
+        f'            set evs to (every event whose summary is "{sumr}" '
+        f'and start date >= d0 and start date < d1)\n'
+        f'            if (count of evs) > 0 then\n'
+        f'                return uid of (item 1 of evs)\n'
+        f'            end if\n'
+        f'        end try\n'
+        f'        return ""\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    out = _osa(script, timeout=60)
+    return out if out else None
+
+
+def _find_calendar_event_by_orbit_id(calendar_name: str,
+                                     orbit_id: str) -> Optional[str]:
+    """Find event by orbit-id tag in description. Returns uid or None."""
+    cal = _esc(calendar_name)
+    needle = f"[orbit:{orbit_id}]"
+    script = (
+        f'tell application "Calendar"\n'
+        f'    tell calendar "{cal}"\n'
+        f'        try\n'
+        f'            set evs to (every event whose description contains "{needle}")\n'
+        f'            if (count of evs) > 0 then\n'
+        f'                return uid of (item 1 of evs)\n'
+        f'            end if\n'
+        f'        end try\n'
+        f'        return ""\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    out = _osa(script, timeout=60)
+    return out if out else None
 
 
 def _delete_calendar_event(uid: str, calendar_name: str) -> bool:
@@ -327,6 +469,511 @@ def _delete_calendar_event(uid: str, calendar_name: str) -> bool:
         f'end tell'
     )
     return _osa(script) in ("ok", "missing")
+
+
+# ── Reminders.app (AppleScript) helpers ─────────────────────────────────────
+
+# orbit puts every task/ms/reminder of a workspace into a single Reminders list.
+# Configure per workspace in calendar-sync.json with `"reminders_list": "🚀 orbit-ws"`.
+# Falls back to "Orbit" (legacy name).
+DEFAULT_REMINDERS_LIST = "Orbit"
+
+# Item-kind prefix in the Reminder name (so users can scan visually):
+_REMINDER_KIND_EMOJI = {
+    "task":       "✅",
+    "milestone":  "🏁",
+    "reminder":   "💬",
+    "cronograma": "📊",
+}
+
+
+def _reminders_app_running() -> bool:
+    out = _osa('tell application "System Events" to (exists process "Reminders")')
+    return out == "true"
+
+
+def _reminders_list_name(config: dict) -> str:
+    return config.get("reminders_list") or DEFAULT_REMINDERS_LIST
+
+
+def _ensure_reminders_list(list_name: str) -> bool:
+    """Create the list if it doesn't exist. Returns True on success."""
+    name = _esc(list_name)
+    script = (
+        f'tell application "Reminders"\n'
+        f'    if not (exists list "{name}") then\n'
+        f'        make new list with properties {{name:"{name}"}}\n'
+        f'    end if\n'
+        f'    return "ok"\n'
+        f'end tell'
+    )
+    return _osa(script, timeout=60) == "ok"
+
+
+def _create_reminder_item(list_name: str, props: dict) -> Optional[str]:
+    """Create a reminder in Reminders.app. Returns its id (uid)."""
+    lst  = _esc(list_name)
+    name = _esc(props.get("name", ""))
+    body = _esc(props.get("body", ""))
+    due_iso    = props.get("due_iso")    # YYYY-MM-DDTHH:MM or YYYY-MM-DD or None
+    remind_iso = props.get("remind_iso") # alarm time; if None no alert
+
+    extras = []
+    base_props = [f'name:"{name}"']
+    if body:
+        extras.append(f'set body of newR to "{body}"')
+
+    blocks = []
+    if due_iso:
+        blocks.append(_build_date_var("dueD", due_iso))
+        base_props.append("due date:dueD")
+    if remind_iso:
+        blocks.append(_build_date_var("remindD", remind_iso))
+        base_props.append("remind me date:remindD")
+
+    blocks_text = "\n        ".join(blocks) if blocks else "-- no dates"
+    extras_block = "\n        ".join(extras) if extras else "-- no extras"
+    props_block = ", ".join(base_props)
+
+    script = (
+        f'tell application "Reminders"\n'
+        f'    tell list "{lst}"\n'
+        f'        {blocks_text}\n'
+        f'        set newR to make new reminder with properties {{{props_block}}}\n'
+        f'        {extras_block}\n'
+        f'        return id of newR\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    return _osa(script, timeout=60)
+
+
+def _update_reminder_item(uid: str, list_name: str, props: dict) -> bool:
+    """Update reminder by uid. Returns True on success ("ok"), False on missing."""
+    lst  = _esc(list_name)
+    uid_esc = _esc(uid)
+    name = _esc(props.get("name", ""))
+    body = _esc(props.get("body", ""))
+    due_iso    = props.get("due_iso")
+    remind_iso = props.get("remind_iso")
+    completed  = "true" if props.get("completed") else "false"
+
+    set_lines = [f'set name of r to "{name}"',
+                 f'set body of r to "{body}"',
+                 f'set completed of r to {completed}']
+    blocks = []
+    if due_iso:
+        blocks.append(_build_date_var("dueD", due_iso))
+        set_lines.append("set due date of r to dueD")
+    else:
+        set_lines.append("set due date of r to missing value")
+    if remind_iso:
+        blocks.append(_build_date_var("remindD", remind_iso))
+        set_lines.append("set remind me date of r to remindD")
+    else:
+        set_lines.append("set remind me date of r to missing value")
+
+    blocks_text = "\n        ".join(blocks) if blocks else "-- no dates"
+    sets_text = "\n        ".join(set_lines)
+
+    script = (
+        f'tell application "Reminders"\n'
+        f'    tell list "{lst}"\n'
+        f'        try\n'
+        f'            set r to first reminder whose id is "{uid_esc}"\n'
+        f'        on error\n'
+        f'            return "missing"\n'
+        f'        end try\n'
+        f'        {blocks_text}\n'
+        f'        {sets_text}\n'
+        f'        return "ok"\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    return _osa(script, timeout=60) == "ok"
+
+
+def _find_reminder_by_name(list_name: str, name: str) -> Optional[str]:
+    """Find non-completed reminder by exact name. Returns id or None."""
+    lst = _esc(list_name)
+    name_esc = _esc(name)
+    script = (
+        f'tell application "Reminders"\n'
+        f'    tell list "{lst}"\n'
+        f'        try\n'
+        f'            set rs to (every reminder whose name is "{name_esc}" '
+        f'and completed is false)\n'
+        f'            if (count of rs) > 0 then\n'
+        f'                return id of (item 1 of rs)\n'
+        f'            end if\n'
+        f'        end try\n'
+        f'        return ""\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    out = _osa(script, timeout=60)
+    return out if out else None
+
+
+def _find_reminder_by_orbit_id(list_name: str, orbit_id: str) -> Optional[str]:
+    """Find a reminder whose body contains [orbit:<id>...]. Returns uid or None.
+
+    Matches both ``[orbit:xxx]`` and ``[orbit:xxx@date]`` (occurrence-tagged).
+    """
+    lst = _esc(list_name)
+    needle = f"[orbit:{orbit_id}"
+    script = (
+        f'tell application "Reminders"\n'
+        f'    tell list "{lst}"\n'
+        f'        try\n'
+        f'            set rs to (every reminder whose body contains "{needle}")\n'
+        f'            if (count of rs) > 0 then\n'
+        f'                return id of (item 1 of rs)\n'
+        f'            end if\n'
+        f'        end try\n'
+        f'        return ""\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    out = _osa(script, timeout=60)
+    return out if out else None
+
+
+def _read_reminder_body(uid: str, list_name: str) -> Optional[str]:
+    """Read the body of a reminder by uid. None on failure."""
+    lst = _esc(list_name)
+    uid_esc = _esc(uid)
+    script = (
+        f'tell application "Reminders"\n'
+        f'    tell list "{lst}"\n'
+        f'        try\n'
+        f'            return body of (first reminder whose id is "{uid_esc}")\n'
+        f'        end try\n'
+        f'        return ""\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    return _osa(script, timeout=30)
+
+
+def _read_event_description(uid: str, calendar_name: str) -> Optional[str]:
+    """Read the description of an event by uid. None on failure."""
+    cal = _esc(calendar_name)
+    uid_esc = _esc(uid)
+    script = (
+        f'tell application "Calendar"\n'
+        f'    tell calendar "{cal}"\n'
+        f'        try\n'
+        f'            return description of (first event whose uid is "{uid_esc}")\n'
+        f'        end try\n'
+        f'        return ""\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    return _osa(script, timeout=30)
+
+
+def _delete_reminder_item(uid: str, list_name: str) -> bool:
+    """Delete reminder by uid. Idempotent (missing → also true)."""
+    lst = _esc(list_name)
+    uid_esc = _esc(uid)
+    script = (
+        f'tell application "Reminders"\n'
+        f'    tell list "{lst}"\n'
+        f'        try\n'
+        f'            delete (first reminder whose id is "{uid_esc}")\n'
+        f'            return "ok"\n'
+        f'        on error\n'
+        f'            return "missing"\n'
+        f'        end try\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    return _osa(script) in ("ok", "missing")
+
+
+def _item_props_for_reminders(item: dict, project_name: str, kind: str) -> dict:
+    """Build the property dict for _create/_update_reminder_item.
+
+    kind: "task" | "milestone" | "reminder" | "cronograma"
+
+    Embeds an [orbit:<id>] tag (or [orbit:<id>@<date>] for recurring items)
+    at the end of the body so future syncs can match-by-id reliably.
+    """
+    from datetime import datetime
+    from core.ring import resolve_ring_datetime
+
+    emoji = _REMINDER_KIND_EMOJI.get(kind, "")
+    prefix = f"{emoji} " if emoji else ""
+    name = f"{ORBIT_PROMPT}[{project_name}] {prefix}{item['desc']}"
+
+    # Body: combine notes + orbit-id tag at the end
+    notes = item.get("notes") or []
+    body = "\n".join(notes) if notes else ""
+
+    # Due date
+    due_iso = None
+    date_s = item.get("date")
+    time_s = item.get("time")
+    if date_s:
+        if time_s:
+            # reminder items in orbit always have time; tasks/ms may or may not
+            due_iso = f"{date_s}T{time_s.split('-')[0]}"
+        else:
+            # all-day style (task without time): pick a sensible hour
+            due_iso = f"{date_s}T09:00"
+
+    # Alarm: items with --ring (task/ms) use that; reminder kind uses its own time
+    remind_iso = None
+    ring = item.get("ring")
+    if kind == "reminder":
+        # reminders fire AT their scheduled time (no extra ring usually)
+        remind_iso = due_iso
+    elif ring and date_s:
+        ring_dt = resolve_ring_datetime(date_s, ring, due_time=time_s)
+        if ring_dt:
+            remind_iso = ring_dt.strftime("%Y-%m-%dT%H:%M")
+
+    completed = (item.get("status") in ("done", "cancelled"))
+
+    # Embed orbit-id tag. Recurring items get the occurrence date appended.
+    orbit_id = item.get("_orbit_id")
+    if orbit_id:
+        occurrence = date_s if item.get("recur") else None
+        body = _append_orbit_tag(body, _build_orbit_tag(orbit_id, occurrence))
+
+    return {
+        "name":      name,
+        "body":      body,
+        "due_iso":   due_iso,
+        "remind_iso": remind_iso,
+        "completed": completed,
+    }
+
+
+def _sync_one_to_reminders(list_name: str, item: dict, project_name: str,
+                           kind: str, dry_run: bool) -> Optional[str]:
+    """Create or update one orbit item in Reminders.app. Returns its id.
+
+    Resolution order (most reliable → most fragile):
+      1. Match-by-orbit-id (tag in body) — survives rename, dedup-proof
+      2. Stored uid → update in place
+      3. Match-by-name (legacy fallback for items synced before orbit-ids)
+      4. Create new
+
+    A failed _update on a found reminder does NOT fall through to _create —
+    the reminder exists, we just couldn't update it (likely AppleScript
+    timeout under iCloud sync pressure). Returning the matched uid keeps
+    the mapping intact and avoids creating a duplicate.
+    """
+    props = _item_props_for_reminders(item, project_name, kind)
+    name = props["name"]
+    orbit_id = item.get("_orbit_id")
+    uid = item.get("_gtask_id")
+
+    if dry_run:
+        print(f"  ~ {('actualizar' if uid else 'crear')}: {name}")
+        return uid
+
+    # 1. Try orbit-id match (survives renames, list recreations, timeouts).
+    if orbit_id:
+        found_uid = _find_reminder_by_orbit_id(list_name, orbit_id)
+        if found_uid:
+            _update_reminder_item(found_uid, list_name, props)
+            return found_uid
+
+    # 2. Try the stored uid directly.
+    if uid:
+        if _update_reminder_item(uid, list_name, props):
+            return uid
+        # Stored uid is stale — fall through to legacy name match.
+        print(f"  ⚠️  Reminder uid={uid[:30]}… stale; busco por nombre")
+
+    # 3. Legacy match-by-name (for items created before orbit-ids,
+    #    or when our key changed and lost the reference).
+    matched_uid = _find_reminder_by_name(list_name, name)
+    if matched_uid:
+        # Recover any existing orbit-id from the body so we don't generate a
+        # fresh one and end up with two ids referring to the same reminder.
+        existing_body = _read_reminder_body(matched_uid, list_name)
+        recovered_id, _ = _parse_orbit_tag(existing_body)
+        if recovered_id and recovered_id != orbit_id:
+            item["_orbit_id"] = recovered_id
+            props = _item_props_for_reminders(item, project_name, kind)
+            print(f"  ↺ reasocio reminder y recupero orbit-id={recovered_id} ({name})")
+        else:
+            print(f"  ↺ asocio reminder existente ({name})")
+        # Update in best-effort mode — even if it times out, return the uid
+        # so we record the association. Update will retry on the next sync.
+        _update_reminder_item(matched_uid, list_name, props)
+        return matched_uid
+
+    # 4. Create new.
+    new_uid = _create_reminder_item(list_name, props)
+    if not new_uid:
+        print(f"  ⚠️  Error creando reminder '{name}' en \"{list_name}\"")
+    return new_uid
+
+
+def _sync_to_reminders_for_project(project_dir: Path, config: dict,
+                                   dry_run: bool) -> tuple:
+    """Sync all tasks + milestones + reminders of a project to Reminders.app.
+
+    Returns (created, updated, skipped).
+    """
+    list_name = _reminders_list_name(config)
+    if not _ensure_reminders_list(list_name):
+        return 0, 0, 0
+
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    project_name = project_dir.name
+
+    ids = _load_ids(project_dir)
+    seen_recur_keys = set()
+
+    total_c = total_u = total_s = 0
+    changed_total = False
+    ids_changed_total = False
+
+    # Process each kind with the same generic loop
+    for kind, items_key in (("task", "tasks"),
+                            ("milestone", "milestones"),
+                            ("reminder", "reminders")):
+        items = data.get(items_key) or []
+        # For 'reminder' kind, skip cancelled items
+        if kind == "reminder":
+            items = [r for r in items if not r.get("cancelled")]
+        if not items:
+            continue
+        _migrate_recurring_keys(items, ids)
+        sync_fn = lambda it, _k=kind: _sync_one_to_reminders(
+            list_name, it, project_name, _k, dry_run)
+        c, u, s, changed, ids_changed = _sync_item_loop(
+            items, sync_fn, "gtask_id", _REMINDER_KIND_EMOJI.get(kind, kind),
+            project_name, ids, seen_recur_keys, dry_run)
+        total_c += c
+        total_u += u
+        total_s += s
+        changed_total = changed_total or changed
+        ids_changed_total = ids_changed_total or ids_changed
+
+    if changed_total and not dry_run:
+        _write_agenda(agenda_path, data)
+    if ids_changed_total and not dry_run:
+        _save_ids(project_dir, ids)
+    return total_c, total_u, total_s
+
+
+def _sync_cronos_for_project(project_dir: Path, config: dict,
+                             dry_run: bool) -> tuple:
+    """Sync each cronograma's next open leaf as a single Reminder (option G).
+
+    For each ``cronos/crono-<name>.md``:
+      - Compute dates over the task tree.
+      - Find the next non-completed leaf with a computed end_date
+        (overdue leaves keep their slot — they don't auto-advance).
+      - Upsert a single reminder ``🚀[proj] 📊 crono-<n>: <leaf desc>``
+        with due_date = leaf.end_date.
+      - When all leaves are done → reminder marked completed.
+      - When no leaf has a date → skip silently (cronograma is just an
+        outline, not yet operational).
+
+    Returns (created, updated, skipped).
+    """
+    cronos_dir = project_dir / "cronos"
+    if not cronos_dir.exists():
+        return 0, 0, 0
+    crono_files = sorted(cronos_dir.glob("crono-*.md"))
+    if not crono_files:
+        return 0, 0, 0
+    list_name = _reminders_list_name(config)
+    if not _ensure_reminders_list(list_name):
+        return 0, 0, 0
+
+    from core.cronograma import (_parse_crono_file, _compute_dates,
+                                 next_open_leaf, cronograma_all_done)
+
+    ids = _load_ids(project_dir)
+    project_name = project_dir.name
+    cronos_ids = ids.setdefault("_cronos", {})
+    ids_changed = False
+
+    total_c = total_u = total_s = 0
+
+    for crono_path in crono_files:
+        crono_name = crono_path.stem.removeprefix("crono-")
+        try:
+            data = _parse_crono_file(crono_path)
+            _compute_dates(data["tasks"], data["metadata"])
+        except Exception as exc:
+            print(f"  ⚠️  [{project_name}] Error parseando crono '{crono_name}': {exc}")
+            total_s += 1
+            continue
+
+        leaf = next_open_leaf(data)
+        all_done = cronograma_all_done(data)
+
+        if leaf is None and not all_done:
+            total_s += 1
+            continue
+
+        if leaf:
+            from core.cronograma import _leaf_deadline
+            desc = f"crono-{crono_name}: {leaf['title']}"
+            date_s = _leaf_deadline(leaf).isoformat()
+            status = "pending"
+            tracked_leaf = leaf["index"]
+        else:  # all_done
+            desc = f"crono-{crono_name}"
+            date_s = None
+            status = "done"
+            tracked_leaf = None
+
+        existing = cronos_ids.get(crono_name) or {}
+        orbit_id = existing.get("orbit_id") or _new_orbit_id()
+        item = {
+            "desc":       desc,
+            "date":       date_s,
+            "time":       None,
+            "ring":       None,
+            "status":     status,
+            "notes":      [f"Cronograma: cronos/{crono_path.name}"],
+            "_gtask_id":  existing.get("gtask_id"),
+            "_orbit_id":  orbit_id,
+        }
+
+        try:
+            new_id = _sync_one_to_reminders(list_name, item, project_name,
+                                            "cronograma", dry_run)
+        except Exception as exc:
+            print(f"  ⚠️  [{project_name}] Error sync crono '{crono_name}': {exc}")
+            total_s += 1
+            continue
+
+        if dry_run:
+            total_s += 1
+            continue
+
+        old_uid = existing.get("gtask_id")
+        if new_id and new_id != old_uid:
+            cronos_ids[crono_name] = {"gtask_id": new_id,
+                                       "orbit_id": orbit_id,
+                                       "leaf": tracked_leaf}
+            total_c += 1
+            ids_changed = True
+        elif old_uid:
+            cronos_ids[crono_name]["orbit_id"] = orbit_id
+            cronos_ids[crono_name]["leaf"] = tracked_leaf
+            total_u += 1
+            ids_changed = True
+        else:
+            total_s += 1
+
+    if ids_changed and not dry_run:
+        _save_ids(project_dir, ids)
+
+    return total_c, total_u, total_s
 
 
 # ── Google API helpers (legacy: tasks/milestones only) ─────────────────────
@@ -476,10 +1123,15 @@ def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
                 continue
             seen_recur_keys.add(key)
 
-        item[temp_key] = ids.get(key, {}).get(id_key)
+        existing = ids.get(key, {})
+        item[temp_key] = existing.get(id_key)
+        # Assign a stable orbit-id (existing one, or fresh on first sync).
+        orbit_id = existing.get("orbit_id") or _new_orbit_id()
+        item["_orbit_id"] = orbit_id
         should_sync = item.get("status", "pending") == "pending" or item.get(temp_key)
         if not should_sync:
             item.pop(temp_key, None)
+            item.pop("_orbit_id", None)
             continue
 
         try:
@@ -488,26 +1140,34 @@ def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
             print(f"  ⚠️  [{project_name}] Error sincronizando {label} "
                   f"'{item.get('desc', '?')}': {exc}")
             item.pop(temp_key, None)
+            item.pop("_orbit_id", None)
             skipped += 1
             continue
 
         old_id = item.get(temp_key)
+        # If sync_fn recovered an existing orbit-id from the body of a matched
+        # item, it overwrites item["_orbit_id"]. Persist what's actually in the
+        # backend, not the candidate we generated up-front.
+        final_orbit_id = item.get("_orbit_id") or orbit_id
         if new_id and new_id != old_id:
             # Either no prior id (true create) or fallback-recreate (relink to fresh uid).
             # Always overwrite so the saved id matches what's actually in the backend.
             ids.setdefault(key, {})[id_key] = new_id
+            ids[key]["orbit_id"] = final_orbit_id
             ids[key]["snapshot"] = _make_snapshot(item)
             item["synced"] = True
             created += 1
             changed = True
             ids_changed = True
         elif old_id:
-            ids.setdefault(key, {})["snapshot"] = _make_snapshot(item)
+            ids.setdefault(key, {})["orbit_id"] = final_orbit_id
+            ids[key]["snapshot"] = _make_snapshot(item)
             updated += 1
             ids_changed = True
         else:
             skipped += 1
         item.pop(temp_key, None)
+        item.pop("_orbit_id", None)
 
     return created, updated, skipped, changed, ids_changed
 
@@ -620,6 +1280,29 @@ def _recur_to_rrule(recur: str, until: str = None) -> list:
 
 # ── Event sync (Calendar.app via AppleScript) ──────────────────────────────
 
+def _alarm_minutes_for_event(start_iso: str, ring: str,
+                             due_time: Optional[str]) -> Optional[int]:
+    """Minutes before the event's start when the alarm should fire.
+
+    Positive means "N minutes before" (Calendar.app trigger interval = -N).
+    Returns None if ring can't be resolved or fires after the event start.
+    """
+    from datetime import datetime
+    from core.ring import resolve_ring_datetime
+
+    date_part = start_iso.split("T", 1)[0]
+    ring_dt = resolve_ring_datetime(date_part, ring, due_time=due_time)
+    if ring_dt is None:
+        return None
+    try:
+        start_dt = datetime.fromisoformat(start_iso)
+    except ValueError:
+        return None
+    delta = start_dt - ring_dt
+    minutes = int(delta.total_seconds() / 60)
+    return minutes if minutes >= 0 else 0
+
+
 def _ev_props_for_calendar_app(ev: dict, project_name: str,
                                base_description: str) -> dict:
     """Build the property dict consumed by _create/_update_calendar_event."""
@@ -649,48 +1332,96 @@ def _ev_props_for_calendar_app(ev: dict, project_name: str,
     # gsync's _recur_to_rrule returns ['RRULE:...'] — strip the prefix for AppleScript
     rrule = rrule_list[0].removeprefix("RRULE:") if rrule_list else ""
 
-    # Pull a room URL out of the event notes (📋/🚪 prefixes) into the
-    # event's `url` property — Calendar.app shows it as a clickable button.
-    from core.agenda_cmds import event_room_urls, event_agenda_urls
+    # Pull a clickable URL out of the event notes (📋/🚪 prefixes) into the
+    # event's `url` property — Calendar.app shows a video-camera button.
+    # Plain-text rooms (e.g. "Aula A1-01") stay in the notes only.
+    from core.agenda_cmds import event_room_urls, event_agenda_urls, _is_meeting_url
     rooms = event_room_urls(ev)
     agendas = event_agenda_urls(ev)
-    url = rooms[0] if rooms else (agendas[0] if agendas else "")
+    candidates = [u for u in rooms + agendas if _is_meeting_url(u)]
+    url = candidates[0] if candidates else ""
+
+    # Translate orbit's --ring into a Calendar.app display alarm.
+    alarm_minutes = None
+    if ev.get("ring"):
+        ev_time = ev.get("time") or ""
+        due_time = ev_time.split("-")[0] if ev_time else None
+        alarm_minutes = _alarm_minutes_for_event(start_iso, ev["ring"], due_time)
+
+    # Build description (notes + project link) and embed orbit-id tag.
+    description = _item_description(ev, base_description, html=False)
+    orbit_id = ev.get("_orbit_id")
+    if orbit_id:
+        description = _append_orbit_tag(description, _build_orbit_tag(orbit_id))
 
     return {
-        "summary":     summary,
-        "start_iso":   start_iso,
-        "end_iso":     end_iso,
-        "description": _item_description(ev, base_description, html=False),
-        "url":         url,
-        "rrule":       rrule,
+        "summary":       summary,
+        "start_iso":     start_iso,
+        "end_iso":       end_iso,
+        "description":   description,
+        "url":           url,
+        "rrule":         rrule,
+        "alarm_minutes": alarm_minutes,
     }
 
 
 def _sync_one_event(calendar_name: str, ev: dict,
                     project_name: str, description: str,
                     dry_run: bool) -> Optional[str]:
-    """Sync one event to Calendar.app. Returns the AppleScript-side uid."""
+    """Sync one event to Calendar.app. Returns the AppleScript-side uid.
+
+    Resolution order (most reliable → most fragile):
+      1. Match-by-orbit-id (tag in description) — survives rename, dedup-proof
+      2. Stored uid → update in place
+      3. Match-by-title-date (legacy fallback for events synced before orbit-ids)
+      4. Create new
+
+    A failed _update on a found event does NOT fall through to _create —
+    returning the matched uid avoids duplicates if the update timed out.
+    """
     props = _ev_props_for_calendar_app(ev, project_name, description)
     summary = props["summary"]
+    orbit_id = ev.get("_orbit_id")
     uid = ev.get("_gcal_id")
+
+    if dry_run:
+        print(f"  ~ {('actualizar' if uid else 'crear')}: 📅 {ev['date']} — {summary}")
+        return uid
+
+    # 1. Match-by-orbit-id (most reliable).
+    if orbit_id:
+        found_uid = _find_calendar_event_by_orbit_id(calendar_name, orbit_id)
+        if found_uid:
+            _update_calendar_event(found_uid, calendar_name, props)
+            return found_uid
+
+    # 2. Try the stored uid directly.
     if uid:
-        if dry_run:
-            print(f"  ~ actualizar: 📅 {ev['date']} — {summary}")
-            return uid
         if _update_calendar_event(uid, calendar_name, props):
             return uid
-        # If update failed (e.g. the user deleted the event in Calendar.app),
-        # fall through to creating a fresh one so re-sync repairs the link.
-        print(f"  ⚠️  No se encontró evento uid={uid}; lo recreo")
-        uid = None
-    if not uid:
-        if dry_run:
-            print(f"  ~ crear: 📅 {ev['date']} — {summary}")
-            return None
-        new_uid = _create_calendar_event(calendar_name, props)
-        if not new_uid:
-            print(f"  ⚠️  Error creando evento '{summary}' en \"{calendar_name}\"")
-        return new_uid
+        print(f"  ⚠️  Evento uid={uid[:8]}… stale; busco por título+fecha")
+
+    # 3. Legacy match-by-title-date (for events created before orbit-ids,
+    #    or when our key changed and lost the reference).
+    matched_uid = _find_calendar_event_by_title_date(
+        calendar_name, summary, props["start_iso"])
+    if matched_uid:
+        existing_desc = _read_event_description(matched_uid, calendar_name)
+        recovered_id, _ = _parse_orbit_tag(existing_desc)
+        if recovered_id and recovered_id != orbit_id:
+            ev["_orbit_id"] = recovered_id
+            props = _ev_props_for_calendar_app(ev, project_name, description)
+            print(f"  ↺ reasocio evento y recupero orbit-id={recovered_id} ({summary})")
+        else:
+            print(f"  ↺ asocio existente uid={matched_uid[:8]}… ({summary})")
+        _update_calendar_event(matched_uid, calendar_name, props)
+        return matched_uid
+
+    # 4. Create new.
+    new_uid = _create_calendar_event(calendar_name, props)
+    if not new_uid:
+        print(f"  ⚠️  Error creando evento '{summary}' en \"{calendar_name}\"")
+    return new_uid
 
 
 def _sync_events_for_project(project_dir: Path, config: dict,
@@ -849,11 +1580,13 @@ def check_gsync_drift() -> list:
 def _secondary_key(item: dict) -> str:
     """Build a secondary key (without desc) for matching renames.
 
-    Uses date (non-recurring) or recur pattern (recurring) to identify
-    the same item even when its title has changed.
+    Uses date (non-recurring) or recur+date pattern (recurring) to identify
+    the same item even when its title has changed. Including the anchor date
+    for recurring items lets us distinguish between multiple series sharing
+    the same recur pattern.
     """
     if item.get("recur"):
-        return f"🔄{item['recur']}"
+        return f"🔄{item['recur']}::{item.get('date', '')}"
     return item.get("date", "")
 
 
@@ -976,8 +1709,12 @@ def run_list_calendars() -> int:
 
 # ── Main entry point ────────────────────────────────────────────────────────
 
-def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
-    """Push Orbit events to Calendar.app and tasks/milestones to Google Tasks."""
+def run_gsync(dry_run: bool = False, list_calendars: bool = False,
+              project: Optional[str] = None) -> int:
+    """Push Orbit events to Calendar.app and tasks/ms/reminders to Reminders.app.
+
+    project: if given, sync only that one project (substring match accepted).
+    """
     if list_calendars:
         return run_list_calendars()
 
@@ -994,17 +1731,29 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
         print(f"   Ejecuta: orbit gsync --list-calendars  (lista Calendar.app)")
         print(f"   Y edita {CONFIG_PATH} con los nombres de tus calendarios.\n")
 
-    do_gtasks_api = _sync_tasks_enabled(config) or _sync_milestones_enabled(config)
-    tasks_service = _get_tasks_service() if do_gtasks_api else None
-    if not tasks_service and not (has_calendars and cal_app_ok):
-        print("⚠️  Nada que sincronizar (Calendar.app no disponible y tasks desactivadas)")
+    do_reminders = (_sync_tasks_enabled(config) or _sync_milestones_enabled(config))
+    rem_app_ok = _reminders_app_running() if do_reminders else False
+    if do_reminders and not rem_app_ok:
+        print("⚠️  Reminders.app no está corriendo — tareas/hitos/recordatorios no se sincronizan.")
+
+    if not (rem_app_ok or (has_calendars and cal_app_ok)):
+        print("⚠️  Nada que sincronizar (ni Calendar.app ni Reminders.app disponibles)")
         return 1
 
-    label = "  [dry-run]" if dry_run else ""
-    print(f"Sincronizando Orbit → Calendar.app + Google Tasks{label}")
-    print("─" * 50)
+    if project:
+        project_dir = _find_new_project(project)
+        if not project_dir:
+            print(f"⚠️  Proyecto no encontrado: {project!r}")
+            return 1
+        dirs = [project_dir]
+        scope = f" — solo {project_dir.name}"
+    else:
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+        scope = ""
 
-    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+    label = "  [dry-run]" if dry_run else ""
+    print(f"Sincronizando Orbit → Calendar.app + Reminders.app{scope}{label}")
+    print("─" * 50)
 
     total_created = total_updated = total_skipped = 0
     events_created = events_updated = events_skipped = 0
@@ -1013,16 +1762,24 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
     for project_dir in dirs:
         tipo = _get_project_tipo(project_dir)
 
-        # Tasks + milestones (Google Tasks, legacy)
-        if tasks_service:
-            c, u, s = _sync_tasks_for_project(tasks_service, project_dir, config, dry_run)
+        # Tasks + milestones + reminders → Reminders.app
+        if rem_app_ok:
+            c, u, s = _sync_to_reminders_for_project(project_dir, config, dry_run)
             if c or u:
-                print(f"  [{project_dir.name}] tareas/hitos: {c} nuevas, {u} actualizadas")
+                print(f"  [{project_dir.name}] tareas/hitos/recordatorios: {c} nuevos, {u} actualizados")
             total_created += c
             total_updated += u
             total_skipped += s
 
-        # Events (Calendar.app via AppleScript)
+            # Cronogramas: 1 reminder per cronograma tracking its next open leaf.
+            cc, cu, cs = _sync_cronos_for_project(project_dir, config, dry_run)
+            if cc or cu:
+                print(f"  [{project_dir.name}] cronogramas: {cc} nuevos, {cu} actualizados")
+            total_created += cc
+            total_updated += cu
+            total_skipped += cs
+
+        # Events → Calendar.app
         if has_calendars and cal_app_ok:
             calendar_name = config.get("calendars", {}).get(tipo)
             if not calendar_name:
@@ -1064,16 +1821,23 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False) -> int:
 # ── Helpers for hooks ──────────────────────────────────────────────────────
 
 def _is_gsync_configured() -> bool:
-    """True if any backend is usable (Calendar.app for events, OR Google for tasks)."""
+    """True if calendar-sync.json declares either calendars or a reminders list.
+
+    An empty placeholder (``{"calendars": {}, "task_lists": {}}``) does NOT
+    count as configured — it would otherwise wake up AppleScript on every
+    operation, even in test environments that just create the file.
+    """
     if not CONFIG_PATH.exists():
         return False
-    config = _load_config()
-    has_calendars = any(v for v in config.get("calendars", {}).values())
-    if has_calendars:
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if any(cfg.get("calendars", {}).values()):
         return True
-    # No event sync configured — but tasks via Google may still be set up
-    from core.calendar_sync import CREDENTIALS_PATH, TOKEN_PATH
-    return CREDENTIALS_PATH.exists() and TOKEN_PATH.exists()
+    if cfg.get("reminders_list"):
+        return True
+    return False
 
 
 # ── Delete from Google ──────────────────────────────────────────────────────
@@ -1135,34 +1899,33 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
             ids = _load_ids(project_dir)
             key = _item_key(item)
 
-            if kind in ("task", "milestone"):
+            if kind in ("task", "milestone", "reminder"):
                 if kind == "task" and not _sync_tasks_enabled(config):
                     return
                 if kind == "milestone" and not _sync_milestones_enabled(config):
                     return
-                service = _get_tasks_service()
-                if not service:
+                if not _reminders_app_running():
                     return
-                tasklist_id = _ensure_task_list(service, tipo, config)
-                if not tasklist_id:
-                    return
+                list_name = _reminders_list_name(config)
+                _ensure_reminders_list(list_name)
                 project_name = project_dir.name
-                description = _project_description(project_dir, config)
-                is_ms = kind == "milestone"
-                item["_gtask_id"] = ids.get(key, {}).get("gtask_id")
-                new_id = _sync_one_task(service, tasklist_id, item,
-                                        project_name, is_ms, description,
-                                        dry_run=False)
-                if new_id and not item.get("_gtask_id"):
+                old_uid = ids.get(key, {}).get("gtask_id")
+                item["_gtask_id"] = old_uid
+                new_id = _sync_one_to_reminders(list_name, item, project_name,
+                                                kind, dry_run=False)
+                if new_id and new_id != old_uid:
                     ids.setdefault(key, {})["gtask_id"] = new_id
+                    ids[key]["snapshot"] = _make_snapshot(item)
                     _save_ids(project_dir, ids)
-                    # Mark [G] in agenda.md
+                    # Mark ☁️ in agenda.md
                     agenda_path = resolve_file(project_dir, "agenda")
                     data = _read_agenda(agenda_path)
-                    section = "tasks" if kind == "task" else "milestones"
-                    for t in data[section]:
-                        if t["desc"] == item["desc"] and t.get("date") == item.get("date"):
-                            t["synced"] = True
+                    section_map = {"task": "tasks", "milestone": "milestones",
+                                   "reminder": "reminders"}
+                    section = section_map[kind]
+                    for it in data.get(section, []):
+                        if it.get("desc") == item["desc"] and it.get("date") == item.get("date"):
+                            it["synced"] = True
                             break
                     _write_agenda(agenda_path, data)
                 item.pop("_gtask_id", None)
@@ -1289,20 +2052,20 @@ def gsync_background() -> "threading.Thread | None":
         try:
             config = _load_config()
             has_calendars = any(v for v in config.get("calendars", {}).values())
-            do_gtasks_api = _sync_tasks_enabled(config) or _sync_milestones_enabled(config)
+            do_reminders = (_sync_tasks_enabled(config) or _sync_milestones_enabled(config))
 
-            tasks_service = _get_tasks_service() if do_gtasks_api else None
             cal_app_ok = _calendar_app_running() if has_calendars else False
-            if not tasks_service and not (has_calendars and cal_app_ok):
+            rem_app_ok = _reminders_app_running() if do_reminders else False
+            if not (rem_app_ok or (has_calendars and cal_app_ok)):
                 return
 
             dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
 
             total = 0
             for project_dir in dirs:
-                if tasks_service:
-                    c, u, _ = _sync_tasks_for_project(
-                        tasks_service, project_dir, config, dry_run=False)
+                if rem_app_ok:
+                    c, u, _ = _sync_to_reminders_for_project(
+                        project_dir, config, dry_run=False)
                     total += c + u
                 if has_calendars and cal_app_ok:
                     tipo = _get_project_tipo(project_dir)
