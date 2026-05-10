@@ -705,7 +705,9 @@ def _item_props_for_reminders(item: dict, project_name: str, kind: str) -> dict:
 
     emoji = _REMINDER_KIND_EMOJI.get(kind, "")
     prefix = f"{emoji} " if emoji else ""
-    name = f"{ORBIT_PROMPT}[{project_name}] {prefix}{item['desc']}"
+    # Workspace prefix dropped: the Reminders list (🚀 orbit-ws / 🌿 orbit-ps)
+    # already groups items by workspace, so the leading emoji was redundant.
+    name = f"[{project_name}] {prefix}{item['desc']}"
 
     # Body: combine notes + orbit-id tag at the end
     notes = item.get("notes") or []
@@ -1125,8 +1127,14 @@ def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
 
         existing = ids.get(key, {})
         item[temp_key] = existing.get(id_key)
-        # Assign a stable orbit-id (existing one, or fresh on first sync).
-        orbit_id = existing.get("orbit_id") or _new_orbit_id()
+        # Resolve orbit-id with this priority:
+        #   1. orbit-id already in the markdown line (most authoritative —
+        #      the user could not have invented it, so it must be ours)
+        #   2. orbit-id stored in .gsync-ids.json under this key
+        #   3. fresh id (first time we see this item)
+        orbit_id = (item.get("orbit_id")
+                    or existing.get("orbit_id")
+                    or _new_orbit_id())
         item["_orbit_id"] = orbit_id
         should_sync = item.get("status", "pending") == "pending" or item.get(temp_key)
         if not should_sync:
@@ -1145,17 +1153,16 @@ def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
             continue
 
         old_id = item.get(temp_key)
-        # If sync_fn recovered an existing orbit-id from the body of a matched
-        # item, it overwrites item["_orbit_id"]. Persist what's actually in the
-        # backend, not the candidate we generated up-front.
+        # sync_fn may have recovered an older orbit-id from the body of a
+        # matched item — persist whatever ended up in item["_orbit_id"].
         final_orbit_id = item.get("_orbit_id") or orbit_id
+        # Persist orbit-id back into the agenda item so _write_agenda
+        # embeds it as [orbit:xxx] in the markdown line.
+        item["orbit_id"] = final_orbit_id
         if new_id and new_id != old_id:
-            # Either no prior id (true create) or fallback-recreate (relink to fresh uid).
-            # Always overwrite so the saved id matches what's actually in the backend.
             ids.setdefault(key, {})[id_key] = new_id
             ids[key]["orbit_id"] = final_orbit_id
             ids[key]["snapshot"] = _make_snapshot(item)
-            item["synced"] = True
             created += 1
             changed = True
             ids_changed = True
@@ -1163,6 +1170,8 @@ def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
             ids.setdefault(key, {})["orbit_id"] = final_orbit_id
             ids[key]["snapshot"] = _make_snapshot(item)
             updated += 1
+            # Markdown line gains [orbit:xxx] on first sync — count as changed.
+            changed = True
             ids_changed = True
         else:
             skipped += 1
@@ -1308,7 +1317,9 @@ def _ev_props_for_calendar_app(ev: dict, project_name: str,
     """Build the property dict consumed by _create/_update_calendar_event."""
     from datetime import timedelta, datetime
 
-    summary = f"{ORBIT_PROMPT}[{project_name}] {ev['desc']}"
+    # Workspace prefix dropped: the Calendar.app calendar (🚀orbit-ws /
+    # 🌿orbit-ps) already encodes workspace via its color/name.
+    summary = f"[{project_name}] {ev['desc']}"
     start_date = ev["date"]
     time_val = ev.get("time")
 
@@ -1521,7 +1532,7 @@ def run_gsync_migrate_recurring(dry_run: bool = False) -> int:
             # Clear gcal_id so gsync creates a new RRULE series
             entry.pop("gcal_id", None)
             entry.pop("snapshot", None)
-            ev["synced"] = False
+            ev.pop("orbit_id", None)
             ids_changed = True
             total += 1
 
@@ -1591,14 +1602,19 @@ def _secondary_key(item: dict) -> str:
 
 
 def reconcile_gsync_renames() -> list:
-    """Detect items whose title changed in the markdown and re-link their gsync IDs.
+    """Detect items whose title/date/recur changed in the markdown and
+    re-link their gsync IDs.
 
-    Strategy: find orphaned keys in .gsync-ids.json (no matching item in agenda)
-    and unmatched synced items in agenda (☁️ but no key in ids). If an orphan and
-    an unmatched item share the same date/recur, treat it as a rename: migrate
-    the Google IDs to the new key, update the snapshot, and re-sync.
+    Strategy: every item with an ``[orbit:xxx]`` tag in the .md carries its
+    identity. If its current key (`desc::date` or `desc::🔄recur::date`)
+    differs from the key under which it is stored in `.gsync-ids.json`, the
+    user must have edited title/date/recur. We migrate the stored uid+orbit_id
+    to the new key, update the snapshot and re-sync to propagate.
 
-    Returns list of (project_name, old_desc, new_desc) for each reconciled rename.
+    Falls back to the legacy secondary-key heuristic for items without an
+    orbit-id (pre-tag agendas).
+
+    Returns list of (project_name, old_desc, new_desc) for each rename.
     """
     config = _load_config()
     do_tasks = _sync_tasks_enabled(config)
@@ -1617,67 +1633,67 @@ def reconcile_gsync_renames() -> list:
         if do_milestones:
             all_items = [(m, "milestone") for m in data["milestones"]] + all_items
 
-        # Build set of current item keys
-        current_keys = {}
-        for item, kind in all_items:
-            current_keys[_item_key(item)] = (item, kind)
+        current_keys = {_item_key(it): (it, kind) for it, kind in all_items}
+        # Reverse index: orbit_id → key in .gsync-ids.json (only the
+        # top-level item entries; cronograma `_cronos` sub-dict is excluded).
+        ids_by_orbit = {v.get("orbit_id"): k
+                        for k, v in ids.items()
+                        if isinstance(v, dict) and v.get("orbit_id")}
 
-        # Find orphaned keys (in ids but not in current items)
-        orphans = {}
-        for key in list(ids.keys()):
-            if key not in current_keys:
-                orphans[key] = ids[key]
-
-        if not orphans:
-            continue
-
-        # Find unmatched items (synced marker but no key in ids)
-        unmatched = []
-        for item, kind in all_items:
-            key = _item_key(item)
-            if key not in ids and item.get("synced"):
-                unmatched.append((item, kind))
-
-        # Also include items without synced marker that simply don't have a key
-        # but share a secondary key with an orphan — these are likely renames
-        # where the user also didn't touch the ☁️ marker
-        for item, kind in all_items:
-            key = _item_key(item)
-            if key not in ids and not item.get("synced"):
-                # Check if secondary key matches any orphan
-                sec = _secondary_key(item)
-                for okey, odata in orphans.items():
-                    osec = okey.split("::", 1)[1] if "::" in okey else ""
-                    if sec and sec == osec:
-                        unmatched.append((item, kind))
-                        break
-
-        # Try to match orphans to unmatched items by secondary key
         changed = False
-        for item, kind in unmatched:
-            sec = _secondary_key(item)
-            if not sec:
-                continue
-            # Find matching orphan
-            for okey in list(orphans.keys()):
-                osec = okey.split("::", 1)[1] if "::" in okey else ""
-                if sec == osec:
-                    # Found a match — migrate
-                    old_desc = okey.split("::")[0]
-                    new_key = _item_key(item)
-                    odata = orphans.pop(okey)
-                    ids.pop(okey, None)
-                    ids[new_key] = odata
-                    ids[new_key]["snapshot"] = _make_snapshot(item)
-                    changed = True
-                    results.append((project_dir.name, old_desc, item.get("desc", "?")))
 
-                    # Re-sync to Google with new title
-                    try:
-                        sync_item(project_dir, item, kind)
-                    except Exception:
-                        pass
-                    break
+        # Pass 1 — orbit-id authoritative. For each item carrying an orbit-id,
+        # locate its stored key. If different from current, that's a rename
+        # (or date/recur change) — migrate.
+        for item, kind in all_items:
+            oid = item.get("orbit_id")
+            if not oid:
+                continue
+            stored_key = ids_by_orbit.get(oid)
+            if not stored_key:
+                continue
+            current_key = _item_key(item)
+            if stored_key == current_key:
+                continue
+            old_desc = stored_key.split("::", 1)[0]
+            ids[current_key] = ids.pop(stored_key)
+            ids[current_key]["snapshot"] = _make_snapshot(item)
+            ids_by_orbit[oid] = current_key
+            results.append((project_dir.name, old_desc, item.get("desc", "?")))
+            try:
+                sync_item(project_dir, item, kind)
+            except Exception:
+                pass
+            changed = True
+
+        # Pass 2 — legacy fallback for items without orbit-id. Uses the old
+        # secondary-key match (date or recur+date) against orphan ids.
+        orphans = {k: v for k, v in ids.items()
+                   if k not in current_keys and not k.startswith("_")}
+        if orphans:
+            for item, kind in all_items:
+                if item.get("orbit_id"):
+                    continue  # handled in pass 1
+                key = _item_key(item)
+                if key in ids:
+                    continue
+                sec = _secondary_key(item)
+                if not sec:
+                    continue
+                for okey in list(orphans.keys()):
+                    osec = okey.split("::", 1)[1] if "::" in okey else ""
+                    if sec == osec:
+                        old_desc = okey.split("::")[0]
+                        ids[key] = ids.pop(okey)
+                        ids[key]["snapshot"] = _make_snapshot(item)
+                        orphans.pop(okey)
+                        results.append((project_dir.name, old_desc, item.get("desc", "?")))
+                        try:
+                            sync_item(project_dir, item, kind)
+                        except Exception:
+                            pass
+                        changed = True
+                        break
 
         if changed:
             _save_ids(project_dir, ids)
@@ -1909,15 +1925,19 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                 list_name = _reminders_list_name(config)
                 _ensure_reminders_list(list_name)
                 project_name = project_dir.name
-                old_uid = ids.get(key, {}).get("gtask_id")
-                item["_gtask_id"] = old_uid
+                existing = ids.get(key, {})
+                item["_gtask_id"] = existing.get("gtask_id")
+                item["_orbit_id"] = (item.get("orbit_id")
+                                     or existing.get("orbit_id")
+                                     or _new_orbit_id())
                 new_id = _sync_one_to_reminders(list_name, item, project_name,
                                                 kind, dry_run=False)
                 if new_id and new_id != old_uid:
                     ids.setdefault(key, {})["gtask_id"] = new_id
                     ids[key]["snapshot"] = _make_snapshot(item)
+                    ids[key]["orbit_id"] = item.get("_orbit_id")
                     _save_ids(project_dir, ids)
-                    # Mark ☁️ in agenda.md
+                    # Persist orbit-id back into agenda.md.
                     agenda_path = resolve_file(project_dir, "agenda")
                     data = _read_agenda(agenda_path)
                     section_map = {"task": "tasks", "milestone": "milestones",
@@ -1925,7 +1945,7 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                     section = section_map[kind]
                     for it in data.get(section, []):
                         if it.get("desc") == item["desc"] and it.get("date") == item.get("date"):
-                            it["synced"] = True
+                            it["orbit_id"] = item.get("_orbit_id")
                             break
                     _write_agenda(agenda_path, data)
                 item.pop("_gtask_id", None)
@@ -1940,19 +1960,24 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                     return
                 project_name = project_dir.name
                 description = _project_description(project_dir, config, html=False)
-                item["_gcal_id"] = ids.get(key, {}).get("gcal_id")
+                existing = ids.get(key, {})
+                item["_gcal_id"] = existing.get("gcal_id")
+                item["_orbit_id"] = (item.get("orbit_id")
+                                     or existing.get("orbit_id")
+                                     or _new_orbit_id())
                 new_id = _sync_one_event(cal_name, item,
                                          project_name, description,
                                          dry_run=False)
-                if new_id and not item.get("_gcal_id"):
+                if new_id and not existing.get("gcal_id"):
                     ids.setdefault(key, {})["gcal_id"] = new_id
+                    ids[key]["orbit_id"] = item.get("_orbit_id")
                     _save_ids(project_dir, ids)
-                    # Mark [G] in agenda.md
+                    # Persist orbit-id back into agenda.md.
                     agenda_path = resolve_file(project_dir, "agenda")
                     data = _read_agenda(agenda_path)
                     for e in data["events"]:
                         if e["desc"] == item["desc"] and e["date"] == item["date"]:
-                            e["synced"] = True
+                            e["orbit_id"] = item.get("_orbit_id")
                             break
                     _write_agenda(agenda_path, data)
                 item.pop("_gcal_id", None)

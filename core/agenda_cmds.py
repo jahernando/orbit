@@ -194,6 +194,21 @@ _MS_HEADER   = "## 🏁 Hitos"
 _EV_HEADER   = "## 📅 Eventos"
 _REM_HEADER  = "## 💬 Recordatorios"
 
+# ── Orbit-id tag (stable identity across user edits in markdown) ───────────
+
+# Items synced to Reminders.app / Calendar.app carry an 8-char hex orbit-id
+# in their .md line as ``[orbit:abc12345]``. It survives any edit of title,
+# date, time, recur or notes — the next sync uses it to find the existing
+# Reminder/Event without creating a duplicate.
+_ORBIT_ID_RE = re.compile(r"\[orbit:([0-9a-f]{8})\]")
+
+
+def _extract_orbit_id(text: str) -> Optional[str]:
+    """Return the orbit-id tagged in *text*, or None."""
+    m = _ORBIT_ID_RE.search(text or "")
+    return m.group(1) if m else None
+
+
 # ── Task/milestone line parsing ────────────────────────────────────────────────
 
 def _parse_task_line(line: str) -> Optional[dict]:
@@ -205,7 +220,6 @@ def _parse_task_line(line: str) -> Optional[dict]:
     rest   = m.group(2)
 
     date_val = recur = until = ring = time_val = None
-    synced = False
     date_m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", rest)
     if date_m:
         date_val = date_m.group(1)
@@ -225,23 +239,24 @@ def _parse_task_line(line: str) -> Optional[dict]:
     time_m = re.search(r"⏰(\S+)", rest) or re.search(r"\[time:([^\]]+)\]", rest)
     if time_m:
         time_val = time_m.group(1)
-    # Synced: emoji ☁️ or legacy [G] or [gtask:]
-    if re.search(r"☁️", rest) or re.search(r"\[G\]", rest) or re.search(r"\[gtask:[^\]]+\]", rest):
-        synced = True
+    orbit_id = _extract_orbit_id(rest)
 
-    # Description = rest minus attribute patterns (both emoji and legacy)
+    # Description = rest minus attribute patterns (both emoji and legacy).
+    # ☁️ / [G] / [gtask:…] are legacy sync markers — strip silently; the
+    # presence of [orbit:xxx] is now the canonical "synced" indicator.
     desc = rest
     for pat in [r"\(\d{4}-\d{2}-\d{2}\)",
                 r"🔄\S+", r"\[recur:[^\]]+\]",
                 r"🔔\S+", r"\[ring:[^\]]+\]",
                 r"⏰\S+", r"\[time:[^\]]+\]",
-                r"☁️", r"\[G\]", r"\[gtask:[^\]]+\]"]:
+                r"☁️", r"\[G\]", r"\[gtask:[^\]]+\]",
+                r"\[orbit:[0-9a-f]{8}\]"]:
         desc = re.sub(pat, "", desc)
     desc = desc.strip()
 
     return {"status": status, "desc": desc, "date": date_val,
             "recur": recur, "until": until, "ring": ring,
-            "time": time_val, "synced": synced}
+            "time": time_val, "orbit_id": orbit_id}
 
 
 def _format_task_line(task: dict) -> str:
@@ -259,8 +274,8 @@ def _format_task_line(task: dict) -> str:
         parts.append(f"🔄{recur_tag}")
     if task.get("ring"):
         parts.append(f"🔔{task['ring']}")
-    if task.get("synced"):
-        parts.append("☁️")
+    if task.get("orbit_id"):
+        parts.append(f"[orbit:{task['orbit_id']}]")
     return f"- [{char}] {' '.join(parts)}"
 
 
@@ -274,7 +289,6 @@ def _parse_event_line(line: str) -> Optional[dict]:
     date_val = m.group(1)
     rest     = m.group(2)
     end = recur = until = ring = time_val = None
-    synced = False
     # End: emoji →YYYY-MM-DD or legacy [end:]
     end_m = re.search(r"→(\d{4}-\d{2}-\d{2})", rest) or re.search(r"\[end:(\d{4}-\d{2}-\d{2})\]", rest)
     if end_m:
@@ -295,19 +309,21 @@ def _parse_event_line(line: str) -> Optional[dict]:
     ring_m = re.search(r"🔔(\S+)", rest) or re.search(r"\[ring:([^\]]+)\]", rest)
     if ring_m:
         ring = ring_m.group(1)
-    # Synced: emoji ☁️ or legacy [G] or [gcal:]
-    if re.search(r"☁️", rest) or re.search(r"\[G\]", rest) or re.search(r"\[gcal:[^\]]+\]", rest):
-        synced = True
-    # Strip attribute tags from description (both emoji and legacy)
+    orbit_id = _extract_orbit_id(rest)
+    # Strip attribute tags from description (both emoji and legacy).
+    # ☁️ / [G] / [gcal:…] are stripped silently; [orbit:xxx] is the
+    # canonical sync marker.
     for pat in [r"→\d{4}-\d{2}-\d{2}", r"\[end:[^\]]+\]",
                 r"⏰\S+", r"\[time:[^\]]+\]",
                 r"🔄\S+", r"\[recur:[^\]]+\]",
                 r"🔔\S+", r"\[ring:[^\]]+\]",
-                r"☁️", r"\[G\]", r"\[gcal:[^\]]+\]"]:
+                r"☁️", r"\[G\]", r"\[gcal:[^\]]+\]",
+                r"\[orbit:[0-9a-f]{8}\]"]:
         rest = re.sub(pat, "", rest)
     rest = rest.strip()
     return {"date": date_val, "desc": rest, "end": end, "time": time_val,
-            "recur": recur, "until": until, "ring": ring, "synced": synced}
+            "recur": recur, "until": until, "ring": ring,
+            "orbit_id": orbit_id}
 
 
 def _format_event_line(ev: dict) -> str:
@@ -324,8 +340,8 @@ def _format_event_line(ev: dict) -> str:
         line += f" 🔄{recur_tag}"
     if ev.get("ring"):
         line += f" 🔔{ev['ring']}"
-    if ev.get("synced"):
-        line += " ☁️"
+    if ev.get("orbit_id"):
+        line += f" [orbit:{ev['orbit_id']}]"
     return line
 
 
@@ -355,9 +371,11 @@ def _parse_reminder_line(line: str) -> Optional[dict]:
         else:
             recur = raw
 
+    orbit_id = _extract_orbit_id(rest)
     desc = rest
     for pat in [r"\(\d{4}-\d{2}-\d{2}\)", r"⏰\S+", r"\[time:[^\]]+\]",
-                r"🔄\S+", r"\[recur:[^\]]+\]"]:
+                r"🔄\S+", r"\[recur:[^\]]+\]",
+                r"\[orbit:[0-9a-f]{8}\]"]:
         desc = re.sub(pat, "", desc)
     desc = desc.strip()
 
@@ -366,7 +384,7 @@ def _parse_reminder_line(line: str) -> Optional[dict]:
 
     return {"desc": desc, "date": date_val, "time": time_val,
             "recur": recur, "until": until,
-            "cancelled": cancelled}
+            "cancelled": cancelled, "orbit_id": orbit_id}
 
 
 def _format_reminder_line(rem: dict) -> str:
@@ -382,6 +400,8 @@ def _format_reminder_line(rem: dict) -> str:
         if rem.get("until"):
             recur_tag += f":{rem['until']}"
         parts.append(f"🔄{recur_tag}")
+    if rem.get("orbit_id"):
+        parts.append(f"[orbit:{rem['orbit_id']}]")
     return f"{prefix}{' '.join(parts)}"
 
 
@@ -883,8 +903,11 @@ def _advance_recurrence(item, items_list, cfg) -> str:
     if cfg["has_ring"]:
         new_item["ring"] = item.get("ring")
     if cfg.get("has_end"):
-        # Events: copy all fields except synced
-        new_item = {k: v for k, v in item.items() if k != "synced"}
+        # Events: copy all fields, dropping the orbit-id (the new occurrence
+        # gets its own identity). Legacy `synced` field is also dropped if
+        # present (no longer used).
+        new_item = {k: v for k, v in item.items()
+                    if k not in ("synced", "orbit_id")}
         new_item["date"] = next_due
     items_list.append(new_item)
     return f" (recur: {item['recur']}) → próxima: {next_due}"
@@ -1217,7 +1240,7 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
         else:
             print(f"✓ [{project_dir.name}] Serie eliminada: {display} ({item['recur']})")
         # Event series: delete from Google Calendar
-        if type_name == "event" and item.get("synced"):
+        if type_name == "event" and item.get("orbit_id"):
             from core.gsync import delete_gcal_event
             delete_gcal_event(project_dir, item)
     else:
@@ -1226,8 +1249,8 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
             print(f"✓ [{project_dir.name}] [{cfg['drop_verb']}] {item_desc}{next_info}")
         else:
             print(f"✓ [{project_dir.name}] {cfg['label']} {cfg['drop_verb']}: {display}{next_info}")
-        # Event non-recurring: delete from Google Calendar
-        if type_name == "event" and not item.get("recur") and item.get("synced"):
+        # Event non-recurring: delete from Calendar.app
+        if type_name == "event" and not item.get("recur") and item.get("orbit_id"):
             from core.gsync import delete_gcal_event
             delete_gcal_event(project_dir, item)
 
@@ -2007,7 +2030,10 @@ def startup_advance_past_recurring() -> list:
                         item["status"] = "cancelled"
                     info = f" — serie finalizada ({item.get('until')})"
                 elif cfg["drop_action"] == "pop":
-                    # Events: pop old, create new with next_due
+                    # Events: pop old, create new with next_due. Drop the
+                    # legacy `synced` flag if present (no longer used) but
+                    # KEEP orbit_id so the next sync recognises this as the
+                    # same series advanced to a new anchor date.
                     popped = items.pop(i)
                     new_item = {k: v for k, v in popped.items() if k != "synced"}
                     new_item["date"] = next_due

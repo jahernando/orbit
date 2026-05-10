@@ -42,11 +42,16 @@ class TestTaskEmojiBackwardCompat:
         assert old["recur"] == "weekly"
         assert old["until"] == "2026-06-30"
 
-    def test_synced_both_formats(self):
+    def test_legacy_sync_marker_stripped(self):
+        """Legacy sync markers ([G], ☁️) are stripped silently — orbit-id
+        is the new sync indicator. Items with these markers parse as if
+        they had no sync info; the next gsync assigns an orbit-id."""
         old = _parse_task_line("- [ ] Task (2026-04-01) [G]")
         new = _parse_task_line("- [ ] Task (2026-04-01) ☁️")
         assert old == new
-        assert old["synced"] is True
+        assert old["desc"] == "Task"
+        assert "synced" not in old
+        assert old["orbit_id"] is None
 
     def test_all_attrs_both_formats(self):
         old = _parse_task_line(
@@ -61,7 +66,6 @@ class TestTaskEmojiBackwardCompat:
         assert old["recur"] == "weekly"
         assert old["until"] == "2026-12-31"
         assert old["ring"] == "1h"
-        assert old["synced"] is True
 
 
 # ── Event parsing: backward compat ────────────────────────────────────────────
@@ -105,51 +109,52 @@ class TestFormatOutputEmoji:
     def test_task_format_uses_emojis(self):
         t = {"status": "pending", "desc": "Task", "date": "2026-04-01",
              "time": "09:00", "recur": "daily", "until": None,
-             "ring": "15m", "synced": True}
+             "ring": "15m"}
         line = _format_task_line(t)
         assert "⏰09:00" in line
         assert "🔄daily" in line
         assert "🔔15m" in line
-        assert "☁️" in line
-        # Must NOT contain old bracket format
+        # No legacy bracket format
         assert "[time:" not in line
         assert "[recur:" not in line
         assert "[ring:" not in line
         assert "[G]" not in line
+        # No legacy ☁️ marker (orbit-id is the new sync indicator;
+        # this item has none yet so nothing should appear)
+        assert "☁️" not in line
 
     def test_event_format_uses_emojis(self):
         ev = {"date": "2026-04-01", "desc": "Event", "end": "2026-04-02",
               "time": "10:00-12:00", "recur": "weekly", "until": "2026-06-30",
-              "ring": "1h", "synced": True}
+              "ring": "1h"}
         line = _format_event_line(ev)
         assert "→2026-04-02" in line
         assert "⏰10:00-12:00" in line
         assert "🔄weekly:2026-06-30" in line
         assert "🔔1h" in line
-        assert "☁️" in line
         assert "[end:" not in line
         assert "[time:" not in line
         assert "[recur:" not in line
+        assert "☁️" not in line
 
     def test_task_no_attrs_clean(self):
         t = {"status": "pending", "desc": "Simple", "date": None,
              "time": None, "recur": None, "until": None,
-             "ring": None, "synced": False}
+             "ring": None}
         line = _format_task_line(t)
         assert line == "- [ ] Simple"
 
-    def test_old_format_roundtrip_converts(self):
-        """Parsing old format and re-formatting should produce emoji format."""
+    def test_old_format_roundtrip_strips_legacy_markers(self):
+        """Old [G] / ☁️ sync markers don't survive a parse → format round trip."""
         old_line = "- [ ] Review (2026-04-01) [time:14:00] [recur:weekly] [ring:30m] [G]"
         t = _parse_task_line(old_line)
         new_line = _format_task_line(t)
         assert "⏰14:00" in new_line
         assert "🔄weekly" in new_line
         assert "🔔30m" in new_line
-        assert "☁️" in new_line
-        # No old bracket attrs (ignore the - [ ] checkbox)
-        after_checkbox = new_line.split("] ", 1)[1]
-        assert "[" not in after_checkbox
+        # Neither legacy [G] nor new ☁️ — those markers are gone for good.
+        assert "[G]" not in new_line
+        assert "☁️" not in new_line
 
 
 # ── Description extraction is clean ──────────────────────────────────────────

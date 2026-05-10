@@ -761,18 +761,21 @@ class TestEvents:
         out = capsys.readouterr().out
         assert "próxima: 2026-03-16" in out
 
-    def test_drop_recurring_event_clears_synced(self, proj, projects_dir):
+    def test_drop_recurring_event_clears_orbit_id(self, proj, projects_dir):
+        """Advancing a recurring event creates a fresh occurrence — the
+        orbit-id of the previous anchor must NOT carry over (the new
+        occurrence is a different identity for sync purposes)."""
         from core.agenda_cmds import run_ev_add, run_ev_drop, _read_agenda
         run_ev_add("test-project", "Synced meeting", "2026-03-09", recur="weekly")
-        # Manually mark as synced
+        # Manually mark with an orbit-id (as if it had been synced).
         data = _read_agenda(proj / "test-project-agenda.md")
-        data["events"][0]["synced"] = True
+        data["events"][0]["orbit_id"] = "abc12345"
         from core.agenda_cmds import _write_agenda
         _write_agenda(proj / "test-project-agenda.md", data)
         run_ev_drop("test-project", "Synced meeting", force=True)
         data = _read_agenda(proj / "test-project-agenda.md")
         assert len(data["events"]) == 1
-        assert not data["events"][0].get("synced")
+        assert not data["events"][0].get("orbit_id")
 
     def test_drop_nonexistent(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_ev_drop
@@ -938,7 +941,7 @@ class TestEventTime:
         from core.agenda_cmds import _format_event_line
         ev = {"date": "2026-03-15", "desc": "Meeting", "end": None,
               "time": "10:00-11:30", "recur": None, "until": None,
-              "ring": None, "synced": False}
+              "ring": None}
         line = _format_event_line(ev)
         assert "⏰10:00-11:30" in line
 
@@ -946,7 +949,7 @@ class TestEventTime:
         from core.agenda_cmds import _format_event_line
         ev = {"date": "2026-03-15", "desc": "All day", "end": None,
               "time": None, "recur": None, "until": None,
-              "ring": None, "synced": False}
+              "ring": None}
         line = _format_event_line(ev)
         assert "⏰" not in line
 
@@ -968,7 +971,8 @@ class TestEventTime:
         assert ev["end"] == "2026-03-17"
         assert ev["recur"] == "monthly"
         assert ev["ring"] == "1d"
-        assert ev["synced"] is True
+        # Legacy [G] marker is stripped silently — no longer surfaced as a field.
+        assert "synced" not in ev
         formatted = _format_event_line(ev)
         assert "⏰09:00" in formatted
         assert "→2026-03-17" in formatted
@@ -1916,3 +1920,92 @@ class TestEventAgendaRoomFlags:
         assert len(recurring) == 1
         assert with_room[0]["date"] == "2026-05-08"
         assert recurring[0]["date"] == "2026-05-15"
+
+
+class TestOrbitIdInMarkdown:
+    """orbit-id [orbit:xxx] tag round-trips through parsers and writers."""
+
+    def test_extract_orbit_id(self):
+        from core.agenda_cmds import _extract_orbit_id
+        assert _extract_orbit_id("[orbit:abc12345]") == "abc12345"
+        assert _extract_orbit_id("desc [orbit:abc12345] tail") == "abc12345"
+        assert _extract_orbit_id("no tag") is None
+        assert _extract_orbit_id("") is None
+        assert _extract_orbit_id("[orbit:NOPE]") is None  # uppercase rejected
+
+    def test_task_parse_extracts_orbit_id(self):
+        from core.agenda_cmds import _parse_task_line
+        item = _parse_task_line("- [ ] Mi tarea (2026-05-15) ⏰09:00 [orbit:abc12345]")
+        assert item["orbit_id"] == "abc12345"
+        assert item["desc"] == "Mi tarea"
+        assert item["date"] == "2026-05-15"
+        assert item["time"] == "09:00"
+
+    def test_task_format_appends_orbit_id(self):
+        from core.agenda_cmds import _format_task_line
+        line = _format_task_line({
+            "status": "pending", "desc": "Foo", "date": "2026-05-15",
+            "time": None, "recur": None, "ring": None,
+            "orbit_id": "abc12345",
+        })
+        assert line.endswith("[orbit:abc12345]")
+
+    def test_task_round_trip(self):
+        from core.agenda_cmds import _parse_task_line, _format_task_line
+        original = "- [ ] Foo (2026-05-15) ⏰09:00 🔄weekly 🔔10m [orbit:abc12345]"
+        parsed = _parse_task_line(original)
+        rebuilt = _format_task_line(parsed)
+        assert rebuilt == original
+
+    def test_event_parse_extracts_orbit_id(self):
+        from core.agenda_cmds import _parse_event_line
+        ev = _parse_event_line(
+            "2026-05-11 — natación ⏰10:30 🔄weekly:2026-06-01 🔔10m [orbit:fd761027]"
+        )
+        assert ev["orbit_id"] == "fd761027"
+        assert ev["desc"] == "natación"
+        assert ev["recur"] == "weekly"
+        assert ev["until"] == "2026-06-01"
+
+    def test_event_round_trip(self):
+        from core.agenda_cmds import _parse_event_line, _format_event_line
+        original = "2026-05-11 — Mtg ⏰12:00 [orbit:1a2b3c4d]"
+        parsed = _parse_event_line(original)
+        rebuilt = _format_event_line(parsed)
+        assert rebuilt == original
+
+    def test_reminder_parse_extracts_orbit_id(self):
+        from core.agenda_cmds import _parse_reminder_line
+        rem = _parse_reminder_line(
+            "- Llamar (2026-05-11) ⏰18:00 [orbit:11223344]"
+        )
+        assert rem["orbit_id"] == "11223344"
+        assert rem["desc"] == "Llamar"
+
+    def test_reminder_round_trip(self):
+        from core.agenda_cmds import _parse_reminder_line, _format_reminder_line
+        original = "- Llamar (2026-05-11) ⏰18:00 [orbit:11223344]"
+        parsed = _parse_reminder_line(original)
+        rebuilt = _format_reminder_line(parsed)
+        assert rebuilt == original
+
+    def test_legacy_cloud_marker_stripped_silently(self):
+        """Items written by older orbit had ☁️ as a 'synced' marker. The
+        parser strips it without erroring; orbit-id (when present) is now
+        the canonical source of sync state."""
+        from core.agenda_cmds import _parse_task_line
+        item = _parse_task_line("- [ ] Old task (2026-05-15) ☁️")
+        assert item["orbit_id"] is None
+        assert item["desc"] == "Old task"
+        assert "synced" not in item
+
+    def test_format_omits_orbit_id_when_absent(self):
+        """No tag is written for items that haven't synced yet."""
+        from core.agenda_cmds import _format_task_line
+        line = _format_task_line({
+            "status": "pending", "desc": "Foo", "date": "2026-05-15",
+            "time": None, "recur": None, "ring": None,
+            "orbit_id": None,
+        })
+        assert "[orbit:" not in line
+        assert "☁️" not in line
