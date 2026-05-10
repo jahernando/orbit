@@ -681,14 +681,13 @@ _FETCH_FIELD_SEP  = "\x1F"  # Unit Separator
 _FETCH_RECORD_SEP = "\x1E"  # Record Separator
 
 
-def _fetch_all_reminders(list_name: str) -> list:
-    """Bulk fetch every reminder from a list with the fields we care about.
+def _fetch_completed_orbit_ids(list_name: str) -> set:
+    """Return the set of orbit-ids whose reminder is currently ``completed``.
 
-    One AppleScript call returns:
-        [{"uid": ..., "name": ..., "due_iso": ..., "completed": bool,
-          "body": ..., "orbit_id": ..., "occurrence": ...}, ...]
-
-    Returns ``[]`` on AppleScript failure.
+    Only iterates reminders with ``completed is true and body contains
+    "[orbit:"`` server-side, so the AppleScript work scales with the number
+    of done items (typically 0-2), not the total list size. Items without
+    an orbit-id (manual reminders the user added) are skipped.
     """
     lst = _esc(list_name)
     fld = "(ASCII character 31)"
@@ -699,50 +698,31 @@ def _fetch_all_reminders(list_name: str) -> list:
         f'        set fld to {fld}\n'
         f'        set rec to {rec}\n'
         f'        set out to ""\n'
-        f'        repeat with r in reminders\n'
-        f'            set due_str to ""\n'
-        f'            try\n'
-        f'                set d to due date of r\n'
-        f'                set due_str to (year of d as text) & "-" & ¬\n'
-        f'                  (text -2 thru -1 of ("0" & (month of d as integer))) & "-" & ¬\n'
-        f'                  (text -2 thru -1 of ("0" & (day of d))) & "T" & ¬\n'
-        f'                  (text -2 thru -1 of ("0" & (hours of d))) & ":" & ¬\n'
-        f'                  (text -2 thru -1 of ("0" & (minutes of d)))\n'
-        f'            end try\n'
-        f'            set body_str to ""\n'
-        f'            try\n'
-        f'                set body_str to body of r\n'
-        f'            end try\n'
-        f'            set out to out & (id of r) & fld & (name of r) & fld ¬\n'
-        f'                & due_str & fld & (completed of r as text) & fld ¬\n'
-        f'                & body_str & rec\n'
-        f'        end repeat\n'
+        f'        try\n'
+        f'            set rs to (every reminder whose completed is true and body contains "[orbit:")\n'
+        f'            repeat with r in rs\n'
+        f'                set out to out & (id of r) & fld & (body of r) & rec\n'
+        f'            end repeat\n'
+        f'        end try\n'
         f'        return out\n'
         f'    end tell\n'
         f'end tell'
     )
-    out = _osa(script, timeout=120)
+    out = _osa(script, timeout=60)
     if not out:
-        return []
-    items = []
+        return set()
+    ids = set()
     for raw in out.split(_FETCH_RECORD_SEP):
         if not raw.strip():
             continue
         parts = raw.split(_FETCH_FIELD_SEP)
-        if len(parts) < 5:
+        if len(parts) < 2:
             continue
-        uid, name, due_iso, completed, body = parts[:5]
-        oid, occ = _parse_orbit_tag(body)
-        items.append({
-            "uid":        uid,
-            "name":       name,
-            "due_iso":    due_iso or None,
-            "completed":  completed.strip().lower() == "true",
-            "body":       body,
-            "orbit_id":   oid,
-            "occurrence": occ,
-        })
-    return items
+        body = parts[1]
+        oid, _ = _parse_orbit_tag(body)
+        if oid:
+            ids.add(oid)
+    return ids
 
 
 def _fetch_all_events(calendar_name: str) -> list:
