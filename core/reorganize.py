@@ -290,6 +290,19 @@ def _action_for(idx: int, items: list) -> Optional[str]:
 
 # ── Main entry ─────────────────────────────────────────────────────────────
 
+def _summary_and_refresh(actions_applied: int) -> None:
+    """Print the count of changes and, if any, refresh dash artifacts."""
+    if actions_applied:
+        plural = "s" if actions_applied != 1 else ""
+        print(f"✓ {actions_applied} cambio{plural} aplicado{plural}.")
+        try:
+            from orbit import run_dash
+            run_dash(silent=True)
+        except Exception:
+            # Dash refresh is best-effort; failures shouldn't bubble up.
+            pass
+
+
 def run_reorganize(type_filter: Optional[str] = None,
                    project: Optional[str] = None,
                    period: str = "today",
@@ -301,7 +314,7 @@ def run_reorganize(type_filter: Optional[str] = None,
                                 include_undated=include_undated)
         if not items:
             if actions_applied:
-                print(f"\n✓ {actions_applied} cambio{'s' if actions_applied != 1 else ''} aplicado{'s' if actions_applied != 1 else ''}.")
+                _summary_and_refresh(actions_applied)
             else:
                 print("Sin items para reorganizar.")
             return 0
@@ -309,8 +322,7 @@ def run_reorganize(type_filter: Optional[str] = None,
         _print_listing(items, period)
         sel = _prompt("\n#? (número, q=salir) > ")
         if not sel or sel.lower() in ("q", "quit", "exit"):
-            if actions_applied:
-                print(f"✓ {actions_applied} cambio{'s' if actions_applied != 1 else ''} aplicado{'s' if actions_applied != 1 else ''}.")
+            _summary_and_refresh(actions_applied)
             return 0
         try:
             idx = int(sel)
@@ -322,8 +334,7 @@ def run_reorganize(type_filter: Optional[str] = None,
         if not action or action == "s":
             continue
         if action == "q":
-            if actions_applied:
-                print(f"✓ {actions_applied} cambio{'s' if actions_applied != 1 else ''} aplicado{'s' if actions_applied != 1 else ''}.")
+            _summary_and_refresh(actions_applied)
             return 0
         kind, project_dir, item = items[idx - 1]
         try:

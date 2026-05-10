@@ -1322,12 +1322,16 @@ def _sync_item_loop(items: list, sync_fn, id_key: str, label: str,
             ids.setdefault(key, {})[id_key] = new_id
             ids[key]["orbit_id"] = final_orbit_id
             ids[key]["snapshot"] = _make_snapshot(item)
+            if _purge_orbit_orphans(ids, key, final_orbit_id):
+                ids_changed = True
             created += 1
             changed = True
             ids_changed = True
         elif old_id:
             ids.setdefault(key, {})["orbit_id"] = final_orbit_id
             ids[key]["snapshot"] = _make_snapshot(item)
+            if _purge_orbit_orphans(ids, key, final_orbit_id):
+                ids_changed = True
             updated += 1
             # Markdown line gains [orbit:xxx] on first sync — count as changed.
             changed = True
@@ -1801,9 +1805,15 @@ def reconcile_gsync_renames() -> list:
 
         changed = False
 
-        # Pass 1 — orbit-id authoritative. For each item carrying an orbit-id,
-        # locate its stored key. If different from current, that's a rename
-        # (or date/recur change) — migrate.
+        # Pass 1 — orbit-id authoritative. For each item carrying an
+        # orbit-id, locate its stored key. If different from current,
+        # that's a rename (or date/recur change) — migrate.
+        #
+        # We do NOT push to the backend here: every CLI edit already
+        # ran sync_item, and editing the .md by hand is rare enough
+        # that ad-hoc `orbit gsync` is the right place to recover.
+        # Calling sync_item from inside commit was double work and
+        # made commit feel slow when reorganize had just run.
         for item, kind in all_items:
             oid = item.get("orbit_id")
             if not oid:
@@ -1819,14 +1829,10 @@ def reconcile_gsync_renames() -> list:
             ids[current_key]["snapshot"] = _make_snapshot(item)
             ids_by_orbit[oid] = current_key
             results.append((project_dir.name, old_desc, item.get("desc", "?")))
-            try:
-                sync_item(project_dir, item, kind)
-            except Exception:
-                pass
             changed = True
 
-        # Pass 2 — legacy fallback for items without orbit-id. Uses the old
-        # secondary-key match (date or recur+date) against orphan ids.
+        # Pass 2 — legacy fallback for items without orbit-id. Uses the
+        # old secondary-key match (date or recur+date) against orphan ids.
         orphans = {k: v for k, v in ids.items()
                    if k not in current_keys and not k.startswith("_")}
         if orphans:
@@ -1847,10 +1853,6 @@ def reconcile_gsync_renames() -> list:
                         ids[key]["snapshot"] = _make_snapshot(item)
                         orphans.pop(okey)
                         results.append((project_dir.name, old_desc, item.get("desc", "?")))
-                        try:
-                            sync_item(project_dir, item, kind)
-                        except Exception:
-                            pass
                         changed = True
                         break
 
@@ -2062,6 +2064,29 @@ def delete_gcal_event(project_dir: Path, ev: dict) -> None:
 _SYNC_TIMEOUT = 2  # seconds
 
 
+def _purge_orbit_orphans(ids: dict, current_key: str, orbit_id: str) -> bool:
+    """Drop other entries in *ids* that share *orbit_id* but live under a
+    stale key. Returns True if anything was removed.
+
+    When a CLI edit changes desc/date/recur, the item's `_item_key` shifts
+    to ``current_key`` and the entry is rewritten there. Without this
+    cleanup the previous key lingers as a duplicate pointing at the same
+    Reminder/Calendar uid, and the next ``commit`` would surface it as a
+    fake rename in `reconcile_gsync_renames`.
+    """
+    if not orbit_id:
+        return False
+    removed = False
+    for k in list(ids.keys()):
+        if k == current_key or k.startswith("_"):
+            continue
+        v = ids[k]
+        if isinstance(v, dict) and v.get("orbit_id") == orbit_id:
+            del ids[k]
+            removed = True
+    return removed
+
+
 def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
     """Sync a single task/milestone/event to Google after a local operation.
 
@@ -2097,10 +2122,12 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                                      or _new_orbit_id())
                 new_id = _sync_one_to_reminders(list_name, item, project_name,
                                                 kind, dry_run=False)
+                old_uid = existing.get("gtask_id")
                 if new_id and new_id != old_uid:
                     ids.setdefault(key, {})["gtask_id"] = new_id
                     ids[key]["snapshot"] = _make_snapshot(item)
                     ids[key]["orbit_id"] = item.get("_orbit_id")
+                    _purge_orbit_orphans(ids, key, item.get("_orbit_id"))
                     _save_ids(project_dir, ids)
                     # Persist orbit-id back into agenda.md.
                     agenda_path = resolve_file(project_dir, "agenda")
@@ -2136,6 +2163,8 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                 if new_id and not existing.get("gcal_id"):
                     ids.setdefault(key, {})["gcal_id"] = new_id
                     ids[key]["orbit_id"] = item.get("_orbit_id")
+                    ids[key]["snapshot"] = _make_snapshot(item)
+                    _purge_orbit_orphans(ids, key, item.get("_orbit_id"))
                     _save_ids(project_dir, ids)
                     # Persist orbit-id back into agenda.md.
                     agenda_path = resolve_file(project_dir, "agenda")
