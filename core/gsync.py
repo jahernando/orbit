@@ -2053,12 +2053,13 @@ def delete_gcal_event(project_dir: Path, ev: dict) -> None:
 
 # ── Individual item sync (for add/done/edit/drop hooks) ────────────────────
 
-# How long sync_item waits for AppleScript before printing a "still
-# running" notice. The thread keeps going either way; this just bounds
-# how long the CLI blocks. AppleScript reads/writes against Reminders.app
-# can take 10-15s when iCloud is busy, so 20s leaves enough headroom for
-# the typical case without freezing the prompt for ages on real failures.
-_SYNC_TIMEOUT = 20  # seconds
+# How long sync_item waits for AppleScript before letting the prompt
+# return. The thread keeps running either way; this just bounds how long
+# the CLI blocks. AppleScript reads/writes against Reminders.app commonly
+# take 5-15 s when iCloud is busy. 2 s is enough to surface a fast
+# scripting error (bad list name, syntax) without freezing every CLI
+# action waiting for the network round-trip.
+_SYNC_TIMEOUT = 2  # seconds
 
 
 def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
