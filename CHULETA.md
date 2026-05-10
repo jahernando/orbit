@@ -422,6 +422,33 @@ Proyectos locales se muestran como links a `project.md`; federados con emoji del
 
 ---
 
+## reorganize — triage interactivo
+
+```bash
+orbit reorganize                     # hoy + vencidas, todos los tipos
+orbit reorganize tasks               # solo tareas
+orbit reorganize ev -P week          # eventos de esta semana
+orbit reorganize -p next-kr          # solo proyecto next-kr
+orbit reorganize -P 2026-W22         # ISO week específica
+orbit reorganize -P 2026-05-15       # un día concreto
+```
+
+Modo bucle:
+
+1. Lista los items pendientes que cumplen los filtros (vencidas arriba con ⚠️, luego cronológico, sin fecha al final).
+2. Eliges un número.
+3. Acciones disponibles:
+   - `d` — drop (cancela / borra ocurrencia)
+   - `n` — done (task/ms/reminder; los eventos no aplican)
+   - `f` — cambiar fecha (lenguaje natural: `tomorrow`, `next monday`, `+7`, `2026-05-25`)
+   - `h` — cambiar hora (`HH:MM` o `HH:MM-HH:MM`; `none` quita)
+   - `s` — skip, vuelve a la lista
+4. Tras cada cambio, refresca la lista. Sale con `q`.
+
+Cada acción dispara `sync_item` automático → Calendar/Reminders se actualizan al instante. Para editar título / notas / recurrencia / ring, sales con `q` y usas `task edit` (etc.) directamente.
+
+---
+
 ## report — informe de actividad
 
 ```bash
@@ -473,12 +500,9 @@ orbit gsync <proyecto>             # solo ese proyecto (match por substring)
 orbit gsync --dry-run              # preview sin escribir
 orbit gsync --list-calendars       # lista calendarios de Calendar.app
 
-orbit gpull                        # pull: trae los `completed` ✓ que marcaste en Reminders.app/iPhone
-orbit gpull <proyecto>             # solo ese proyecto
-orbit gpull --dry-run              # preview sin tocar agenda.md
 ```
 
-**`gpull` (alcance):** importa SOLO la marca `completed` (con avance recurrente). Cambios de título/fecha en Reminders se ignoran — agenda.md sigue siendo la fuente de verdad para metadatos. Si un reminder desaparece de la lista, orbit lo marca `cancelled`.
+**Reverse sync deprecado:** orbit es la fuente de verdad. Calendar.app y Reminders.app son render: ves los items y recibes alarmas. Para reorganizar usa `orbit reorganize` (ver abajo) o el comando CLI directo (`task edit`, `ev edit`, …). El módulo `core/gimport.py` y los helpers `_fetch_completed_orbit_ids` / `_fetch_all_events` quedan dormante en el repo por si en el futuro se quiere revivir el flujo Reminders → orbit.
 
 - **Eventos → Calendar.app vía AppleScript**. Un calendar por tipo de proyecto (nombre como aparece en Calendar.app). Sin OAuth — Calendar.app sincroniza después con la cuenta que tenga (Google/iCloud/Exchange). Requiere Calendar.app abierto.
 - **Tareas/hitos/recordatorios → Reminders.app vía AppleScript**. Una lista por workspace (configurable). Sin OAuth — Reminders.app sincroniza con iCloud nativamente (visible en iPhone/iPad). Requiere Reminders.app abierto.

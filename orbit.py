@@ -869,11 +869,12 @@ def cmd_gsync(args):
     )
 
 
-def cmd_gpull(args):
-    from core.gimport import import_changes
-    return import_changes(
+def cmd_reorganize(args):
+    from core.reorganize import run_reorganize
+    return run_reorganize(
+        type_filter=getattr(args, "type", None),
         project=getattr(args, "project", None),
-        dry_run=getattr(args, "dry_run", False),
+        period=getattr(args, "period", "today"),
     )
 
 
@@ -1388,6 +1389,17 @@ def _build_parser():
                        help="Open in editor (optionally specify editor name)")
     _add_log_args(cal_p)
 
+    # --- reorganize ---
+    reorg_p = subparsers.add_parser("reorganize",
+                                     help="Triage interactivo de items pendientes (drop/done/move)")
+    reorg_p.add_argument("type", nargs="?", default=None,
+                         choices=[None, "all", "tasks", "task", "ms", "ev", "events", "rem", "reminders", "reminder"],
+                         help="Filtrar por tipo. Default: all")
+    reorg_p.add_argument("--project", "-p", default=None,
+                         help="Filtrar por proyecto (substring match)")
+    reorg_p.add_argument("--period", "-P", default="today",
+                         help="Periodo: today (default, incluye vencidas) | week | month | YYYY-MM-DD | YYYY-Wnn")
+
     # --- gsync ---
     gsync_p = subparsers.add_parser("gsync",
                                      help="Sync events → Calendar.app, tasks/ms/reminders/cronos → Reminders.app")
@@ -1400,13 +1412,6 @@ def _build_parser():
     gsync_p.add_argument("--migrate-recurring", action="store_true", dest="migrate_recurring",
                          help="One-time legacy: mark old recurring events for RRULE re-creation")
 
-    # --- gpull (reverse sync: backend → agenda.md) ---
-    gpull_p = subparsers.add_parser("gpull",
-                                     help="Pull changes from Reminders.app / Calendar.app back into agenda.md")
-    gpull_p.add_argument("project", nargs="?", default=None,
-                         help="Pull only this project (substring match). Omitted: all.")
-    gpull_p.add_argument("--dry-run", action="store_true", dest="dry_run",
-                         help="Preview without modifying agenda.md")
 
     # --- mail (cartero) ---
     mail_p = subparsers.add_parser("mail", help="Check mail notifications (cartero)")
@@ -1864,8 +1869,9 @@ _COMMANDS = {
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "gpull": cmd_gpull, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
+    "reorganize": cmd_reorganize,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,
 }

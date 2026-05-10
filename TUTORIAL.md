@@ -545,6 +545,20 @@ undo                       # deshacer la última operación de Orbit
 
 Para hacer push al remoto, usa `orbit_push` desde la terminal del sistema (fuera de la shell). Si hay cambios sin commit, hace commit primero.
 
+### Reorganizar tareas (`reorganize`)
+
+Cuando llegas por la mañana y tienes vencidas + las del día por delante, lo más rápido es:
+
+```bash
+reorganize                # lista hoy + vencidas, te deja moverlas/cerrarlas una a una
+reorganize ev -P week     # solo eventos de esta semana
+reorganize -p santiago    # solo el proyecto santiago
+```
+
+El bucle: te lista, eliges número, acción rápida (`d` drop, `n` done, `f` fecha, `h` hora, `s` skip), vuelve a la lista. Sale con `q`. Cada cambio se sincroniza al momento a Calendar/Reminders.
+
+Para editar título o notas → sal de reorganize y usa `task edit "X" --desc "..."` directo.
+
 ### Calendar.app + Reminders.app
 
 Orbit sincroniza automáticamente al arrancar y tras cada `add`, `done`, `drop` o `edit`. Los items sincronizados muestran ☁️ en `agenda.md`. Backends locales (sin OAuth):
@@ -571,13 +585,9 @@ Orbit sincroniza automáticamente al arrancar y tras cada `add`, `done`, `drop` 
 gsync                      # push: sincroniza todos los proyectos
 gsync santiago             # push: solo un proyecto (substring match)
 gsync --dry-run            # preview sin escribir
-
-gpull                      # pull: trae los ✓ que marcaste en iPhone/Reminders
-gpull santiago             # pull: solo un proyecto
-gpull --dry-run            # preview sin modificar agenda.md
 ```
 
-`gpull` importa solo el toggle `completed` (los recurrentes avanzan a la próxima ocurrencia). Cambios de título/fecha en Reminders se ignoran: agenda.md es la fuente de verdad para metadatos.
+Orbit es la fuente de verdad. Calendar.app y Reminders.app son sólo render: para reorganizar tareas usa el CLI (`task edit`, `ev edit`, ...) o el modo interactivo `orbit reorganize`.
 
 ### Cloud (OneDrive/Google Drive)
 
