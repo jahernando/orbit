@@ -2425,15 +2425,31 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
 
                 # ── Backend = "calendar": render as 0-min event ──────────
                 if _agenda_backend(config) == "calendar":
-                    cal_name = _agenda_calendar_name(config)
+                    # Milestones go to the per-tipo events calendar (same as
+                    # events), so they're not buried among tasks/reminders in
+                    # the agenda calendar. Tasks and reminders stay in the
+                    # workspace's agenda calendar.
+                    agenda_cal = _agenda_calendar_name(config)
+                    if kind == "milestone":
+                        cal_name = (config.get("calendars", {}).get(tipo)
+                                    or config.get("calendars", {}).get("default"))
+                    else:
+                        cal_name = agenda_cal
+
+                    if not cal_name:
+                        return
                     if not _calendar_app_running():
                         return
-                    if not _ensure_agenda_calendar(cal_name):
+                    # Only enforce the setup-help message for the agenda
+                    # calendar; the per-tipo events calendar gets a simpler
+                    # error from _sync_one_agenda_event if it's missing.
+                    if kind != "milestone" and not _ensure_agenda_calendar(cal_name):
                         return
+
                     storage_key  = _agenda_storage_key(item, kind)
 
                     # Done / cancelled / reminder-cancelled → remove the event.
-                    # The agenda calendar should reflect only what's pending;
+                    # The calendar should reflect only what's pending;
                     # otherwise it accumulates crossed-out clutter and the
                     # alarms (already-fired) hang around in NotificationCenter.
                     is_terminal = (item.get("status") in ("done", "cancelled")
@@ -2442,6 +2458,11 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                         existing_uid = ids.get(storage_key, {}).get("gcal_id")
                         if existing_uid:
                             _delete_calendar_event(existing_uid, cal_name)
+                            # Best-effort cleanup for ms migrated from
+                            # pre-v0.29.2 (where ms lived in the agenda
+                            # calendar). Safe if the event isn't there.
+                            if kind == "milestone" and agenda_cal and agenda_cal != cal_name:
+                                _delete_calendar_event(existing_uid, agenda_cal)
                             ids.pop(storage_key, None)
                             _save_ids(project_dir, ids)
                         return
@@ -2457,6 +2478,14 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                                                      project_name, description,
                                                      kind, dry_run=False)
                     if new_uid and new_uid != existing.get("gcal_id"):
+                        # Migration: if the previous uid was for the agenda
+                        # calendar (pre-v0.29.2 ms routing), clean it up now
+                        # so the user doesn't end up with the same ms in
+                        # both calendars.
+                        old_uid = existing.get("gcal_id")
+                        if (old_uid and kind == "milestone"
+                                and agenda_cal and agenda_cal != cal_name):
+                            _delete_calendar_event(old_uid, agenda_cal)
                         ids.setdefault(storage_key, {})["gcal_id"] = new_uid
                         ids[storage_key]["orbit_id"] = item.get("_orbit_id")
                         ids[storage_key]["snapshot"] = _make_snapshot(item)

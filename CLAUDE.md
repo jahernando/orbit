@@ -85,7 +85,14 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.1, 2026-05-11)
+## Estado actual (v0.29.2, 2026-05-11)
+
+### v0.29.2 (2026-05-11) — milestones al calendario de events
+- **Routing**: `sync_item(item, "milestone")` ahora va al calendario per-tipo de events (`config["calendars"][tipo]`, fallback a `default`), no al calendario "agenda" del workspace. Las ms ya no se pierden entre tasks/reminders en el calendario común.
+- **Render**: idéntico al anterior — 0-min event con prefijo `🏁` (vía `_sync_one_agenda_event` / `_agenda_props_for_calendar_app`). Sin RRULE (orbit avanza ocurrencias localmente). Alarma al inicio o según `--ring`.
+- **Storage**: `_agenda_storage_key(item, "milestone")` sigue siendo `milestone::desc::date` — no choca con events del mismo desc+date en el mismo proyecto.
+- **Migración auto**: cuando `sync_item(ms)` ve un `gcal_id` previo y crea uno nuevo (señal de que el viejo apuntaba al calendario agenda), borra el viejo de `agenda_cal` automáticamente. Idempotente. En terminal (`done`/`cancelled`), intenta borrar de ambos calendarios. Sin comando extra.
+- **Tareas y reminders**: sin cambios — siguen en el calendario agenda del workspace.
 
 ### v0.29.1 (2026-05-11) — fix: sync inmediato de siguiente ocurrencia
 - **Bug**: al completar (`task done`/`ms done`) o avanzar (drop) una cita recurrente, orbit creaba la siguiente ocurrencia en `agenda.md` pero no la sincronizaba a Calendar — solo aparecía tras `gsync` o reinicio. En v0.29 (backend=calendar) esto rompía el contrato "calendar = render en vivo de lo pending".

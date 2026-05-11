@@ -246,3 +246,157 @@ class TestSyncItemBranching:
                 "status": "done", "notes": []}
         gsync.sync_item(proj, item, kind="task")
         assert deleted["calls"] == [("old-uid", "test-cal")]
+
+
+# ── Milestone routing to per-tipo events calendar (v0.29.2) ───────────────────
+
+class TestMilestoneRoutesToEventsCalendar:
+    """Milestones now live in the per-tipo events calendar instead of the
+    workspace agenda calendar — keeps them visible alongside events."""
+
+    def _setup_project(self, tmp_path, monkeypatch, ids=None):
+        proj = tmp_path / "🌀test-proj"
+        proj.mkdir()
+        (proj / "agenda.md").write_text(
+            "# Agenda\n\n## 🏁 Hitos\n\n- [ ] Submit paper (2030-05-15)\n")
+        monkeypatch.setattr(gsync, "_load_config",
+                             lambda: {"reminders_backend": "calendar",
+                                      "agenda_calendar": "agenda-cal",
+                                      "calendars": {"investigacion":
+                                                    "events-cal"}})
+        monkeypatch.setattr(gsync, "_get_project_tipo",
+                             lambda p: "investigacion")
+        monkeypatch.setattr(gsync, "_is_gsync_configured", lambda: True)
+        monkeypatch.setattr(gsync, "_calendar_app_running", lambda: True)
+        monkeypatch.setattr(gsync, "_ensure_agenda_calendar", lambda n: True)
+        monkeypatch.setattr(gsync, "_load_ids", lambda p: dict(ids or {}))
+        monkeypatch.setattr(gsync, "_save_ids", lambda p, ids: None)
+        monkeypatch.setattr(gsync, "_SYNC_TIMEOUT", 5)
+        return proj
+
+    def test_pending_milestone_goes_to_events_calendar(
+            self, tmp_path, monkeypatch):
+        seen = {"cal_name": None}
+
+        def fake_agenda(cal, item, proj, desc, kind, dry_run=False):
+            seen["cal_name"] = cal
+            return "new-uid"
+
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event", fake_agenda)
+        proj = self._setup_project(tmp_path, monkeypatch)
+
+        item = {"desc": "Submit paper", "date": "2030-05-15",
+                "status": "pending", "notes": []}
+        gsync.sync_item(proj, item, kind="milestone")
+
+        assert seen["cal_name"] == "events-cal"
+
+    def test_task_still_goes_to_agenda_calendar(
+            self, tmp_path, monkeypatch):
+        seen = {"cal_name": None}
+
+        def fake_agenda(cal, item, proj, desc, kind, dry_run=False):
+            seen["cal_name"] = cal
+            return "new-uid"
+
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event", fake_agenda)
+        proj = self._setup_project(tmp_path, monkeypatch)
+
+        item = {"desc": "Do thing", "date": "2030-05-15",
+                "status": "pending", "notes": []}
+        gsync.sync_item(proj, item, kind="task")
+
+        assert seen["cal_name"] == "agenda-cal"
+
+    def test_done_milestone_deletes_from_events_and_legacy_agenda(
+            self, tmp_path, monkeypatch):
+        """Terminal status removes the event from the events calendar AND
+        best-effort from the legacy agenda calendar so a pre-v0.29.2
+        leftover gets cleaned up on the way out."""
+        deleted = []
+        monkeypatch.setattr(gsync, "_delete_calendar_event",
+                             lambda uid, cal: deleted.append((uid, cal)) or True)
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda *a, **k: "should-not-run")
+
+        ids = {"milestone::Submit paper::2030-05-15": {"gcal_id": "stale-uid"}}
+        proj = self._setup_project(tmp_path, monkeypatch, ids=ids)
+
+        item = {"desc": "Submit paper", "date": "2030-05-15",
+                "status": "done", "notes": []}
+        gsync.sync_item(proj, item, kind="milestone")
+
+        # First delete on events-cal (current location), then on agenda-cal
+        # (legacy location). Both are best-effort but both must be attempted.
+        assert deleted == [("stale-uid", "events-cal"),
+                           ("stale-uid", "agenda-cal")]
+
+    def test_migration_cleans_up_old_agenda_event(
+            self, tmp_path, monkeypatch):
+        """When sync_one_agenda_event returns a NEW uid (i.e. it created the
+        event in the events calendar because the stored uid pointed to a
+        different calendar), the stale uid in the agenda calendar must be
+        deleted."""
+        deleted = []
+        monkeypatch.setattr(gsync, "_delete_calendar_event",
+                             lambda uid, cal: deleted.append((uid, cal)) or True)
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda *a, **k: "fresh-uid")  # ≠ "legacy-uid"
+
+        ids = {"milestone::Submit paper::2030-05-15":
+               {"gcal_id": "legacy-uid", "orbit_id": "abc12345"}}
+        proj = self._setup_project(tmp_path, monkeypatch, ids=ids)
+
+        item = {"desc": "Submit paper", "date": "2030-05-15",
+                "status": "pending", "notes": []}
+        gsync.sync_item(proj, item, kind="milestone")
+
+        assert deleted == [("legacy-uid", "agenda-cal")]
+
+    def test_no_migration_when_uid_unchanged(
+            self, tmp_path, monkeypatch):
+        """Updating an existing ms (uid stays the same) must NOT trigger the
+        agenda-calendar cleanup — there's nothing legacy to delete."""
+        deleted = []
+        monkeypatch.setattr(gsync, "_delete_calendar_event",
+                             lambda uid, cal: deleted.append((uid, cal)) or True)
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda *a, **k: "same-uid")
+
+        ids = {"milestone::Submit paper::2030-05-15":
+               {"gcal_id": "same-uid", "orbit_id": "abc12345"}}
+        proj = self._setup_project(tmp_path, monkeypatch, ids=ids)
+
+        item = {"desc": "Submit paper", "date": "2030-05-15",
+                "status": "pending", "notes": []}
+        gsync.sync_item(proj, item, kind="milestone")
+
+        assert deleted == []
+
+    def test_no_events_calendar_skips_sync(
+            self, tmp_path, monkeypatch):
+        """If no calendar is configured for the project's tipo and no default
+        is set, milestones silently skip (same posture as events)."""
+        monkeypatch.setattr(gsync, "_load_config",
+                             lambda: {"reminders_backend": "calendar",
+                                      "agenda_calendar": "agenda-cal",
+                                      "calendars": {}})  # no per-tipo, no default
+        monkeypatch.setattr(gsync, "_get_project_tipo",
+                             lambda p: "investigacion")
+        monkeypatch.setattr(gsync, "_is_gsync_configured", lambda: True)
+        monkeypatch.setattr(gsync, "_calendar_app_running", lambda: True)
+        monkeypatch.setattr(gsync, "_load_ids", lambda p: {})
+        monkeypatch.setattr(gsync, "_save_ids", lambda p, ids: None)
+        monkeypatch.setattr(gsync, "_SYNC_TIMEOUT", 5)
+
+        called = {"n": 0}
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda *a, **k: called.__setitem__("n", called["n"] + 1) or "uid")
+
+        proj = tmp_path / "🌀test-proj"
+        proj.mkdir()
+        item = {"desc": "Submit paper", "date": "2030-05-15",
+                "status": "pending", "notes": []}
+        gsync.sync_item(proj, item, kind="milestone")
+
+        assert called["n"] == 0
