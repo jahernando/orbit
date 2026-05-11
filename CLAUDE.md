@@ -85,7 +85,17 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.4, 2026-05-11)
+## Estado actual (v0.29.5, 2026-05-11)
+
+### v0.29.5 (2026-05-11) — `ev log` propaga agenda y zoom al logbook
+- **`ev log`**: cuando el evento tiene notas `📋` (agenda/indico) o `🚪` (room/zoom), aparecen como líneas indentadas debajo de la entrada principal del logbook. Formato:
+  ```
+  2026-05-10 📅 Project kickoff #evento
+    [📋](https://indico.cern.ch/event/12345)
+    [📹](https://zoom.us/j/9999)
+  ```
+  Los iconos son markdown clickable (misma convención que `event_indicators(markdown=True)` y que el panel/agenda renders). Para rooms físicos (texto plano, sin URL) se escribe `  🚪 Aula A1-01` sin link.
+- **API**: `format_entry`/`add_entry` reciben un parámetro nuevo `continuations: Optional[list[str]]`. Es general — cualquier tipo de entrada puede llevar continuations, pero hoy solo `ev log` las usa.
 
 ### v0.29.4 (2026-05-11) — sin link de GitHub en descripciones
 - **`_project_description`** ahora devuelve solo `Proyecto: <name>` — el link a GitHub ya no se incluye. Aplica a partir de la próxima sincronización: los eventos ya existentes mantienen su URL hasta que se vuelvan a sincronizar (sin migración explícita).

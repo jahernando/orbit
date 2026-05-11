@@ -1671,6 +1671,58 @@ class TestMsLog:
         assert rc == 1
 
 
+class TestEvLog:
+    def test_creates_logbook_entry_plain(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_log
+        run_ev_add("test-project", "Sprint review",
+                   date_val="2026-03-10", time_val="10:00")
+        rc = run_ev_log("test-project", "Sprint review")
+        assert rc == 0
+        log = _logbook_text(proj)
+        assert "Sprint review" in log
+        assert "#evento" in log
+        # No agenda/room → no continuation lines.
+        for line in log.splitlines():
+            assert not line.startswith("  ["), f"unexpected continuation: {line!r}"
+
+    def test_agenda_and_zoom_become_continuation_lines(
+            self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_log
+        run_ev_add("test-project", "Project kickoff",
+                   date_val="2026-03-10", time_val="10:00",
+                   agenda="https://indico.cern.ch/event/12345",
+                   room="https://zoom.us/j/9999")
+        rc = run_ev_log("test-project", "kickoff")
+        assert rc == 0
+        log = _logbook_text(proj)
+        # Main entry on its own line, tag intact.
+        assert "Project kickoff" in log
+        assert "#evento" in log
+        # Indented continuations with clickable icons (matches the existing
+        # markdown convention from event_indicators(markdown=True)).
+        assert "  [📋](https://indico.cern.ch/event/12345)" in log
+        assert "  [📹](https://zoom.us/j/9999)" in log
+
+    def test_physical_room_uses_door_icon_no_link(
+            self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_log
+        run_ev_add("test-project", "Aula meeting",
+                   date_val="2026-03-10", time_val="10:00",
+                   room="Aula A1-01")
+        run_ev_log("test-project", "Aula meeting")
+        log = _logbook_text(proj)
+        # Plain text room → raw 🚪 prefix, not a markdown link.
+        assert "  🚪 Aula A1-01" in log
+        assert "[🚪]" not in log
+
+    def test_not_found(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_log
+        run_ev_add("test-project", "Existing", date_val="2026-03-10",
+                   time_val="10:00")
+        rc = run_ev_log("test-project", "Ghost")
+        assert rc == 1
+
+
 class TestReminderLog:
     def test_creates_logbook_entry(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_reminder_add, run_reminder_log

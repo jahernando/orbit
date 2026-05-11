@@ -161,7 +161,8 @@ TAG_EMOJI = {
 def format_entry(message: str, tipo: str, path: Optional[str], fecha: Optional[str],
                  orbit: bool = False, extra_tags: Optional[list] = None,
                  secondary_link: Optional[tuple] = None,
-                 emoji_override: Optional[str] = None) -> str:
+                 emoji_override: Optional[str] = None,
+                 continuations: Optional[list] = None) -> str:
     date_str = fecha or date.today().isoformat()
     content  = f"[{message}]({path})" if path else message
     if secondary_link:
@@ -170,7 +171,11 @@ def format_entry(message: str, tipo: str, path: Optional[str], fecha: Optional[s
     emoji    = emoji_override if emoji_override else TAG_EMOJI.get(tipo, "")
     tags     = f"#{tipo}" + "".join(f" #{t}" for t in (extra_tags or []))
     suffix   = " [O]" if orbit else ""
-    return f"{date_str} {emoji} {content} {tags}{suffix}\n"
+    head     = f"{date_str} {emoji} {content} {tags}{suffix}\n"
+    if continuations:
+        tail = "".join(f"  {c}\n" for c in continuations)
+        return head + tail
+    return head
 
 
 def _append_entry(logbook_path: Path, entry: str) -> None:
@@ -218,7 +223,8 @@ def _is_new_project(project_dir: Path) -> bool:
 
 def add_entry(project: str, message: str, tipo: str, path: Optional[str],
               fecha: Optional[str], orbit: bool = False,
-              project_dir: Optional[Path] = None) -> int:
+              project_dir: Optional[Path] = None,
+              continuations: Optional[list] = None) -> int:
     if fecha:
         try:
             entry_date = date.fromisoformat(fecha)
@@ -239,7 +245,8 @@ def add_entry(project: str, message: str, tipo: str, path: Optional[str],
     if not logbook_path.exists():
         init_logbook(logbook_path, project_dir.name)
 
-    entry = format_entry(message, tipo, path, fecha, orbit=orbit)
+    entry = format_entry(message, tipo, path, fecha, orbit=orbit,
+                         continuations=continuations)
     _append_entry(logbook_path, entry)
     print(f"✓ [{project_dir.name}] {entry.strip()}")
 

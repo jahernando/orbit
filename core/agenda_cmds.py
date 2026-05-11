@@ -1434,8 +1434,26 @@ def _generic_log(type_name: str, project_dir: Path, data: dict,
             return 1
         item = data[cfg["key"]][idx]
 
+    # Events: forward agenda (📋) and room (🚪/📹) notes as indented log
+    # continuations so a meeting's indico/zoom links land in the logbook
+    # alongside the entry. Use the markdown clickable-icon convention
+    # already established by `event_indicators(markdown=True)`.
+    continuations = None
+    if type_name == "event":
+        lines = []
+        for url in event_agenda_urls(item):
+            lines.append(f"[📋]({url})")
+        for room in event_room_urls(item):
+            if _is_meeting_url(room):
+                lines.append(f"[{_room_icon(room)}]({room})")
+            else:
+                lines.append(f"🚪 {room}")
+        if lines:
+            continuations = lines
+
     from core.log import add_entry
-    return add_entry(project_name, item["desc"], cfg["log_type"], None, item.get("date"))
+    return add_entry(project_name, item["desc"], cfg["log_type"], None,
+                     item.get("date"), continuations=continuations)
 
 
 def date_val_is_today(date_val):
