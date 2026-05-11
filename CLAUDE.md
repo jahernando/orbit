@@ -85,7 +85,15 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.2, 2026-05-11)
+## Estado actual (v0.29.3, 2026-05-11)
+
+### v0.29.3 (2026-05-11) — cronogramas al calendario de events
+- **Routing**: `_sync_cronos_for_project` ahora soporta dos backends. Bajo `reminders_backend: "calendar"` (default v0.29) cada cronograma se sube como evento 0-min al calendario per-tipo de events (`config["calendars"][tipo]`, fallback `default`). Bajo `"reminders"` mantiene la rama legacy a Reminders.app.
+- **Render**: igual que antes — 1 evento por cronograma con desc `[proj] 📊 crono-<n>: <leaf desc>` y due = deadline de la próxima hoja abierta. Vencidas no avanzan (siguen viéndose en su fecha original).
+- **All done**: en backend calendar, borra el evento del calendario y limpia `ids["_cronos"][name]`. En backend reminders, marca el reminder completed (comportamiento legacy).
+- **Migración auto**: si `_cronos[name]` tiene `gtask_id` legacy y Reminders.app está corriendo, lo borra de Reminders por orbit-id (best-effort), pone el `gcal_id` nuevo en su lugar y elimina el `gtask_id` del JSON. Si Reminders.app está cerrado, salta el cleanup y solo crea en Calendar (el orphan en Reminders se irá cuando esté abierta).
+- **Storage**: misma namespace `ids["_cronos"][crono_name]`. Campos: `gcal_id` (nuevo) o `gtask_id` (legacy), `orbit_id`, `leaf`.
+- **`orbit gsync` gating**: la llamada a `_sync_cronos_for_project` ya no está dentro de `if rem_app_ok:` — corre cuando hay Calendar.app O Reminders.app disponible.
 
 ### v0.29.2 (2026-05-11) — milestones al calendario de events
 - **Routing**: `sync_item(item, "milestone")` ahora va al calendario per-tipo de events (`config["calendars"][tipo]`, fallback a `default`), no al calendario "agenda" del workspace. Las ms ya no se pierden entre tasks/reminders en el calendario común.

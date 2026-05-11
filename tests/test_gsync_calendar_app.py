@@ -611,7 +611,15 @@ class TestConfigMigration:
 
 
 class TestSyncCronosForProject:
-    """Option G — 1 reminder per cronograma tracking the next open leaf."""
+    """Option G — 1 reminder per cronograma tracking the next open leaf.
+
+    Legacy backend (Reminders.app). Tests pass ``reminders_backend:
+    "reminders"`` explicitly because the default flipped to "calendar" in
+    v0.29; the calendar-backend cronograma path lives in
+    :class:`TestSyncCronosForProjectCalendarBackend`.
+    """
+
+    LEGACY_CFG = {"reminders_backend": "reminders"}
 
     def _make_proj(self, tmp_path, crono_body):
         proj = tmp_path / "🌀test-proj"
@@ -624,7 +632,8 @@ class TestSyncCronosForProject:
         proj.mkdir()
         monkeypatch.setattr(gsync, "_ensure_reminders_list", lambda n: True)
         monkeypatch.setattr(gsync, "_reminders_list_name", lambda c: "Test")
-        c, u, s = gsync._sync_cronos_for_project(proj, {}, dry_run=False)
+        c, u, s = gsync._sync_cronos_for_project(proj, self.LEGACY_CFG,
+                                                  dry_run=False)
         assert (c, u, s) == (0, 0, 0)
 
     def test_creates_reminder_for_dated_leaf(self, tmp_path, monkeypatch):
@@ -642,7 +651,8 @@ class TestSyncCronosForProject:
             seen["kind"] = kind
             return "x-apple-reminder://AAA"
         monkeypatch.setattr(gsync, "_sync_one_to_reminders", fake_sync_one)
-        c, u, s = gsync._sync_cronos_for_project(proj, {}, dry_run=False)
+        c, u, s = gsync._sync_cronos_for_project(proj, self.LEGACY_CFG,
+                                                  dry_run=False)
         assert c == 1 and u == 0
         assert seen["kind"] == "cronograma"
         assert seen["item"]["date"] == "2026-06-01"
@@ -667,7 +677,7 @@ class TestSyncCronosForProject:
             seen["item"] = item
             return "x-apple-reminder://OLD"
         monkeypatch.setattr(gsync, "_sync_one_to_reminders", fake_sync_one)
-        gsync._sync_cronos_for_project(proj, {}, dry_run=False)
+        gsync._sync_cronos_for_project(proj, self.LEGACY_CFG, dry_run=False)
         assert seen["item"]["date"] == "2026-04-01"
         assert "overdue" in seen["item"]["desc"]
 
@@ -686,7 +696,8 @@ class TestSyncCronosForProject:
             called["n"] += 1
             return "uid"
         monkeypatch.setattr(gsync, "_sync_one_to_reminders", fake_sync_one)
-        c, u, s = gsync._sync_cronos_for_project(proj, {}, dry_run=False)
+        c, u, s = gsync._sync_cronos_for_project(proj, self.LEGACY_CFG,
+                                                  dry_run=False)
         assert called["n"] == 0
         assert c == 0 and u == 0 and s == 1
 
@@ -704,7 +715,7 @@ class TestSyncCronosForProject:
             seen["item"] = item
             return "x-apple-reminder://DONE"
         monkeypatch.setattr(gsync, "_sync_one_to_reminders", fake_sync_one)
-        gsync._sync_cronos_for_project(proj, {}, dry_run=False)
+        gsync._sync_cronos_for_project(proj, self.LEGACY_CFG, dry_run=False)
         assert seen["item"]["status"] == "done"
         assert seen["item"]["date"] is None
 
@@ -718,8 +729,187 @@ class TestSyncCronosForProject:
         monkeypatch.setattr(gsync, "_reminders_list_name", lambda c: "Test")
         monkeypatch.setattr(gsync, "_sync_one_to_reminders",
                             lambda *a, **k: None)
-        gsync._sync_cronos_for_project(proj, {}, dry_run=True)
+        gsync._sync_cronos_for_project(proj, self.LEGACY_CFG, dry_run=True)
         assert not (proj / ".gsync-ids.json").exists()
+
+
+class TestSyncCronosForProjectCalendarBackend:
+    """Cronogramas under the calendar backend (v0.29.3):
+    1 Calendar event per cronograma, routed to the per-tipo events calendar.
+    """
+
+    def _make_proj(self, tmp_path, crono_body):
+        proj = tmp_path / "🌀test-proj"
+        (proj / "cronos").mkdir(parents=True)
+        (proj / "cronos" / "crono-x.md").write_text(crono_body)
+        return proj
+
+    def _setup_calendar_backend(self, monkeypatch, has_reminders_running=False):
+        """Stub Calendar.app / Reminders.app probes for the calendar path."""
+        monkeypatch.setattr(gsync, "_calendar_app_running", lambda: True)
+        monkeypatch.setattr(gsync, "_reminders_app_running",
+                             lambda: has_reminders_running)
+        monkeypatch.setattr(gsync, "_get_project_tipo",
+                             lambda p: "investigacion")
+        monkeypatch.setattr(gsync, "_project_description",
+                             lambda p, c, html=False: "Proyecto: test")
+        monkeypatch.setattr(gsync, "_reminders_list_name",
+                             lambda c: "🚀 orbit-ws")
+
+    def _cfg(self, **over):
+        base = {"reminders_backend": "calendar",
+                "calendars": {"investigacion": "events-cal",
+                              "default": "events-cal"}}
+        base.update(over)
+        return base
+
+    def test_creates_event_for_dated_leaf(self, tmp_path, monkeypatch):
+        self._setup_calendar_backend(monkeypatch)
+        proj = self._make_proj(tmp_path, (
+            "# Cronograma: x\n\n"
+            "- [ ] 1. parent\n"
+            "  - [ ] 1.1 first  | 2026-06-01\n"
+            "  - [ ] 1.2 second | 2026-08-01\n"
+        ))
+        seen = {}
+        def fake_sync_event(cal_name, item, project_name, description, kind,
+                             dry_run=False):
+            seen["cal"] = cal_name
+            seen["item"] = item
+            seen["kind"] = kind
+            return "calendar-uid-aaa"
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event", fake_sync_event)
+
+        c, u, s = gsync._sync_cronos_for_project(proj, self._cfg(),
+                                                  dry_run=False)
+        assert (c, u, s) == (1, 0, 0)
+        assert seen["cal"] == "events-cal"
+        assert seen["kind"] == "cronograma"
+        assert seen["item"]["date"] == "2026-06-01"
+        assert "crono-x" in seen["item"]["desc"]
+        assert "first" in seen["item"]["desc"]
+        ids = json.loads((proj / ".gsync-ids.json").read_text())
+        assert ids["_cronos"]["x"]["gcal_id"] == "calendar-uid-aaa"
+        assert ids["_cronos"]["x"]["leaf"] == "1.1"
+        assert "gtask_id" not in ids["_cronos"]["x"]
+
+    def test_no_calendar_configured_skips(self, tmp_path, monkeypatch):
+        """If neither per-tipo nor default calendar is set, return zeros."""
+        self._setup_calendar_backend(monkeypatch)
+        proj = self._make_proj(tmp_path, (
+            "# Cronograma: x\n\n"
+            "- [ ] 1.1 leaf | 2026-06-01\n"
+        ))
+        called = {"n": 0}
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda *a, **k: called.__setitem__("n", called["n"] + 1) or "x")
+        cfg = {"reminders_backend": "calendar", "calendars": {}}
+        c, u, s = gsync._sync_cronos_for_project(proj, cfg, dry_run=False)
+        assert (c, u, s) == (0, 0, 0)
+        assert called["n"] == 0
+
+    def test_all_done_deletes_event(self, tmp_path, monkeypatch):
+        """When every leaf is done, the cronograma event is removed and the
+        storage entry pops."""
+        self._setup_calendar_backend(monkeypatch)
+        proj = self._make_proj(tmp_path, (
+            "# Cronograma: x\n\n"
+            "- [ ] 1. parent\n"
+            "  - [x] 1.1 a | 2026-04-01\n"
+            "  - [x] 1.2 b | 2026-04-08\n"
+        ))
+        # Pre-seed an existing cgal_id so we can verify it gets deleted.
+        ids_path = proj / ".gsync-ids.json"
+        ids_path.write_text(json.dumps({
+            "_cronos": {"x": {"gcal_id": "old-uid",
+                              "orbit_id": "abc12345",
+                              "leaf": "1.2"}}
+        }))
+        deleted = []
+        monkeypatch.setattr(gsync, "_delete_calendar_event",
+                             lambda uid, cal: deleted.append((uid, cal)) or True)
+        called = {"sync_event": 0}
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda *a, **k: called.__setitem__("sync_event", 1) or "x")
+
+        gsync._sync_cronos_for_project(proj, self._cfg(), dry_run=False)
+
+        assert deleted == [("old-uid", "events-cal")]
+        assert called["sync_event"] == 0
+        ids = json.loads(ids_path.read_text())
+        assert "x" not in ids["_cronos"]
+
+    def test_legacy_gtask_id_triggers_reminders_cleanup(
+            self, tmp_path, monkeypatch):
+        """First sync after upgrading: existing gtask_id is removed from
+        Reminders.app (best-effort) and replaced by gcal_id."""
+        self._setup_calendar_backend(monkeypatch, has_reminders_running=True)
+        proj = self._make_proj(tmp_path, (
+            "# Cronograma: x\n\n"
+            "- [ ] 1.1 leaf | 2026-06-01\n"
+        ))
+        ids_path = proj / ".gsync-ids.json"
+        ids_path.write_text(json.dumps({
+            "_cronos": {"x": {"gtask_id": "x-apple-reminder://OLD",
+                              "orbit_id": "abc12345",
+                              "leaf": "1.1"}}
+        }))
+        deleted_rems = []
+        monkeypatch.setattr(gsync, "_delete_reminder_item",
+                             lambda uid, lst: deleted_rems.append((uid, lst)) or True)
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda *a, **k: "new-gcal-uid")
+
+        gsync._sync_cronos_for_project(proj, self._cfg(), dry_run=False)
+
+        assert deleted_rems == [("x-apple-reminder://OLD", "🚀 orbit-ws")]
+        ids = json.loads(ids_path.read_text())
+        assert ids["_cronos"]["x"]["gcal_id"] == "new-gcal-uid"
+        assert "gtask_id" not in ids["_cronos"]["x"]
+
+    def test_legacy_cleanup_skipped_when_reminders_app_closed(
+            self, tmp_path, monkeypatch):
+        """If Reminders.app isn't running, skip the legacy cleanup but still
+        sync to Calendar normally."""
+        self._setup_calendar_backend(monkeypatch, has_reminders_running=False)
+        proj = self._make_proj(tmp_path, (
+            "# Cronograma: x\n\n"
+            "- [ ] 1.1 leaf | 2026-06-01\n"
+        ))
+        ids_path = proj / ".gsync-ids.json"
+        ids_path.write_text(json.dumps({
+            "_cronos": {"x": {"gtask_id": "x-apple-reminder://OLD",
+                              "orbit_id": "abc12345",
+                              "leaf": "1.1"}}
+        }))
+        deleted_rems = []
+        monkeypatch.setattr(gsync, "_delete_reminder_item",
+                             lambda uid, lst: deleted_rems.append((uid, lst)) or True)
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda *a, **k: "new-gcal-uid")
+
+        gsync._sync_cronos_for_project(proj, self._cfg(), dry_run=False)
+
+        assert deleted_rems == []  # Reminders.app closed → no cleanup attempt
+        ids = json.loads(ids_path.read_text())
+        assert ids["_cronos"]["x"]["gcal_id"] == "new-gcal-uid"
+
+    def test_overdue_leaf_keeps_slot_in_calendar(self, tmp_path, monkeypatch):
+        """Same semantics as legacy: overdue leaves don't auto-advance."""
+        self._setup_calendar_backend(monkeypatch)
+        proj = self._make_proj(tmp_path, (
+            "# Cronograma: x\n\n"
+            "- [ ] 1. parent\n"
+            "  - [ ] 1.1 overdue | 2026-04-01\n"
+            "  - [ ] 1.2 future  | 2026-08-01\n"
+        ))
+        seen = {}
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda cal, item, *a, **k:
+                                 seen.update(item=item) or "uid")
+        gsync._sync_cronos_for_project(proj, self._cfg(), dry_run=False)
+        assert seen["item"]["date"] == "2026-04-01"
+        assert "overdue" in seen["item"]["desc"]
 
 
 class TestRunGsyncProjectFilter:

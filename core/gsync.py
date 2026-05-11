@@ -1040,17 +1040,26 @@ def _sync_to_reminders_for_project(project_dir: Path, config: dict,
 
 def _sync_cronos_for_project(project_dir: Path, config: dict,
                              dry_run: bool) -> tuple:
-    """Sync each cronograma's next open leaf as a single Reminder (option G).
+    """Sync each cronograma's next open leaf as a single Calendar event
+    (calendar backend, default) or Reminder (reminders backend, legacy).
 
     For each ``cronos/crono-<name>.md``:
       - Compute dates over the task tree.
       - Find the next non-completed leaf with a computed end_date
         (overdue leaves keep their slot — they don't auto-advance).
-      - Upsert a single reminder ``🚀[proj] 📊 crono-<n>: <leaf desc>``
-        with due_date = leaf.end_date.
-      - When all leaves are done → reminder marked completed.
+      - Upsert a single 0-min event / reminder ``[proj] 📊 crono-<n>: <leaf desc>``
+        on the next leaf's deadline.
+      - When all leaves are done → delete the event (calendar) or mark the
+        reminder completed (reminders).
       - When no leaf has a date → skip silently (cronograma is just an
         outline, not yet operational).
+
+    Under the calendar backend, cronogramas land in the per-tipo events
+    calendar (same as milestones and events). Storage keeps the
+    ``ids["_cronos"][crono_name]`` namespace but switches ``gtask_id`` →
+    ``gcal_id``; if a legacy ``gtask_id`` is found and Reminders.app is
+    running, the old reminder is deleted opportunistically so the migration
+    is invisible.
 
     Returns (created, updated, skipped).
     """
@@ -1060,12 +1069,34 @@ def _sync_cronos_for_project(project_dir: Path, config: dict,
     crono_files = sorted(cronos_dir.glob("crono-*.md"))
     if not crono_files:
         return 0, 0, 0
-    list_name = _reminders_list_name(config)
-    if not _ensure_reminders_list(list_name):
-        return 0, 0, 0
 
     from core.cronograma import (_parse_crono_file, _compute_dates,
-                                 next_open_leaf, cronograma_all_done)
+                                 next_open_leaf, cronograma_all_done,
+                                 _leaf_deadline)
+
+    backend = _agenda_backend(config)
+
+    if backend == "calendar":
+        tipo = _get_project_tipo(project_dir)
+        cal_name = (config.get("calendars", {}).get(tipo)
+                    or config.get("calendars", {}).get("default"))
+        if not cal_name:
+            return 0, 0, 0
+        if not _calendar_app_running():
+            return 0, 0, 0
+        description = _project_description(project_dir, config, html=False)
+        # Try once whether Reminders.app is around — drives the legacy
+        # cleanup. Cached so we don't ask AppleScript repeatedly per crono.
+        rem_list_for_cleanup = (_reminders_list_name(config)
+                                if _reminders_app_running() else None)
+        list_name = None
+    else:
+        list_name = _reminders_list_name(config)
+        if not _ensure_reminders_list(list_name):
+            return 0, 0, 0
+        cal_name = None
+        description = None
+        rem_list_for_cleanup = None
 
     ids = _load_ids(project_dir)
     project_name = project_dir.name
@@ -1091,8 +1122,75 @@ def _sync_cronos_for_project(project_dir: Path, config: dict,
             total_s += 1
             continue
 
+        existing = cronos_ids.get(crono_name) or {}
+        orbit_id = existing.get("orbit_id") or _new_orbit_id()
+
+        if backend == "calendar":
+            # Migration cleanup: if we still have a legacy gtask_id, try to
+            # remove the old reminder from Reminders.app (best-effort).
+            legacy_gtask = existing.get("gtask_id")
+            if legacy_gtask and rem_list_for_cleanup and not dry_run:
+                _delete_reminder_item(legacy_gtask, rem_list_for_cleanup)
+
+            # All leaves done → drop the event from Calendar.
+            if all_done:
+                existing_uid = existing.get("gcal_id")
+                if existing_uid and not dry_run:
+                    _delete_calendar_event(existing_uid, cal_name)
+                if crono_name in cronos_ids and not dry_run:
+                    cronos_ids.pop(crono_name, None)
+                    ids_changed = True
+                    total_u += 1
+                else:
+                    total_s += 1
+                continue
+
+            item = {
+                "desc":      f"crono-{crono_name}: {leaf['title']}",
+                "date":      _leaf_deadline(leaf).isoformat(),
+                "time":      None,
+                "ring":      None,
+                "status":    "pending",
+                "notes":     [f"Cronograma: cronos/{crono_path.name}"],
+                "_gcal_id":  existing.get("gcal_id"),
+                "_orbit_id": orbit_id,
+            }
+
+            try:
+                new_uid = _sync_one_agenda_event(cal_name, item, project_name,
+                                                  description, "cronograma",
+                                                  dry_run=dry_run)
+            except Exception as exc:
+                print(f"  ⚠️  [{project_name}] Error sync crono '{crono_name}': {exc}")
+                total_s += 1
+                continue
+
+            if dry_run:
+                total_s += 1
+                continue
+
+            old_uid = existing.get("gcal_id")
+            if new_uid and new_uid != old_uid:
+                cronos_ids[crono_name] = {"gcal_id":  new_uid,
+                                          "orbit_id": orbit_id,
+                                          "leaf":     leaf["index"]}
+                total_c += 1
+                ids_changed = True
+            elif old_uid:
+                cronos_ids[crono_name]["gcal_id"]  = old_uid
+                cronos_ids[crono_name]["orbit_id"] = orbit_id
+                cronos_ids[crono_name]["leaf"]     = leaf["index"]
+                # Forget the legacy reminder uid — it was just deleted above
+                # (or will fail silently if missing).
+                cronos_ids[crono_name].pop("gtask_id", None)
+                total_u += 1
+                ids_changed = True
+            else:
+                total_s += 1
+            continue
+
+        # ── Backend = "reminders" (legacy) ────────────────────────────────
         if leaf:
-            from core.cronograma import _leaf_deadline
             desc = f"crono-{crono_name}: {leaf['title']}"
             date_s = _leaf_deadline(leaf).isoformat()
             status = "pending"
@@ -1103,8 +1201,6 @@ def _sync_cronos_for_project(project_dir: Path, config: dict,
             status = "done"
             tracked_leaf = None
 
-        existing = cronos_ids.get(crono_name) or {}
-        orbit_id = existing.get("orbit_id") or _new_orbit_id()
         item = {
             "desc":       desc,
             "date":       date_s,
@@ -2250,7 +2346,7 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False,
     for project_dir in dirs:
         tipo = _get_project_tipo(project_dir)
 
-        # Tasks + milestones + reminders → Reminders.app
+        # Tasks + milestones + reminders → Reminders.app (legacy backend)
         if rem_app_ok:
             c, u, s = _sync_to_reminders_for_project(project_dir, config, dry_run)
             if c or u:
@@ -2259,7 +2355,10 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False,
             total_updated += u
             total_skipped += s
 
-            # Cronogramas: 1 reminder per cronograma tracking its next open leaf.
+        # Cronogramas: 1 event/reminder per cronograma tracking its next open
+        # leaf. The function picks Calendar vs Reminders internally based on
+        # `reminders_backend` in calendar-sync.json.
+        if (rem_app_ok or (has_calendars and cal_app_ok)):
             cc, cu, cs = _sync_cronos_for_project(project_dir, config, dry_run)
             if cc or cu:
                 print(f"  [{project_dir.name}] cronogramas: {cc} nuevos, {cu} actualizados")
