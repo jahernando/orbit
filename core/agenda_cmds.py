@@ -905,19 +905,20 @@ def _ask_drop_confirmation(desc, recur, force, occurrence, series, label) -> tup
     return True, drop_series
 
 
-def _advance_recurrence(item, items_list, cfg) -> str:
+def _advance_recurrence(item, items_list, cfg) -> tuple:
     """Advance a recurring item to next occurrence.
 
-    Returns info string like ' (recur: weekly) → próxima: 2026-04-01'.
-    Appends new item to items_list if within until limit.
+    Returns (info_str, new_item or None). Appends new item to items_list when
+    within until limit; otherwise reports the series has ended and appends
+    nothing.
     """
     if not item.get("recur"):
-        return ""
+        return "", None
     today_str = date.today().isoformat()
     next_due = _next_occurrence(item.get("date"), item["recur"], today_str)
     until = item.get("until")
     if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-        return f" (recur: {item['recur']}) — serie finalizada ({until})"
+        return f" (recur: {item['recur']}) — serie finalizada ({until})", None
     new_item = {"desc": item["desc"], "date": next_due, "recur": item["recur"],
                 "until": until, "notes": list(item.get("notes") or [])}
     if cfg["has_status"]:
@@ -932,7 +933,7 @@ def _advance_recurrence(item, items_list, cfg) -> str:
                     if k not in ("synced", "orbit_id")}
         new_item["date"] = next_due
     items_list.append(new_item)
-    return f" (recur: {item['recur']}) → próxima: {next_due}"
+    return f" (recur: {item['recur']}) → próxima: {next_due}", new_item
 
 
 def _validate_edit_params(new_date=None, new_until=None, new_recur=None,
@@ -1230,10 +1231,11 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
 
     # Advance recurrence
     next_info = ""
+    next_item = None
     if item.get("recur") and not drop_series:
         if cfg["drop_action"] == "pop":
             # Event was already popped; advance operates on the popped item
-            next_info = _advance_recurrence(item, items, cfg)
+            next_info, next_item = _advance_recurrence(item, items, cfg)
         elif cfg["drop_action"] == "cancel_bool":
             # Reminder: advance date in-place instead of new item
             today_str = date.today().isoformat()
@@ -1253,7 +1255,7 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
                 print(f"✓ [{project_dir.name}] Recordatorio avanzado: {item_desc} → {next_due}")
                 return 0
         else:
-            next_info = _advance_recurrence(item, items, cfg)
+            next_info, next_item = _advance_recurrence(item, items, cfg)
 
     _write_agenda(agenda_path, data)
 
@@ -1289,9 +1291,12 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
         _delete_reminder(item_desc, project_dir.name, kind="reminder",
                           background=True)
 
-    # Google sync (task/ms: sync cancelled item)
+    # Google sync (task/ms: sync cancelled item, then the advanced occurrence
+    # so Calendar shows the next pending one instead of waiting for batch sync)
     if cfg["has_gsync"] and cfg["drop_action"] == "cancel":
         _sync_to_google(project_dir, item, cfg["kind"])
+        if next_item is not None:
+            _sync_to_google(project_dir, next_item, cfg["kind"])
 
     return 0
 
@@ -1469,6 +1474,7 @@ def run_task_done(project: Optional[str], text: Optional[str]) -> int:
     task["status"] = "done"
 
     next_info = ""
+    next_task = None
     if task.get("recur"):
         next_due = _next_occurrence(task.get("date"), task["recur"], done_date)
         until = task.get("until")
@@ -1476,19 +1482,24 @@ def run_task_done(project: Optional[str], text: Optional[str]) -> int:
         if until and date.fromisoformat(next_due) > date.fromisoformat(until):
             next_info = f" (recur: {task['recur']}) — serie finalizada ({until})"
         else:
-            data["tasks"].append({"status": "pending", "desc": task_desc,
-                                   "date": next_due, "recur": task["recur"],
-                                   "until": until, "ring": task.get("ring"),
-                                   "notes": list(task.get("notes") or [])})
+            next_task = {"status": "pending", "desc": task_desc,
+                          "date": next_due, "recur": task["recur"],
+                          "until": until, "ring": task.get("ring"),
+                          "notes": list(task.get("notes") or [])}
+            data["tasks"].append(next_task)
             next_info = f" (recur: {task['recur']}) → próxima: {next_due}"
 
     _write_agenda(agenda_path, data)
     add_orbit_entry(project_dir, f"[completada] Tarea: {task_desc}{next_info}", "apunte")
     print(f"✓ [{project_dir.name}] [completada] {task_desc}{next_info}")
 
-    # Sync completed task to Google
+    # Sync completed task first (deletes its calendar event / clears storage
+    # slot), THEN sync the new occurrence so the orbit-id resolution in
+    # _sync_one_agenda_event sees a clean state.
     from core.gsync import sync_item
     sync_item(project_dir, task, "task")
+    if next_task is not None:
+        sync_item(project_dir, next_task, "task")
 
     return 0
 
@@ -1615,14 +1626,33 @@ def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
 
     ms = data["milestones"][idx]
     ms_desc = ms["desc"]
+    done_date = date.today().isoformat()
     ms["status"] = "done"
 
-    _write_agenda(agenda_path, data)
-    add_orbit_entry(project_dir, f"[alcanzado] Hito: {ms_desc}", "resultado")
-    print(f"✓ [{project_dir.name}] [alcanzado] {ms_desc}")
+    next_info = ""
+    next_ms = None
+    if ms.get("recur"):
+        next_due = _next_occurrence(ms.get("date"), ms["recur"], done_date)
+        until = ms.get("until")
+        if until and date.fromisoformat(next_due) > date.fromisoformat(until):
+            next_info = f" (recur: {ms['recur']}) — serie finalizada ({until})"
+        else:
+            next_ms = {"status": "pending", "desc": ms_desc,
+                       "date": next_due, "recur": ms["recur"],
+                       "until": until, "ring": ms.get("ring"),
+                       "notes": list(ms.get("notes") or [])}
+            data["milestones"].append(next_ms)
+            next_info = f" (recur: {ms['recur']}) → próxima: {next_due}"
 
+    _write_agenda(agenda_path, data)
+    add_orbit_entry(project_dir, f"[alcanzado] Hito: {ms_desc}{next_info}", "resultado")
+    print(f"✓ [{project_dir.name}] [alcanzado] {ms_desc}{next_info}")
+
+    # Sync completed milestone first, then the new occurrence (if any).
     from core.gsync import sync_item
     sync_item(project_dir, ms, "milestone")
+    if next_ms is not None:
+        sync_item(project_dir, next_ms, "milestone")
 
     return 0
 
@@ -1857,6 +1887,11 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
                     from core.ring import _delete_reminder
                     _delete_reminder(rem["desc"], project_dir.name,
                                       kind="reminder", background=True)
+                # Push the advanced occurrence to Calendar so it shows the new
+                # date. orbit-id is carried in `rem` → _sync_one_agenda_event
+                # updates the existing event in place.
+                from core.gsync import sync_item
+                sync_item(project_dir, rem, "reminder")
                 print(f"✓ [{project_dir.name}] Recordatorio avanzado: {rem['desc']} → {next_due}")
                 return 0
 

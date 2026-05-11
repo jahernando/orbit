@@ -85,7 +85,14 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.0, 2026-05-10)
+## Estado actual (v0.29.1, 2026-05-11)
+
+### v0.29.1 (2026-05-11) — fix: sync inmediato de siguiente ocurrencia
+- **Bug**: al completar (`task done`/`ms done`) o avanzar (drop) una cita recurrente, orbit creaba la siguiente ocurrencia en `agenda.md` pero no la sincronizaba a Calendar — solo aparecía tras `gsync` o reinicio. En v0.29 (backend=calendar) esto rompía el contrato "calendar = render en vivo de lo pending".
+- **Fix** (`core/agenda_cmds.py`): `run_task_done`, `run_ms_done`, `run_reminder_drop` y `_generic_drop` ahora llaman `sync_item` también sobre la nueva ocurrencia, después de sincronizar la antigua (orden: vieja → libera slot → nueva crea evento limpio).
+- **`run_ms_done`**: además ahora avanza recurrencia (antes solo marcaba done). Mismo patrón que `run_task_done`.
+- **API**: `_advance_recurrence` ahora devuelve `(info_str, new_item or None)` para que el caller pueda sincronizar el nuevo item.
+- **Tests**: `tests/test_recurrence_sync.py` (8 tests) cubre task/ms done, task drop recurrente, reminder advance, y casos sin recur o pasando `until`.
 
 ### v0.29.0 (2026-05-10) — agenda backend = Calendar.app
 - **Nuevo backend único**: tasks/ms/reminders → eventos de 0 min en un calendario "agenda" por workspace (e.g. `🚀orbit-ws-rem`). Alarma vía `display alarm` del evento + CalendarAgent del sistema. Calendar.app no necesita estar abierta. Reminders.app deja de usarse (excepto cronogramas, todavía).
