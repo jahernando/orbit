@@ -185,7 +185,12 @@ def _get_project_tipo(project_dir: Path) -> str:
 # ── Description / title helpers ──────────────────────────────────────────────
 
 def _project_url(project_dir: Path, config: dict) -> Optional[str]:
-    """Build GitHub URL for the project file, or None."""
+    """DORMANT (v0.29.4) — used to build a GitHub URL for the project file.
+    Disabled because the link cluttered calendar event descriptions and the
+    user never followed it. Kept here so a future ``cloud_url`` feature can
+    reuse the path-building scaffolding. To revive: re-wire from
+    :func:`_project_description`.
+    """
     from urllib.parse import quote
     repo_url = config.get("repo_url")
     if not repo_url:
@@ -199,20 +204,13 @@ def _project_url(project_dir: Path, config: dict) -> Optional[str]:
 
 
 def _project_description(project_dir: Path, config: dict, html: bool = False) -> str:
-    """Build description with project name and GitHub link.
+    """Build the description embedded in synced calendar events / reminders.
 
-    html=True: returns HTML link (for Google Calendar events).
-    html=False: returns plain text (for Google Tasks notes).
+    Always plain text "Proyecto: <name>". The ``html`` flag is preserved for
+    callers (none in tree at the moment) that may want a richer rendering
+    in the future.
     """
-    project_name = project_dir.name
-    url = _project_url(project_dir, config)
-
-    if html and url:
-        return f'<a href="{url}">{project_name}</a>'
-    elif url:
-        return f"Proyecto: {project_name}\n{url}"
-    else:
-        return f"Proyecto: {project_name}"
+    return f"Proyecto: {project_dir.name}"
 
 
 def _item_description(item: dict, base_desc: str, html: bool = False) -> str:

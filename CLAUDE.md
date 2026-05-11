@@ -85,7 +85,11 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.3, 2026-05-11)
+## Estado actual (v0.29.4, 2026-05-11)
+
+### v0.29.4 (2026-05-11) — sin link de GitHub en descripciones
+- **`_project_description`** ahora devuelve solo `Proyecto: <name>` — el link a GitHub ya no se incluye. Aplica a partir de la próxima sincronización: los eventos ya existentes mantienen su URL hasta que se vuelvan a sincronizar (sin migración explícita).
+- **`_project_url`** queda dormante en código por si se quiere reutilizar el scaffolding para un futuro `cloud_url` u otro link. La config `repo_url` en `calendar-sync.json` se ignora silenciosamente; se puede borrar a mano si se quiere.
 
 ### v0.29.3 (2026-05-11) — cronogramas al calendario de events
 - **Routing**: `_sync_cronos_for_project` ahora soporta dos backends. Bajo `reminders_backend: "calendar"` (default v0.29) cada cronograma se sube como evento 0-min al calendario per-tipo de events (`config["calendars"][tipo]`, fallback `default`). Bajo `"reminders"` mantiene la rama legacy a Reminders.app.
