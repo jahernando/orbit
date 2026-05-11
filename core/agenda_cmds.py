@@ -240,10 +240,15 @@ def _parse_task_line(line: str) -> Optional[dict]:
     if time_m:
         time_val = time_m.group(1)
     orbit_id = _extract_orbit_id(rest)
+    # v0.30: ☁️ in the line means "calendar render is verified to match
+    # orbit's state". sync_item adds it after a successful read-back;
+    # any edit removes it until the next verify.
+    cloud_verified = "☁️" in rest
 
     # Description = rest minus attribute patterns (both emoji and legacy).
-    # ☁️ / [G] / [gtask:…] are legacy sync markers — strip silently; the
-    # presence of [orbit:xxx] is now the canonical "synced" indicator.
+    # [G] / [gtask:…] are legacy sync markers — strip silently; the
+    # presence of [orbit:xxx] + ☁️ is now the canonical "synced+verified"
+    # indicator.
     desc = rest
     for pat in [r"\(\d{4}-\d{2}-\d{2}\)",
                 r"🔄\S+", r"\[recur:[^\]]+\]",
@@ -256,7 +261,8 @@ def _parse_task_line(line: str) -> Optional[dict]:
 
     return {"status": status, "desc": desc, "date": date_val,
             "recur": recur, "until": until, "ring": ring,
-            "time": time_val, "orbit_id": orbit_id}
+            "time": time_val, "orbit_id": orbit_id,
+            "cloud_verified": cloud_verified}
 
 
 def _format_task_line(task: dict) -> str:
@@ -274,6 +280,8 @@ def _format_task_line(task: dict) -> str:
         parts.append(f"🔄{recur_tag}")
     if task.get("ring"):
         parts.append(f"🔔{task['ring']}")
+    if task.get("cloud_verified"):
+        parts.append("☁️")
     if task.get("orbit_id"):
         parts.append(f"[orbit:{task['orbit_id']}]")
     return f"- [{char}] {' '.join(parts)}"
@@ -310,9 +318,10 @@ def _parse_event_line(line: str) -> Optional[dict]:
     if ring_m:
         ring = ring_m.group(1)
     orbit_id = _extract_orbit_id(rest)
+    cloud_verified = "☁️" in rest
     # Strip attribute tags from description (both emoji and legacy).
-    # ☁️ / [G] / [gcal:…] are stripped silently; [orbit:xxx] is the
-    # canonical sync marker.
+    # [G] / [gcal:…] are stripped silently; [orbit:xxx] + ☁️ are now the
+    # canonical "synced + verified" indicators.
     for pat in [r"→\d{4}-\d{2}-\d{2}", r"\[end:[^\]]+\]",
                 r"⏰\S+", r"\[time:[^\]]+\]",
                 r"🔄\S+", r"\[recur:[^\]]+\]",
@@ -323,7 +332,7 @@ def _parse_event_line(line: str) -> Optional[dict]:
     rest = rest.strip()
     return {"date": date_val, "desc": rest, "end": end, "time": time_val,
             "recur": recur, "until": until, "ring": ring,
-            "orbit_id": orbit_id}
+            "orbit_id": orbit_id, "cloud_verified": cloud_verified}
 
 
 def _format_event_line(ev: dict) -> str:
@@ -340,6 +349,8 @@ def _format_event_line(ev: dict) -> str:
         line += f" 🔄{recur_tag}"
     if ev.get("ring"):
         line += f" 🔔{ev['ring']}"
+    if ev.get("cloud_verified"):
+        line += " ☁️"
     if ev.get("orbit_id"):
         line += f" [orbit:{ev['orbit_id']}]"
     return line
@@ -372,9 +383,11 @@ def _parse_reminder_line(line: str) -> Optional[dict]:
             recur = raw
 
     orbit_id = _extract_orbit_id(rest)
+    cloud_verified = "☁️" in rest
     desc = rest
     for pat in [r"\(\d{4}-\d{2}-\d{2}\)", r"⏰\S+", r"\[time:[^\]]+\]",
                 r"🔄\S+", r"\[recur:[^\]]+\]",
+                r"☁️",
                 r"\[orbit:[0-9a-f]{8}\]"]:
         desc = re.sub(pat, "", desc)
     desc = desc.strip()
@@ -384,7 +397,8 @@ def _parse_reminder_line(line: str) -> Optional[dict]:
 
     return {"desc": desc, "date": date_val, "time": time_val,
             "recur": recur, "until": until,
-            "cancelled": cancelled, "orbit_id": orbit_id}
+            "cancelled": cancelled, "orbit_id": orbit_id,
+            "cloud_verified": cloud_verified}
 
 
 def _format_reminder_line(rem: dict) -> str:
@@ -400,6 +414,8 @@ def _format_reminder_line(rem: dict) -> str:
         if rem.get("until"):
             recur_tag += f":{rem['until']}"
         parts.append(f"🔄{recur_tag}")
+    if rem.get("cloud_verified"):
+        parts.append("☁️")
     if rem.get("orbit_id"):
         parts.append(f"[orbit:{rem['orbit_id']}]")
     return f"{prefix}{' '.join(parts)}"
@@ -796,6 +812,30 @@ def _format_add_attrs(date_val, time_val, recur, until, ring,
     return attrs
 
 
+def set_cloud_verified(project_dir: Path, orbit_id: str, on: bool) -> bool:
+    """Toggle the ``☁️`` (calendar-render-verified) marker on the agenda
+    line carrying the given orbit-id.
+
+    Returns True if a line was actually updated, False if no matching
+    item was found. Safe to call from background threads — the agenda
+    file is read fully into memory, mutated, and re-written.
+    """
+    from core.log import resolve_file
+    agenda_path = resolve_file(project_dir, "agenda")
+    if not agenda_path.exists():
+        return False
+    data = _read_agenda(agenda_path)
+    touched = False
+    for section in ("tasks", "milestones", "events", "reminders"):
+        for it in data.get(section, []):
+            if it.get("orbit_id") == orbit_id and it.get("cloud_verified") != on:
+                it["cloud_verified"] = on
+                touched = True
+    if touched:
+        _write_agenda(agenda_path, data)
+    return touched
+
+
 def _agenda_via_calendar() -> bool:
     """Return True when tasks/ms/reminders are delivered as Calendar events
     (alarm via CalendarAgent). Used to short-circuit Reminders.app paths.
@@ -1041,6 +1081,10 @@ def _apply_edits(item: dict, edits: dict, type_name: Optional[str] = None):
 
     For events, when ``notes`` is replaced, structured-prefix notes
     (📋 agenda, 📺 room) are preserved so a `--desc` edit doesn't drop them.
+
+    Any edit invalidates the ``cloud_verified`` flag — the calendar
+    render now differs from agenda state until the next ``sync_item``
+    confirms it. The ☁️ marker disappears immediately on save.
     """
     for key, val in edits.items():
         if val is not None:
@@ -1056,6 +1100,7 @@ def _apply_edits(item: dict, edits: dict, type_name: Optional[str] = None):
                     item["notes"] = preserved
             else:
                 item[key] = None if val == "none" else val
+    item["cloud_verified"] = False
 
 
 def _make_edit_occurrence(item, data_list, cfg, edits: dict,

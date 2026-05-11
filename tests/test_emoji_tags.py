@@ -43,29 +43,37 @@ class TestTaskEmojiBackwardCompat:
         assert old["until"] == "2026-06-30"
 
     def test_legacy_sync_marker_stripped(self):
-        """Legacy sync markers ([G], ☁️) are stripped silently — orbit-id
-        is the new sync indicator. Items with these markers parse as if
-        they had no sync info; the next gsync assigns an orbit-id."""
-        old = _parse_task_line("- [ ] Task (2026-04-01) [G]")
-        new = _parse_task_line("- [ ] Task (2026-04-01) ☁️")
-        assert old == new
-        assert old["desc"] == "Task"
-        assert "synced" not in old
-        assert old["orbit_id"] is None
+        """Legacy sync marker [G] is stripped silently. ☁️ was repurposed
+        in v0.30 to mean "calendar render verified" — see
+        :func:`_parse_task_line`. So these two now diverge: [G] is dead,
+        ☁️ is alive."""
+        legacy = _parse_task_line("- [ ] Task (2026-04-01) [G]")
+        verified = _parse_task_line("- [ ] Task (2026-04-01) ☁️")
+        assert legacy["desc"] == verified["desc"] == "Task"
+        assert legacy.get("cloud_verified") is False
+        assert verified.get("cloud_verified") is True
+        assert legacy["orbit_id"] is None and verified["orbit_id"] is None
 
     def test_all_attrs_both_formats(self):
+        # [G] is the dead legacy marker; the new emoji form uses ☁️ ONLY
+        # if calendar render is verified, so the two lines are not equal
+        # on the cloud_verified field. Everything else must match.
         old = _parse_task_line(
             "- [ ] Full (2026-04-01) [time:09:00-10:00] [recur:weekly:2026-12-31] [ring:1h] [G]"
         )
         new = _parse_task_line(
             "- [ ] Full (2026-04-01) ⏰09:00-10:00 🔄weekly:2026-12-31 🔔1h ☁️"
         )
-        assert old == new
+        for k in ("desc", "date", "time", "recur", "until", "ring",
+                  "status", "orbit_id"):
+            assert old[k] == new[k], f"{k}: {old[k]!r} != {new[k]!r}"
         assert old["desc"] == "Full"
         assert old["time"] == "09:00-10:00"
         assert old["recur"] == "weekly"
         assert old["until"] == "2026-12-31"
         assert old["ring"] == "1h"
+        assert old["cloud_verified"] is False
+        assert new["cloud_verified"] is True
 
 
 # ── Event parsing: backward compat ────────────────────────────────────────────
@@ -99,7 +107,13 @@ class TestEventEmojiBackwardCompat:
         new = _parse_event_line(
             "2026-04-01 — Retreat →2026-04-03 ⏰09:00 🔄monthly 🔔1d ☁️"
         )
-        assert old == new
+        # v0.30: ☁️ now means "verified"; [G] doesn't carry that semantic.
+        # All other fields must match.
+        for k in ("desc", "date", "end", "time", "recur", "until", "ring",
+                  "orbit_id"):
+            assert old[k] == new[k], f"{k}: {old[k]!r} != {new[k]!r}"
+        assert old["cloud_verified"] is False
+        assert new["cloud_verified"] is True
 
 
 # ── Format output always uses emojis ──────────────────────────────────────────

@@ -85,7 +85,25 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.9, 2026-05-11)
+## Estado actual (v0.30.0, 2026-05-11)
+
+### v0.30.0 (2026-05-11) — verificación post-sync con marker ☁️ y journal de fallos
+- **Problema**: `sync_item` lanzaba AppleScript en daemon thread y devolvía inmediatamente. Cualquier error (start/end inválido, evento en otro calendario, ApleEventHandler error, etc.) se perdía silenciosamente. El usuario veía orbit decir "✓ Tarea actualizada" pero Calendar no cambiaba.
+- **Solución (A+B)**:
+  1. **Verify post-sync**: tras la AppleScript de update/create, el mismo daemon thread hace un read-back del evento por uid (`_verify_calendar_event`). Compara start_iso y summary contra lo esperado. Si coinciden → éxito.
+  2. **Marker ☁️**: si verify pasa, se añade `☁️` a la línea de la cita en `agenda.md`, justo antes de `[orbit:xxx]`. Cualquier edit (`_apply_edits`) borra el ☁️ inmediatamente → reaparece tras el siguiente verify exitoso.
+  3. **Journal de fallos** (`.gsync-failures.json` por proyecto): si verify falla, se escribe `{when, orbit_id, kind, reason, expected}`. El marker no se pone (la ausencia es el signo visible).
+  4. **Doctor check**: `orbit doctor` ahora reporta cuántas citas tienen fallos pendientes con la razón. Sugiere re-editar para relanzar el sync.
+- **Estados visibles del usuario**:
+  - **Sin marker, sin orbit_id** → nunca sincronizada.
+  - **Sin marker, con orbit_id** → cambio pendiente / fallo (revisa doctor).
+  - **Con ☁️ y orbit_id** → orbit y Calendar coinciden, verificado.
+- **Parser y formatter**: `_parse_task_line`/`_parse_event_line`/`_parse_reminder_line` reconocen `☁️` y exponen `cloud_verified: bool`. Los formatters lo escriben antes del orbit-id.
+- **Done/cancelled**: borra el evento de Calendar y limpia ☁️ + journal entry.
+- **Limitaciones (TODO)**:
+  - Falta `orbit gsync --retry` para reintentar entries del journal en lote.
+  - Verify solo en backend calendar; reminders legacy no lo tiene.
+  - Tests cubren el grueso (15 en `tests/test_sync_verify.py`), pero el wiring de `sync_item` confía en los tests de integración existentes.
 
 ### v0.29.9 (2026-05-11) — fix Calendar.app error -10025 en updates
 - **Root cause**: los eventos de agenda se creaban con `start == end` (0-min markers). `make new event` lo acepta, pero `set start date of ev` valida la transición a-estado y rechaza con `error -10025 ("La fecha de inicio debe ser anterior a la fecha de finalización")` si quedaría `start >= end` en cualquier estado intermedio. Resultado: **ningún edit de hora se propagaba al evento existente**. El usuario veía Calendar congelado en la hora de la creación inicial (a menudo 9:00 por defecto).

@@ -453,6 +453,35 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     except Exception:
         pass  # gsync not configured or not available
 
+    # Check pending sync failures (v0.30): items where sync_item ran but
+    # the post-write verify didn't match. They live in `.gsync-failures.json`
+    # per project. The ☁️ marker is absent on these items in agenda.md.
+    try:
+        from core.gsync import _load_failures
+        from core.config import iter_project_dirs
+        failures_total = []
+        for pd in iter_project_dirs():
+            for key, entry in _load_failures(pd).items():
+                failures_total.append((pd.name, key, entry))
+        if failures_total:
+            n = len(failures_total)
+            print(f"  ☁️  {n} cita{'s' if n != 1 else ''} sin verificar en Calendar:")
+            print()
+            for proj, key, entry in failures_total:
+                naked = key
+                for prefix in ("task::", "milestone::", "reminder::"):
+                    if naked.startswith(prefix):
+                        naked = naked[len(prefix):]
+                        break
+                desc = naked.split("::", 1)[0]
+                print(f"  ⚠️  [{proj}] {entry.get('kind', '?')}: {desc}")
+                print(f"      {entry.get('reason', '?')}")
+            print()
+            print("  → Vuelve a editar la cita (cualquier cambio relanza el sync).")
+            print()
+    except Exception:
+        pass
+
     if not issues:
         print("✓ Todo en orden — no se encontraron problemas.")
         return 0

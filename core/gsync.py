@@ -37,7 +37,8 @@ from core.agenda_cmds import _read_agenda, _write_agenda
 CONFIG_PATH        = ORBIT_HOME / "calendar-sync.json"
 _LEGACY_CONFIG     = ORBIT_HOME / "google-sync.json"
 
-_IDS_FILE = ".gsync-ids.json"
+_IDS_FILE       = ".gsync-ids.json"
+_FAILURES_FILE  = ".gsync-failures.json"
 
 
 def _ids_path(project_dir: Path) -> Path:
@@ -56,6 +57,56 @@ def _load_ids(project_dir: Path) -> dict:
 def _save_ids(project_dir: Path, ids: dict) -> None:
     """Save sync IDs mapping for a project."""
     _ids_path(project_dir).write_text(json.dumps(ids, indent=2, ensure_ascii=False) + "\n")
+
+
+# ── Sync failures journal (v0.30) ──────────────────────────────────────────────
+#
+# `.gsync-failures.json` is a per-project journal of sync ops whose
+# post-write verification failed (event missing, summary mismatch,
+# AppleScript error, etc.). It feeds two consumers:
+#   - the doctor → reports pending failures so the user knows they exist
+#   - a retry command → re-runs sync_item on each failure
+# Schema: {storage_key: {when, orbit_id, kind, reason, expected, got}}.
+
+def _failures_path(project_dir: Path) -> Path:
+    return project_dir / _FAILURES_FILE
+
+
+def _load_failures(project_dir: Path) -> dict:
+    p = _failures_path(project_dir)
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except (OSError, json.JSONDecodeError):
+            return {}
+    return {}
+
+
+def _save_failures(project_dir: Path, failures: dict) -> None:
+    p = _failures_path(project_dir)
+    if not failures:
+        # Don't keep an empty file around — the absence signals "all clear".
+        try:
+            p.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    p.write_text(json.dumps(failures, indent=2, ensure_ascii=False) + "\n")
+
+
+def _record_failure(project_dir: Path, storage_key: str, entry: dict) -> None:
+    """Append/overwrite a failure entry by storage_key."""
+    failures = _load_failures(project_dir)
+    failures[storage_key] = entry
+    _save_failures(project_dir, failures)
+
+
+def _clear_failure(project_dir: Path, storage_key: str) -> None:
+    """Drop a failure entry. No-op if absent."""
+    failures = _load_failures(project_dir)
+    if storage_key in failures:
+        failures.pop(storage_key)
+        _save_failures(project_dir, failures)
 
 
 def _item_key(item: dict) -> str:
@@ -480,6 +531,66 @@ def _find_calendar_event_by_title_date(calendar_name: str,
     )
     out = _osa(script, timeout=60)
     return out if out else None
+
+
+def _verify_calendar_event(uid: str, calendar_name: str,
+                            expected_summary: str,
+                            expected_start_iso: str) -> tuple:
+    """Read back a Calendar event and check it matches what we just pushed.
+
+    Returns ``(ok: bool, reason: str)``. ``reason`` is empty on success.
+
+    What we check: event exists with the given uid, its summary matches,
+    and its start date matches (year/month/day/hour/minute). End and
+    description aren't validated — end is always start+1min so it's
+    derived, and description carries the orbit-id tag whose presence is
+    already implied by the orbit-id-find path used elsewhere.
+
+    Times are returned via individual ``year``/``month``/``hours``/...
+    components so we don't depend on the user's locale for parsing the
+    string-ified date.
+    """
+    cal     = _esc(calendar_name)
+    uid_esc = _esc(uid)
+    script = (
+        f'tell application "Calendar"\n'
+        f'    tell calendar "{cal}"\n'
+        f'        try\n'
+        f'            set ev to first event whose uid is "{uid_esc}"\n'
+        f'        on error\n'
+        f'            return "MISSING"\n'
+        f'        end try\n'
+        f'        set s to start date of ev\n'
+        f'        return ((year of s) as string) & "|" & '
+        f'((month of s as integer) as string) & "|" & '
+        f'((day of s) as string) & "|" & '
+        f'((hours of s) as string) & "|" & '
+        f'((minutes of s) as string) & "|" & (summary of ev)\n'
+        f'    end tell\n'
+        f'end tell'
+    )
+    out = _osa(script, timeout=30)
+    if not out:
+        return False, "verify: no response from AppleScript"
+    if out == "MISSING":
+        return False, "verify: event missing in calendar"
+
+    parts = out.split("|", 5)
+    if len(parts) != 6:
+        return False, f"verify: unexpected AppleScript output: {out!r}"
+    try:
+        y, mo, d, h, mn, sumr = parts
+        actual_iso = f"{int(y):04d}-{int(mo):02d}-{int(d):02d}T{int(h):02d}:{int(mn):02d}"
+    except ValueError:
+        return False, f"verify: cannot parse date fields: {out!r}"
+
+    if actual_iso != expected_start_iso:
+        return False, (f"verify: start mismatch "
+                       f"(expected {expected_start_iso}, got {actual_iso})")
+    if sumr.strip() != expected_summary.strip():
+        return False, (f"verify: summary mismatch "
+                       f"(expected {expected_summary!r}, got {sumr!r})")
+    return True, ""
 
 
 def _find_calendar_event_by_orbit_id(calendar_name: str,
@@ -2639,6 +2750,14 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                             if legacy_key != storage_key:
                                 ids.pop(legacy_key, None)
                             _save_ids(project_dir, ids)
+                        # The event is gone — clear any prior failure and the
+                        # ☁️ marker (it implies a live calendar render which
+                        # we just deleted).
+                        _clear_failure(project_dir, storage_key)
+                        oid = item.get("orbit_id") or existing.get("orbit_id")
+                        if oid:
+                            from core.agenda_cmds import set_cloud_verified
+                            set_cloud_verified(project_dir, oid, False)
                         return
 
                     project_name = project_dir.name
@@ -2647,6 +2766,8 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                     item["_orbit_id"] = (item.get("orbit_id")
                                          or existing.get("orbit_id")
                                          or _new_orbit_id())
+                    expected_props = _agenda_props_for_calendar_app(
+                        item, project_name, description, kind)
                     new_uid = _sync_one_agenda_event(cal_name, item,
                                                      project_name, description,
                                                      kind, dry_run=False)
@@ -2686,6 +2807,37 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                                     break
                             _write_agenda(agenda_path, data)
                     item.pop("_gcal_id", None)
+
+                    # ── Verify (v0.30) ───────────────────────────────────────
+                    # Read back the event and confirm Calendar.app actually
+                    # accepted the change. If so, drop a ☁️ in the agenda
+                    # line and clear any previous failure entry. If not,
+                    # log a failure so the doctor / retry path can pick it
+                    # up later. Failure path keeps the ☁️ off so the user
+                    # sees the discrepancy at a glance.
+                    import datetime as _dt
+                    from core.agenda_cmds import set_cloud_verified
+                    if new_uid:
+                        ok, reason = _verify_calendar_event(
+                            new_uid, cal_name,
+                            expected_props["summary"],
+                            expected_props["start_iso"])
+                    else:
+                        ok, reason = False, "sync: AppleScript did not return a uid"
+                    oid = item.get("_orbit_id")
+                    if oid:
+                        if ok:
+                            set_cloud_verified(project_dir, oid, True)
+                            _clear_failure(project_dir, storage_key)
+                        else:
+                            set_cloud_verified(project_dir, oid, False)
+                            _record_failure(project_dir, storage_key, {
+                                "when":     _dt.datetime.now().isoformat(timespec="seconds"),
+                                "orbit_id": oid,
+                                "kind":     kind,
+                                "reason":   reason,
+                                "expected": _make_snapshot(item),
+                            })
                     return
 
                 # ── Backend = "reminders": legacy Reminders.app path ─────
