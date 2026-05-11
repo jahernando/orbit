@@ -2175,15 +2175,29 @@ def _secondary_key(item: dict) -> str:
     return item.get("date", "")
 
 
+def _canonical_storage_key(item: dict, kind: str) -> str:
+    """Return the key an entry SHOULD live under given the item and its kind.
+
+    Tasks / milestones / reminders use the kind-prefixed form
+    introduced by the v0.29 calendar backend. Events still use the
+    legacy ``_item_key`` form because their batch sync path
+    (``_sync_events_for_project``) was never migrated.
+    """
+    if kind in ("task", "milestone", "reminder"):
+        return _agenda_storage_key(item, kind)
+    return _item_key(item)
+
+
 def reconcile_gsync_renames() -> list:
     """Detect items whose title/date/recur changed in the markdown and
     re-link their gsync IDs.
 
     Strategy: every item with an ``[orbit:xxx]`` tag in the .md carries its
-    identity. If its current key (`desc::date` or `desc::🔄recur::date`)
+    identity. If its canonical key (see :func:`_canonical_storage_key`)
     differs from the key under which it is stored in `.gsync-ids.json`, the
-    user must have edited title/date/recur. We migrate the stored uid+orbit_id
-    to the new key, update the snapshot and re-sync to propagate.
+    user must have edited title/date/recur (or the entry is in the legacy
+    pre-v0.29 ``_item_key`` form). We migrate the stored uid+orbit_id to
+    the canonical key, update the snapshot and re-sync to propagate.
 
     Falls back to the legacy secondary-key heuristic for items without an
     orbit-id (pre-tag agendas).
@@ -2207,7 +2221,11 @@ def reconcile_gsync_renames() -> list:
         if do_milestones:
             all_items = [(m, "milestone") for m in data["milestones"]] + all_items
 
-        current_keys = {_item_key(it): (it, kind) for it, kind in all_items}
+        # Map every item to its canonical key. The set is used as the
+        # "currently-in-use" key set so pass 2's orphan detection doesn't
+        # flag a legitimate prefixed entry as an orphan.
+        current_keys = {_canonical_storage_key(it, kind): (it, kind)
+                        for it, kind in all_items}
         # Reverse index: orbit_id → key in .gsync-ids.json (only the
         # top-level item entries; cronograma `_cronos` sub-dict is excluded).
         ids_by_orbit = {v.get("orbit_id"): k
@@ -2217,8 +2235,9 @@ def reconcile_gsync_renames() -> list:
         changed = False
 
         # Pass 1 — orbit-id authoritative. For each item carrying an
-        # orbit-id, locate its stored key. If different from current,
-        # that's a rename (or date/recur change) — migrate.
+        # orbit-id, locate its stored key. If different from canonical,
+        # that's a rename (or date/recur change, or a pre-v0.29 entry
+        # that pre-dates the kind:: prefix) — migrate.
         #
         # We do NOT push to the backend here: every CLI edit already
         # ran sync_item, and editing the .md by hand is rare enough
@@ -2232,13 +2251,21 @@ def reconcile_gsync_renames() -> list:
             stored_key = ids_by_orbit.get(oid)
             if not stored_key:
                 continue
-            current_key = _item_key(item)
-            if stored_key == current_key:
+            canonical = _canonical_storage_key(item, kind)
+            if stored_key == canonical:
                 continue
-            old_desc = stored_key.split("::", 1)[0]
-            ids[current_key] = ids.pop(stored_key)
-            ids[current_key]["snapshot"] = _make_snapshot(item)
-            ids_by_orbit[oid] = current_key
+            # Extract the "old desc" for reporting. If the stored key has
+            # a kind:: prefix, strip it so the user sees the same desc the
+            # markdown line shows.
+            naked = stored_key
+            for k in ("task::", "milestone::", "reminder::"):
+                if naked.startswith(k):
+                    naked = naked[len(k):]
+                    break
+            old_desc = naked.split("::", 1)[0]
+            ids[canonical] = ids.pop(stored_key)
+            ids[canonical]["snapshot"] = _make_snapshot(item)
+            ids_by_orbit[oid] = canonical
             results.append((project_dir.name, old_desc, item.get("desc", "?")))
             changed = True
 

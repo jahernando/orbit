@@ -307,6 +307,107 @@ class TestGsyncReconcileRenames:
         assert "Team meeting renamed::2026-04-10" in new_ids
         assert new_ids["Team meeting renamed::2026-04-10"]["gcal_id"] == "gcal-abc"
 
+    def test_reconcile_migrates_legacy_to_prefixed_for_task(
+            self, projects_dir, monkeypatch):
+        """v0.29.8: a task whose stored key is legacy `desc::date` gets
+        migrated to the canonical `task::desc::date` form. Triggered when
+        the orbit-id in the markdown points to an entry under the legacy
+        key — most often pre-v0.29 entries that escaped the migration."""
+        from core.gsync import reconcile_gsync_renames, _load_ids, _save_ids
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        from core.log import resolve_file
+
+        pd = _make_project(projects_dir)
+        monkeypatch.setattr("core.gsync.sync_item", lambda *a, **k: None)
+
+        agenda_path = resolve_file(pd, "agenda")
+        data = _read_agenda(agenda_path)
+        data["tasks"].append({
+            "desc": "Renta", "date": "2026-05-14",
+            "status": "pending", "orbit_id": "cdee3a37",
+        })
+        _write_agenda(agenda_path, data)
+
+        # Legacy key — no `task::` prefix. orbit_id matches the agenda item.
+        ids = {"Renta::2026-05-14":
+               {"gcal_id": "uid-x", "orbit_id": "cdee3a37",
+                "snapshot": {"desc": "Renta", "date": "2026-05-14"}}}
+        _save_ids(pd, ids)
+
+        reconcile_gsync_renames()
+
+        new_ids = _load_ids(pd)
+        assert "task::Renta::2026-05-14" in new_ids
+        assert "Renta::2026-05-14" not in new_ids
+        assert new_ids["task::Renta::2026-05-14"]["gcal_id"] == "uid-x"
+
+    def test_reconcile_keeps_prefixed_entry_untouched(
+            self, projects_dir, monkeypatch):
+        """v0.29.8: an entry already at the canonical prefixed key must NOT
+        be moved back to the legacy form on every commit. This is the bug
+        that drove the fix — `reconcile` was undoing the migration on
+        each commit, creating a ping-pong loop."""
+        from core.gsync import reconcile_gsync_renames, _load_ids, _save_ids
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        from core.log import resolve_file
+
+        pd = _make_project(projects_dir)
+        monkeypatch.setattr("core.gsync.sync_item", lambda *a, **k: None)
+
+        agenda_path = resolve_file(pd, "agenda")
+        data = _read_agenda(agenda_path)
+        data["tasks"].append({
+            "desc": "Revisar proyectos personales", "date": "2026-05-14",
+            "status": "pending", "recur": "weekly", "orbit_id": "af50f3bd",
+        })
+        _write_agenda(agenda_path, data)
+
+        # Already at prefixed canonical key. Reconcile must NOT touch it.
+        ids = {"task::Revisar proyectos personales::🔄weekly::2026-05-14":
+               {"gcal_id": "22F53512", "orbit_id": "af50f3bd",
+                "snapshot": {"desc": "Revisar proyectos personales",
+                             "date": "2026-05-14", "recur": "weekly"}}}
+        _save_ids(pd, ids)
+
+        renames = reconcile_gsync_renames()
+
+        assert renames == []  # nothing to reconcile
+        new_ids = _load_ids(pd)
+        assert "task::Revisar proyectos personales::🔄weekly::2026-05-14" in new_ids
+        # Legacy form must NOT have been created.
+        assert "Revisar proyectos personales::🔄weekly::2026-05-14" not in new_ids
+
+    def test_reconcile_event_stays_in_legacy_form(
+            self, projects_dir, monkeypatch):
+        """Events still use `_item_key` (no prefix) because their batch
+        sync path was never migrated. Reconcile must not move them to a
+        `event::` prefix that nothing else uses."""
+        from core.gsync import reconcile_gsync_renames, _load_ids, _save_ids
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        from core.log import resolve_file
+
+        pd = _make_project(projects_dir)
+        monkeypatch.setattr("core.gsync.sync_item", lambda *a, **k: None)
+
+        agenda_path = resolve_file(pd, "agenda")
+        data = _read_agenda(agenda_path)
+        data["events"].append({
+            "desc": "Team meeting", "date": "2026-04-10",
+            "orbit_id": "ef509999",
+        })
+        _write_agenda(agenda_path, data)
+
+        ids = {"Team meeting::2026-04-10":
+               {"gcal_id": "gcal-abc", "orbit_id": "ef509999"}}
+        _save_ids(pd, ids)
+
+        renames = reconcile_gsync_renames()
+
+        assert renames == []
+        new_ids = _load_ids(pd)
+        assert "Team meeting::2026-04-10" in new_ids
+        assert "event::Team meeting::2026-04-10" not in new_ids
+
     def test_reconcile_without_synced_marker(self, projects_dir, monkeypatch):
         """Even without ☁️ marker, reconcile detects rename via secondary key match."""
         from core.gsync import reconcile_gsync_renames, _load_ids, _save_ids

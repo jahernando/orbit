@@ -85,7 +85,12 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.7, 2026-05-11)
+## Estado actual (v0.29.8, 2026-05-11)
+
+### v0.29.8 (2026-05-11) — `reconcile_gsync_renames` respeta el prefijo `kind::`
+- **Bug**: `reconcile_gsync_renames` (corre en cada `orbit commit`) calculaba `current_key = _item_key(item)` (formato legacy `desc::date`). Para tareas/ms/rem cuyo entry estaba en formato v0.29 (`task::desc::date` / `task::desc::🔄recur::date`), detectaba "rename" y revertía el entry al formato legacy — deshaciendo la migración de v0.29.6 en cada commit. Bucle infinito: sync_item migra a prefijo, commit revierte, etc.
+- **Fix** (`core/gsync.py`): nuevo helper `_canonical_storage_key(item, kind)` que devuelve `_agenda_storage_key` para task/ms/rem y `_item_key` para event. `reconcile_gsync_renames` ahora compara contra el canónico, y el set `current_keys` (usado por el orphan detection del pass 2) también usa el canónico.
+- **Tests**: `tests/test_v0230_improvements.py` añade 3 casos (migración legacy→prefijo, prefijo se mantiene, events siguen en formato legacy). Suite: 1534 pasan.
 
 ### v0.29.7 (2026-05-11) — fix orbit-id lookup en eventos de Calendar para recurrentes
 - **Bug**: para tareas/ms/rem recurrentes, el tag en la descripción del evento de Calendar es `[orbit:xxx@date]` (con sufijo `@date` por ocurrencia). `_find_calendar_event_by_orbit_id` buscaba `[orbit:xxx]` (con `]` justo después del id) — sustring que no aparece en el tag recurrente. Resultado: editar tiempo/título de una tarea recurrente no encontraba el evento por orbit-id, caía a la búsqueda título+fecha con la **nueva** hora (que no matchea el evento existente con la vieja hora) y creaba un duplicado en Calendar.
