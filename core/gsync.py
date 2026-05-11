@@ -401,6 +401,15 @@ def _update_calendar_event(uid: str, calendar_name: str, props: dict) -> bool:
         # doesn't keep notifying after the user removed the ring.
         alarm_block = '        delete every display alarm of ev'
 
+    # Calendar.app validates `set start date` and `set end date` per
+    # operation: any intermediate state where ``start >= end`` is
+    # rejected with -10025 ("La fecha de inicio debe ser anterior a la
+    # fecha de finalización"). To avoid that — regardless of whether the
+    # new time is earlier or later than the current one — we first push
+    # ``end`` to a far future safe sentinel, then set ``start``, then set
+    # the real ``end``. Combined with the 1-min duration from
+    # :func:`_agenda_props_for_calendar_app`, every step has a valid
+    # ``start < end``.
     script = (
         f'tell application "Calendar"\n'
         f'    tell calendar "{cal}"\n'
@@ -412,6 +421,14 @@ def _update_calendar_event(uid: str, calendar_name: str, props: dict) -> bool:
         f'        set summary of ev to "{sumr}"\n'
         f'        {_build_date_var("startD", props["start_iso"])}\n'
         f'        {_build_date_var("endD", props["end_iso"])}\n'
+        f'        set safeEnd to current date\n'
+        f'        set year of safeEnd to 2099\n'
+        f'        set month of safeEnd to 12\n'
+        f'        set day of safeEnd to 31\n'
+        f'        set hours of safeEnd to 23\n'
+        f'        set minutes of safeEnd to 59\n'
+        f'        set seconds of safeEnd to 0\n'
+        f'        set end date of ev to safeEnd\n'
         f'        set start date of ev to startD\n'
         f'        set end date of ev to endD\n'
         f'        set description of ev to "{desc}"\n'
@@ -1632,12 +1649,19 @@ def _agenda_storage_key(item: dict, kind: str) -> str:
 
 def _agenda_props_for_calendar_app(item: dict, project_name: str,
                                     base_description: str, kind: str) -> dict:
-    """Build property dict for an agenda item rendered as a 0-min event.
+    """Build property dict for an agenda item rendered as a 1-min event.
 
     Title carries the kind emoji (✅🏁💬) so users can scan the calendar at
     a glance even though all three kinds share the same calendar.
+
+    Why 1 min, not 0 min: Calendar.app's ``make new event`` accepts
+    ``start = end`` at creation, but ``set start date of ev`` rejects any
+    update that leaves the intermediate state with ``start >= end``
+    (error -10025). With a 1-min duration plus the staged update order
+    in :func:`_update_calendar_event`, every transition has a valid
+    intermediate state.
     """
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     emoji   = _REMINDER_KIND_EMOJI.get(kind, "")
     summary = f"[{project_name}] {emoji} {item['desc']}".rstrip()
@@ -1648,7 +1672,11 @@ def _agenda_props_for_calendar_app(item: dict, project_name: str,
                   else time_val)
     start_time = raw_start or "09:00"
     start_iso  = f"{start_date}T{start_time}"
-    end_iso    = start_iso  # 0-min event: discrete marker, doesn't block slots
+    try:
+        end_dt = datetime.fromisoformat(f"{start_date}T{start_time}:00") + timedelta(minutes=1)
+        end_iso = end_dt.strftime("%Y-%m-%dT%H:%M")
+    except ValueError:
+        end_iso = start_iso  # fallback; should not happen for valid inputs
 
     # Alarm: fire at start by default. If the item has --ring, honour it
     # (alarm earlier — same semantics as for events).

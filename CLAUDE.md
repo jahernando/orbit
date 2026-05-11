@@ -85,7 +85,14 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.8, 2026-05-11)
+## Estado actual (v0.29.9, 2026-05-11)
+
+### v0.29.9 (2026-05-11) — fix Calendar.app error -10025 en updates
+- **Root cause**: los eventos de agenda se creaban con `start == end` (0-min markers). `make new event` lo acepta, pero `set start date of ev` valida la transición a-estado y rechaza con `error -10025 ("La fecha de inicio debe ser anterior a la fecha de finalización")` si quedaría `start >= end` en cualquier estado intermedio. Resultado: **ningún edit de hora se propagaba al evento existente**. El usuario veía Calendar congelado en la hora de la creación inicial (a menudo 9:00 por defecto).
+- **Fix 1** (`_agenda_props_for_calendar_app`): `end_iso = start + 1 minuto`. Los eventos quedan visualmente discretos (1-min) pero satisfacen `start < end` estricto. Aplica también para nuevos eventos.
+- **Fix 2** (`_update_calendar_event`): orden de actualización seguro. Antes de tocar start/end, se empuja `end` a un sentinel lejano (2099-12-31 23:59), luego se setea `start`, luego el `end` real. Cada paso intermedio mantiene `start < end` invariante, sin importar si la nueva hora es anterior o posterior a la existente.
+- **Scripts/diagnóstico** (`scripts/`): nuevos `diagnose_calendar_sync.py` y `try_update_calendar_event.py` para futuros bugs de sync (no se distribuyen, viven en `scripts/`).
+- **Tests**: actualizados los dos tests que asumían `end_iso == start_iso`. Suite: 1534 pasan.
 
 ### v0.29.8 (2026-05-11) — `reconcile_gsync_renames` respeta el prefijo `kind::`
 - **Bug**: `reconcile_gsync_renames` (corre en cada `orbit commit`) calculaba `current_key = _item_key(item)` (formato legacy `desc::date`). Para tareas/ms/rem cuyo entry estaba en formato v0.29 (`task::desc::date` / `task::desc::🔄recur::date`), detectaba "rename" y revertía el entry al formato legacy — deshaciendo la migración de v0.29.6 en cada commit. Bucle infinito: sync_item migra a prefijo, commit revierte, etc.

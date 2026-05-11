@@ -60,10 +60,13 @@ class TestAgendaPropsForCalendarApp:
         base.update(over)
         return base
 
-    def test_zero_minute_event(self):
+    def test_one_minute_event(self):
+        # v0.29.9: events are 1 min long, not 0 min. Calendar.app rejects
+        # updates where start == end (error -10025).
         props = gsync._agenda_props_for_calendar_app(
             self._item(), "proj", "Proyecto: proj", "task")
-        assert props["start_iso"] == props["end_iso"] == "2030-05-15T10:00"
+        assert props["start_iso"] == "2030-05-15T10:00"
+        assert props["end_iso"]   == "2030-05-15T10:01"
 
     def test_default_start_time_when_no_time(self):
         props = gsync._agenda_props_for_calendar_app(
@@ -113,11 +116,12 @@ class TestAgendaPropsForCalendarApp:
         assert "proj" in props["description"]
 
     def test_strips_time_range_to_start(self):
-        # time "10:00-11:00" → only start is used (events are 0-min markers).
+        # time "10:00-11:00" → only start is used; end is start+1min so
+        # Calendar.app accepts the update.
         props = gsync._agenda_props_for_calendar_app(
             self._item(time="10:00-11:00"), "proj", "Proyecto: proj", "task")
         assert props["start_iso"] == "2030-05-15T10:00"
-        assert props["end_iso"]   == "2030-05-15T10:00"
+        assert props["end_iso"]   == "2030-05-15T10:01"
 
 
 # ── _sync_one_agenda_event ────────────────────────────────────────────────────
