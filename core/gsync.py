@@ -467,9 +467,15 @@ def _find_calendar_event_by_title_date(calendar_name: str,
 
 def _find_calendar_event_by_orbit_id(calendar_name: str,
                                      orbit_id: str) -> Optional[str]:
-    """Find event by orbit-id tag in description. Returns uid or None."""
+    """Find event by orbit-id tag in description. Returns uid or None.
+
+    Matches both ``[orbit:xxx]`` and ``[orbit:xxx@date]`` (occurrence-tagged
+    recurring items) — the needle is the open prefix without the closing
+    bracket. 8 hex chars after ``orbit:`` is unique enough to make a false
+    positive virtually impossible.
+    """
     cal = _esc(calendar_name)
-    needle = f"[orbit:{orbit_id}]"
+    needle = f"[orbit:{orbit_id}"
     script = (
         f'tell application "Calendar"\n'
         f'    tell calendar "{cal}"\n'

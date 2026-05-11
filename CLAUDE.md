@@ -85,7 +85,12 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.6, 2026-05-11)
+## Estado actual (v0.29.7, 2026-05-11)
+
+### v0.29.7 (2026-05-11) — fix orbit-id lookup en eventos de Calendar para recurrentes
+- **Bug**: para tareas/ms/rem recurrentes, el tag en la descripción del evento de Calendar es `[orbit:xxx@date]` (con sufijo `@date` por ocurrencia). `_find_calendar_event_by_orbit_id` buscaba `[orbit:xxx]` (con `]` justo después del id) — sustring que no aparece en el tag recurrente. Resultado: editar tiempo/título de una tarea recurrente no encontraba el evento por orbit-id, caía a la búsqueda título+fecha con la **nueva** hora (que no matchea el evento existente con la vieja hora) y creaba un duplicado en Calendar.
+- **Fix** (`core/gsync.py:_find_calendar_event_by_orbit_id`): la needle ahora es `[orbit:xxx` sin `]`, igual que `_find_reminder_by_orbit_id`. Matchea ambos formatos. El riesgo de falso positivo con 8 hex chars es despreciable.
+- **Tests**: `tests/test_gsync_calendar_app.py::TestFindCalendarEventByOrbitIdNeedle`. Suite: 1531 pasan.
 
 ### v0.29.6 (2026-05-11) — fallback legacy-key en `sync_item`
 - **Bug**: tareas/ms/rem cuyo entry en `.gsync-ids.json` quedó bajo la key legacy `desc::date` (pre-v0.29, o que escapó del `--migrate-rem-to-calendar`) no se reconocían en sync_item — el código nuevo buscaba `kind::desc::date`. Resultado: editar tiempo/título/etc no actualizaba el evento en Calendar (o creaba un duplicado al caer en la rama "create new").

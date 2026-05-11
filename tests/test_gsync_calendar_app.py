@@ -489,6 +489,27 @@ class TestSyncOneToReminders:
         assert creates == []
 
 
+class TestFindCalendarEventByOrbitIdNeedle:
+    """The needle used to be `[orbit:xxx]` with a closing bracket, which
+    failed for recurring items where the tag is `[orbit:xxx@date]`. v0.29.7
+    relaxed it to the open prefix `[orbit:xxx` so both formats match."""
+
+    def test_needle_is_open_prefix_for_recurring_match(self, monkeypatch):
+        captured = {}
+
+        def fake_osa(script, timeout=30):
+            captured["script"] = script
+            return ""  # not found is fine; we only care about the needle
+
+        monkeypatch.setattr(gsync, "_osa", fake_osa)
+        gsync._find_calendar_event_by_orbit_id("cal", "af50f3bd")
+
+        # The script must search for the open prefix without `]` so that
+        # `[orbit:af50f3bd]` AND `[orbit:af50f3bd@2026-05-14]` both match.
+        assert "[orbit:af50f3bd\"" in captured["script"]
+        assert "[orbit:af50f3bd]\"" not in captured["script"]
+
+
 class TestOrbitId:
     def test_new_orbit_id_format(self):
         oid = gsync._new_orbit_id()
