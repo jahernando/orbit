@@ -248,6 +248,93 @@ class TestSyncItemBranching:
         assert deleted["calls"] == [("old-uid", "test-cal")]
 
 
+# ── Legacy-key fallback (v0.29.6) ─────────────────────────────────────────────
+
+class TestLegacyKeyFallback:
+    """Pre-v0.29 entries in .gsync-ids.json live under `desc::date`
+    (no `kind::` prefix). sync_item must still find them so edits propagate
+    to Calendar and the storage key migrates on save."""
+
+    def _setup_project(self, tmp_path, monkeypatch, ids):
+        proj = tmp_path / "🌀test-proj"
+        proj.mkdir()
+        (proj / "agenda.md").write_text(
+            "# Agenda\n\n## ✅ Tareas\n\n- [ ] X (2030-05-15) ⏰10:00\n")
+        monkeypatch.setattr(gsync, "_load_config",
+                             lambda: {"reminders_backend": "calendar",
+                                      "agenda_calendar": "agenda-cal",
+                                      "calendars": {"investigacion": "events-cal"}})
+        monkeypatch.setattr(gsync, "_get_project_tipo",
+                             lambda p: "investigacion")
+        monkeypatch.setattr(gsync, "_is_gsync_configured", lambda: True)
+        monkeypatch.setattr(gsync, "_calendar_app_running", lambda: True)
+        monkeypatch.setattr(gsync, "_ensure_agenda_calendar", lambda n: True)
+        # Mutable ids so tests can observe writes.
+        state = {"ids": dict(ids)}
+        monkeypatch.setattr(gsync, "_load_ids", lambda p: dict(state["ids"]))
+        def _save(p, new):
+            state["ids"] = dict(new)
+        monkeypatch.setattr(gsync, "_save_ids", _save)
+        monkeypatch.setattr(gsync, "_SYNC_TIMEOUT", 5)
+        return proj, state
+
+    def test_pending_task_with_legacy_key_updates_calendar(
+            self, tmp_path, monkeypatch):
+        """Legacy entry stored as `X::2030-05-15` (no `task::` prefix).
+        sync_item finds it, _sync_one_agenda_event updates the existing
+        event, and the entry migrates to `task::X::2030-05-15`."""
+        seen_event = {}
+
+        def fake_sync(cal, item, proj, desc, kind, dry_run=False):
+            seen_event["gcal_id_in"] = item.get("_gcal_id")
+            return "legacy-uid"  # same uid → update-in-place
+
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event", fake_sync)
+
+        ids_in = {"X::2030-05-15": {"gcal_id": "legacy-uid",
+                                      "orbit_id": "abc12345",
+                                      "snapshot": {"desc": "X",
+                                                   "date": "2030-05-15",
+                                                   "time": "09:00"}}}
+        proj, state = self._setup_project(tmp_path, monkeypatch, ids_in)
+
+        item = {"desc": "X", "date": "2030-05-15", "time": "10:00",
+                "status": "pending", "notes": [], "orbit_id": "abc12345"}
+        gsync.sync_item(proj, item, kind="task")
+
+        # _sync_one_agenda_event was handed the legacy uid via _gcal_id
+        # (so it can update-in-place instead of recreating).
+        assert seen_event["gcal_id_in"] == "legacy-uid"
+        # Migration happened: entry now under `task::X::2030-05-15`,
+        # legacy key purged.
+        assert "task::X::2030-05-15" in state["ids"]
+        assert "X::2030-05-15" not in state["ids"]
+        # Snapshot reflects the new time.
+        assert state["ids"]["task::X::2030-05-15"]["snapshot"]["time"] == "10:00"
+
+    def test_terminal_with_legacy_key_deletes_and_drops(
+            self, tmp_path, monkeypatch):
+        """When a task is marked done and only a legacy entry exists, the
+        delete still fires and both keys are popped."""
+        deleted = []
+        monkeypatch.setattr(gsync, "_delete_calendar_event",
+                             lambda uid, cal: deleted.append((uid, cal)) or True)
+        monkeypatch.setattr(gsync, "_sync_one_agenda_event",
+                             lambda *a, **k: "should-not-run")
+
+        ids_in = {"X::2030-05-15": {"gcal_id": "legacy-uid",
+                                      "orbit_id": "abc12345"}}
+        proj, state = self._setup_project(tmp_path, monkeypatch, ids_in)
+
+        item = {"desc": "X", "date": "2030-05-15", "time": "10:00",
+                "status": "done", "notes": []}
+        gsync.sync_item(proj, item, kind="task")
+
+        assert deleted == [("legacy-uid", "agenda-cal")]
+        assert "X::2030-05-15" not in state["ids"]
+        assert "task::X::2030-05-15" not in state["ids"]
+
+
 # ── Milestone routing to per-tipo events calendar (v0.29.2) ───────────────────
 
 class TestMilestoneRoutesToEventsCalendar:

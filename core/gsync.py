@@ -2544,6 +2544,20 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                         return
 
                     storage_key  = _agenda_storage_key(item, kind)
+                    legacy_key   = _item_key(item)
+
+                    # Legacy-key fallback: pre-v0.29 entries (and a handful
+                    # of v0.29.0 ones that slipped past the migration) live
+                    # under `desc::date` instead of `kind::desc::date`. If
+                    # the new key isn't there yet but the legacy one is,
+                    # treat that as the existing entry — the next save will
+                    # write under the new key and `_purge_orbit_orphans`
+                    # removes the legacy entry.
+                    existing = ids.get(storage_key, {})
+                    if not existing and legacy_key != storage_key:
+                        legacy = ids.get(legacy_key, {})
+                        if legacy.get("gcal_id"):
+                            existing = legacy
 
                     # Done / cancelled / reminder-cancelled → remove the event.
                     # The calendar should reflect only what's pending;
@@ -2552,7 +2566,7 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                     is_terminal = (item.get("status") in ("done", "cancelled")
                                    or (kind == "reminder" and item.get("cancelled")))
                     if is_terminal:
-                        existing_uid = ids.get(storage_key, {}).get("gcal_id")
+                        existing_uid = existing.get("gcal_id")
                         if existing_uid:
                             _delete_calendar_event(existing_uid, cal_name)
                             # Best-effort cleanup for ms migrated from
@@ -2561,12 +2575,13 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                             if kind == "milestone" and agenda_cal and agenda_cal != cal_name:
                                 _delete_calendar_event(existing_uid, agenda_cal)
                             ids.pop(storage_key, None)
+                            if legacy_key != storage_key:
+                                ids.pop(legacy_key, None)
                             _save_ids(project_dir, ids)
                         return
 
                     project_name = project_dir.name
                     description  = _project_description(project_dir, config, html=False)
-                    existing     = ids.get(storage_key, {})
                     item["_gcal_id"] = existing.get("gcal_id")
                     item["_orbit_id"] = (item.get("orbit_id")
                                          or existing.get("orbit_id")
@@ -2574,31 +2589,41 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
                     new_uid = _sync_one_agenda_event(cal_name, item,
                                                      project_name, description,
                                                      kind, dry_run=False)
-                    if new_uid and new_uid != existing.get("gcal_id"):
-                        # Migration: if the previous uid was for the agenda
-                        # calendar (pre-v0.29.2 ms routing), clean it up now
-                        # so the user doesn't end up with the same ms in
-                        # both calendars.
-                        old_uid = existing.get("gcal_id")
-                        if (old_uid and kind == "milestone"
-                                and agenda_cal and agenda_cal != cal_name):
-                            _delete_calendar_event(old_uid, agenda_cal)
-                        ids.setdefault(storage_key, {})["gcal_id"] = new_uid
-                        ids[storage_key]["orbit_id"] = item.get("_orbit_id")
-                        ids[storage_key]["snapshot"] = _make_snapshot(item)
-                        _purge_orbit_orphans(ids, storage_key, item.get("_orbit_id"))
-                        _save_ids(project_dir, ids)
-                        # Persist orbit-id back into agenda.md.
-                        agenda_path = resolve_file(project_dir, "agenda")
-                        data = _read_agenda(agenda_path)
-                        section = {"task": "tasks", "milestone": "milestones",
-                                   "reminder": "reminders"}[kind]
-                        for it in data.get(section, []):
-                            if (it.get("desc") == item["desc"]
-                                    and it.get("date") == item.get("date")):
-                                it["orbit_id"] = item.get("_orbit_id")
-                                break
-                        _write_agenda(agenda_path, data)
+                    if new_uid:
+                        # Save when anything visible changed (new uid, drifted
+                        # snapshot, or different orbit-id) AND when migrating
+                        # from a legacy `desc::date` key — in the legacy case
+                        # the uid often stays the same but the storage key
+                        # still needs to move to `kind::desc::date`.
+                        current = ids.get(storage_key, {})
+                        snapshot = _make_snapshot(item)
+                        if (current.get("gcal_id") != new_uid
+                                or current.get("snapshot") != snapshot
+                                or current.get("orbit_id") != item.get("_orbit_id")):
+                            # Milestone migration cleanup (pre-v0.29.2 routing):
+                            # if the previous uid was for the agenda calendar,
+                            # remove it so the user doesn't see the ms twice.
+                            old_uid = existing.get("gcal_id")
+                            if (old_uid and old_uid != new_uid
+                                    and kind == "milestone"
+                                    and agenda_cal and agenda_cal != cal_name):
+                                _delete_calendar_event(old_uid, agenda_cal)
+                            ids.setdefault(storage_key, {})["gcal_id"] = new_uid
+                            ids[storage_key]["orbit_id"] = item.get("_orbit_id")
+                            ids[storage_key]["snapshot"] = snapshot
+                            _purge_orbit_orphans(ids, storage_key, item.get("_orbit_id"))
+                            _save_ids(project_dir, ids)
+                            # Persist orbit-id back into agenda.md.
+                            agenda_path = resolve_file(project_dir, "agenda")
+                            data = _read_agenda(agenda_path)
+                            section = {"task": "tasks", "milestone": "milestones",
+                                       "reminder": "reminders"}[kind]
+                            for it in data.get(section, []):
+                                if (it.get("desc") == item["desc"]
+                                        and it.get("date") == item.get("date")):
+                                    it["orbit_id"] = item.get("_orbit_id")
+                                    break
+                            _write_agenda(agenda_path, data)
                     item.pop("_gcal_id", None)
                     return
 

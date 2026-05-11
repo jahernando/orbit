@@ -85,7 +85,13 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.29.5, 2026-05-11)
+## Estado actual (v0.29.6, 2026-05-11)
+
+### v0.29.6 (2026-05-11) — fallback legacy-key en `sync_item`
+- **Bug**: tareas/ms/rem cuyo entry en `.gsync-ids.json` quedó bajo la key legacy `desc::date` (pre-v0.29, o que escapó del `--migrate-rem-to-calendar`) no se reconocían en sync_item — el código nuevo buscaba `kind::desc::date`. Resultado: editar tiempo/título/etc no actualizaba el evento en Calendar (o creaba un duplicado al caer en la rama "create new").
+- **Fix** (`core/gsync.py:sync_item`): si no hay entry bajo `_agenda_storage_key(item, kind)` pero sí hay uno bajo `_item_key(item)` con `gcal_id`, usarlo como `existing`. El siguiente save migra el entry al formato nuevo y `_purge_orbit_orphans` borra el legacy. Migración silenciosa, sin comando.
+- **Save también detecta drift de snapshot**: antes la condición de save era `new_uid != existing.gcal_id` — perdía cambios de tiempo/desc cuando el uid se mantenía. Ahora se guarda cuando `gcal_id`, `snapshot` u `orbit_id` divergen del estado en `storage_key`. Cubre también el caso legacy donde el uid no cambia pero la key sí.
+- **Tests**: `tests/test_gsync_agenda.py::TestLegacyKeyFallback` (2 tests). Suite: 1530 pasan.
 
 ### v0.29.5 (2026-05-11) — `ev log` propaga agenda y zoom al logbook
 - **`ev log`**: cuando el evento tiene notas `📋` (agenda/indico) o `🚪` (room/zoom), aparecen como líneas indentadas debajo de la entrada principal del logbook. Formato:
