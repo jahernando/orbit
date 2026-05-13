@@ -378,6 +378,7 @@ def cmd_hl(args):
             link    = getattr(args, "ref", None),
             date_str = getattr(args, "date", None),
             deliver = getattr(args, "deliver", False),
+            track   = getattr(args, "track", False),
         )
     if action == "drop":
         return run_hl_drop(
@@ -428,6 +429,7 @@ def cmd_note(args):
             no_date   = getattr(args, "no_date", False),
             entry     = getattr(args, "entry", None) or "apunte",
             hl_type   = getattr(args, "hl", None),
+            track     = getattr(args, "track", False),
         )
     # default: create (shorthand uses _project/_title/_file)
     title = getattr(args, "title", None) or getattr(args, "_title", "") or ""
@@ -441,6 +443,7 @@ def cmd_note(args):
         no_date   = getattr(args, "no_date", False),
         entry     = getattr(args, "entry", None) or "apunte",
         hl_type   = getattr(args, "hl", None),
+        track     = getattr(args, "track", False),
     )
 
 
@@ -937,6 +940,104 @@ def cmd_ics(args):
     else:
         print(ics, end="")
     return 0
+
+
+def cmd_tracked(args):
+    """Dispatcher for ``orbit tracked {list,refresh,remove,retrack}``."""
+    from core.tracked import (
+        load_registry, refresh_all, unregister, retrack, check_entry,
+        apply_refresh,
+    )
+    from core.config import iter_project_dirs
+
+    action = getattr(args, "action", None) or "list"
+    project_arg = getattr(args, "project", None)
+
+    def _resolve_projects():
+        if not project_arg:
+            return list(iter_project_dirs())
+        from core.log import find_project
+        pd = find_project(project_arg)
+        return [pd] if pd else []
+
+    if action == "list":
+        any_shown = False
+        for pd in _resolve_projects():
+            reg = load_registry(pd)
+            if not reg:
+                continue
+            print(f"  📌 [{pd.name}] ({len(reg)})")
+            for rel, entry in reg.items():
+                outcome = check_entry(pd, rel, entry)
+                status_emoji = {
+                    "clean": "✓", "refreshed": "↻",
+                    "dest_tampered": "⚠️", "conflict": "❌",
+                    "source_missing": "❓"
+                }.get(outcome.status, "?")
+                print(f"    {status_emoji} {rel} ← {entry['source']}")
+            any_shown = True
+        if not any_shown:
+            print("Sin ficheros tracked.")
+        return 0
+
+    if action == "refresh":
+        force_source = getattr(args, "force_source", False)
+        force_dest = getattr(args, "force_dest", False)
+        if force_source and force_dest:
+            print("Error: --force-source y --force-dest son mutuamente exclusivos.")
+            return 2
+        if force_dest:
+            print("--force-dest aún no implementado (requiere escritura inversa al source). "
+                  "Por ahora, edita el source manualmente y vuelve a refresh.")
+            return 2
+        outcomes = refresh_all(_resolve_projects(), force=force_source)
+        for o in outcomes:
+            emoji = {"clean": "✓", "refreshed": "↻",
+                     "dest_tampered": "⚠️", "conflict": "❌",
+                     "source_missing": "❓"}.get(o.status, "?")
+            print(f"  {emoji} [{o.project}] {o.rel_dest}: {o.status}"
+                  + (f" — {o.detail}" if o.detail else ""))
+        return 0
+
+    if action == "remove":
+        if not project_arg:
+            print("Uso: orbit tracked remove <proj> <note>")
+            return 2
+        rel = getattr(args, "note", None)
+        if not rel:
+            print("Error: indica el path relativo del note tracked (ej: notes/decisions.md).")
+            return 2
+        pds = _resolve_projects()
+        if not pds:
+            return 1
+        ok = unregister(pds[0], rel,
+                        keep_file=not getattr(args, "delete_file", False))
+        if ok:
+            print(f"✓ Untracked {rel} en {pds[0].name}")
+        else:
+            print(f"No estaba tracked: {rel}")
+        return 0 if ok else 1
+
+    if action == "retrack":
+        rel = getattr(args, "note", None)
+        new_source = getattr(args, "new_source", None)
+        if not project_arg or not rel or not new_source:
+            print("Uso: orbit tracked retrack <proj> <note> <new-source-path>")
+            return 2
+        from pathlib import Path
+        pds = _resolve_projects()
+        if not pds:
+            return 1
+        try:
+            retrack(pds[0], rel, Path(new_source).expanduser())
+            print(f"✓ Retracked {rel} → {new_source}")
+            return 0
+        except (KeyError, FileNotFoundError) as e:
+            print(f"Error: {e}")
+            return 1
+
+    print(f"Acción desconocida: {action}")
+    return 2
 
 
 def cmd_ics_share(args):
@@ -1510,6 +1611,34 @@ def _build_parser():
     ics_p.add_argument("--validate", action="store_true",
                        help="Dry-run: render the .ics but write nothing. Reports counts per bucket.")
 
+    # --- tracked (external file tracking) ---
+    tr_p   = subparsers.add_parser("tracked",
+                                    help="Manage tracked external markdown files")
+    tr_sub = tr_p.add_subparsers(dest="action")
+
+    tr_list = tr_sub.add_parser("list", help="List tracked files (optionally for one project)")
+    tr_list.add_argument("project", nargs="?", default=None,
+                          help="Project name (partial match). Omit to list all.")
+
+    tr_refresh = tr_sub.add_parser("refresh", help="Refresh tracked files now (does not commit)")
+    tr_refresh.add_argument("project", nargs="?", default=None)
+    tr_refresh.add_argument("--force-source", action="store_true", dest="force_source",
+                             help="Overwrite local dest with source content (discards local edits)")
+    tr_refresh.add_argument("--force-dest", action="store_true", dest="force_dest",
+                             help="(Not yet implemented) Push local dest back to source")
+
+    tr_rm = tr_sub.add_parser("remove", help="Untrack a file (keeps the local copy)")
+    tr_rm.add_argument("project", help="Project name (partial match)")
+    tr_rm.add_argument("note", help="Relative path inside the project, e.g. notes/decisions.md")
+    tr_rm.add_argument("--delete-file", action="store_true", dest="delete_file",
+                        help="Also delete the local copy")
+
+    tr_re = tr_sub.add_parser("retrack", help="Repoint a tracked entry at a new source")
+    tr_re.add_argument("project", help="Project name (partial match)")
+    tr_re.add_argument("note", help="Relative path inside the project, e.g. notes/decisions.md")
+    tr_re.add_argument("new_source", metavar="NEW-SOURCE-PATH",
+                        help="New source path")
+
     # --- ics-share (export a single cita as .ics) ---
     icss_p = subparsers.add_parser("ics-share",
         help="Export one cita (project + orbit-id or desc) to a single-VEVENT .ics for email/Slack")
@@ -1694,6 +1823,8 @@ def _build_parser():
     hl_add.add_argument("--type",  required=True, choices=HL_TYPES,
                         help="Section type: refs, results, decisions, ideas, evals")
     hl_add.add_argument("--deliver", action="store_true", help="Deliver file to cloud (hls/)")
+    hl_add.add_argument("--track", action="store_true",
+                        help="Register the file as tracked (auto-refresh on commit). .md only.")
     hl_add.add_argument("--date",  nargs="?", const="today", default=None,
                         help="Prefix date (today, tomorrow, YYYY-MM-DD)")
 
@@ -1739,6 +1870,8 @@ def _build_parser():
                            help="Logbook entry type (default: apunte)")
     nt_create.add_argument("--hl",      default=None, metavar="TYPE",
                            help="Register in highlights instead of logbook (e.g. referencia)")
+    nt_create.add_argument("--track",   action="store_true",
+                           help="Register as tracked external file (auto-refresh on commit). Requires file.")
     nt_create.add_argument("--editor",  default=None)
 
     nt_import = note_sub.add_parser("import", help="Import an existing .md file as a note")
@@ -1753,6 +1886,8 @@ def _build_parser():
                            help="Logbook entry type (default: apunte)")
     nt_import.add_argument("--hl",      default=None, metavar="TYPE",
                            help="Register in highlights instead of logbook")
+    nt_import.add_argument("--track",   action="store_true",
+                           help="Register as tracked external file (auto-refresh on commit)")
     nt_import.add_argument("--editor",  default=None)
 
     nt_open = note_sub.add_parser("open", help="Open note (create if missing)")
@@ -1783,6 +1918,7 @@ def _build_parser():
     note_p.add_argument("--no-date", action="store_true")
     note_p.add_argument("--entry",   default="apunte")
     note_p.add_argument("--hl",      default=None, metavar="TYPE")
+    note_p.add_argument("--track",   action="store_true")
     note_p.add_argument("--editor",  default=None)
 
     # --- clip ---
@@ -1986,7 +2122,7 @@ _COMMANDS = {
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "reorganize": cmd_reorganize,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,

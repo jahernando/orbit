@@ -132,28 +132,37 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
                     open_after: bool = True, editor: str = "",
                     no_date: bool = False,
                     entry: str = "apunte",
-                    hl_type: Optional[str] = None) -> int:
+                    hl_type: Optional[str] = None,
+                    track: bool = False) -> int:
     """Create a new note or import an existing .md into project notes/.
 
     By default registers in logbook (with date prefix in filename).
     With --hl <type>: registers in highlights instead (no date prefix).
     With --no-date: no date prefix in filename, still registers in logbook.
+    With --track (requires file_str): registers as a tracked external file
+    in ``.orbit-tracked.json``; future commits auto-refresh from the source.
+    Forces ``no_date=True`` (tracked files have a canonical filename).
 
     Args:
         file_str: if given and exists as file, imports it; otherwise title only.
         no_date: skip date prefix in filename.
         entry: logbook entry type (default: apunte).
         hl_type: if set, register in highlights under this section instead of logbook.
+        track: register as tracked external file (requires file_str).
     """
     project_dir = _find_new_project(project)
     if project_dir is None:
         return 1
 
+    if track and not file_str:
+        print("Error: --track requiere un fichero origen (úsalo con --file o pasando un path).")
+        return 1
+
     notes_dir = project_dir / "notes"
     notes_dir.mkdir(exist_ok=True)
 
-    # Decide filename: date prefix for logbook entries, plain for highlights/no-date
-    use_date_prefix = not hl_type and not no_date
+    # Decide filename: date prefix for logbook entries, plain for highlights/no-date/track.
+    use_date_prefix = not hl_type and not no_date and not track
     base_name = _title_to_filename(title)
     if use_date_prefix:
         note_name = f"{date.today().isoformat()}_{base_name}"
@@ -173,8 +182,17 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
             print(f"Error: solo se pueden importar ficheros .md (recibido: {src.name})")
             return 1
         save_snapshot(dest)
-        shutil.copy2(src, dest)
-        print(f"✓ [{project_dir.name}] Nota importada: {note_name}")
+        if track:
+            from core.tracked import register as _tracked_register
+            try:
+                _tracked_register(project_dir, f"notes/{note_name}", src)
+            except ValueError as e:
+                print(f"Error: {e}")
+                return 1
+            print(f"✓ [{project_dir.name}] Nota tracked: {note_name} ← {src}")
+        else:
+            shutil.copy2(src, dest)
+            print(f"✓ [{project_dir.name}] Nota importada: {note_name}")
     else:
         if dest.exists():
             print(f"⚠️  La nota ya existe: {note_name} (se sobreescribirá)")
@@ -216,16 +234,18 @@ def run_note_import(project: str, title: str, file_str: str,
                     open_after: bool = True, editor: str = "",
                     no_date: bool = False,
                     entry: str = "apunte",
-                    hl_type: Optional[str] = None) -> int:
+                    hl_type: Optional[str] = None,
+                    track: bool = False) -> int:
     """Import an existing .md file as a project note, log it, and clip the link.
 
     Like run_note_create with a file, but file is required and the markdown
-    link to the new note is copied to the clipboard.
+    link to the new note is copied to the clipboard. With ``track=True``
+    the file is registered as a tracked external file (auto-refresh on commit).
     """
     rc = run_note_create(
         project=project, title=title, file_str=file_str,
         open_after=open_after, editor=editor, no_date=no_date,
-        entry=entry, hl_type=hl_type,
+        entry=entry, hl_type=hl_type, track=track,
     )
     if rc != 0:
         return rc
@@ -235,7 +255,7 @@ def run_note_import(project: str, title: str, file_str: str,
     if project_dir is None:
         return 0  # note was already created, just can't clip
 
-    use_date_prefix = not hl_type and not no_date
+    use_date_prefix = not hl_type and not no_date and not track
     base_name = _title_to_filename(title)
     if use_date_prefix:
         note_name = f"{date.today().isoformat()}_{base_name}"

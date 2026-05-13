@@ -212,6 +212,34 @@ Solo en `.ics`. `agenda.md` no contiene este dato.
 
 ---
 
+## ADR-024 — Ficheros tracked: copia versionada en orbit-ws con refresh automático
+**Estado**: VIGENTE (desde v0.34)
+**Contexto**: hay ficheros markdown que evolucionan y viven *fuera* del workspace de orbit (DECISIONS.md en el repo del código, drafts compartidos con colaboradores, planes vivos). Querías versionarlos en orbit-ws y tener el cloud actualizado sin re-importación manual tras cada edición.
+**Decisión**: dos modos de importación distintos para notes y highlights:
+
+- **Static** (`--file`): copia única, fechada en el filename, congelada. Ideal para PDFs, papers publicados, attachments. Comportamiento de orbit pre-v0.34.
+- **Dynamic / tracked** (`--track`): mirror sin fecha en `notes/<slug>.md`, registrado en `.orbit-tracked.json` por proyecto. El pre-commit hook re-importa el fichero si el origen cambió. Sólo `.md` (los binarios no se diffean útilmente en git).
+
+El fichero importado lleva frontmatter `orbit_tracked_from: <path>` como pista humana ("no me edites, soy un mirror").
+
+**Detección de conflictos** (cuatro escenarios cubiertos por `core/tracked.check_entry`):
+- source y dest sin cambios → no se hace nada
+- solo source cambió → refresh automático
+- solo dest cambió (usuario editó la copia por error) → **ABORT** commit con warning, sugerir `untrack`/`retrack`/`force-source`
+- source y dest cambiaron a la vez → **ABORT** commit, conflicto como merge git
+
+`orbit tracked refresh --force-source` resuelve descartando la copia local; `--force-dest` (pendiente de v1) escribiría la copia sobre el source.
+
+**Consecuencias positivas**: una sola verdad por fichero (el origen), versionado en git de orbit-ws, cloud auto-actualizado, sin re-importación manual, detección honesta de conflictos.
+**Consecuencias negativas**: complejidad añadida en commit pre-hook + doctor; nuevo concepto que el usuario debe entender (la asimetría static/dynamic).
+**Tradeoff considerado**: symlinks (rechazado — incompatible con cloud sync clients y con clones del repo público), hardlinks (rechazado — frágil cross-volume), git submodule (rechazado — pesado), reference-only sin copia (rechazado — pierde versionado git). Ver `DEPENDENCIES.md` y la discusión completa en el changelog de v0.34.
+
+**Comandos**: `orbit hl add --track <file>`, `orbit note <proj> "title" --track <file>`, `orbit tracked list/refresh/remove/retrack`.
+
+**Where lives**: `core/tracked.py` (~250 líneas), tests en `tests/test_tracked.py`, hook en `core/commit.py:run_commit`, check en `core/doctor.py`.
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

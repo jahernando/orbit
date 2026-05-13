@@ -302,6 +302,39 @@ def run_commit(message: Optional[str] = None) -> int:
     except Exception:
         pass
 
+    # Refresh tracked external files (see DECISIONS.md ADR-024).
+    # Aborts the commit on dest-tampered or source/dest conflicts so the
+    # user resolves them explicitly rather than losing work silently.
+    try:
+        from core.tracked import refresh_all
+        from core.config import iter_project_dirs
+        outcomes = refresh_all(list(iter_project_dirs()), force=False)
+        refreshed = [o for o in outcomes if o.status == "refreshed"]
+        tampered  = [o for o in outcomes if o.status == "dest_tampered"]
+        conflicts = [o for o in outcomes if o.status == "conflict"]
+        missing   = [o for o in outcomes if o.status == "source_missing"]
+        for o in refreshed:
+            print(f"  ↻ [{o.project}] {o.rel_dest} ← {o.source}")
+        if refreshed:
+            _git_add_all_tracked()
+        for o in missing:
+            print(f"  ⚠️  [{o.project}] {o.rel_dest}: {o.detail}")
+        if tampered or conflicts:
+            print()
+            print(f"❌ Commit abortado: {len(tampered) + len(conflicts)} tracked file{'s' if len(tampered) + len(conflicts) != 1 else ''} con problemas:")
+            for o in tampered:
+                print(f"  ⚠️  [{o.project}] {o.rel_dest}: {o.detail}")
+            for o in conflicts:
+                print(f"  ❌ [{o.project}] {o.rel_dest}: {o.detail}")
+            print()
+            print("Resoluciones:")
+            print("  orbit tracked refresh --force-source <note>   # descartar edits en la copia")
+            print("  orbit tracked refresh --force-dest <note>     # escribir tu copia sobre el origen")
+            print("  orbit tracked remove <proj> <note>            # untrack (conserva la copia local)")
+            return 1
+    except Exception as e:
+        print(f"  ⚠️  Tracked refresh falló: {e}")
+
     # Run doctor checks before committing
     try:
         from core.doctor import check_all_projects

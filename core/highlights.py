@@ -247,7 +247,8 @@ def _ask_deliver() -> bool:
 def run_hl_add(project: str, text: str, hl_type: str,
                link: Optional[str] = None,
                date_str: Optional[str] = None,
-               deliver: bool = False) -> int:
+               deliver: bool = False,
+               track: bool = False) -> int:
     if hl_type not in SECTION_MAP:
         print(f"Error: tipo '{hl_type}' no válido. Opciones: {', '.join(VALID_TYPES)}")
         return 1
@@ -265,8 +266,34 @@ def run_hl_add(project: str, text: str, hl_type: str,
             return 1
         text = f"{text} ({resolved})"
 
+    # --- Tracked external file shortcut ---
+    # When --track is used, the file is mirrored into notes/<slug>.md,
+    # registered in .orbit-tracked.json, and the highlight points to it.
+    # The post-commit hook refreshes it whenever the source changes.
+    if track:
+        if not link:
+            print("Error: --track requiere un fichero origen.")
+            return 1
+        from pathlib import Path
+        src = Path(link).expanduser()
+        if not src.exists():
+            print(f"Error: no existe {src}")
+            return 1
+        from core.tracked import register as _tracked_register
+        # Derive a stable filename from the highlight text (slugified).
+        from core.notes import _title_to_filename
+        rel_dest = f"notes/{_title_to_filename(text)}"
+        try:
+            _tracked_register(project_dir, rel_dest, src)
+        except (FileNotFoundError, ValueError) as e:
+            print(f"Error: {e}")
+            return 1
+        link = f"./{rel_dest}"
+        print(f"  ↻ tracked desde {src}")
+        # Fall through to highlight write below.
+
     # Handle file/URL/deliver logic for link argument
-    if link:
+    elif link:
         if _is_url(link) or link.startswith("./"):
             pass  # keep as-is (URL or relative link)
         else:

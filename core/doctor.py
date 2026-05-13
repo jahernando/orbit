@@ -542,6 +542,27 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     except Exception:
         pass
 
+    # Check tracked external files (v0.34, see DECISIONS.md ADR-024).
+    try:
+        from core.tracked import iter_tracked, check_entry
+        from core.config import iter_project_dirs
+        tracked_problems = []
+        for pd, rel, entry in iter_tracked(list(iter_project_dirs())):
+            outcome = check_entry(pd, rel, entry)
+            if outcome.status not in ("clean", "refreshed"):
+                tracked_problems.append(outcome)
+        if tracked_problems:
+            print(f"  📌 Tracked: {len(tracked_problems)} fichero"
+                  f"{'s' if len(tracked_problems) != 1 else ''} con problema:")
+            for o in tracked_problems:
+                emoji = {"dest_tampered": "⚠️", "conflict": "❌",
+                         "source_missing": "❓"}.get(o.status, "?")
+                print(f"      {emoji} [{o.project}] {o.rel_dest}: {o.detail}")
+            print("  → orbit tracked refresh / remove / retrack para resolver.")
+            print()
+    except Exception:
+        pass
+
     if not issues:
         print("✓ Todo en orden — no se encontraron problemas.")
         return 0
