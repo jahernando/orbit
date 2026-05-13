@@ -391,6 +391,61 @@ note import next-kr "Resultados" ./results.md       # importa .md existente (log
 note list next-kr                                   # listar notas con estado git
 ```
 
+Las notas se clasifican en `note list` con tres emojis:
+
+- **✏️ libre**: tú la escribiste en orbit (sin prefijo de fecha en el nombre).
+- **📌 snapshot**: importaste un `.md` externo como copia fija (con `--file`, prefijo `YYYY-MM-DD_`). Si el original cambia, tu copia no.
+- **🔄 tracked**: el fichero externo se refresca automáticamente cuando lo edites (ver sección siguiente).
+
+### Tracked — ficheros externos que evolucionan
+
+Para markdown que vive fuera de orbit-ws pero quieres versionado y con cloud actualizado sin reimportar manualmente (ej. `DECISIONS.md` de otro repo, draft de paper, plan vivo):
+
+```bash
+track next-kr "Calibración-spec" --file ~/repos/specs/calibration.md
+# equivalente:
+note next-kr "Calibración-spec" --file ~/repos/specs/calibration.md --track
+```
+
+Lo que pasa:
+
+1. Orbit copia el fichero a `next-kr/notes/calibracion-spec.md` (sin fecha, nombre canónico).
+2. Lo registra en `next-kr/.orbit-tracked.json` con un hash del contenido.
+3. Le añade una línea de frontmatter `orbit_tracked_from: <ruta>` (pista visual: no editar el mirror).
+4. Crea entrada en logbook como cualquier `note import`.
+
+Después, cuando edites el fichero original y hagas `orbit commit`:
+
+- Pre-commit detecta que el source cambió → copia el nuevo contenido al mirror → lo añade al commit.
+- Render genera HTML actualizado al cloud (sin acciones extra).
+
+**Si editas el mirror por error** (la copia dentro de orbit-ws), el pre-commit aborta:
+
+```
+❌ Commit abortado: 1 tracked file con problemas:
+  ⚠️ [next-kr] notes/calibracion-spec.md: la copia tracked fue editada;
+     tus cambios se perderán al próximo refresh
+
+Resoluciones:
+  orbit tracked refresh --force-source <note>   # descartar edits en la copia
+  orbit tracked remove <proj> <note>            # untrack (conserva la copia local)
+```
+
+Otros comandos de gestión:
+
+```bash
+tracked list                              # ver todos los tracked del workspace
+tracked list next-kr                      # solo un proyecto
+tracked refresh                           # refresh ad-hoc, sin commit
+tracked refresh --force-source            # source gana siempre (descarta tus edits)
+tracked remove next-kr notes/calibracion-spec.md      # untrack
+tracked retrack next-kr notes/calibracion-spec.md ~/repos-nuevo/calibration.md
+```
+
+**Limitación**: solo ficheros `.md`. Git no diffea binarios útilmente y el render solo procesa markdown. Para PDFs que cambian, usa `orbit deliver` con re-entrega cuando haga falta.
+
+**Diseño completo** en `DECISIONS.md` ADR-024.
+
 ### Clip — copiar al portapapeles
 
 ```bash

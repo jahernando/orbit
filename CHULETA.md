@@ -148,13 +148,14 @@ orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [
 ## hl — highlights
 
 ```bash
-orbit hl add  <project> "<text>" [<file|url>] --type TYPE [--deliver] [--date [FECHA]]
+orbit hl add  <project> "<text>" [<file|url>] --type TYPE [--deliver] [--track] [--date [FECHA]]
 orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
 orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE] [--editor E]
 ```
 
 - `<file|url>`: argumento posicional opcional. Si es URL, enlaza el texto. Si es fichero local, enlaza y pregunta si quieres entregarlo a cloud
 - `--deliver`: entrega el fichero directamente a cloud sin preguntar (copia a `hls/`, sin prefijo de fecha)
+- `--track`: registra el fichero como **tracked** (auto-refresh en cada commit). Solo `.md`. Ver sección [tracked](#tracked--ficheros-dinámicos-en-evolución) abajo
 - `--type`: `refs` (📎) · `results` (📊) · `decisions` (📌) · `ideas` (💡) · `evals` (🔍) · `plans` (🗓️)
 - `--date`: añade fecha al final del texto — `--date` (hoy), `--date tomorrow`, `--date 2026-04-15`
 - `drop` pide confirmación (defecto **No**); `--force` la omite
@@ -166,26 +167,67 @@ orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE]
 
 ```bash
 orbit note <project> "<title>" [<file>]          # crear nota (atajo sin subcomando)
-orbit note create <project> "<title>" [--file F] [--no-open] [--editor E]
-orbit note import <project> "<title>" <file>     # importar .md existente (log + clip)
+orbit note create <project> "<title>" [--file F] [--track] [--no-open] [--editor E]
+orbit note import <project> "<title>" <file> [--track]    # importar .md (log + clip)
 orbit note open   <project> [<name>] [--date D] [--editor E]
 orbit note list   <project> [--open [EDITOR]]
 orbit note drop   <project> [<file>] [--force]
 ```
 
 - **import**: importa un fichero `.md` existente en `notes/`, registra en logbook y copia el enlace markdown al portapapeles
-  - Acepta los mismos flags que `create` (`--no-date`, `--entry`, `--hl`, `--no-open`)
+  - Acepta los mismos flags que `create` (`--no-date`, `--entry`, `--hl`, `--no-open`, `--track`)
 - **create**: crea nota en `notes/` a partir de plantilla y registra en logbook
   - Nombre del fichero: `YYYY-MM-DD_título.md` (con fecha de hoy como prefijo)
   - Contenido: título + línea `*YYYY-MM-DD — [proyecto](link)*`
   - Con `--hl <tipo>`: registra en highlights en vez de logbook, sin prefijo de fecha en el nombre
   - Con `--no-date`: sin prefijo de fecha en el nombre, sigue registrando en logbook
-  - Con `<file>`: importa un `.md` existente en vez de crear desde plantilla
+  - Con `<file>`: importa un `.md` existente en vez de crear desde plantilla (snapshot estático)
+  - Con `--track` (requiere `--file` o `<file>` positional): el fichero queda como mirror dinámico — auto-refresh en commit. Ver [tracked](#tracked--ficheros-dinámicos-en-evolución)
   - Pregunta: `¿Añadir <fichero> a git? [S/n]`
 - **open**: abre nota existente o la crea si no existe
   - `--date D`: genera nombre por fecha (YYYY-MM-DD, YYYY-Wnn, YYYY-MM)
   - Sin nombre ni fecha: selector interactivo
 - **drop**: pide confirmación (defecto **No**); `--force` la omite
+- **list**: marca el tipo de cada nota con emoji:
+  - ✏️ libre (nota tuya, sin fecha en el nombre)
+  - 📌 snapshot (importada con `--file`, prefijo de fecha)
+  - 🔄 tracked (mirror dinámico, auto-refresh)
+
+---
+
+## tracked — ficheros dinámicos en evolución
+
+Casos: `DECISIONS.md`, `README.md` de otro repo, draft de paper colaborativo, plan vivo. **Markdown fuera de orbit-ws que evoluciona, lo quieres versionado y con cloud actualizado, sin re-importar manualmente**.
+
+```bash
+orbit track <project> "<title>" --file <ruta.md> [--hl TYPE]
+orbit note  <project> "<title>" --track --file <ruta.md>          # equivalente
+orbit hl add <project> "<title>" <ruta.md> --type TYPE --track    # equivalente con highlight
+
+orbit tracked list [<project>]                              # lista con status
+orbit tracked refresh [<project>] [--force-source]          # refresh ad-hoc
+orbit tracked remove <project> <note> [--delete-file]       # untrack
+orbit tracked retrack <project> <note> <new-source-path>    # repuntar a otro origen
+```
+
+- `orbit track` es alias top-level de `note --track --file` con `--no-date` forzado. Si conceptualmente piensas "voy a trackear este fichero", úsalo.
+- El fichero se copia a `<project>/notes/<slug>.md` con frontmatter `orbit_tracked_from: <path>` (pista humana: no editar el mirror).
+- El registry persiste en `<project>/.orbit-tracked.json` (formato: dict `rel_dest → {source, sha256, added}`).
+- **Auto-refresh**: el pre-commit hook (`orbit commit`) compara el SHA256 del source y del dest. Cuatro escenarios:
+  - source y dest sin cambios → nada
+  - source cambió, dest limpio → refresh + sigue commit
+  - dest cambió (editaste el mirror por error) → **ABORT** commit con warning
+  - source y dest cambiaron a la vez → **ABORT** commit, conflicto manual
+- **Resolución de conflictos**:
+  - `orbit tracked refresh --force-source` — source gana, descarta tu edición local del mirror
+  - `--force-dest` — pendiente (escribirá el dest sobre el source)
+  - `orbit tracked remove <proj> notes/decisions.md` — untrack (conserva tu copia local)
+  - `orbit tracked retrack <proj> notes/decisions.md ~/new/path.md` — repunta al source nuevo
+- **Solo `.md`**. PDFs y binarios no se trackean (git no diffea binarios útilmente; para PDFs que cambian, usa `orbit deliver` con re-deliver cuando haga falta).
+- **Doctor** valida tracked en cada `orbit commit` y en `orbit doctor`: reporta `source_missing`, `dest_tampered`, `conflict`. Cuando todo está OK, imprime "🔄 Tracked: N ficheros OK".
+- **Render HTML al cloud**: cada refresh modifica el `.md` del proyecto → `render_changed` lo procesa post-commit → HTML actualizado en el cloud sin acciones extra.
+- **Sección "🔄 Tracked"** automática en project.md (versión HTML del cloud) listando los ficheros tracked con link a su HTML y al source.
+- Diseño completo en `DECISIONS.md` ADR-024.
 
 ---
 
