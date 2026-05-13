@@ -209,82 +209,155 @@ def _extract_orbit_id(text: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-# ── Task/milestone line parsing ────────────────────────────────────────────────
+# ── Shared regex patterns for "simple cita" lines (task / milestone / reminder)
+#
+# These three kinds share the same attribute syntax — only their prefix
+# differs (`- [ ]/[x]/[-]` for task/ms, `- ` or `- [-]` for reminder).
+# Each pattern has an emoji form and a legacy bracketed form that older
+# agendas may still use.
 
-def _parse_task_line(line: str) -> Optional[dict]:
-    """Parse - [ ]/[x]/[-] line → dict with status/desc/date/recur/ring."""
-    m = re.match(r"^- \[( |x|-)\] (.+)$", line)
+_DATE_RE  = re.compile(r"\((\d{4}-\d{2}-\d{2})\)")
+_RECUR_RE = re.compile(r"🔄(\S+)|\[recur:([^\]]+)\]")
+_RING_RE  = re.compile(r"🔔(\S+)|\[ring:([^\]]+)\]")
+_TIME_RE  = re.compile(r"⏰(\S+)|\[time:([^\]]+)\]")
+
+# Patterns stripped from a line to recover the bare ``desc`` (one pass).
+# Includes legacy sync markers (`[G]`, `[gtask:…]`) and the dormant
+# `☁️` so old agendas parse cleanly.
+_DESC_STRIP_PATS = [
+    r"\(\d{4}-\d{2}-\d{2}\)",
+    r"🔄\S+", r"\[recur:[^\]]+\]",
+    r"🔔\S+", r"\[ring:[^\]]+\]",
+    r"⏰\S+", r"\[time:[^\]]+\]",
+    r"☁️", r"\[G\]", r"\[gtask:[^\]]+\]",
+    r"\[orbit:[0-9a-f]{8}\]",
+]
+_DESC_STRIP_RE = re.compile("|".join(_DESC_STRIP_PATS))
+
+
+def _extract_recur(text: str) -> tuple:
+    """Return (recur, until) — either via 🔄 or legacy [recur:]."""
+    m = _RECUR_RE.search(text)
+    if not m:
+        return (None, None)
+    raw = m.group(1) or m.group(2)
+    if ":" in raw:
+        recur, until = raw.split(":", 1)
+        return (recur, until)
+    return (raw, None)
+
+
+def _extract_emoji_or_legacy(regex, text: str) -> Optional[str]:
+    """Match either group of an emoji-or-legacy regex pair."""
+    m = regex.search(text)
     if not m:
         return None
-    status = {" ": "pending", "x": "done", "-": "cancelled"}[m.group(1)]
-    rest   = m.group(2)
+    return m.group(1) or m.group(2)
 
-    date_val = recur = until = ring = time_val = None
-    date_m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", rest)
-    if date_m:
-        date_val = date_m.group(1)
-    # Recur: emoji 🔄 or legacy [recur:]
-    recur_m = re.search(r"🔄(\S+)", rest) or re.search(r"\[recur:([^\]]+)\]", rest)
-    if recur_m:
-        raw = recur_m.group(1)
-        if ":" in raw:
-            recur, until = raw.split(":", 1)
-        else:
-            recur = raw
-    # Ring: emoji 🔔 or legacy [ring:]
-    ring_m = re.search(r"🔔(\S+)", rest) or re.search(r"\[ring:([^\]]+)\]", rest)
-    if ring_m:
-        ring = ring_m.group(1)
-    # Time: emoji ⏰ or legacy [time:]
-    time_m = re.search(r"⏰(\S+)", rest) or re.search(r"\[time:([^\]]+)\]", rest)
-    if time_m:
-        time_val = time_m.group(1)
+
+def _clean_desc(text: str) -> str:
+    """Strip all known attribute patterns to recover bare desc."""
+    return _DESC_STRIP_RE.sub("", text).strip()
+
+
+# ── Task / milestone / reminder line parsing ───────────────────────────────────
+
+def _parse_simple_line(line: str, kind: str) -> Optional[dict]:
+    """Parse one task/milestone/reminder line.
+
+    ``kind`` controls the prefix shape and which attributes are read:
+    - ``task`` / ``milestone``: ``- [ ]/[x]/[-]`` prefix with status; ring supported.
+    - ``reminder``: ``- `` or ``- [-]`` prefix (cancellable, no status); no ring.
+
+    Returns a dict with the standard fields, or ``None`` if the line
+    doesn't match the expected shape.
+    """
+    if kind == "reminder":
+        m = re.match(r"^- (?:\[-\] )?(.+)$", line)
+        if not m:
+            return None
+        cancelled = line.startswith("- [-]")
+        rest = m.group(1)
+        prefix_data = {"cancelled": cancelled}
+    else:   # task | milestone
+        m = re.match(r"^- \[( |x|-)\] (.+)$", line)
+        if not m:
+            return None
+        status = {" ": "pending", "x": "done", "-": "cancelled"}[m.group(1)]
+        rest = m.group(2)
+        prefix_data = {"status": status}
+
+    date_m = _DATE_RE.search(rest)
+    date_val = date_m.group(1) if date_m else None
+    recur, until = _extract_recur(rest)
+    time_val = _extract_emoji_or_legacy(_TIME_RE, rest)
     orbit_id = _extract_orbit_id(rest)
-    # v0.30: ☁️ in the line means "calendar render is verified to match
-    # orbit's state". sync_item adds it after a successful read-back;
-    # any edit removes it until the next verify.
+    # v0.30 ☁️ marker: parser still tolerates it; formatter no longer
+    # writes it (v0.33 — AppleScript-write retired).
     cloud_verified = "☁️" in rest
+    desc = _clean_desc(rest)
 
-    # Description = rest minus attribute patterns (both emoji and legacy).
-    # [G] / [gtask:…] are legacy sync markers — strip silently; the
-    # presence of [orbit:xxx] + ☁️ is now the canonical "synced+verified"
-    # indicator.
-    desc = rest
-    for pat in [r"\(\d{4}-\d{2}-\d{2}\)",
-                r"🔄\S+", r"\[recur:[^\]]+\]",
-                r"🔔\S+", r"\[ring:[^\]]+\]",
-                r"⏰\S+", r"\[time:[^\]]+\]",
-                r"☁️", r"\[G\]", r"\[gtask:[^\]]+\]",
-                r"\[orbit:[0-9a-f]{8}\]"]:
-        desc = re.sub(pat, "", desc)
-    desc = desc.strip()
+    if kind == "reminder" and (not date_val or not time_val):
+        # Reminders require both a date and a time (it's the only thing
+        # that distinguishes them in the absence of a checkbox prefix).
+        return None
 
-    return {"status": status, "desc": desc, "date": date_val,
-            "recur": recur, "until": until, "ring": ring,
-            "time": time_val, "orbit_id": orbit_id,
-            "cloud_verified": cloud_verified}
+    item = {
+        "desc": desc, "date": date_val, "recur": recur, "until": until,
+        "time": time_val, "orbit_id": orbit_id,
+        "cloud_verified": cloud_verified,
+    }
+    item.update(prefix_data)
+    if kind != "reminder":
+        item["ring"] = _extract_emoji_or_legacy(_RING_RE, rest)
+    return item
+
+
+def _format_simple_line(item: dict, kind: str) -> str:
+    """Serialize a task/milestone/reminder dict → markdown line.
+
+    Inverse of :func:`_parse_simple_line`. ``kind`` selects the prefix:
+    - ``task`` / ``milestone``: ``- [ ]/[x]/[-]`` from ``item["status"]``.
+    - ``reminder``: ``- [-] `` if cancelled, else ``- ``.
+
+    Attribute order in the line: ``desc (date) ⏰time 🔄recur 🔔ring [orbit:id]``.
+    """
+    parts = [item["desc"]]
+    if item.get("date"):
+        parts.append(f"({item['date']})")
+    if item.get("time"):
+        parts.append(f"⏰{item['time']}")
+    if item.get("recur"):
+        recur_tag = item["recur"]
+        if item.get("until"):
+            recur_tag += f":{item['until']}"
+        parts.append(f"🔄{recur_tag}")
+    if kind != "reminder" and item.get("ring"):
+        parts.append(f"🔔{item['ring']}")
+    # ☁️ marker dormant since v0.33 — vestigial cloud_verified is parsed
+    # but never re-emitted.
+    if item.get("orbit_id"):
+        parts.append(f"[orbit:{item['orbit_id']}]")
+    body = " ".join(parts)
+    if kind == "reminder":
+        prefix = "- [-] " if item.get("cancelled") else "- "
+        return f"{prefix}{body}"
+    char = {"pending": " ", "done": "x", "cancelled": "-"}[item["status"]]
+    return f"- [{char}] {body}"
+
+
+# Thin wrappers kept so existing callers (orbit.py, render.py, ics.py,
+# tests, etc.) don't break. They just dispatch to the unified parsers/
+# formatters above.
+
+def _parse_task_line(line: str) -> Optional[dict]:
+    """Parse a task/milestone line. See :func:`_parse_simple_line`."""
+    return _parse_simple_line(line, "task")
 
 
 def _format_task_line(task: dict) -> str:
-    """Serialize a task/milestone dict → markdown line."""
-    char = {"pending": " ", "done": "x", "cancelled": "-"}[task["status"]]
-    parts = [task["desc"]]
-    if task.get("date"):
-        parts.append(f"({task['date']})")
-    if task.get("time"):
-        parts.append(f"⏰{task['time']}")
-    if task.get("recur"):
-        recur_tag = task["recur"]
-        if task.get("until"):
-            recur_tag += f":{task['until']}"
-        parts.append(f"🔄{recur_tag}")
-    if task.get("ring"):
-        parts.append(f"🔔{task['ring']}")
-    # ☁️ marker dormant since v0.33 (AppleScript-write path retired).
-    # Vestigial cloud_verified field is parsed but not re-written.
-    if task.get("orbit_id"):
-        parts.append(f"[orbit:{task['orbit_id']}]")
-    return f"- [{char}] {' '.join(parts)}"
+    """Serialize a task or milestone dict. See :func:`_format_simple_line`."""
+    return _format_simple_line(task, "task")
 
 
 # ── Event line parsing ─────────────────────────────────────────────────────────
@@ -358,65 +431,13 @@ def _format_event_line(ev: dict) -> str:
 # ── Reminder line parsing ──────────────────────────────────────────────────────
 
 def _parse_reminder_line(line: str) -> Optional[dict]:
-    """Parse - / [-] reminder line → dict with desc/date/time/recur."""
-    m = re.match(r"^- (?:\[-\] )?(.+)$", line)
-    if not m:
-        return None
-    rest = m.group(0)
-    cancelled = rest.startswith("- [-]")
-    rest = m.group(1)
-
-    date_val = recur = until = time_val = None
-    date_m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", rest)
-    if date_m:
-        date_val = date_m.group(1)
-    time_m = re.search(r"⏰(\S+)", rest) or re.search(r"\[time:([^\]]+)\]", rest)
-    if time_m:
-        time_val = time_m.group(1)
-    recur_m = re.search(r"🔄(\S+)", rest) or re.search(r"\[recur:([^\]]+)\]", rest)
-    if recur_m:
-        raw = recur_m.group(1)
-        if ":" in raw:
-            recur, until = raw.split(":", 1)
-        else:
-            recur = raw
-
-    orbit_id = _extract_orbit_id(rest)
-    cloud_verified = "☁️" in rest
-    desc = rest
-    for pat in [r"\(\d{4}-\d{2}-\d{2}\)", r"⏰\S+", r"\[time:[^\]]+\]",
-                r"🔄\S+", r"\[recur:[^\]]+\]",
-                r"☁️",
-                r"\[orbit:[0-9a-f]{8}\]"]:
-        desc = re.sub(pat, "", desc)
-    desc = desc.strip()
-
-    if not date_val or not time_val:
-        return None  # recordatorios require both date and time
-
-    return {"desc": desc, "date": date_val, "time": time_val,
-            "recur": recur, "until": until,
-            "cancelled": cancelled, "orbit_id": orbit_id,
-            "cloud_verified": cloud_verified}
+    """Parse a reminder line. See :func:`_parse_simple_line`."""
+    return _parse_simple_line(line, "reminder")
 
 
 def _format_reminder_line(rem: dict) -> str:
-    """Serialize a reminder dict → markdown line."""
-    prefix = "- [-] " if rem.get("cancelled") else "- "
-    parts = [rem["desc"]]
-    if rem.get("date"):
-        parts.append(f"({rem['date']})")
-    if rem.get("time"):
-        parts.append(f"⏰{rem['time']}")
-    if rem.get("recur"):
-        recur_tag = rem["recur"]
-        if rem.get("until"):
-            recur_tag += f":{rem['until']}"
-        parts.append(f"🔄{recur_tag}")
-    # ☁️ marker dormant since v0.33 (see _format_task_line note).
-    if rem.get("orbit_id"):
-        parts.append(f"[orbit:{rem['orbit_id']}]")
-    return f"{prefix}{' '.join(parts)}"
+    """Serialize a reminder dict. See :func:`_format_simple_line`."""
+    return _format_simple_line(rem, "reminder")
 
 
 # ── Agenda file I/O ────────────────────────────────────────────────────────────
