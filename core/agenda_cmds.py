@@ -280,8 +280,8 @@ def _format_task_line(task: dict) -> str:
         parts.append(f"🔄{recur_tag}")
     if task.get("ring"):
         parts.append(f"🔔{task['ring']}")
-    if task.get("cloud_verified"):
-        parts.append("☁️")
+    # ☁️ marker dormant since v0.33 (AppleScript-write path retired).
+    # Vestigial cloud_verified field is parsed but not re-written.
     if task.get("orbit_id"):
         parts.append(f"[orbit:{task['orbit_id']}]")
     return f"- [{char}] {' '.join(parts)}"
@@ -349,8 +349,7 @@ def _format_event_line(ev: dict) -> str:
         line += f" 🔄{recur_tag}"
     if ev.get("ring"):
         line += f" 🔔{ev['ring']}"
-    if ev.get("cloud_verified"):
-        line += " ☁️"
+    # ☁️ marker dormant since v0.33 (see _format_task_line note).
     if ev.get("orbit_id"):
         line += f" [orbit:{ev['orbit_id']}]"
     return line
@@ -414,8 +413,7 @@ def _format_reminder_line(rem: dict) -> str:
         if rem.get("until"):
             recur_tag += f":{rem['until']}"
         parts.append(f"🔄{recur_tag}")
-    if rem.get("cloud_verified"):
-        parts.append("☁️")
+    # ☁️ marker dormant since v0.33 (see _format_task_line note).
     if rem.get("orbit_id"):
         parts.append(f"[orbit:{rem['orbit_id']}]")
     return f"{prefix}{' '.join(parts)}"
@@ -1166,6 +1164,14 @@ def _generic_add(type_name: str, project: str, text: str,
                  room: Optional[str] = None) -> int:
     """Generic add for all 4 appointment types."""
     cfg = _TYPE_CONFIG[type_name]
+    # Reject empty text — argparse leaves the positional as None when
+    # omitted; without this the item would land in agenda.md as a
+    # literal "None" desc (bug from before v0.32).
+    if text is None or not str(text).strip():
+        label = cfg["label"].lower()
+        print(f"⚠️  Falta el texto del {label}. Uso: orbit {type_name} add "
+              f"<proyecto> \"<texto>\" ...")
+        return 1
     if recur:
         recur = _normalize_recur(recur)
     if cfg["has_end"] and end_date and not _valid_date(end_date):

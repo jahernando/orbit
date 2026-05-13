@@ -492,47 +492,97 @@ orbit commit ["<mensaje>"]
 - Ejecuta reconciliación gsync: detecta renombramientos de citas en el markdown y migra IDs de Google
 - Push al remoto: `orbit_push` desde la terminal del sistema (fuera de la shell)
 
-### Calendar.app — gsync
+### Sincronización legacy con Calendar.app (`gsync`, `calsync`)
+
+**Deprecado desde v0.33**. La sincronización con Calendar pasa ahora por `.ics` (ver sección siguiente) y `agenda.md` es la única fuente de verdad. Calendar.app es read-only por subscripción.
+
+Si por alguna razón necesitas el camino AppleScript-write antiguo (push directo, reconciliación de drift…), ver `DORMANT.md` con los pasos exactos para revivirlo. Por defecto los comandos `orbit gsync` y `orbit calsync` ya no aparecen en el CLI.
+
+### Calendar.app — ics (export iCalendar / suscripciones) ← ruta principal desde v0.33
 
 ```bash
-orbit gsync                                # push: todos los proyectos
-orbit gsync <proyecto>                     # solo ese proyecto (match por substring)
-orbit gsync --dry-run                      # preview sin escribir
-orbit gsync --list-calendars               # lista calendarios de Calendar.app
-orbit gsync --migrate-rem-to-calendar      # one-shot: tasks/ms/rem Reminders.app → calendario agenda
+orbit ics <proyecto>                       # imprime .ics a stdout
+orbit ics <proyecto> --out file.ics        # escribe a fichero
+orbit ics --bucket agenda                  # un bucket de workspace (agenda|events|ms|...)
+orbit ics --workspace                      # regenera todos los .ics en cloud_root/calendar/
+orbit ics --validate                       # dry-run: cuenta VEVENTs por bucket, sin escribir
 ```
 
-**Reverse sync deprecado:** orbit es la fuente de verdad. Calendar.app es render: ves los items y recibes alarmas. Para reorganizar usa `orbit reorganize` o `task edit`/`ev edit`. El módulo `core/gimport.py` queda dormante por si se quiere revivir Reminders → orbit.
+**Auto-regen**: cualquier mutación CLI sobre task/ms/ev/reminder/crono dispara `run_dash` en background, que llama `write_workspace(project_filter=<proj>)` — el `.ics` se actualiza solo. Igual `orbit commit`, `orbit render`, `orbit dash`.
 
-- **Eventos → Calendar.app**. Un calendar por tipo de proyecto.
-- **Tareas/hitos/recordatorios → Calendar.app** (backend `"calendar"`, default). Un único calendario "agenda" por workspace (e.g. `🚀orbit-ws-rem`). Cada item es un evento de 0 min con `display alarm` a la hora de inicio. La alarma la dispara `CalendarAgent` del sistema — Calendar.app no necesita estar abierta.
-  - Backend legacy `"reminders"`: tasks/ms/rem van a Reminders.app vía AppleScript (1 lista por workspace). Se mantiene dormante para fallback durante el periodo de validación.
-  - Cambia con `"reminders_backend": "calendar"|"reminders"` en `calendar-sync.json`.
-- **Cronogramas → Reminders.app**. 1 reminder por `crono-<n>.md` con due = fin de la próxima hoja no completada. (No migrado al backend calendar todavía.)
-- Eventos recurrentes → serie con RRULE en Calendar.app. Tareas/hitos/recordatorios recurrentes → orbit avanza ocurrencias localmente al hacer `done`/`drop`; cada ocurrencia es un evento independiente.
-- `--ring` → `display alarm` del evento (notificación push en Mac/iPhone/iPad/Android).
-- Títulos eventos: `[proyecto] descripción`. Títulos agenda: `[proyecto] {✅|🏁|💬} descripción`.
-- `--room` URL → propiedad `url` del evento (📹 botón cámara). Texto plano (sala física) → 🚪 en notas.
-- `"sync_tasks": false` desactiva tareas; `"sync_milestones": false` desactiva hitos.
-- Sincronización: tras add/done/edit/drop + `gsync` manual.
-- IDs en `.gsync-ids.json` por proyecto. Backend calendar: keys con prefijo `task::`/`milestone::`/`reminder::` para evitar colisión con events. Backend reminders: keys sin prefijo, valor `gtask_id`.
-- Config: `calendar-sync.json` (auto-migrado desde `google-sync.json` si existe):
+**Topología** (en `cloud_root/calendar/`, configurable en `ics_buckets`):
+
+```
+calendar/
+  ├── events.ics                ← solo eventos (azul)
+  ├── ms.ics                    ← solo milestones (amarillo) — destacan visualmente
+  ├── agenda.ics                ← tasks + reminders + cronogramas (gris)
+  └── projects/
+        ├── phd-diego.ics       ← per-proyecto, TODAS las citas (para compartir refs puntuales)
+        └── …
+```
+
+**Suscripción desde Calendar.app** (USC OneDrive — receta probada en orbit-ws):
+
+1. En OneDrive web, click derecho sobre el `.ics` → Compartir → `Cualquier persona con el enlace` (no `Personas de la USC`).
+2. Copia el enlace; tendrá formato `https://nubeusc-my.sharepoint.com/:u:/g/personal/.../<id>?e=<token>`.
+3. Convierte para Calendar.app:
+   - `https://` → `webcal://`
+   - Añade `&download=1` al final (fuerza .ics crudo en vez del visor HTML)
+4. Calendar.app → `Archivo → Nueva suscripción de calendario` → pega el `webcal://` → `Suscribir`.
+5. Configura: nombre, Ubicación = `En mi Mac`, refresco = `Cada 5 minutos`, color a elección.
+
+**Propagación a iPhone/iPad**: Apple quitó la opción "iCloud" del diálogo macOS ~2023. Para sincronizar entre dispositivos: ve a `icloud.com/calendar` web → sidebar → click derecho en `Calendarios` → `Nueva suscripción` → pega el mismo URL. Aparecerá automáticamente en todos tus Apple devices.
+
+**Si OneDrive de tu institución no permite "Cualquiera con el enlace"** (USC sí lo permitía): alternativas son GitHub Pages (repo público con el .ics) o Google Drive personal con `https://drive.google.com/uc?export=download&id=<id>`.
+
+**Buckets**: configurables en `calendar-sync.json`. Ejemplo de orbit-ws (3 buckets para colorear ms aparte):
 
 ```json
 {
-  "calendars": {
-    "investigacion": "🌀 Investigacion",
-    "default": "🚀 orbit-ws"
-  },
-  "reminders_backend": "calendar",
-  "agenda_calendar": "🚀orbit-ws-rem",
-  "reminders_list": "🚀 orbit-ws"
+  "ics_buckets": {
+    "events": ["event"],
+    "ms":     ["milestone"],
+    "agenda": ["task", "reminder", "cronograma"]
+  }
 }
 ```
 
-**Migración al backend calendar**: si tenías items en Reminders.app y quieres pasar al backend "calendar", crea primero el calendario `agenda_calendar` en Google Calendar (web) con el nombre exacto y espera a que sincronice con Calendar.app. Luego ejecuta `orbit gsync --migrate-rem-to-calendar` (idempotente; usa `--dry-run` para preview). El comando sube los items pending a Calendar, borra los equivalentes en Reminders.app y flippa el flag `reminders_backend` a `"calendar"`.
+Default si no defines `ics_buckets`: `agenda=task+rem`, `events=ev+ms+crono`. Cada `kind` (`task`/`milestone`/`event`/`reminder`/`cronograma`) debe aparecer en **exactamente un** bucket. `doctor` valida el reparto y la frescura (alerta si un `.ics` lleva >24h sin update). El nombre del bucket es el nombre del fichero (`agenda` → `agenda.ics`).
 
-**Nota legacy**: el código de sincronización con Google Tasks queda dormante en `core/gsync.py` (`_sync_one_task`, `_get_tasks_service`, etc.) por si alguna vez se necesita, pero ya no se llama desde ningún flujo activo.
+**Duración de cada cita en .ics** (sintética; no toca `agenda.md`):
+- `event` (sin `--end-time`), `milestone`, `task`, `cronograma`: 60 min
+- `reminder`: 5 min
+- `event` con `--time HH:MM-HH:MM` o `--end-time`: respeta lo declarado
+
+**orbit-id visible**: cada VEVENT lleva `[orbit:xxxxxxxx]` al final de `DESCRIPTION` (visible en Calendar.app/iOS) + `X-ORBIT-ID` custom prop + UID `<orbit_id>@orbit`. Si ves un evento "raro" en Calendar.app, el orbit-id en la descripción te permite localizar la cita en `agenda.md` rápido.
+
+**Propagación a Calendar.app**: `orbit render` (que corre tras cada commit) regenera todos los `.ics` y lanza un `tell application "Calendar" to reload calendars` AppleScript (read-only) para forzar refresh inmediato. Latencia de Mac → ~2 s. iPhone hereda vía iCloud al ritmo de iCloud (5-15 min).
+
+**Snapshot diff**: cada `.ics` se guarda con un `.ics.snapshot` paralelo (versión anterior). `write_workspace` reporta cuántas citas se añadieron/modificaron/eliminaron desde el último render — útil para auditar drift sin abrir Calendar.app.
+
+### Compartir e importar citas puntuales
+
+```bash
+orbit ics-share <proj> --orbit-id ID     # exporta esa cita a /tmp/orbit-<id>.ics
+orbit ics-share <proj> --desc PATTERN    # busca por descripción (interactivo si ambigüedad)
+orbit ics-share <proj> --orbit-id ID --out ruta.ics
+orbit ics-import <proj> ruta.ics         # importa un .ics como nueva cita
+orbit ics-import <proj> --clipboard      # lee del portapapeles (pbpaste)
+```
+
+**Scope** (v0.33): solo **citas puntuales**, no series recurrentes. Si exportas una cita recurrente, exporta solo la **próxima ocurrencia**. Si el `.ics` de entrada trae `RRULE`, se ignora y se importa solo la primera ocurrencia con un warning.
+
+**Export**: el path resultante se imprime y se copia al portapapeles para que en Mail solo tengas que `Cmd+V` en el adjunto. El .ics lleva `METHOD:PUBLISH`, `X-WR-CALNAME` informativo, y la cita con todos sus props (UID, SUMMARY, DTSTART, DTEND, DESCRIPTION con `[orbit:xxx]`, X-ORBIT-*, VALARM si tiene ring).
+
+**Import**:
+- Auto-detecta el `kind`: respeta `X-ORBIT-KIND` (round-trip), o usa `event` si es all-day / time-range, o pregunta si es ambiguo.
+- Si el SUMMARY trae el prefijo `[<proyecto>] [<emoji>] ` (export propio de orbit), lo strippea.
+- `URL`/`LOCATION` con URL de meeting (zoom/meet/teams/indico) → nota `🚪 <url>`.
+- `DESCRIPTION` → notas indentadas (sin la línea "Proyecto:" ni el tag `[orbit:xxx]`).
+- TZIDs: `Z` (UTC) se convierte a local; `Europe/Madrid` se toma como floating; otros se toman como floating con warning.
+- Conflicto: si ya existe cita con mismo `desc+date` en el destino → prompt `[d-duplicar / o-overwrite / c-cancel]`.
+- Tras crear: regen automático del `.ics` del proyecto.
 
 ### Cloud (OneDrive/Google Drive) — render y deliver
 

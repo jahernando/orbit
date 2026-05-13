@@ -82,7 +82,13 @@ class TestVerifyCalendarEvent:
 
 
 # ── set_cloud_verified: toggles ☁️ in agenda.md ─────────────────────────────
+#
+# DORMANT since v0.33: the ☁️ marker is no longer written by the
+# formatter (AppleScript-write path retired). The function and the
+# parser still understand it for backwards compat — kept skipped here
+# as living documentation of the reactivation contract.
 
+@pytest.mark.skip(reason="☁️ marker write dormant since v0.33")
 class TestSetCloudVerified:
     def _make_project(self, tmp_path, agenda_text):
         proj = tmp_path / "💻test"

@@ -289,7 +289,8 @@ Cada workspace define su `cloud_root` en `orbit.json`. La estructura cloud:
 orbit doctor [project] [--fix]     # validar sintaxis de ficheros
 orbit archive [project] [--months N] [--dry-run] [--force]
                                    # --agenda --logbook --notes para filtrar
-orbit gsync [--dry-run]            # eventos → Calendar.app, tareas/hitos/recordatorios/cronogramas → Reminders.app (AppleScript)
+orbit ics --workspace              # regenera los .ics del workspace (Calendar.app se suscribe)
+orbit ics --validate               # dry-run: cuenta VEVENTs por bucket sin escribir
 orbit commit ["mensaje"]           # commit + push interactivo
 ```
 
@@ -309,7 +310,8 @@ orbit help --open                  # abre CHULETA.md en el editor
 - Logbook multilinea: lineas indentadas con 2+ espacios son continuacion de la entrada anterior.
 - `notes/` — notas libres, rastreadas opcionalmente en git.
 - `cmd.md` — fichero temporal de salida de comandos con `--open`.
-- `☁️` en agenda.md indica que el item está sincronizado (eventos en Calendar.app, tareas/hitos/recordatorios en Reminders.app). IDs en `.gsync-ids.json`.
+- Calendar.app se suscribe a los `.ics` que orbit emite a `cloud_root/calendar/` (3 buckets: `events.ics`, `ms.ics`, `agenda.ics`). Read-only por construcción: la verdad sigue siendo `agenda.md`. Cada VEVENT lleva `[orbit:xxxxxxxx]` en su descripción para localizar la cita en orbit.
+- `gsync` y `calsync` están dormantes desde v0.33; reactivables con `"applescript_writes": true` en `calendar-sync.json`.
 - Las operaciones destructivas piden confirmacion (defecto **No**) o requieren `--force`.
 - `--open [EDITOR]` disponible en comandos de consulta; abre resultado en el editor (por defecto o el indicado).
 - `--log PROJECT [--log-entry TYPE]` guarda el output como entrada en el logbook de un proyecto.

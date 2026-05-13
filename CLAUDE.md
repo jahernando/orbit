@@ -85,7 +85,85 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.30.0, 2026-05-11)
+## Estado actual (v0.33.0, 2026-05-12)
+
+### v0.33.0 (2026-05-12) — Fase 2: AppleScript-write dormante + ics-only
+- **Motivación**: validada la fase 1 (.ics emitido por orbit, Calendar.app suscrita a la URL pública de OneDrive en `🚀orbit-ws`), el camino AppleScript-write deja de tener sentido. Era una fuente recurrente de drift y `calsync` v0.31 fue un parche sobre el problema en vez de la solución. La verdad sigue siendo `agenda.md`, la presentación es `.ics`, y Calendar.app no edita nada porque la suscripción es read-only por construcción.
+- **Flag `applescript_writes` en `calendar-sync.json`** (default `false`):
+  - Helper: `core.gsync._applescript_writes_enabled(config=None)`.
+  - Activo (`true`): camino legacy completo (sync_item AppleScript, calsync, ☁️ marker, gsync-failures journal, gsync_background, etc.).
+  - Inactivo (`false`, default): early-return en `sync_item`, `reconcile_gsync_renames`, `check_gsync_drift`, `gsync_background`, `delete_gcal_event`, `run_gsync`, `run_calsync`. El doctor salta el pass de failures. Los helpers internos (`_create/update/delete_calendar_event`, `_sync_one_agenda_event`, etc.) siguen en el repo dormantes — sin tocar — siguiendo el patrón de [[feedback_dormant_deprecation]].
+  - **Cómo revivir**: añade `"applescript_writes": true` a `calendar-sync.json` del workspace. No hace falta nada más; los entry points vuelven a hacer su antiguo trabajo.
+- **Marker `☁️`**: deja de escribirse en formatters (`_format_task_line`, `_format_event_line`, `_format_reminder_line`). Parsers lo siguen reconociendo (para no romper agendas existentes) pero el campo `cloud_verified` queda vestigial. Existe un script one-shot: `python scripts/strip_cloud_marker.py` (con `--dry-run`) que round-tripéa cada agenda del workspace para eliminar el marker físicamente. Ya ejecutado en orbit-ws.
+- **`orbit gsync` y `orbit calsync` siguen visibles en el CLI**, pero imprimen un aviso de deprecación y `return 0` cuando el flag está off. CLI usable solo si reactivas explícitamente.
+- **Duraciones sintéticas en `.ics`** (`core/ics.py:_DEFAULT_DURATION_MIN`): event=60, milestone=60, task=60, cronograma=60, reminder=5. Aplican solo al `.ics` (no a `agenda.md`); permiten que los bloques sean visibles en cualquier cliente de calendar. Eventos con `--time HH:MM-HH:MM` o `--end-time` respetan la duración real.
+- **`orbit_id` en `DESCRIPTION` del VEVENT**: añadido al final como `[orbit:xxxxxxxx]` para que sea referenciable desde la UI de cualquier calendario (Calendar.app no muestra `X-*` custom props). El `X-ORBIT-ID` y el UID (`<orbit_id>@orbit`) siguen presentes para parsers automatizados.
+- **`orbit ics --validate`** (nuevo): dry-run. Renderiza buckets y per-project counting VEVENTs, no escribe nada. Útil para verificar el estado antes de un render real o para debugging de buckets.
+- **`orbit doctor` añade check de frescura .ics**: avisa si algún bucket `.ics` tiene más de 24h sin actualizar (síntoma de que el hook render no se está disparando).
+- **Buckets per-workspace finales en orbit-ws** (decididos durante validación de fase 1):
+  ```json
+  "ics_buckets": {
+    "events": ["event"],
+    "ms":     ["milestone"],
+    "agenda": ["task", "reminder", "cronograma"]
+  }
+  ```
+  Tres URLs públicos OneDrive distintos → Calendar.app los suscribe como tres calendarios separados, cada uno con su color. `ms` quedó como calendario propio para que los hitos destaquen visualmente; `cronograma` se movió de `events` a `agenda` (semánticamente: tarea con deadline, no bloque programado).
+- **Receta OneDrive Share → suscripción** (USC tenant — `nubeusc-my.sharepoint.com`):
+  1. En OneDrive web, click derecho sobre el `.ics` → Compartir → `Cualquiera con el enlace` (no `Personas de la USC`).
+  2. Copia el enlace (formato `:u:/g/personal/.../<id>?e=<token>` — la `g` indica anonymous guest).
+  3. Convierte: `https://` → `webcal://` + añade `&download=1` al final (fuerza SharePoint a devolver el .ics crudo en lugar del visor HTML).
+  4. En Calendar.app: `Archivo → Nueva suscripción de calendario` → pega el `webcal://` → Ubicación: `En mi Mac` (Apple quitó iCloud del diálogo ~2023; para propagar a iPhone/iPad usa `icloud.com/calendar` web).
+  5. Refresh: `Cada 5 minutos`. Color a elección.
+- **Convivencia con la fase 1**: `core/ics.py` y `core/render.py` siguen idénticos. `_emit_ics` se sigue disparando en `render_all`/`render_changed`/`run_dash`. El cambio de fase 2 es puramente apagar el AppleScript-write — nada del render se ve afectado.
+- **Tests**: TestSetCloudVerified en `tests/test_sync_verify.py` quedó marcada `@pytest.mark.skip` (documentación viva del contrato si se revive el marker). `conftest.py` patchea `_applescript_writes_enabled` a True por defecto para que los tests legacy de gsync sigan ejecutándose. Suite: 1579 pass, 4 skipped.
+
+### v0.32.0 (2026-05-12) — Fase 1: export iCalendar (.ics) y subscripciones
+- **Motivación**: independizarse del AppleScript-write de Calendar.app. iCalendar (RFC 5545) es universal — Calendar.app, Google Calendar, Outlook, Thunderbird todos lo entienden. La idea es: `orbit render` emite `.ics`, Calendar.app se suscribe, refresh automático cada 5 min (o `reload calendars` AppleScript de solo lectura para latencia inmediata). El `sync_item` AppleScript-write entra en deprecación natural en fase 2.
+- **`core/ics.py`** (~570 líneas, autocontenido):
+  - `render_vevent(item, kind, project_name, occurrence_date=...)` — serializa una cita a un bloque `VEVENT` con `UID`, `DTSTART`/`DTEND` (floating local), `SUMMARY`, `DESCRIPTION`, `URL`/`LOCATION` (meeting URLs), `VALARM`, y custom props `X-ORBIT-ID` / `X-ORBIT-PROJECT` / `X-ORBIT-KIND` / `CATEGORIES`.
+  - `_expand_dates(item, window_start, window_end)` — expansión de recurrencia en VEVENTs individuales (no RRULE). Reutiliza `_next_occurrence` de `agenda_cmds`. Cap en 2000 iteraciones por seguridad. Ventana default: ±180 días.
+  - Helpers RFC: `_escape` (TEXT-type), `_fold` (line folding ≤75 octets respetando UTF-8 multibyte), `_fmt_dt_local` (floating local sin TZ), `_fmt_date` (VALUE=DATE all-day).
+  - `_calendar_wrapper(name, body)` — envuelve VEVENTs en `VCALENDAR` con `PRODID`, `VERSION:2.0`, `METHOD:PUBLISH`, `X-WR-CALNAME`.
+- **Topología**: `cloud_root/calendar/`:
+  - `<bucket>.ics` — agregadores de workspace (default: `agenda.ics` = task+rem, `events.ics` = ev+ms+crono)
+  - `projects/<proyecto>.ics` — per-proyecto, TODAS las citas (compartir/refs puntuales)
+- **`ics_buckets` configurable** en `calendar-sync.json`. `doctor` valida que cada kind aparezca en exactamente un bucket. Pegado al final del check de gsync drift.
+- **Snapshot diff**: cada `.ics` escribe en paralelo un `.ics.snapshot` (versión anterior). `_parse_vevents` deserializa eventos a `{uid: {prop: val}}`, ignora `DTSTAMP` (UTC-now → no-determinismo) y `unfold`-ea las líneas plegadas. `diff_snapshot(current, snapshot)` devuelve `{added, removed, changed}` por UID. Permite saber "qué cambió desde el último render" sin invertir la dirección de verdad (agenda.md sigue siendo truth, .ics es transport + memory).
+- **Hook en `core/render.py`**: `render_all` y `render_changed` llaman a `_emit_ics(cloud_root)` al final → `core.ics.write_workspace` → escribe todos los `.ics`, hace diff vs snapshot, imprime resumen, dispara `reload calendars` AppleScript (read-only, no escribe eventos). Fallos en `_emit_ics` no bloquean el render HTML.
+- **`orbit ics` CLI**: `orbit ics <proyecto> [--out PATH]` para export ad-hoc; `orbit ics --bucket NAME` para un bucket; `orbit ics --workspace` para regenerar todo (usa `cloud_root`). Dispatcher: `cmd_ics` en `orbit.py:1003-1042`.
+- **UIDs estables**: `<orbit_id>@orbit` (no recurrente) o `<orbit_id>-<date>@orbit` (occurrence). Critical para que Calendar.app vea "evento existente, posible update" en vez de "delete + create" (resetearía alarmas).
+- **Decisiones de diseño confirmadas con el usuario**:
+  - **Verdad sigue siendo `agenda.md`**, no `.ics` (el cambio inverso fue considerado y descartado: rompe editabilidad markdown, diffs git legibles, workflow móvil).
+  - **Recurrencia = expansión** (no RRULE) — simplifica overrides single-occurrence sin EXDATE/RECURRENCE-ID.
+  - **Floating local time** (no `TZID=` ni Z) — replica el modelo actual; cambiable cuando alguien use orbit viajando.
+  - **Ventana ±180 días** — ~700KB peor caso para una serie diaria-año.
+  - **Buckets per-workspace, no per-tipo de proyecto** — simplifica vs topología actual de Calendar.app, alinea con cómo el usuario piensa (por proyecto, no por tipo).
+- **Tests**: `tests/test_ics.py` (40 tests) — escape/fold/dt format, UID stability, VEVENT por kind, alarm block, recurrence expansion, all-day, URL passthrough, bucket validation, snapshot diff (DTSTAMP ignored, added/removed/changed), write_workspace filesystem. Suite total: **1576 pass**.
+- **Convivencia**: `gsync` (AppleScript-write) sigue corriendo en paralelo. La idea es validar fase 1 (subscripción + refresh) antes de marcar las funciones write como dormantes. Pasos para fase 2 (cuando se pruebe que funciona en `phd-diego` con creación/borrado/edit de serie y de ocurrencia única):
+  1. Marcar dormante en `core/gsync.py`: `_create_calendar_event`, `_update_calendar_event`, `_delete_calendar_event`, todos los caminos write en `sync_item`.
+  2. `calsync` mantiene su rol como auditor de calendarios externos (no orbit-managed) — el orbit-managed pasa a estar libre de drift por construcción.
+  3. `ics-share` para compartir eventos puntuales por email/Slack.
+
+### v0.31.0 (2026-05-12) — `orbit calsync`: auditoría + reconciliación atributo a atributo
+- **Motivación**: `gsync` empuja en bloque y silenciosamente; cuando algo divergía (edit en iPhone, fallo de sync no recuperado, etc.) no había forma cómoda de cuadrarlo sin retipearlo. v0.30 dejó el ☁️ como señal visible pero no hay UI para resolver drifts. `calsync` es esa UI.
+- **Comando nuevo**: `orbit calsync <proyecto> [--type LIST] [--all|--pending] [--dry-run]`.
+- **Diseño "auditor con pull explícito" (opción B)**: orbit sigue siendo la verdad (v0.28), pero `2-cal` es azúcar sintáctico para "`3-input` precargado con el valor de Calendar" → cada adopción es decisión humana por atributo, no auto-pull. Pasa por la misma ruta que `3-input` (`_apply_pull`), así no se abre la puerta a un `gpull` futuro.
+- **Flujo por cita**:
+  1. Bulk read de cada calendario afectado (`_fetch_window`, 1 AppleScript por calendario, window `today-30d..today+365d`).
+  2. Match por `orbit-id` (no por título+fecha → robusto a renames).
+  3. Diff de `summary`, `start`, `end`, `description`. `end` sintético (`= start+1min` de tasks/ms/rem v0.29.9) se ignora; `2-cal` también bloqueado para `end` cuando el evento de Calendar es también sintético (evita adoptar el `+1min` ficticio).
+  4. Tabla `attr | orbit | calendar`. Por atributo: `[1-orbit / 2-cal / 3-input / s-skip]`.
+- **Modos** (mutex `--all`/`--pending`):
+  - default: salta los ☁️ verificados.
+  - `--all`: incluye verificados (auditoría completa).
+  - `--pending`: subset → orbit-id sin ☁️ (los sospechosos según v0.30).
+- **Filtros**: `--type task,ms,ev,rem,crono` (separados por coma). Aliases CLI mapean a internos vía `_TYPE_ALIASES`.
+- **Cronogramas**: comparten flujo de diff pero solo aceptan `1-orbit` y `s-skip` (su verdad vive en `cronos/crono-<n>.md`, no en agenda.md → pull no aplica). Synthesis on-the-fly imita la de `gsync._sync_cronos_for_project`.
+- **Huérfanos**: eventos en Calendar sin `[orbit:xxx]` → report-only al final con `summary`, `start_iso` y calendario. Sin auto-import en v1 (decisión explícita del usuario para evitar interrupciones no pedidas).
+- **Resumen**: `N ☁️ / M corregidos / K skipped / E ausentes / F errores / H huérfanos`.
+- **Implementación**: `core/calsync.py` (~570 líneas, autocontenido). Solo importa helpers existentes de `gsync` (`_osa`, `_esc`, `_FETCH_FIELD_SEP/SEP`, `_parse_orbit_tag`, `_project_description`, `_item_description`, `_load_config`, `_get_project_tipo`, `_agenda_calendar_name`, `sync_item`, `_calendar_app_running`). El push usa `sync_item` tal cual; el pull es `_apply_pull` que muta `agenda.md` y luego llama `sync_item` para empujar el nuevo valor.
+- **Tests**: `tests/test_calsync.py` (51 tests) — parse de filtros, expected summary/start/end por tipo, diff (drift, ignore_end, strip orbit-tag), prompt routing (1/2/3/s y bloqueos), apply_pull para todas las attrs y kinds, run_calsync end-to-end con _fetch_window mockeado (mutex, verified short-circuit, orphan report, missing event). Suite total: 1536 pass.
 
 ### v0.30.0 (2026-05-11) — verificación post-sync con marker ☁️ y journal de fallos
 - **Problema**: `sync_item` lanzaba AppleScript en daemon thread y devolvía inmediatamente. Cualquier error (start/end inválido, evento en otro calendario, ApleEventHandler error, etc.) se perdía silenciosamente. El usuario veía orbit decir "✓ Tarea actualizada" pero Calendar no cambiaba.

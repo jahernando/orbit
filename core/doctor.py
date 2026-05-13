@@ -453,10 +453,70 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     except Exception:
         pass  # gsync not configured or not available
 
+    # Check ics_buckets config (v0.32): every kind must appear in exactly
+    # one bucket. Buckets surface as .ics files in cloud/calendar/.
+    try:
+        from core.ics import get_buckets, validate_buckets
+        errs = validate_buckets(get_buckets())
+        if errs:
+            print(f"  📅 ics_buckets: {len(errs)} problema{'s' if len(errs) != 1 else ''}:")
+            for e in errs:
+                print(f"      ⚠️  {e}")
+            print("  → Edita `ics_buckets` en calendar-sync.json.")
+            print()
+    except Exception:
+        pass
+
+    # Check .ics freshness (v0.33): a stale bucket .ics suggests the
+    # render hook isn't firing — Calendar.app subscribers would be
+    # seeing yesterday's state. 24h is a generous threshold; you'd
+    # normally touch agenda.md several times a day.
+    try:
+        import time
+        from core.deliver import _find_cloud_root
+        from core.ics import get_buckets
+        cloud_root = _find_cloud_root()
+        if cloud_root:
+            cal_dir = cloud_root / "calendar"
+            stale = []
+            now = time.time()
+            for bname in get_buckets():
+                p = cal_dir / f"{bname}.ics"
+                if not p.exists():
+                    stale.append((bname, None))
+                    continue
+                age_h = (now - p.stat().st_mtime) / 3600
+                if age_h > 24:
+                    stale.append((bname, age_h))
+            if stale:
+                print(f"  📅 .ics frescura: {len(stale)} bucket"
+                      f"{'s' if len(stale) != 1 else ''} con problema:")
+                for bname, age in stale:
+                    if age is None:
+                        print(f"      ⚠️  {bname}.ics no existe en cloud/calendar/")
+                    else:
+                        print(f"      ⚠️  {bname}.ics tiene {age:.0f}h desde el último render")
+                print("  → Ejecuta `orbit ics --workspace` o cualquier op de cita "
+                      "para forzar regen.")
+                print()
+    except Exception:
+        pass
+
     # Check pending sync failures (v0.30): items where sync_item ran but
     # the post-write verify didn't match. They live in `.gsync-failures.json`
     # per project. The ☁️ marker is absent on these items in agenda.md.
+    #
+    # DORMANT since v0.33: with AppleScript writes off, no new failures
+    # are recorded. Skip the report when the flag is off — existing
+    # journals (if any) are inert and irrelevant.
     try:
+        from core.gsync import _applescript_writes_enabled
+        _failures_pass_enabled = _applescript_writes_enabled()
+    except ImportError:
+        _failures_pass_enabled = True
+    try:
+        if not _failures_pass_enabled:
+            raise StopIteration   # caught below
         from core.gsync import _load_failures
         from core.config import iter_project_dirs
         failures_total = []

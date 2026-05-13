@@ -559,35 +559,51 @@ El bucle: te lista, eliges número, acción rápida (`d` drop, `n` done, `f` fec
 
 Para editar título o notas → sal de reorganize y usa `task edit "X" --desc "..."` directo.
 
-### Calendar.app + Reminders.app
+### Calendar.app (vía suscripción `.ics`)
 
-Orbit sincroniza automáticamente al arrancar y tras cada `add`, `done`, `drop` o `edit`. Los items sincronizados muestran ☁️ en `agenda.md`. Backends locales (sin OAuth):
+Desde v0.33 orbit emite ficheros `.ics` al cloud y Calendar.app se suscribe a su URL pública. **Calendar.app no edita nada**: la suscripción es de solo lectura por construcción. Tú mantienes `agenda.md` como fuente de verdad y lo que pase por `task add`, `ev edit`, `ms done`, etc. se refleja en Calendar.app en ≤5 min (o al instante con `Cmd+R`).
 
-- **Eventos → Calendar.app** vía AppleScript. Orbit habla con la app local y Calendar.app se encarga de propagar al backend que tenga la cuenta (Google, iCloud, Exchange). Requiere Calendar.app abierto. Si `--room` es una URL (zoom/meet/teams) se promueve a la propiedad `url` del evento → botón cámara 📹 clickable en la app móvil/desktop. Salas físicas (texto plano) se quedan en las notas del evento
-- **Tareas, hitos y recordatorios → Reminders.app** vía AppleScript. Una lista por workspace (`🚀 orbit-ws`, `🌿 orbit-ps`). Sync vía iCloud al iPhone/iPad sin tokens. `--ring` se traduce en `remind me date` (alarma)
-- **Cronogramas → Reminders.app** (1 reminder por cronograma): cada `crono-<n>.md` se sincroniza como una sola entrada `📊 crono-<n>: <hoja siguiente>` con `due date` = fin de la próxima hoja no completada. Vencidas se mantienen (no auto-avanzan); cuando todas las hojas están hechas, el reminder se marca completed. Cronogramas sin fechas se ignoran
+**Topología** (en `cloud_root/calendar/`):
 
-**Configuración**: `calendar-sync.json` en la raíz del workspace. Calendars con su nombre tal cual aparecen en Calendar.app:
+- `events.ics` — solo eventos
+- `ms.ics` — solo milestones (calendario aparte para que destaquen con color propio)
+- `agenda.ics` — tareas + recordatorios + cronogramas
+- `projects/<proyecto>.ics` — per-proyecto, todas las citas (para compartir refs puntuales)
+
+**Configuración**: `calendar-sync.json` en la raíz del workspace:
 
 ```json
 {
-  "calendars": {
-    "investigacion": "🌀 Investigacion",
-    "default": "🌿 orbit-ps"
-  },
-  "reminders_list": "🌿 orbit-ps"
+  "ics_buckets": {
+    "events": ["event"],
+    "ms":     ["milestone"],
+    "agenda": ["task", "reminder", "cronograma"]
+  }
 }
 ```
 
-**Si algo falla**:
+**Suscripción desde Calendar.app** (receta probada en orbit-ws con OneDrive USC):
+
+1. En OneDrive web → click derecho sobre el `.ics` → Compartir → `Cualquier persona con el enlace`.
+2. Copia el enlace.
+3. Conviértelo para Calendar.app: cambia `https://` por `webcal://` y añade `&download=1` al final.
+4. Calendar.app → `Archivo → Nueva suscripción de calendario` → pega el `webcal://`. Refresh = `Cada 5 minutos`. Color a elección (sugerencia: azul=events, amarillo=ms, gris=agenda).
+
+**Propagación a iPhone/iPad**: ve a `icloud.com/calendar` web, sidebar → click derecho en `Calendarios` → `Nueva suscripción` → pega el mismo URL. Aparecerá automáticamente en todos tus Apple devices.
+
+**Auto-regen**: cualquier mutación CLI (`task add`, `ev edit`, `ms done`, `crono done`, ...) dispara una reescritura del `.ics` en background. Igual `orbit commit`, `orbit render`, `orbit dash`. Si necesitas forzar manualmente:
 
 ```bash
-gsync                      # push: sincroniza todos los proyectos
-gsync santiago             # push: solo un proyecto (substring match)
-gsync --dry-run            # preview sin escribir
+orbit ics --workspace             # regenera todos los .ics
+orbit ics --validate              # dry-run: cuenta VEVENTs por bucket
+orbit ics phd-diego --out a.ics   # exporta un proyecto a fichero
 ```
 
-Orbit es la fuente de verdad. Calendar.app y Reminders.app son sólo render: para reorganizar tareas usa el CLI (`task edit`, `ev edit`, ...) o el modo interactivo `orbit reorganize`.
+**Identificar una cita** desde la UI: el `[orbit:xxxxxxxx]` al final de la `Descripción` del evento corresponde al tag homónimo en `agenda.md`. Si ves algo raro en Calendar.app, copia ese orbit-id y vienes a orbit.
+
+**Servicios deprecados (v0.33)**: `gsync` (AppleScript-write a Calendar.app/Reminders.app) y `calsync` (auditoría de drift) quedan dormantes. Los comandos siguen ahí pero solo se activan si pones `"applescript_writes": true` en `calendar-sync.json`. La ruta por defecto es la suscripción `.ics`.
+
+Orbit es la fuente de verdad. Calendar.app es sólo render: para reorganizar tareas usa el CLI (`task edit`, `ev edit`, ...) o el modo interactivo `orbit reorganize`.
 
 ### Cloud (OneDrive/Google Drive)
 

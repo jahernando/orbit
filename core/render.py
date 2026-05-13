@@ -186,7 +186,19 @@ def render_all(cloud_root: Optional[Path] = None) -> int:
         n = render_project(project_dir, cloud_root)
         total += n
 
+    _emit_ics(cloud_root)
     return total
+
+
+def _emit_ics(cloud_root: Path) -> None:
+    """Best-effort: regenerate .ics files alongside the HTML render and
+    trigger Calendar.app to refresh its subscriptions. Failures don't
+    block the HTML render (just a warning)."""
+    try:
+        from core.ics import write_workspace
+        write_workspace(cloud_root)
+    except Exception as exc:
+        print(f"  ⚠️  ics: error generando calendarios: {exc}")
 
 
 def render_changed(cloud_root: Optional[Path] = None) -> int:
@@ -233,6 +245,10 @@ def render_changed(cloud_root: Optional[Path] = None) -> int:
         _render_file(src, dest, css_rel, nav_links)
         rendered += 1
 
+    # .ics generation is cheap (~50 ms for a typical workspace) so we
+    # regenerate on every render-changed pass; the snapshot diff inside
+    # write_workspace summarises real deltas.
+    _emit_ics(cloud_root)
     return rendered
 
 

@@ -188,6 +188,19 @@ def _sync_milestones_enabled(config: dict) -> bool:
     return config.get("sync_milestones", True)
 
 
+def _applescript_writes_enabled(config: Optional[dict] = None) -> bool:
+    """Whether the AppleScript-write path to Calendar.app/Reminders.app
+    is active. Default ``False`` since v0.33 — orbit emits ``.ics`` and
+    Calendar.app subscribes; no script writes anything.
+
+    Set ``"applescript_writes": true`` in ``calendar-sync.json`` to
+    revive (e.g. while debugging the .ics path on a new workspace).
+    """
+    if config is None:
+        config = _load_config()
+    return bool(config.get("applescript_writes", False))
+
+
 # ── Agenda backend (tasks/milestones/reminders) ──────────────────────────────
 #
 # Two backends are supported. Choose with `reminders_backend` in
@@ -2050,216 +2063,6 @@ def _sync_events_for_project(project_dir: Path, config: dict,
     return created, updated, skipped
 
 
-# ── List calendars ──────────────────────────────────────────────────────────
-
-def run_gsync_migrate_recurring(dry_run: bool = False) -> int:
-    """One-time legacy migration that needed Google Calendar API.
-
-    No-op now that events flow through Calendar.app. Kept for argparse
-    compatibility; returns 0 immediately.
-    """
-    print("ℹ️  Esta migración aplicaba a la antigua sincronización con Google "
-          "Calendar API. Con Calendar.app no se necesita; ignorada.")
-    return 0
-
-
-def run_gsync_migrate_rem_to_calendar(dry_run: bool = False) -> int:
-    """Migrate tasks/milestones/reminders from Reminders.app to the agenda
-    calendar in Calendar.app. After a successful run, flips
-    ``reminders_backend`` to ``"calendar"`` in calendar-sync.json.
-
-    Idempotent: matches existing items by orbit-id, so re-running does not
-    create duplicates. Pending items only — done/cancelled stay where they
-    are (Reminders.app legacy items will simply be removed in batch).
-    """
-    config    = _load_config()
-    cal_name  = _agenda_calendar_name(config)
-    list_name = _reminders_list_name(config)
-
-    if not _calendar_app_running():
-        print("⚠️  Calendar.app no está corriendo. Lánzala antes de migrar.")
-        return 1
-    if not dry_run and not _ensure_agenda_calendar(cal_name):
-        return 1
-
-    rem_running = _reminders_app_running() if not dry_run else False
-    if not dry_run and not rem_running:
-        print("ℹ️  Reminders.app no está corriendo; subo a Calendar pero no")
-        print("    borraré los items legacy. Lanza Reminders y reejecuta para limpiar.")
-
-    print(f"🔄 Migrando tasks/ms/reminders → calendario \"{cal_name}\""
-          + (" [dry-run]" if dry_run else ""))
-
-    total_items    = 0
-    total_uploaded = 0
-    total_deleted  = 0
-
-    for project_dir in iter_project_dirs():
-        if not _is_new_project(project_dir):
-            continue
-        agenda_path = resolve_file(project_dir, "agenda")
-        if not agenda_path.exists():
-            continue
-        data = _read_agenda(agenda_path)
-        ids  = _load_ids(project_dir)
-
-        candidates = []
-        for t in data.get("tasks", []):
-            if t.get("status") == "pending" and t.get("date"):
-                candidates.append((t, "task"))
-        for m in data.get("milestones", []):
-            if m.get("status") == "pending" and m.get("date"):
-                candidates.append((m, "milestone"))
-        for r in data.get("reminders", []):
-            if not r.get("cancelled") and r.get("date"):
-                candidates.append((r, "reminder"))
-
-        if not candidates:
-            continue
-
-        project_name = project_dir.name
-        description  = _project_description(project_dir, config, html=False)
-        print(f"\n[{project_name}] {len(candidates)} item(s)")
-
-        ids_changed = False
-        agenda_changed = False
-        for item, kind in candidates:
-            total_items += 1
-            old_key = _item_key(item)
-            new_key = _agenda_storage_key(item, kind)
-            existing_old = ids.get(old_key, {}) or {}
-            existing_new = ids.get(new_key, {}) or {}
-
-            orbit_id = (item.get("orbit_id")
-                        or existing_new.get("orbit_id")
-                        or existing_old.get("orbit_id")
-                        or _new_orbit_id())
-            item["_orbit_id"] = orbit_id
-            item["_gcal_id"]  = existing_new.get("gcal_id")
-
-            new_uid = _sync_one_agenda_event(cal_name, item, project_name,
-                                              description, kind, dry_run=dry_run)
-            if dry_run:
-                # No AppleScript ran; count would-upload so the summary
-                # reflects what the real run will do.
-                total_uploaded += 1
-            elif new_uid:
-                total_uploaded += 1
-                ids.setdefault(new_key, {})["gcal_id"] = new_uid
-                ids[new_key]["orbit_id"] = orbit_id
-                ids[new_key]["snapshot"] = _make_snapshot(item)
-                ids_changed = True
-                if item.get("orbit_id") != orbit_id:
-                    item["orbit_id"] = orbit_id
-                    agenda_changed = True
-
-            # Delete from Reminders.app — by orbit-id first (survives renames),
-            # then by stored gtask_id as a fallback.
-            if not dry_run and rem_running:
-                deleted = False
-                if orbit_id:
-                    found_uid = _find_reminder_by_orbit_id(list_name, orbit_id)
-                    if found_uid and _delete_reminder_item(found_uid, list_name):
-                        deleted = True
-                old_gtask = existing_old.get("gtask_id")
-                if not deleted and old_gtask:
-                    if _delete_reminder_item(old_gtask, list_name):
-                        deleted = True
-                if deleted:
-                    total_deleted += 1
-                # Drop the legacy ids entry whether or not deletion succeeded —
-                # it points at a defunct gtask_id and would only confuse later
-                # syncs. Calendar entry is the new source of truth.
-                if old_key in ids and old_key != new_key:
-                    ids.pop(old_key, None)
-                    ids_changed = True
-
-            item.pop("_orbit_id", None)
-            item.pop("_gcal_id", None)
-
-        if not dry_run:
-            if ids_changed:
-                _save_ids(project_dir, ids)
-            if agenda_changed:
-                _write_agenda(agenda_path, data)
-
-    print()
-    print(f"✓ {total_uploaded}/{total_items} items en calendario \"{cal_name}\"")
-    print(f"  {total_deleted}/{total_items} items borrados de Reminders.app")
-    if dry_run:
-        print("  (dry-run: ningún cambio escrito)")
-        return 0
-
-    if config.get("reminders_backend") != "calendar":
-        config["reminders_backend"] = "calendar"
-        _save_config(config)
-        print("  ↻ reminders_backend → \"calendar\" en calendar-sync.json")
-    return 0
-    # ── unreachable: original Google-API body retained below for reference ──
-    config = _load_config()
-    cal_service = _get_calendar_service()
-    if not cal_service:
-        print("⚠️  No se pudo conectar con Google Calendar.")
-        return 1
-
-    dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
-    total = 0
-
-    for project_dir in dirs:
-        ids = _load_ids(project_dir)
-        if not ids:
-            continue
-
-        agenda_path = resolve_file(project_dir, "agenda")
-        data = _read_agenda(agenda_path)
-        ids_changed = False
-
-        for ev in data["events"]:
-            if not ev.get("recur"):
-                continue
-            key = _item_key(ev)
-            entry = ids.get(key, {})
-            gcal_id = entry.get("gcal_id")
-            if not gcal_id:
-                continue
-
-            # Mark old event in Google Calendar
-            label = f"[{project_dir.name}] {ev['desc']}"
-            if dry_run:
-                print(f"  ~ marcar: ⚠️ ANTIGUO: {label}")
-            else:
-                try:
-                    existing = cal_service.events().get(
-                        calendarId=_get_calendar_id(config, project_dir),
-                        eventId=gcal_id
-                    ).execute()
-                    existing["summary"] = f"⚠️ ANTIGUO: {existing.get('summary', label)}"
-                    cal_service.events().update(
-                        calendarId=_get_calendar_id(config, project_dir),
-                        eventId=gcal_id, body=existing
-                    ).execute()
-                    print(f"  ⚠️ Marcado: {label}")
-                except Exception as e:
-                    print(f"  ⚠️ Error marcando '{label}': {e}")
-
-            # Clear gcal_id so gsync creates a new RRULE series
-            entry.pop("gcal_id", None)
-            entry.pop("snapshot", None)
-            ev.pop("orbit_id", None)
-            ids_changed = True
-            total += 1
-
-        if ids_changed and not dry_run:
-            _save_ids(project_dir, ids)
-            _write_agenda(agenda_path, data)
-
-    label = "  [dry-run]" if dry_run else ""
-    print(f"\n{total} evento{'s' if total != 1 else ''} recurrente{'s' if total != 1 else ''} migrado{'s' if total != 1 else ''}.{label}")
-    if total and not dry_run:
-        print("Ejecuta `orbit gsync` para crear las nuevas series RRULE.")
-    return 0
-
-
 def _get_calendar_id(config: dict, project_dir) -> str:
     """Get the calendar ID for a project."""
     tipo = _get_project_tipo(project_dir)
@@ -2273,7 +2076,13 @@ def check_gsync_drift() -> list:
     """Check all synced items for drift (changes since last gsync).
 
     Returns list of (project_name, item_desc, diffs) tuples.
+
+    DORMANT since v0.33 unless ``applescript_writes: true``. Without
+    AppleScript writes there's no drift to check — .ics is regenerated
+    from agenda.md every render.
     """
+    if not _applescript_writes_enabled():
+        return []
     config = _load_config()
     do_tasks = _sync_tasks_enabled(config)
     do_milestones = _sync_milestones_enabled(config)
@@ -2342,7 +2151,12 @@ def reconcile_gsync_renames() -> list:
     orbit-id (pre-tag agendas).
 
     Returns list of (project_name, old_desc, new_desc) for each rename.
+
+    DORMANT since v0.33 unless ``applescript_writes: true``. .gsync-ids
+    is unused without AppleScript writes — nothing to reconcile.
     """
+    if not _applescript_writes_enabled():
+        return []
     config = _load_config()
     do_tasks = _sync_tasks_enabled(config)
     do_milestones = _sync_milestones_enabled(config)
@@ -2468,9 +2282,18 @@ def run_gsync(dry_run: bool = False, list_calendars: bool = False,
     """Push Orbit events to Calendar.app and tasks/ms/reminders to Reminders.app.
 
     project: if given, sync only that one project (substring match accepted).
+
+    DORMANT since v0.33 unless ``applescript_writes: true`` in
+    calendar-sync.json. Default is .ics subscription via Calendar.app.
     """
     if list_calendars:
         return run_list_calendars()
+
+    if not _applescript_writes_enabled():
+        print("ℹ️  gsync deprecated (v0.33). Calendar.app ahora se suscribe a los .ics.")
+        print("   Regenera con: orbit ics --workspace  (o pasará solo al próximo render).")
+        print("   Para revivir AppleScript-write: pon \"applescript_writes\": true en calendar-sync.json.")
+        return 0
 
     config = _load_config()
 
@@ -2600,7 +2423,12 @@ def _is_gsync_configured() -> bool:
 # ── Delete from Google ──────────────────────────────────────────────────────
 
 def delete_gcal_event(project_dir: Path, ev: dict) -> None:
-    """Delete a Google Calendar event. Fails silently."""
+    """Delete a Google Calendar event. Fails silently.
+
+    DORMANT since v0.33 unless ``applescript_writes: true``.
+    """
+    if not _applescript_writes_enabled():
+        return
     if not _is_gsync_configured():
         return
 
@@ -2673,7 +2501,13 @@ def sync_item(project_dir: Path, item: dict, kind: str = "task") -> None:
 
     kind: "task", "milestone", or "event"
     Runs with a short timeout; fails silently with a warning.
+
+    DORMANT since v0.33 unless ``applescript_writes: true`` is set in
+    calendar-sync.json. Default behavior: orbit emits .ics, Calendar.app
+    subscribes — no script writes to Calendar.
     """
+    if not _applescript_writes_enabled():
+        return
     if not _is_gsync_configured():
         return
 
@@ -2996,7 +2830,11 @@ def gsync_background() -> "threading.Thread | None":
     """Run a full gsync in a background thread. Called on shell startup.
 
     Returns the thread so the caller can join() it before checking git status.
+
+    DORMANT since v0.33 unless ``applescript_writes: true``.
     """
+    if not _applescript_writes_enabled():
+        return None
     if not _is_gsync_configured():
         return None
 

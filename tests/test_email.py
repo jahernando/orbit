@@ -282,7 +282,9 @@ class TestRunEmail:
         # No "secondary" link of the form '✉️ [original](...)' since the
         # primary IS the email
         assert "[original](message://" not in log
-        assert "#referencia #email" in log
+        # tipo=email when the primary link is the mail itself (no #referencia here)
+        assert "#email" in log
+        assert "#referencia" not in log
         assert "[O]" in log
         # No note created
         assert not (env["proj"] / "notes" / "emails").exists()
@@ -584,6 +586,90 @@ class TestDetectEventData:
                   "date": "2030-05-08T09:00", "ics": ""}
             d = _detect_event_data(em)
             assert d["title"] == "meeting"
+
+    def test_body_date_preferred_over_header(self):
+        """Body date trumps the email send-date (which is often weeks before)."""
+        from core.email import _detect_event_data
+        em = {"subject": "Reunion",
+              "body": "Hola, la reunion sera el 2030-05-22 a las 10:00",
+              "date": "2030-05-01T09:00",   # email sent 3 weeks before
+              "ics": ""}
+        d = _detect_event_data(em)
+        assert d["date"] == "2030-05-22"
+        assert d.get("_date_source") == "body"
+
+    def test_body_spanish_format(self):
+        from core.email import _detect_event_data
+        em = {"subject": "Reunion",
+              "body": "Quedamos el 22 de mayo de 2030",
+              "date": "2030-05-01T09:00", "ics": ""}
+        d = _detect_event_data(em)
+        assert d["date"] == "2030-05-22"
+
+    def test_body_no_date_falls_back_to_header(self):
+        from core.email import _detect_event_data
+        em = {"subject": "Reunion",
+              "body": "Sin fechas concretas en el body.",
+              "date": "2030-05-08T09:00", "ics": ""}
+        d = _detect_event_data(em)
+        assert d["date"] == "2030-05-08"
+        assert d.get("_date_source") == "email-header"
+
+
+class TestExtractDatesFromBody:
+    def test_iso(self):
+        from core.email import _extract_dates_from_body
+        assert _extract_dates_from_body("Meeting on 2030-05-22") == ["2030-05-22"]
+
+    def test_dd_slash_mm(self):
+        from core.email import _extract_dates_from_body
+        # 22/05/2030 (Spanish DD/MM/YYYY)
+        assert "2030-05-22" in _extract_dates_from_body("Fecha: 22/05/2030")
+
+    def test_spanish_long(self):
+        from core.email import _extract_dates_from_body
+        assert "2030-05-22" in _extract_dates_from_body("el 22 de mayo de 2030")
+
+    def test_spanish_abbreviated(self):
+        from core.email import _extract_dates_from_body
+        assert "2030-05-22" in _extract_dates_from_body("el 22 de may de 2030")
+
+    def test_english_month_day(self):
+        from core.email import _extract_dates_from_body
+        assert "2030-05-22" in _extract_dates_from_body("May 22, 2030")
+
+    def test_year_missing_picks_future(self, monkeypatch):
+        from core.email import _extract_dates_from_body
+        from datetime import date
+        class FakeDate(date):
+            @classmethod
+            def today(cls):
+                return date(2030, 5, 10)
+        monkeypatch.setattr("core.email._date_cls", FakeDate)
+        out = _extract_dates_from_body("Nos vemos el 22 de mayo")
+        assert "2030-05-22" in out
+
+    def test_invalid_date_skipped(self):
+        from core.email import _extract_dates_from_body
+        # 32/13/2030 doesn't exist — should be silently skipped.
+        assert _extract_dates_from_body("fecha rara 32/13/2030") == []
+
+
+class TestPickBestBodyDate:
+    def test_empty(self):
+        from core.email import _pick_best_body_date
+        assert _pick_best_body_date([]) is None
+
+    def test_picks_future(self):
+        from core.email import _pick_best_body_date
+        # Two candidates; the future one wins.
+        out = _pick_best_body_date(["1990-01-01", "2099-12-31"])
+        assert out == "2099-12-31"
+
+    def test_all_past_returns_most_recent(self):
+        from core.email import _pick_best_body_date
+        out = _pick_best_body_date(["1990-01-01", "2000-06-15"])
+        assert out == "2000-06-15"
 
 
 _FUTURE_EMAIL_DATE = "2030-05-07T10:00"

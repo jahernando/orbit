@@ -216,7 +216,7 @@ def run_report(
 
 # Logbook tags shown in summary (exclude legacy tarea/evento)
 _SUMMARY_TAGS = ["apunte", "idea", "referencia", "problema", "solucion",
-                 "resultado", "decision", "evaluacion"]
+                 "resultado", "decision", "evaluacion", "email"]
 
 # Highlights sections shown in summary
 _HL_KEYS = ["refs", "results", "decisions", "ideas", "evals", "plans"]

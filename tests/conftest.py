@@ -22,6 +22,12 @@ def _isolate_external_side_effects(request, monkeypatch):
     try:
         import core.gsync
         monkeypatch.setattr(core.gsync, "_is_gsync_configured", lambda: False)
+        # The v0.33 dormancy gate is irrelevant for unit tests — they
+        # either bypass sync_item entirely (covered by _is_gsync_configured
+        # above) or exercise the AppleScript-write path explicitly. Force
+        # the gate open so tests don't need to add the override case by case.
+        monkeypatch.setattr(core.gsync, "_applescript_writes_enabled",
+                            lambda config=None: True)
         if "uses_osa" not in request.keywords:
             monkeypatch.setattr(core.gsync, "_osa", lambda *a, **k: None)
     except ImportError:

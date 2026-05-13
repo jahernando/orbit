@@ -4,6 +4,7 @@
 import argparse
 import re
 import sys
+from typing import Optional
 
 from core.log import VALID_TYPES, add_entry, add_entry_with_ref, find_project, find_logbook_file, find_proyecto_file
 from core.search import run_search
@@ -28,8 +29,9 @@ from core.commit import run_commit
 from core.migrate import run_migrate, run_migrate_all
 from core.agenda_view import run_agenda, run_cal
 from core.ls import run_ls_files, run_ls_notes
-from core.gsync import (run_gsync, run_gsync_migrate_recurring,
-                        run_gsync_migrate_rem_to_calendar)
+# gsync CLI removed in v0.33 (DORMANT.md). core.gsync still imported
+# elsewhere (commit.py reconcile + drift, no-op when applescript_writes
+# is false but kept to avoid coupling).
 from core.history import log_history, run_history
 from core.claude import run_claude
 from core.deliver import run_deliver
@@ -788,10 +790,12 @@ def cmd_panel(args):
                           open_file_path=ORBIT_HOME / "panel.md")
 
 
-def run_dash(silent: bool = False):
+def run_dash(silent: bool = False, project_hint: Optional[str] = None):
     """Refresh panel.md, agenda.md (2 weeks), calendar.md (3 months).
 
     silent=True suppresses all terminal output (used in background refresh and shutdown).
+    project_hint: if set, the .ics regeneration only rewrites that project's
+    per-project file (workspace bucket aggregators are always rebuilt).
     """
     from datetime import date as _date_cls, timedelta
     import calendar as _calmod
@@ -823,6 +827,20 @@ def run_dash(silent: bool = False):
 
     # Touch stamp so background dash in other shells skips redundant refreshes
     (ORBIT_DIR / ".dash-stamp").touch()
+
+    # Regenerate workspace .ics files so subscribed calendars see the
+    # change without waiting for the next commit. Best-effort; failures
+    # don't block dash. The reload-calendars AppleScript is fired from
+    # inside write_workspace.
+    try:
+        from core.deliver import _find_cloud_root
+        from core.ics import write_workspace
+        cr = _find_cloud_root()
+        if cr:
+            with capture_output() as _buf:
+                write_workspace(cr, project_filter=project_hint)
+    except Exception:
+        pass
 
     if not silent:
         print("  ✓ dash actualizado (panel.md + agenda.md + calendar.md)")
@@ -858,19 +876,85 @@ def cmd_report(args):
     return _handle_output(args, fn, "report")
 
 
-def cmd_gsync(args):
-    if getattr(args, "migrate_recurring", False):
-        return run_gsync_migrate_recurring(
-            dry_run=getattr(args, "dry_run", False),
-        )
-    if getattr(args, "migrate_rem_to_calendar", False):
-        return run_gsync_migrate_rem_to_calendar(
-            dry_run=getattr(args, "dry_run", False),
-        )
-    return run_gsync(
-        dry_run=getattr(args, "dry_run", False),
-        list_calendars=getattr(args, "list_calendars", False),
+def cmd_ics(args):
+    from pathlib import Path
+    from core.ics import render_project, render_bucket, get_buckets, write_workspace
+    from core.deliver import _find_cloud_root
+    from core.config import ORBIT_HOME
+
+    validate = getattr(args, "validate", False)
+
+    if validate:
+        # Dry-run: render every bucket + per-project, count VEVENTs,
+        # write nothing.
+        from core.config import iter_project_dirs
+        buckets = get_buckets()
+        total_events = 0
+        for bname, kinds in buckets.items():
+            text = render_bucket(bname, kinds, ORBIT_HOME.name)
+            count = text.count("BEGIN:VEVENT")
+            total_events += count
+            print(f"  {bname:<10} {count:>4} VEVENTs  ({', '.join(kinds)})")
+        proj_count = 0
+        for project_dir in iter_project_dirs():
+            text = render_project(project_dir)
+            proj_count += text.count("BEGIN:VEVENT")
+        print(f"  projects/  {proj_count:>4} VEVENTs (total across {len(list(iter_project_dirs()))} projects)")
+        print(f"\n✓ validate OK — {total_events} VEVENTs en buckets, sin escribir nada.")
+        return 0
+
+    if getattr(args, "workspace", False):
+        cloud = _find_cloud_root()
+        if not cloud:
+            print("Error: no cloud_root configurado en orbit.json.")
+            return 1
+        n = write_workspace(cloud)
+        print(f"✓ Escritos {n} .ics en {cloud / 'calendar'}")
+        return 0
+
+    if getattr(args, "bucket", None):
+        bname = args.bucket
+        buckets = get_buckets()
+        if bname not in buckets:
+            print(f"Error: bucket {bname!r} no definido en ics_buckets. "
+                  f"Disponibles: {', '.join(buckets)}")
+            return 1
+        ics = render_bucket(bname, buckets[bname], ORBIT_HOME.name)
+    else:
+        if not getattr(args, "project", None):
+            print("Uso: orbit ics <proyecto>  |  orbit ics --bucket NAME  |  orbit ics --workspace")
+            return 2
+        from core.log import find_project
+        proj_dir = find_project(args.project)
+        if proj_dir is None:
+            return 1
+        ics = render_project(proj_dir)
+
+    out_path = getattr(args, "out", None)
+    if out_path:
+        Path(out_path).write_text(ics)
+        print(f"✓ Escrito {out_path} ({len(ics)} bytes)")
+    else:
+        print(ics, end="")
+    return 0
+
+
+def cmd_ics_share(args):
+    from core.ics_share import run_ics_share
+    return run_ics_share(
         project=getattr(args, "project", None),
+        orbit_id=getattr(args, "orbit_id", None),
+        desc=getattr(args, "desc", None),
+        out=getattr(args, "out", None),
+    )
+
+
+def cmd_ics_import(args):
+    from core.ics_share import run_ics_import
+    return run_ics_import(
+        project=getattr(args, "project", None),
+        path=getattr(args, "path", None),
+        clipboard=getattr(args, "clipboard", False),
     )
 
 
@@ -1409,20 +1493,42 @@ def _build_parser():
                          help="Incluir tareas/hitos sin fecha (futuribles)")
 
     # --- gsync ---
-    gsync_p = subparsers.add_parser("gsync",
-                                     help="Sync events → Calendar.app, tasks/ms/reminders/cronos → Reminders.app")
-    gsync_p.add_argument("project", nargs="?", default=None,
-                         help="Sync only this project (substring match). Omitted: sync all.")
-    gsync_p.add_argument("--dry-run", action="store_true", dest="dry_run",
-                         help="Preview sync without writing")
-    gsync_p.add_argument("--list-calendars", action="store_true", dest="list_calendars",
-                         help="List Calendar.app calendars and exit")
-    gsync_p.add_argument("--migrate-recurring", action="store_true", dest="migrate_recurring",
-                         help="One-time legacy: mark old recurring events for RRULE re-creation")
-    gsync_p.add_argument("--migrate-rem-to-calendar", action="store_true",
-                         dest="migrate_rem_to_calendar",
-                         help="Migrate tasks/ms/reminders from Reminders.app to the agenda calendar in Calendar.app")
+    # `gsync` and `calsync` argparse parsers removed in v0.33; the
+    # functions remain in core/ for reactivation. See DORMANT.md.
 
+    # --- ics (iCalendar export) ---
+    ics_p = subparsers.add_parser("ics",
+        help="Export appointments as iCalendar (.ics) for sharing/subscription")
+    ics_p.add_argument("project", nargs="?", default=None,
+                       help="Project name (substring match). Omit when using --bucket or --workspace.")
+    ics_p.add_argument("--out", default=None, metavar="PATH",
+                       help="Write to PATH instead of stdout")
+    ics_p.add_argument("--bucket", default=None, metavar="NAME",
+                       help="Render a workspace bucket (e.g. agenda, events) — see ics_buckets in calendar-sync.json")
+    ics_p.add_argument("--workspace", action="store_true",
+                       help="Regenerate ALL workspace .ics files into cloud_root/calendar/")
+    ics_p.add_argument("--validate", action="store_true",
+                       help="Dry-run: render the .ics but write nothing. Reports counts per bucket.")
+
+    # --- ics-share (export a single cita as .ics) ---
+    icss_p = subparsers.add_parser("ics-share",
+        help="Export one cita (project + orbit-id or desc) to a single-VEVENT .ics for email/Slack")
+    icss_p.add_argument("project", help="Project name (substring match)")
+    icss_p.add_argument("--orbit-id", dest="orbit_id", default=None, metavar="ID",
+                        help="Exact orbit-id of the cita to export")
+    icss_p.add_argument("--desc", default=None, metavar="PATTERN",
+                        help="Substring match on cita description (interactive disambig if many)")
+    icss_p.add_argument("--out", default=None, metavar="PATH",
+                        help="Output path (default: /tmp/orbit-<orbit_id>.ics)")
+
+    # --- ics-import (import a single VEVENT into a project) ---
+    icsi_p = subparsers.add_parser("ics-import",
+        help="Import a .ics file into a project as a new cita (single VEVENT)")
+    icsi_p.add_argument("project", help="Project name (substring match)")
+    icsi_p.add_argument("path", nargs="?", default=None,
+                        help="Path to the .ics file (omit when using --clipboard)")
+    icsi_p.add_argument("--clipboard", action="store_true",
+                        help="Read .ics text from clipboard (pbpaste) instead of a file")
 
     # --- mail (cartero) ---
     mail_p = subparsers.add_parser("mail", help="Check mail notifications (cartero)")
@@ -1880,7 +1986,7 @@ _COMMANDS = {
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "gsync": cmd_gsync, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "reorganize": cmd_reorganize,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
@@ -1889,7 +1995,8 @@ _COMMANDS = {
 
 
 # Commands that modify agenda state → trigger silent dash refresh
-_DASH_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono"}
+_DASH_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
+                  "ics-import", "email"}
 
 
 def run_command(argv: list) -> int:
@@ -1904,10 +2011,15 @@ def run_command(argv: list) -> int:
         return 0
     if args.command in _COMMANDS:
         result = _COMMANDS[args.command](args) or 0
-        # Refresh dash in background after state-changing commands
+        # Refresh dash in background after state-changing commands. If
+        # the command targeted a specific project, pass it as hint so
+        # the .ics regen rewrites only that project's per-project file
+        # (workspace buckets always rebuild).
         if args.command in _DASH_TRIGGERS and result == 0:
             import threading
-            threading.Thread(target=run_dash, args=(True,), daemon=True).start()
+            hint = getattr(args, "project", None)
+            threading.Thread(target=run_dash, args=(True, hint),
+                             daemon=True).start()
         return result
     if args.command == "shell":
         run_shell(editor=_editor_from_args(args))

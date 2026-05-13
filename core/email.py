@@ -6,11 +6,10 @@ Backends:
   - mail:    AppleScript to Apple Mail.app           (selected message)
   - gmail:   Chrome active tab URL → Gmail API        — pending
 
-Each captured email writes:
-  - notes/emails/YYYY-MM-DD-<slug>.md  (note with frontmatter + body)
-  - one logbook entry with double link:
-      [Email: <subject>](./notes/emails/...md) ✉️ [original](message://<id>)
-      tagged #referencia #email [O]
+Each captured email writes one logbook entry. Two shapes (both tipo=email):
+  - default:  ✉️ [Email: <subject>](message://<id>)                       #email [O]
+  - --note:   ✉️ [Email: <subject>](./notes/emails/…md) ✉️ [original](…)  #email [O]
+            plus notes/emails/YYYY-MM-DD-<slug>.md (frontmatter + body).
 """
 
 import email as _stdlib_email
@@ -327,6 +326,135 @@ end tell
         "body":    body,
         "source":  "outlook",
     }
+
+
+_SPANISH_MONTHS = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+    "julio": 7, "agosto": 8, "septiembre": 9, "setiembre": 9, "octubre": 10,
+    "noviembre": 11, "diciembre": 12,
+    "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
+    "jul": 7, "ago": 8, "sep": 9, "oct": 10, "nov": 11, "dic": 12,
+}
+_ENGLISH_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8,
+    "sept": 9, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+_ALL_MONTHS = {**_SPANISH_MONTHS, **_ENGLISH_MONTHS}
+
+
+from datetime import date as _date_cls
+
+
+def _extract_dates_from_body(body: str) -> list:
+    """Extract candidate dates from email body text.
+
+    Returns a list of ``YYYY-MM-DD`` strings (deduplicated, first-seen
+    order). Supports several common formats:
+
+    * ISO ``2026-05-22``
+    * Day/month/year ``22/05/2026`` or ``22-05-2026`` (Spanish DD/MM/YYYY)
+    * Day month [year] in Spanish/English: ``22 de mayo [de 2026]``,
+      ``May 22[, 2026]``
+
+    When the year is missing, the current year is assumed unless the
+    resulting date would be in the past — then next year is used. The
+    caller decides which candidate to use.
+    """
+    if not body:
+        return []
+    _d = _date_cls
+    today = _d.today()
+
+    candidates = []
+
+    def _add(year: int, month: int, day: int):
+        try:
+            d = _d(year, month, day)
+        except ValueError:
+            return
+        iso = d.isoformat()
+        if iso not in candidates:
+            candidates.append(iso)
+
+    # 1. ISO YYYY-MM-DD
+    for m in re.finditer(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", body):
+        _add(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+    # 2. DD/MM/YYYY or DD-MM-YYYY (Spanish convention; reject US MM/DD/YYYY
+    # by requiring day ≤ 31 and month ≤ 12, then preferring DD/MM).
+    for m in re.finditer(r"\b(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})\b", body):
+        a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        year = c if c >= 100 else 2000 + c
+        # Heuristic: if first ≤ 12 and second > 12, fall back to MM/DD.
+        if a <= 12 and b > 12:
+            _add(year, a, b)
+        else:
+            _add(year, b, a)
+
+    # 3. Day MonthName [Year]  /  MonthName Day[, Year]
+    month_alt = "|".join(_ALL_MONTHS.keys())
+    pattern1 = re.compile(
+        rf"\b(\d{{1,2}})\s+de\s+({month_alt})(?:\s+(?:de\s+)?(\d{{4}}))?",
+        re.IGNORECASE
+    )
+    pattern2 = re.compile(
+        rf"\b({month_alt})\s+(\d{{1,2}})(?:[,\s]+(\d{{4}}))?",
+        re.IGNORECASE
+    )
+
+    for m in pattern1.finditer(body):
+        day = int(m.group(1))
+        month = _ALL_MONTHS[m.group(2).lower()]
+        year_s = m.group(3)
+        if year_s:
+            _add(int(year_s), month, day)
+        else:
+            # Year missing: this year, or next year if past.
+            try:
+                d = _d(today.year, month, day)
+                if d < today:
+                    d = _d(today.year + 1, month, day)
+                if d.isoformat() not in candidates:
+                    candidates.append(d.isoformat())
+            except ValueError:
+                pass
+
+    for m in pattern2.finditer(body):
+        month = _ALL_MONTHS[m.group(1).lower()]
+        day = int(m.group(2))
+        year_s = m.group(3)
+        if year_s:
+            _add(int(year_s), month, day)
+        else:
+            try:
+                d = _d(today.year, month, day)
+                if d < today:
+                    d = _d(today.year + 1, month, day)
+                if d.isoformat() not in candidates:
+                    candidates.append(d.isoformat())
+            except ValueError:
+                pass
+
+    return candidates
+
+
+def _pick_best_body_date(candidates: list) -> Optional[str]:
+    """Pick the most likely event date from extracted candidates.
+
+    Prefers the first date that is today or in the future. If all are
+    past, picks the most recent past (defensive: still better than the
+    email's send date for fixing the title afterwards).
+    """
+    if not candidates:
+        return None
+    _d = _date_cls
+    today = _d.today()
+    future = [c for c in candidates if _d.fromisoformat(c) >= today]
+    if future:
+        return future[0]
+    return candidates[-1]   # most recent past
 
 
 def _build_iso_date(y: str, mo: str, d: str, h: str, mi: str) -> str:
@@ -688,10 +816,19 @@ def _detect_event_data(email: dict) -> dict:
         proposal["title"] = _clean_subject(subject) or "(sin asunto)"
 
     if not proposal["date"]:
-        # Fallback to email Date header (first 10 chars of ISO format)
-        edate = (email.get("date") or "")[:10]
-        if re.match(r"^\d{4}-\d{2}-\d{2}$", edate):
-            proposal["date"] = edate
+        # Try to extract a date from the body text first — the email's
+        # send-date is often days/weeks before the actual meeting date.
+        body_candidates = _extract_dates_from_body(body)
+        best = _pick_best_body_date(body_candidates)
+        if best:
+            proposal["date"] = best
+            proposal["_date_source"] = "body"
+        else:
+            # Last resort: email Date header.
+            edate = (email.get("date") or "")[:10]
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", edate):
+                proposal["date"] = edate
+                proposal["_date_source"] = "email-header"
 
     # Body URL extraction: append any not already present
     for url in _extract_urls(body, _ROOM_URL_PATTERNS):
@@ -746,42 +883,75 @@ def _prompt_with_default(label: str, default: str) -> str:
     return ans or default
 
 
+def _edit_multi_value(label: str, current: list) -> list:
+    """Prompt for a multi-valued field (room or agenda).
+
+    Shows what was detected; user can Enter to keep all, ``-`` to clear,
+    a digit to pick one of the detected, or a new value to override.
+    """
+    if not current:
+        print(f"  {label}: (ninguna detectada)")
+        try:
+            ans = input(f"  {label} (vacío = ninguna, o teclea valor): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return []
+        return [ans] if ans else []
+
+    if len(current) == 1:
+        print(f"  {label} detectada: {current[0]}")
+        try:
+            ans = input(
+                f"  {label} (Enter mantiene, '-' quita, o nuevo valor): "
+            ).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return current
+        if not ans:
+            return current
+        if ans == "-":
+            return []
+        return [ans]
+
+    # Multiple detected.
+    print(f"  {label}s detectadas:")
+    for i, v in enumerate(current, 1):
+        print(f"    {i}. {v}")
+    try:
+        ans = input(
+            f"  {label} (Enter mantiene todas, # para una sola, '-' quita, o nuevo valor): "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return current
+    if not ans:
+        return current
+    if ans == "-":
+        return []
+    if ans.isdigit():
+        idx = int(ans) - 1
+        if 0 <= idx < len(current):
+            return [current[idx]]
+        return current
+    return [ans]
+
+
 def _edit_proposal(proposal: dict) -> Optional[dict]:
     """Interactive prompt to edit each field. Returns dict or None on cancel."""
     print("\nEditar campos (Enter mantiene el valor actual; vacío = quitar):")
     title = _prompt_with_default("título", proposal.get("title") or "")
-    date  = _prompt_with_default("fecha (YYYY-MM-DD)", proposal.get("date") or "")
+    date_default = proposal.get("date") or ""
+    src = proposal.get("_date_source")
+    date_hint = ""
+    if src == "body":
+        date_hint = " [extraída del cuerpo del email]"
+    elif src == "email-header":
+        date_hint = " [fecha de envío del email — revísala]"
+    date  = _prompt_with_default(f"fecha (YYYY-MM-DD){date_hint}", date_default)
     time_v = _prompt_with_default("hora (HH:MM o vacío)", proposal.get("time") or "")
 
-    rooms = list(proposal.get("rooms") or [])
-    if len(rooms) > 1:
-        print(f"  rooms detectadas: {len(rooms)}")
-        for i, r in enumerate(rooms, 1):
-            print(f"    {i}. {r}")
-        ans = _prompt_with_default("quitar rooms (ej. 2,3 o vacío)", "")
-        if ans:
-            try:
-                drop = sorted({int(x.strip()) for x in ans.split(",")}, reverse=True)
-                for i in drop:
-                    if 1 <= i <= len(rooms):
-                        rooms.pop(i - 1)
-            except ValueError:
-                pass
-
-    agendas = list(proposal.get("agendas") or [])
-    if len(agendas) > 1:
-        print(f"  agendas detectadas: {len(agendas)}")
-        for i, a in enumerate(agendas, 1):
-            print(f"    {i}. {a}")
-        ans = _prompt_with_default("quitar agendas (ej. 2 o vacío)", "")
-        if ans:
-            try:
-                drop = sorted({int(x.strip()) for x in ans.split(",")}, reverse=True)
-                for i in drop:
-                    if 1 <= i <= len(agendas):
-                        agendas.pop(i - 1)
-            except ValueError:
-                pass
+    rooms   = _edit_multi_value("room",   list(proposal.get("rooms")   or []))
+    agendas = _edit_multi_value("agenda", list(proposal.get("agendas") or []))
 
     if not title or not date:
         print("⚠️  Título y fecha son obligatorios. Cancelado.")
@@ -888,25 +1058,26 @@ def _emit_email(project_dir: Path, email: dict, with_note: bool = False) -> int:
 
     mail_link = f"message://%3C{email['msg_id']}%3E" if email.get("msg_id") else None
 
+    # Rule: anything sourced from a message is tipo=email. With --note the
+    # primary link points at the local .md but the entry is still "email"
+    # (origin describes type). Secondary link keeps the original mail
+    # one click away.
+    tipo  = "email"
+    extra = None
     if note_link:
-        # With note: primary = note (📎 default), secondary = email original ✉️
         path = note_link
         secondary = ("✉️", "original", mail_link) if mail_link else None
-        emoji = None  # default 📎 from tipo=referencia
     else:
-        # Default: primary = email original; use ✉️ to flag "this points at a mail"
         path = mail_link
         secondary = None
-        emoji = "✉️"
 
     add_orbit_entry(
         project_dir,
         f"Email: {email['subject']}",
-        tipo="referencia",
+        tipo=tipo,
         path=path,
-        extra_tags=["email"],
+        extra_tags=extra,
         secondary_link=secondary,
-        emoji_override=emoji,
     )
 
     print(f"✓ [{project_dir.name}] Email registrado: {email['subject']}")

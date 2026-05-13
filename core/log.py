@@ -7,7 +7,8 @@ from core.config import PROJECTS_DIR, iter_project_dirs
 
 VALID_TYPES = ["idea", "referencia", "apunte", "problema", "solucion", "resultado",
                "decision", "evaluacion",
-               "plan", "tarea", "evento"]   # tarea/evento kept for backwards compat
+               "plan", "email",
+               "tarea", "evento"]   # tarea/evento kept for backwards compat
 
 
 def _base_name(project_dir: Path) -> str:
@@ -153,6 +154,7 @@ TAG_EMOJI = {
     "decision":    "📌",
     "evaluacion":  "🔍",
     "plan":        "🗓️",
+    "email":       "✉️",
     "tarea":       "✅",   # legacy
     "evento":      "📅",   # legacy
 }
@@ -209,7 +211,7 @@ def log_to_mission(message: str, tipo: str) -> None:
 def init_logbook(logbook_path: Path, project_name: str) -> None:
     logbook_path.write_text(
         f"# Logbook — {project_name}\n\n"
-        "<!-- Tipos: #idea #referencia #apunte #problema #solucion #resultado #decision #evaluacion #plan -->\n\n"
+        "<!-- Tipos: #idea #referencia #apunte #problema #solucion #resultado #decision #evaluacion #plan #email -->\n\n"
     )
 
 
