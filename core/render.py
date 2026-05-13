@@ -79,9 +79,14 @@ def _depth(rel_path: Path) -> int:
 
 
 def _render_file(src: Path, dest: Path, css_rel: str,
-                 nav_html: str, title: str = "") -> None:
-    """Render a single .md file to .html."""
+                 nav_html: str, title: str = "",
+                 extra_md: str = "") -> None:
+    """Render a single .md file to .html. ``extra_md`` is appended to
+    the source markdown before conversion (used to surface tracked
+    files in the rendered project page)."""
     text = src.read_text(encoding="utf-8", errors="replace")
+    if extra_md:
+        text = text + "\n\n" + extra_md
     body = _md_to_html(text)
     body = _rewrite_md_links(body)
     if not title:
@@ -116,6 +121,21 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
     md_files = [f for f in md_files if f.name != "inbox.txt"]
 
     rel_project = project_dir.relative_to(ORBIT_HOME)
+
+    # Build the "Tracked files" snippet once for the project.md page.
+    # Appears as an extra section in the rendered HTML so a reader of
+    # the cloud copy sees the tracked mirrors at a glance.
+    from core.tracked import load_registry
+    tracked_registry = load_registry(project_dir)
+    tracked_section_md = ""
+    if tracked_registry:
+        lines = ["## 🔄 Tracked"]
+        for rel_dest, entry in sorted(tracked_registry.items()):
+            note_html = rel_dest.replace(".md", ".html")
+            display_name = Path(rel_dest).stem
+            lines.append(f"- [{display_name}](./{note_html}) ← `{entry['source']}`")
+        tracked_section_md = "\n".join(lines)
+
     rendered = 0
     for src in md_files:
         rel = src.relative_to(project_dir)
@@ -130,7 +150,9 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
             if depth > 0:
                 proj_name = "../" + proj_name
             nav_links += f' <a href="{proj_name}">📋 Proyecto</a>'
-        _render_file(src, dest, css_rel, nav_links)
+        # Only the project.md page gets the tracked section appended.
+        extra = tracked_section_md if src.name.endswith("-project.md") else ""
+        _render_file(src, dest, css_rel, nav_links, extra_md=extra)
         rendered += 1
 
     return rendered

@@ -355,12 +355,34 @@ def run_note_list(project: str) -> int:
         print(f"[{project_dir.name}/notes/] — sin notas")
         return 0
 
+    # Load the tracked registry once so we can mark dynamic notes.
+    # ✏️ user-written, 📌 static (imported snapshot), 🔄 tracked (mirror).
+    from core.tracked import load_registry
+    registry = load_registry(project_dir)
+    tracked_rel = set(registry.keys())   # e.g. {"notes/decisions.md"}
+
+    def _kind_emoji(note_path: Path) -> str:
+        rel = f"notes/{note_path.name}"
+        if rel in tracked_rel:
+            return "🔄"
+        # Heuristic: a date prefix (YYYY-MM-DD_) signals an imported snapshot.
+        # Without a prefix the user authored it locally.
+        if re.match(r"^\d{4}-\d{2}-\d{2}_", note_path.name):
+            return "📌"
+        return "✏️"
+
     print(f"\nNotas — {project_dir.name}/notes/:")
     for note in notes:
         tracked = _git_tracked(note)
-        mark = "✓ git" if tracked else ("✗ git" if tracked is False else "? git")
-        print(f"  {mark}   {note.name}")
+        git_mark = "✓" if tracked else ("✗" if tracked is False else "?")
+        kind = _kind_emoji(note)
+        line = f"  {git_mark} git  {kind}  {note.name}"
+        rel = f"notes/{note.name}"
+        if rel in tracked_rel:
+            line += f"   ← {registry[rel]['source']}"
+        print(line)
     print()
+    print("  Leyenda: ✏️ libre · 📌 snapshot · 🔄 tracked (auto-refresh)")
     return 0
 
 

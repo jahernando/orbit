@@ -547,18 +547,26 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
         from core.tracked import iter_tracked, check_entry
         from core.config import iter_project_dirs
         tracked_problems = []
+        tracked_clean = 0
         for pd, rel, entry in iter_tracked(list(iter_project_dirs())):
             outcome = check_entry(pd, rel, entry)
-            if outcome.status not in ("clean", "refreshed"):
+            if outcome.status in ("clean", "refreshed"):
+                tracked_clean += 1
+            else:
                 tracked_problems.append(outcome)
         if tracked_problems:
-            print(f"  📌 Tracked: {len(tracked_problems)} fichero"
+            print(f"  🔄 Tracked: {len(tracked_problems)} fichero"
                   f"{'s' if len(tracked_problems) != 1 else ''} con problema:")
             for o in tracked_problems:
                 emoji = {"dest_tampered": "⚠️", "conflict": "❌",
                          "source_missing": "❓"}.get(o.status, "?")
                 print(f"      {emoji} [{o.project}] {o.rel_dest}: {o.detail}")
             print("  → orbit tracked refresh / remove / retrack para resolver.")
+            print()
+        elif tracked_clean:
+            # Positive feedback when there are tracked files and all are OK.
+            print(f"  🔄 Tracked: {tracked_clean} fichero"
+                  f"{'s' if tracked_clean != 1 else ''} OK")
             print()
     except Exception:
         pass

@@ -429,6 +429,10 @@ def run_hl_list(project: Optional[str] = None,
         data = _read_highlights(resolve_file(project_dir, "highlights"))
         keys = [hl_type] if hl_type else list(SECTION_MAP)
 
+        # Tracked highlights are marked with 🔄 next to their text.
+        from core.tracked import load_registry
+        tracked_rel = set(load_registry(project_dir))
+
         proj_lines = []
         for k in keys:
             items = data["sections"].get(k, [])
@@ -436,7 +440,11 @@ def run_hl_list(project: Optional[str] = None,
                 continue
             proj_lines.append(f"  {SECTION_MAP[k]}")
             for item in items:
-                proj_lines.append(f"    {_item_display(item)}")
+                marker = ""
+                link = item.get("link") or ""
+                if link.startswith("./") and link[2:] in tracked_rel:
+                    marker = "🔄 "
+                proj_lines.append(f"    {marker}{_item_display(item)}")
             total += len(items)
 
         if proj_lines:

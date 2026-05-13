@@ -942,6 +942,33 @@ def cmd_ics(args):
     return 0
 
 
+def cmd_track(args):
+    """Alias: ``orbit track <proj> "title" --file X.md`` ≡ ``orbit note <proj> "title" --track --file X.md``.
+
+    Shortcut for users who think "voy a trackear este fichero" rather
+    than "voy a importar como note con flag track". Routes to
+    ``run_note_create(..., track=True)``.
+    """
+    project = getattr(args, "project", None)
+    title   = getattr(args, "title", None) or ""
+    file_str = getattr(args, "file", None)
+    if not project or not title or not file_str:
+        print("Uso: orbit track <project> <title> --file <ruta.md> [--hl TYPE]")
+        return 2
+    from core.notes import run_note_create
+    return run_note_create(
+        project   = project,
+        title     = title,
+        file_str  = file_str,
+        open_after= not getattr(args, "no_open", False),
+        editor    = _editor_from_args(args),
+        no_date   = True,           # tracked files always canonical
+        entry     = getattr(args, "entry", None) or "apunte",
+        hl_type   = getattr(args, "hl", None),
+        track     = True,
+    )
+
+
 def cmd_tracked(args):
     """Dispatcher for ``orbit tracked {list,refresh,remove,retrack}``."""
     from core.tracked import (
@@ -1611,6 +1638,21 @@ def _build_parser():
     ics_p.add_argument("--validate", action="store_true",
                        help="Dry-run: render the .ics but write nothing. Reports counts per bucket.")
 
+    # --- track (alias of `note ... --track ... --file ...`) ---
+    track_p = subparsers.add_parser("track",
+        help="Track an external .md file: mirrors into the project's notes/, auto-refresh on commit")
+    track_p.add_argument("project", help="Project name (partial match)")
+    track_p.add_argument("title",   help="Note title (becomes the filename slug)")
+    track_p.add_argument("--file",  dest="file", required=True, metavar="PATH",
+                         help="External .md file to track")
+    track_p.add_argument("--hl",    default=None, metavar="TYPE",
+                         help="Also register as highlight under TYPE (refs, results, …)")
+    track_p.add_argument("--entry", default="apunte",
+                         help="Logbook entry type (default: apunte)")
+    track_p.add_argument("--no-open", action="store_true",
+                         help="Do not open the imported file after track")
+    track_p.add_argument("--editor", default=None)
+
     # --- tracked (external file tracking) ---
     tr_p   = subparsers.add_parser("tracked",
                                     help="Manage tracked external markdown files")
@@ -2122,7 +2164,7 @@ _COMMANDS = {
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "reorganize": cmd_reorganize,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
