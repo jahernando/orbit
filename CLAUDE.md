@@ -85,7 +85,25 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.33.0, 2026-05-12)
+## Estado actual (v0.34.0, 2026-05-13)
+
+### v0.34.0 (2026-05-13) — Tracked external files + local `.ics` mirror + `ics --diff`
+- **Tracked external files** (4c1dc08 / 85d463b / 9e49b45):
+  - `orbit track <proj> --file <md>` ≡ `orbit note <proj> --track --file <md>`. Importa un `.md` externo a `notes/`, lo registra como tracked, y refresca el contenido en cada `orbit commit` (origen externo → local). Aborta si hay conflicto (diverged) hasta resolución manual.
+  - Marcadores de discoverability en `project.md` (`📎 Tracked files:`), alias `orbit track`, sección dedicada en panel.
+  - Primer caso de uso: `DECISIONS.md`, `DORMANT.md`, `DEPENDENCIES.md` se tracken desde `~/🚀orbit-ws/💻software/💻orbit/notes/` → reflejan el repo de orbit sin duplicación.
+  - Memorias: [[project_tracked_files_v034]], [[feedback_tracked_design]] (8 principios articulados durante el diseño).
+- **Mirror local de `.ics` + `ics --diff`** (esta sesión):
+  - **Motivación**: tener una "git history del calendario" sin contaminar git con artefactos derivados. El `.ics` es render de `agenda.md` (verdad) — versionarlo doblaría diffs por cambio lógico y permitiría drift entre `.ics` y `agenda.md` en commits. La solución: copia local gitignored + comando de preview.
+  - `core/ics.py::write_workspace` ahora escribe a DOS sitios:
+    - `<workspace>/.cache/ics/` — mirror canónico local (gitignored). Tiene `.ics` + `.ics.snapshot` (trail para diff).
+    - `cloud_root/calendar/` — copia publicada para Calendar.app. **Solo** `.ics`, sin snapshots (no aportan valor a subscribers, ensucian OneDrive sync).
+  - **`orbit ics --diff`** (nuevo): renderiza in-memory y compara contra el mirror local. Muestra added/removed/changed por UID con SUMMARY humano, deduplicado entre buckets y per-project. Equivalente al valor de `git diff` sobre un `.ics`, sin contaminar git.
+  - **`.cache/` añadido a `.gitignore`** de `🚀orbit-ws` y `🌿orbit-ps`. Para workspaces nuevos: documentar en SETUP.md (pendiente).
+  - **Tests**: actualizado `tests/test_ics.py::TestWriteWorkspace::test_writes_buckets_and_per_project` (snapshots en local, no en cloud); nueva clase `TestDiffWorkspace` con 4 tests (no-changes / added / changed / removed UID). Suite total: 1650 pass, 4 skipped.
+- **Documentación nueva**:
+  - **`RING.md`** — diseño cerrado de la arquitectura desacoplada para alarmas (sustituto del `reminders_backend: "reminders"` dormante). Pendiente de implementar (fases B–F). Decisión clave: daemon usa **EventKit vía PyObjC** (no AppleScript) — misma fiabilidad de Reminders.app, sin los problemas crónicos de `osascript` (timeouts, error -10025, escape de strings, app abierta requerida). Schema `ring.json`, ventana 7 días rolling, lista única `Orbit Ring`, plist `launchd` con `WatchPaths`.
+  - **`ROADMAP.md`** — trabajo comprometido pendiente: tests CI GitHub Actions, revisión de auto-magia (qué hooks siguen vivos / útiles), fases B–F de Ring. Convención: distinto de `IDEAS.md` (sin decidir) y `ORBIT_REVISION.md` (revisión sistemática del código existente).
 
 ### v0.33.0 (2026-05-12) — Fase 2: AppleScript-write dormante + ics-only
 - **Motivación**: validada la fase 1 (.ics emitido por orbit, Calendar.app suscrita a la URL pública de OneDrive en `🚀orbit-ws`), el camino AppleScript-write deja de tener sentido. Era una fuente recurrente de drift y `calsync` v0.31 fue un parche sobre el problema en vez de la solución. La verdad sigue siendo `agenda.md`, la presentación es `.ics`, y Calendar.app no edita nada porque la suscripción es read-only por construcción.

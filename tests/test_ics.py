@@ -362,14 +362,22 @@ class TestWriteWorkspace:
         cloud.mkdir()
         n = ics.write_workspace(cloud)
         cal_dir = cloud / "calendar"
+        # Cloud has .ics only (no snapshots) — they're not useful to
+        # Calendar.app subscribers and just bloat OneDrive sync.
         assert (cal_dir / "agenda.ics").exists()
         assert (cal_dir / "events.ics").exists()
         assert (cal_dir / "projects").exists()
+        assert not (cal_dir / "agenda.ics.snapshot").exists()
         # First write returns 2 buckets + 1 project = 3 files.
         assert n == 3
-        # Snapshot files also written.
-        assert (cal_dir / "agenda.ics.snapshot").exists()
-        assert (cal_dir / "events.ics.snapshot").exists()
+        # Local mirror (gitignored) holds .ics + snapshots.
+        local = orbit_env["tmp"] / ".cache" / "ics"
+        assert (local / "agenda.ics").exists()
+        assert (local / "events.ics").exists()
+        assert (local / "agenda.ics.snapshot").exists()
+        assert (local / "events.ics.snapshot").exists()
+        # Mirror and cloud have identical content.
+        assert (local / "agenda.ics").read_text() == (cal_dir / "agenda.ics").read_text()
 
     def test_aborts_on_invalid_buckets(self, orbit_env, monkeypatch, capsys):
         monkeypatch.setattr("core.gsync._calendar_app_running", lambda: False)
@@ -382,3 +390,73 @@ class TestWriteWorkspace:
         assert n == 0
         out = capsys.readouterr().out
         assert "bogus" in out
+
+
+# ── diff_workspace (preview) ────────────────────────────────────────────────
+
+class TestDiffWorkspace:
+    def _setup_baseline(self, orbit_env, monkeypatch):
+        """Write a workspace .ics baseline and return paths."""
+        agenda = orbit_env["proj_dir"] / "agenda.md"
+        agenda.write_text(
+            "# Agenda\n\n"
+            "## ✅ Tareas\n"
+            "- [ ] T (2026-05-15) [orbit:abc12345]\n\n"
+        )
+        monkeypatch.setattr("core.gsync._calendar_app_running", lambda: False)
+        cloud = orbit_env["tmp"] / "cloud"
+        cloud.mkdir()
+        ics.write_workspace(cloud)
+        return agenda, cloud
+
+    def test_no_changes_returns_empty(self, orbit_env, monkeypatch):
+        self._setup_baseline(orbit_env, monkeypatch)
+        # Render again without editing agenda — no pending changes.
+        d = ics.diff_workspace()
+        assert d == {}
+
+    def _has_uid(self, uids, orbit_id):
+        """UIDs in .ics include @orbit suffix (and -date for recurrents)."""
+        return any(orbit_id in u for u in uids)
+
+    def test_detects_added_uid(self, orbit_env, monkeypatch):
+        agenda, _ = self._setup_baseline(orbit_env, monkeypatch)
+        # Append a new task.
+        agenda.write_text(agenda.read_text() +
+                          "- [ ] T2 (2026-05-20) [orbit:deadbeef]\n")
+        d = ics.diff_workspace()
+        files = list(d.keys())
+        assert any("agenda.ics" in f for f in files)
+        any_added = any(self._has_uid(d[f]["added"], "deadbeef") for f in files)
+        assert any_added
+        # SUMMARY plumbing populated.
+        for f in files:
+            for uid, summary in d[f].get("summaries", {}).items():
+                if "deadbeef" in uid:
+                    assert "T2" in summary
+
+    def test_detects_changed_uid(self, orbit_env, monkeypatch):
+        agenda, _ = self._setup_baseline(orbit_env, monkeypatch)
+        # Move date of the existing task.
+        agenda.write_text(
+            "# Agenda\n\n"
+            "## ✅ Tareas\n"
+            "- [ ] T (2026-06-01) [orbit:abc12345]\n\n"
+        )
+        d = ics.diff_workspace()
+        any_changed = False
+        for f, info in d.items():
+            for uid, attrs in info["changed"]:
+                if "abc12345" in uid:
+                    any_changed = True
+                    assert "DTSTART" in attrs or "DTEND" in attrs
+        assert any_changed
+
+    def test_detects_removed_uid(self, orbit_env, monkeypatch):
+        agenda, _ = self._setup_baseline(orbit_env, monkeypatch)
+        # Strip the task entirely.
+        agenda.write_text("# Agenda\n\n## ✅ Tareas\n")
+        d = ics.diff_workspace()
+        any_removed = any(self._has_uid(info["removed"], "abc12345")
+                          for info in d.values())
+        assert any_removed

@@ -886,6 +886,38 @@ def cmd_ics(args):
     from core.config import ORBIT_HOME
 
     validate = getattr(args, "validate", False)
+    diff = getattr(args, "diff", False)
+
+    if diff:
+        from core.ics import diff_workspace, _local_mirror_dir
+        mirror = _local_mirror_dir()
+        if not mirror.exists():
+            print(f"  ℹ️  No hay mirror local todavía ({mirror}). Ejecuta `orbit ics --workspace` para crear uno.")
+            return 0
+        results = diff_workspace()
+        if not results:
+            print("  ✓ Sin cambios pendientes desde el último render.")
+            return 0
+        # Dedupe across files: the same UID appears in bucket + per-project.
+        seen_added, seen_removed, seen_changed = set(), set(), set()
+        for fname, d in results.items():
+            print(f"\n  📅 {fname}")
+            sums = d.get("summaries", {})
+            for uid in d["added"]:
+                title = sums.get(uid, "")
+                print(f"    + {uid}  {title}")
+                seen_added.add(uid)
+            for uid, attrs in d["changed"]:
+                title = sums.get(uid, "")
+                print(f"    ~ {uid}  {title}  ({', '.join(attrs)})")
+                seen_changed.add(uid)
+            for uid in d["removed"]:
+                title = sums.get(uid, "")
+                print(f"    - {uid}  {title}")
+                seen_removed.add(uid)
+        n_a, n_c, n_r = len(seen_added), len(seen_changed), len(seen_removed)
+        print(f"\n  Total (deduplicado): {n_a} añadidos / {n_c} modificados / {n_r} eliminados")
+        return 0
 
     if validate:
         # Dry-run: render every bucket + per-project, count VEVENTs,
@@ -1637,6 +1669,8 @@ def _build_parser():
                        help="Regenerate ALL workspace .ics files into cloud_root/calendar/")
     ics_p.add_argument("--validate", action="store_true",
                        help="Dry-run: render the .ics but write nothing. Reports counts per bucket.")
+    ics_p.add_argument("--diff", action="store_true",
+                       help="Preview pending changes vs last render (no writes). Reads the local .cache/ics mirror.")
 
     # --- track (alias of `note ... --track ... --file ...`) ---
     track_p = subparsers.add_parser("track",

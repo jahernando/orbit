@@ -585,6 +585,16 @@ def _write_with_snapshot(path: Path, content: str) -> dict:
     return diff
 
 
+def _local_mirror_dir() -> Path:
+    """Local (workspace-side) canonical filesystem location for emitted
+    ``.ics`` and their snapshots. Sits under ``ORBIT_HOME/.cache/ics`` —
+    gitignored, lives next to the source agendas, survives cloud-sync
+    failures. The cloud copy is published from here.
+    """
+    from core.config import ORBIT_HOME
+    return ORBIT_HOME / ".cache" / "ics"
+
+
 def write_workspace(cloud_root: Path,
                     project_filter: Optional[str] = None) -> int:
     """Regenerate ``.ics`` files for the current workspace.
@@ -595,10 +605,23 @@ def write_workspace(cloud_root: Path,
     they pool events across every project of the workspace — a change
     in one project affects every bucket that includes its kind.
 
-    Returns the count of files written. Layout:
-        cloud_root/calendar/
-            <bucket>.ics                 ← always rebuilt
-            projects/<project>.ics       ← all, or just the filtered one
+    Returns the count of files written (counted once per ``.ics``,
+    irrespective of mirror/cloud writes). Layout:
+
+        ORBIT_HOME/.cache/ics/           ← canonical local mirror (gitignored)
+            <bucket>.ics
+            <bucket>.ics.snapshot        ← prior-render trail for diff
+            projects/<project>.ics
+            projects/<project>.ics.snapshot
+
+        cloud_root/calendar/             ← published copy (no snapshots)
+            <bucket>.ics
+            projects/<project>.ics
+
+    Snapshots live only locally — they're an internal artefact for
+    summarising deltas during ``write_workspace`` and for the
+    ``orbit ics --diff`` preview command, with zero value to Calendar.app
+    subscribers reading the cloud copy.
 
     Idempotent — safe to call from render's post-commit hook or from
     the background dash trigger.
@@ -606,6 +629,10 @@ def write_workspace(cloud_root: Path,
     cal_dir = cloud_root / "calendar"
     proj_dir = cal_dir / "projects"
     proj_dir.mkdir(parents=True, exist_ok=True)
+
+    local_cal_dir = _local_mirror_dir()
+    local_proj_dir = local_cal_dir / "projects"
+    local_proj_dir.mkdir(parents=True, exist_ok=True)
 
     from core.config import ORBIT_HOME
     workspace_name = ORBIT_HOME.name
@@ -627,7 +654,9 @@ def write_workspace(cloud_root: Path,
 
     for bname, kinds in buckets.items():
         ics = render_bucket(bname, kinds, workspace_name)
-        _merge(_write_with_snapshot(cal_dir / f"{bname}.ics", ics))
+        # Snapshot trail lives in local; cloud receives content only.
+        _merge(_write_with_snapshot(local_cal_dir / f"{bname}.ics", ics))
+        (cal_dir / f"{bname}.ics").write_text(ics)
         written += 1
 
     # Per-project files: either all, or only the filtered one.
@@ -635,7 +664,8 @@ def write_workspace(cloud_root: Path,
         if project_filter and project_filter.lower() not in project_dir.name.lower():
             continue
         ics = render_project(project_dir)
-        _merge(_write_with_snapshot(proj_dir / f"{project_dir.name}.ics", ics))
+        _merge(_write_with_snapshot(local_proj_dir / f"{project_dir.name}.ics", ics))
+        (proj_dir / f"{project_dir.name}.ics").write_text(ics)
         written += 1
 
     _trigger_calendar_reload()
@@ -654,6 +684,74 @@ def write_workspace(cloud_root: Path,
               f"{len(dedup_changes['changed'])} modificados / "
               f"{len(dedup_changes['removed'])} eliminados desde el último render")
     return written
+
+
+def diff_workspace() -> dict:
+    """Preview what the next ``write_workspace`` would change.
+
+    Renders every bucket and per-project ``.ics`` in memory, compares
+    against the on-disk copy in the local mirror, and returns a dict
+    keyed by relative filename::
+
+        {
+            "agenda.ics": {
+                "added":   ["a1b2c3d4", ...],
+                "removed": [...],
+                "changed": [("uid", ["DTSTART", ...]), ...],
+                "summaries": {"a1b2c3d4": "Reunión equipo", ...},
+            },
+            "projects/💻orbit.ics": {...},
+            ...
+        }
+
+    Cheap (~50 ms) — no filesystem writes. Replaces the role that a
+    ``git diff`` on the ``.ics`` would have, without versioning derived
+    artefacts.
+    """
+    from core.config import ORBIT_HOME
+    local_cal_dir = _local_mirror_dir()
+    workspace_name = ORBIT_HOME.name
+    buckets = get_buckets()
+    errors = validate_buckets(buckets)
+    if errors:
+        for e in errors:
+            print(f"⚠️  ics_buckets: {e}")
+        return {}
+
+    out: dict = {}
+    for bname, kinds in buckets.items():
+        current = render_bucket(bname, kinds, workspace_name)
+        prior_path = local_cal_dir / f"{bname}.ics"
+        prior = prior_path.read_text() if prior_path.exists() else ""
+        d = diff_snapshot(current, prior)
+        if d["added"] or d["removed"] or d["changed"]:
+            d["summaries"] = _summaries_from(current, prior, d)
+            out[f"{bname}.ics"] = d
+
+    for project_dir in iter_project_dirs():
+        current = render_project(project_dir)
+        rel = f"projects/{project_dir.name}.ics"
+        prior_path = local_cal_dir / rel
+        prior = prior_path.read_text() if prior_path.exists() else ""
+        d = diff_snapshot(current, prior)
+        if d["added"] or d["removed"] or d["changed"]:
+            d["summaries"] = _summaries_from(current, prior, d)
+            out[rel] = d
+
+    return out
+
+
+def _summaries_from(current_ics: str, prior_ics: str, d: dict) -> dict:
+    """Pick a human-readable SUMMARY per UID — prefer current, fall back
+    to prior for removed UIDs. Used to render ``--diff`` output."""
+    cur = _parse_vevents(current_ics)
+    prior = _parse_vevents(prior_ics) if prior_ics else {}
+    summaries: dict = {}
+    uids = set(d["added"]) | set(d["removed"]) | {u for u, _ in d["changed"]}
+    for uid in uids:
+        ev = cur.get(uid) or prior.get(uid) or {}
+        summaries[uid] = ev.get("SUMMARY", "")
+    return summaries
 
 
 def _trigger_calendar_reload() -> None:
