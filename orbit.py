@@ -1105,6 +1105,24 @@ def cmd_ics_import(args):
     )
 
 
+def cmd_ring(args):
+    from core.ring_export import (
+        run_ring_refresh, run_ring_status,
+        run_ring_install, run_ring_uninstall,
+    )
+    action = getattr(args, "action", None) or "refresh"
+    if action == "refresh":
+        return run_ring_refresh(daemon=not getattr(args, "no_daemon", False))
+    if action == "status":
+        return run_ring_status()
+    if action == "install":
+        return run_ring_install()
+    if action == "uninstall":
+        return run_ring_uninstall()
+    print(f"orbit ring: acción desconocida {action!r}. Usa: refresh | status | install | uninstall")
+    return 2
+
+
 def cmd_reorganize(args):
     from core.reorganize import run_reorganize
     return run_reorganize(
@@ -1659,6 +1677,21 @@ def _build_parser():
     ics_p.add_argument("--diff", action="store_true",
                        help="Preview pending changes vs last render (no writes). Reads the local .cache/ics mirror.")
 
+    # --- ring (Orbit Ring list in Reminders.app via ring.json + daemon) ---
+    ring_p = subparsers.add_parser("ring",
+        help="Manage the 7-day rolling Reminders.app projection (Orbit Ring list)")
+    ring_sub = ring_p.add_subparsers(dest="action")
+    ring_refresh = ring_sub.add_parser("refresh",
+        help="Rebuild ring.json in all federated workspaces and apply via daemon")
+    ring_refresh.add_argument("--no-daemon", action="store_true", dest="no_daemon",
+        help="Write ring.json but skip applying to Reminders.app")
+    ring_sub.add_parser("status",
+        help="Show what's currently in each workspace's ring.json + plist state")
+    ring_sub.add_parser("install",
+        help="Install launchd plist (~/Library/LaunchAgents/com.orbit.ring-daemon.plist)")
+    ring_sub.add_parser("uninstall",
+        help="Unload and remove the launchd plist")
+
     # --- track (externa: symlink notes/<basename> → fullpath) ---
     track_p = subparsers.add_parser("track",
         help="Track an external .md file as externa: notes/<basename> → fullpath (symlink)")
@@ -2180,6 +2213,7 @@ _COMMANDS = {
     "project": cmd_project, "migrate": cmd_migrate,
     "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "untrack": cmd_untrack, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
+    "ring": cmd_ring,
     "reorganize": cmd_reorganize,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,

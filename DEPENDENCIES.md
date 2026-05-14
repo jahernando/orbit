@@ -5,7 +5,7 @@ Inventario completo de las dependencias externas de orbit. Útil para:
 - Saber qué se rompe si una dependencia desaparece.
 - Identificar qué se puede simplificar.
 
-Última auditoría: 2026-05-13 (v0.33).
+Última auditoría: 2026-05-14 (v0.35 — ring desacoplado).
 
 ---
 
@@ -38,8 +38,9 @@ Auditoría de `grep -hE "^(import|from)"` sobre `core/*.py` + `orbit.py`, filtra
 | Paquete | Usado en | Para qué | Sustituible |
 |---------|---------|----------|-------------|
 | `markdown` | `core/render.py` | conversión MD → HTML | No fácilmente — es el motor del cloud render |
+| `pyobjc-framework-EventKit` | `orbit_ring_daemon.py` | EventKit (Reminders.app) API nativa para crear/borrar/actualizar reminders con alarmas | No fácilmente — `osascript` fue rechazado por unreliability. Si se quita, ring queda inoperativo |
 
-**Sí, eso es todo para orbit core.** Solo una dependencia externa. El resto son stdlib.
+**Dos dependencias externas en core.** El resto son stdlib.
 
 ### Externos usados por subsistemas opcionales
 
@@ -64,7 +65,7 @@ Estos solo son necesarios si activas cartero (`orbit mail` en background). Orbit
 | **Calendar.app** | Suscriptor de los `.ics` que emite orbit. Read-only por construcción. AppleScript `reload calendars` opcional. | **Activo** (rol único: subscriber) | Anteriormente era target de AppleScript-write; ese camino quedó dormante en v0.33. |
 | **Apple Mail** | Captura de email vía AppleScript en `orbit email <proj>` con `email_source: "mail"` en orbit.json. | **Activo** | Backend principal en orbit-ps. |
 | **Outlook** | Captura de email vía AppleScript con `email_source: "outlook"`. | **Parcialmente roto** desde Outlook 16.108. Backend principal en orbit-ws. | Issue documentado en memoria `project_email_capture`. |
-| **Reminders.app** | Era backend para tareas/ms/rem hasta v0.29. | **Dormante** desde v0.29 (movido a Calendar.app events) y desde v0.33 (movido a `.ics`). | Ver `DORMANT.md`. |
+| **Reminders.app** | Target del **ring desacoplado** (v0.35): orbit escribe `ring.json` → daemon EventKit upsert reminders idempotentes con alarmas system-level fiables. iCloud sync gratis a iPhone/iPad. | **Activo** desde v0.35 — pero vía EventKit (no AppleScript). Una lista por workspace (`workspace_root.name`). Reminders.app NO necesita estar abierta. | Ver `RING.md`. El backend antiguo v0.29 (AppleScript-direct desde `sync_item`) sigue dormante en `core/gsync.py`. |
 | **Obsidian** | Editor de markdown preferido. Configurable en `orbit.json:editor`. | **Activo** | Fallback al editor del sistema si no está. |
 | **iCloud Calendar** | Propagación de subscripciones de Calendar.app a iPhone/iPad. | **Activo** (canal, no servicio que orbit toque) | Apple removió "iCloud" del diálogo macOS Calendar.app ~2023; el usuario debe suscribir vía `icloud.com/calendar` web. |
 
@@ -103,7 +104,7 @@ brew install python git    # macOS
 # python ≥ 3.9
 
 # Python deps
-pip install markdown
+pip install markdown pyobjc-framework-EventKit
 
 # Clonar orbit
 git clone https://github.com/jahernando/orbit ~/orbit

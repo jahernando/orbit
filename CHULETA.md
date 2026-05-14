@@ -737,6 +737,37 @@ orbit doctor --fix [<project>]  # revisa y ofrece corregir
 - Se ejecuta automáticamente al iniciar la shell y antes de cada commit
 - Con `--fix`: muestra correcciones disponibles y permite aplicarlas interactivamente
 
+### ring — alarmas vía Reminders.app (Orbit Ring)
+
+```bash
+orbit ring refresh                        # regenera ring.json en todos los workspaces y aplica
+orbit ring refresh --no-daemon            # solo escribe ring.json, sin tocar Reminders.app
+orbit ring status                         # muestra ring.json por workspace + estado del plist launchd
+orbit ring install                        # instala ~/Library/LaunchAgents/com.orbit.ring-daemon.plist
+orbit ring uninstall                      # descarga y elimina el plist
+```
+
+Modelo declarativo: `agenda.md` (verdad) → `<ws>/.reminders/ring.json` (ventana 7 días) → daemon EventKit reconcilia la lista de Reminders.app del workspace. Una lista por workspace (default = nombre del directorio del workspace, e.g. `🚀orbit-ws`, `🌿orbit-ps`). El daemon nunca toca items sin tag `[orbit:xxx]` — los reminders manuales del usuario en la misma lista están a salvo.
+
+Triggers automáticos (vía hook system):
+- `shell_start` → refresca al arrancar `orbit shell`
+- `commit_post` → refresca tras cada `orbit commit`
+- `launchctl WatchPaths` (si has hecho `orbit ring install`) → cualquier escritura del `ring.json` dispara el daemon
+- `StartCalendarInterval` 00:05 (vía launchd) → sweep nocturno
+
+Config en `<workspace>/orbit.json`:
+```json
+"ring": {
+  "enabled": true,           // false → vacía la lista del workspace
+  "days":    7,              // ventana rolling, clamped a [1, 30]
+  "list":    "🚀orbit-ws"    // default = workspace_root.name
+}
+```
+
+Eligibilidad de una cita en el ring: tiene `--ring`, tiene `time`, tiene `orbit_id`, status pending (task/ms) o no cancelled (reminder). Recurrentes se expanden en la ventana (un EKReminder por ocurrencia con orbit_id derivado `<base>-<date>`).
+
+Primera vez tras `orbit ring install`: macOS pide autorizar el binario Python en *System Settings → Privacy & Security → Reminders*. Si el log `~/Library/Logs/orbit/ring-daemon.stderr.log` dice `access denied`, autoriza y haz `launchctl kickstart -k gui/$(id -u)/com.orbit.ring-daemon`.
+
 ### archive — archivado de entradas antiguas
 
 ```bash

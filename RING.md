@@ -1,12 +1,15 @@
-# RING.md — alarmas vía Reminders.app desacopladas (diseño aprobado, fases B–F pendientes)
+# RING.md — alarmas vía Reminders.app desacopladas (SHIPPED v0.35)
 
-Diseño cerrado en sesión de 2026-05-13 con el usuario. Sustituye al backend
-`reminders_backend: "reminders"` dormante de v0.29 (acoplado a `sync_item` →
-AppleScript directo) por una arquitectura **declarativa + daemon**.
+Diseño cerrado en sesión de 2026-05-13 con el usuario, implementado el
+2026-05-14 (fases B–F). Sustituye al backend `reminders_backend:
+"reminders"` dormante de v0.29 (acoplado a `sync_item` → AppleScript
+directo) por una arquitectura **declarativa + daemon**.
 
-Implementación parada tras Fase A (mirror local `.ics` + `orbit ics --diff`).
-Antes de retomar B–F el usuario quiere abordar primero los tests automáticos
-desde GitHub y revisar la auto-magia general — ver [ROADMAP.md](ROADMAP.md).
+**Estado**: VIGENTE desde v0.35 (ADR-027). Cambio respecto al diseño
+original aquí descrito: el `list` por defecto es `workspace_root.name`
+(una lista por workspace, ej. `🚀orbit-ws`, `🌿orbit-ps`) en lugar de
+una lista única `Orbit Ring`. Decidido en la sesión de implementación
+para alinear con el patrón existente.
 
 ---
 
@@ -115,7 +118,18 @@ Notas:
 - El `orbit_id` es la identidad estable; el daemon matchea por `[orbit:xxx]`
   en el body del Reminder.
 
-## Plan de implementación — fases B a F
+## Implementación real (v0.35, 2026-05-14)
+
+Lo que efectivamente shipping difiere del plan original en estos puntos:
+
+- **Lista por workspace** (no única `Orbit Ring`). Default = `workspace_root.name`. Override vía `orbit.json/ring.list`.
+- **Config en `orbit.json`** del workspace, no en un fichero nuevo: `"ring": { "enabled": true, "days": 7, "list": "..." }`. Defaults aplicados con `_load_ring_config()`.
+- **Hooks**: el catálogo (`core/hooks_catalog.json`) gana la acción `ring_refresh` añadida al chain `commit_post` y a `shell_start`. El hook compone el behavior; no se tocó `core/shell.py` ni `core/commit.py` directamente.
+- **`pyobjc-framework-EventKit`** añadido como dependencia en [DEPENDENCIES.md](DEPENDENCIES.md).
+- **launchd plist** con `WatchPaths` por workspace + `StartCalendarInterval` 00:05 (no 00:00 para no chocar con backups y cron jobs comunes).
+- **Doctor check**: `core/doctor.py::_check_ring_health` reporta plist no instalado / TCC denied / ring.json viejo.
+
+## Plan de implementación original — fases B a F (referencia histórica)
 
 ### Fase B — Generación de `ring.json` (~2-3h)
 

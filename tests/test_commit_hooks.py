@@ -45,7 +45,7 @@ def test_commit_post_chain_registered():
     assert chain is not None
     assert chain.trigger_type == "explicit"
     assert chain.pre == []
-    assert chain.post == ["cloudsync_push_background"]
+    assert chain.post == ["cloudsync_push_background", "ring_refresh"]
 
 
 def test_commit_pre_and_post_bound():

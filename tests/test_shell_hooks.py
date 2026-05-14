@@ -43,6 +43,7 @@ def test_shell_start_chain_registered():
         "code_update_check",
         "gsync_background",
         "cartero_startup",
+        "ring_refresh",
         "dash_render",
         "dash_background_loop_start",
     ]
@@ -56,8 +57,8 @@ def test_shell_actions_all_registered():
     for name in (
         "doctor_startup", "advance_overdue_recurring", "cloud_sync_status_check",
         "untracked_check", "commit_offer", "code_update_check",
-        "gsync_background", "cartero_startup", "dash_render",
-        "dash_background_loop_start",
+        "gsync_background", "cartero_startup", "ring_refresh",
+        "dash_render", "dash_background_loop_start",
     ):
         assert name in hooks.ACTIONS, f"Missing: {name}"
         assert hooks.ACTIONS[name].critical is False, name
@@ -286,6 +287,9 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
                side_effect=record("gsync_background")), \
          patch("core.cartero.startup_cartero",
                side_effect=record("startup_cartero")), \
+         patch("core.ring_export.refresh_all",
+               side_effect=lambda *a, **kw: (calls.append("ring_refresh_all") or [])), \
+         patch("core.ring_export.invoke_daemon", return_value=(True, "noop")), \
          patch("orbit.run_dash", side_effect=record("run_dash")), \
          patch("core.shell.threading.Thread") as MockThread:
         MockThread.return_value.start = lambda: calls.append("dash_daemon_thread")
@@ -300,6 +304,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
         "startup_code_update_check",
         "gsync_background",
         "startup_cartero",
+        "ring_refresh_all",
         "run_dash",
         "dash_daemon_thread",
     ]
@@ -313,6 +318,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
         "code_update_check",
         "gsync_background",
         "cartero_startup",
+        "ring_refresh",
         "dash_render",
         "dash_background_loop_start",
     ]

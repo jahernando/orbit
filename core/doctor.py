@@ -21,6 +21,68 @@ from core.agenda_cmds import (
 from core.highlights import SECTION_MAP
 
 
+# ── Ring health check ─────────────────────────────────────────────────────────
+
+def _check_ring_health() -> None:
+    """Doctor sub-check: plist install state + ring.json freshness + TCC errors.
+
+    Prints to stdout when there's something to report; silent when healthy.
+    """
+    import json
+    import time
+    from core.ring_export import (
+        PLIST_PATH, LOG_DIR, all_workspaces, _load_ring_config,
+    )
+
+    msgs = []
+
+    # 1. ring.json presence per enabled workspace
+    missing = []
+    stale = []
+    for ws in all_workspaces():
+        cfg = _load_ring_config(ws)
+        if not cfg["enabled"]:
+            continue
+        rp = ws / ".reminders" / "ring.json"
+        if not rp.exists():
+            missing.append(ws.name)
+            continue
+        age_h = (time.time() - rp.stat().st_mtime) / 3600
+        if age_h > 24:
+            stale.append((ws.name, age_h))
+
+    if missing:
+        msgs.append(f"⚠️  Falta ring.json en: {', '.join(missing)}. "
+                    f"Ejecuta `orbit ring refresh`.")
+    for name, age in stale:
+        msgs.append(f"⚠️  ring.json de {name} tiene {age:.0f}h desde "
+                    f"último render — hook no se está disparando.")
+
+    # 2. Plist + recent TCC denial check
+    if PLIST_PATH.exists():
+        stderr_log = LOG_DIR / "ring-daemon.stderr.log"
+        if stderr_log.exists():
+            age_h = (time.time() - stderr_log.stat().st_mtime) / 3600
+            if age_h < 24:
+                try:
+                    tail = stderr_log.read_text()[-2000:]
+                except OSError:
+                    tail = ""
+                if "access denied" in tail.lower():
+                    msgs.append("⚠️  Ring daemon: acceso a Reminders denegado por TCC. "
+                                "System Settings → Privacy & Security → Reminders → añade Python.")
+    elif any(_load_ring_config(ws)["enabled"] for ws in all_workspaces()):
+        # Workspaces want ring but plist not installed: info, not error
+        msgs.append("ℹ️  plist no instalado. Ejecuta `orbit ring install` para "
+                    "que el daemon se dispare automáticamente.")
+
+    if msgs:
+        print(f"  🔔 ring ({len(msgs)} aviso{'s' if len(msgs) != 1 else ''}):")
+        for m in msgs:
+            print(f"      {m}")
+        print()
+
+
 # ── Issue dataclass ───────────────────────────────────────────────────────────
 
 class Issue:
@@ -499,6 +561,13 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
                 print("  → Ejecuta `orbit ics --workspace` o cualquier op de cita "
                       "para forzar regen.")
                 print()
+    except Exception:
+        pass
+
+    # Check ring (Reminders.app projection): plist install, daemon TCC,
+    # ring.json freshness. v0.35.
+    try:
+        _check_ring_health()
     except Exception:
         pass
 

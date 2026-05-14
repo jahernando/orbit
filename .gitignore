@@ -35,3 +35,6 @@ history.md
 # Hook system journal (runtime artifact, per-workspace)
 .journal.jsonl
 .journal.jsonl.1
+
+# Ring desacoplado (runtime artifact, per-workspace)
+.reminders/

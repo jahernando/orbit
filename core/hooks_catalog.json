@@ -80,6 +80,11 @@
       "module": "core.render",
       "fn": "_action_ics_emit_workspace",
       "critical": false
+    },
+    "ring_refresh": {
+      "module": "core.ring_export",
+      "fn": "_action_ring_refresh",
+      "critical": false
     }
   },
   "chains": {
@@ -94,7 +99,7 @@
     },
     "commit_post": {
       "trigger_type": "explicit",
-      "post": ["cloudsync_push_background"]
+      "post": ["cloudsync_push_background", "ring_refresh"]
     },
     "shell_start": {
       "trigger_type": "temporal",
@@ -107,6 +112,7 @@
         "code_update_check",
         "gsync_background",
         "cartero_startup",
+        "ring_refresh",
         "dash_render",
         "dash_background_loop_start"
       ]

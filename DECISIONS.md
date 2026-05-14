@@ -18,6 +18,8 @@ Ambos subsistemas se cruzan en **`logbook.md`**: cualquier cita puede generar un
 
 La **fuente de verdad** es el markdown del repo (versionado con git). El cloud es **réplica read-only** (HTML + ficheros pesados); los calendarios suscritos son **réplica read-only** (`.ics`).
 
+------
+
 ---
 
 ## ADR-001 — Markdown plano como modelo de datos
@@ -287,6 +289,35 @@ El comando **`orbit ics --diff`** renderiza in-memory y compara contra el mirror
 **Tradeoff considerado**: versionar `.ics` en git (descartado — doble diff, drift posible); snapshot solo en cloud (descartado — pierdes diff offline).
 
 **Where lives**: `core/ics.py::_local_mirror_dir`, `core/ics.py::diff_workspace`, `orbit.py::cmd_ics` (rama `--diff`).
+
+---
+
+## ADR-027 — Ring desacoplado: ring.json + daemon EventKit + launchd
+**Estado**: VIGENTE (desde v0.35)
+**Contexto**: las alarmas de calendarios suscritos (`.ics` con `VALARM`) no son fiables — macOS muestra alarmas como banner sin sonido en suscripciones; iOS las ignora a veces; el refresh es ≥5 min. Reminders.app sí tiene notificaciones system-level fiables + iCloud sync gratis a iPhone/iPad. El path antiguo (`reminders_backend: "reminders"` en v0.29) acoplaba `sync_item` → AppleScript directamente, con todos los problemas crónicos de `osascript` (timeouts, error -10025, escape de strings, app abierta requerida).
+
+**Decisión**: arquitectura **declarativa + daemon**.
+
+1. **`agenda.md` sigue siendo la verdad**.
+2. Orbit escribe un **`ring.json`** por workspace en `<workspace>/.reminders/ring.json` (gitignored) — proyección de la ventana rolling de items con `--ring` y hora.
+3. Un **daemon standalone `orbit_ring_daemon.py`** consume uno o más `ring.json` y reconcilia idempotentemente las listas de Reminders.app vía **EventKit/PyObjC** (no AppleScript). El match se hace por `[orbit:<id>]` embebido en el body del reminder; items sin orbit-tag nunca se tocan (preserva manuales del usuario).
+4. **Launchd plist** (`~/Library/LaunchAgents/com.orbit.ring-daemon.plist`) con `WatchPaths` sobre cada `ring.json` + `StartCalendarInterval` 00:05 dispara el daemon automáticamente sin proceso persistente.
+5. **Triggers desde orbit**: `shell_start` y `commit_post` regeneran `ring.json` (vía acción `ring_refresh` del catálogo de hooks) y lanzan el daemon en background. Cubre el caso "edito agenda sin tocar ring.json directamente".
+
+Config en `<workspace>/orbit.json`:
+```json
+"ring": { "enabled": true, "days": 7, "list": "🚀orbit-ws" }
+```
+Default `list` = nombre del workspace (`workspace_root.name`), de forma que cada workspace tiene su propia lista en Reminders.app (alineado con el modelo "una vida = una lista" preexistente). `enabled: false` vacía la lista sin tocar otras. `days` clamped a [1, 30].
+
+EventKit elegido frente a AppleScript: misma fiabilidad de notificaciones (Reminders.app usa EventKit internamente), sin osascript timeouts, app abierta no requerida, API estructurada testeable.
+
+**Consecuencias positivas**: alarmas fiables en Mac e iPhone (vía iCloud sync); decoupling total orbit ↔ Reminders.app; daemon idempotente — dispararlo 10 veces o 1 vez = mismo resultado; cualquier edit de `ring.json` (launchd, hook, manual) dispara el sweep.
+**Consecuencias negativas**: dependencia nueva `pyobjc-framework-EventKit`; primera vez requiere autorizar TCC el binario de Python para Reminders (`System Settings → Privacy → Reminders`); doctor incluye un check que avisa cuando hay drift.
+
+**Tradeoff considerado**: una lista única `Orbit Ring` para todos los workspaces (RING.md original, descartado en sesión 2026-05-14 a favor de una lista por workspace — coherente con el patrón existente y permite silenciar contextos completos en horarios específicos). AppleScript-write directo (rechazado — el camino dormante v0.29 ya falló por acoplamiento + osascript fragility).
+
+**Where lives**: `core/ring_export.py` (build + write + CLI), `orbit_ring_daemon.py` (standalone EventKit), `core/hooks_catalog.json` (acción `ring_refresh`), `core/doctor.py::_check_ring_health`, tests en `tests/test_ring_export.py`.
 
 ---
 
