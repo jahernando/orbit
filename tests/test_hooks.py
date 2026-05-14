@@ -474,6 +474,93 @@ def test_bootstrap_loads_custom_catalog(tmp_path):
     assert hooks.BINDINGS["my_trigger"] == "my_chain"
 
 
+# ── CLI integration (F7) ─────────────────────────────────────────────────────
+
+def test_actions_in_chain_returns_pre_core_post_in_order():
+    register_action("p1", lambda ctx: None)
+    register_action("co", lambda ctx: None)
+    register_action("po1", lambda ctx: None)
+    register_action("po2", lambda ctx: None)
+    register_chain("c", trigger_type="explicit",
+                   pre=["p1"], core="co", post=["po1", "po2"])
+    assert hooks.actions_in_chain("c") == ["p1", "co", "po1", "po2"]
+
+
+def test_actions_in_chain_returns_empty_for_unknown():
+    assert hooks.actions_in_chain("nonexistent") == []
+
+
+def test_add_chain_flags_adds_one_flag_per_action():
+    import argparse
+    register_action("alpha", lambda ctx: None)
+    register_action("beta", lambda ctx: None)
+    register_chain("c", trigger_type="explicit", post=["alpha", "beta"])
+
+    parser = argparse.ArgumentParser()
+    hooks.add_chain_flags(parser, "c")
+    args = parser.parse_args(["--no-alpha"])
+    assert args.skip_alpha is True
+    assert args.skip_beta is False
+
+
+def test_add_chain_flags_dedups_across_chains():
+    import argparse
+    register_action("shared", lambda ctx: None)
+    register_action("other", lambda ctx: None)
+    register_chain("c1", trigger_type="explicit", post=["shared"])
+    register_chain("c2", trigger_type="explicit", post=["shared", "other"])
+
+    parser = argparse.ArgumentParser()
+    # Should not raise "conflicting option string" for the shared flag.
+    hooks.add_chain_flags(parser, "c1", "c2")
+    args = parser.parse_args([])
+    assert hasattr(args, "skip_shared")
+    assert hasattr(args, "skip_other")
+
+
+def test_collected_skip_actions_returns_set_flags():
+    import argparse
+    register_action("a", lambda ctx: None)
+    register_action("b", lambda ctx: None)
+    register_action("c", lambda ctx: None)
+    register_chain("ch", trigger_type="explicit", post=["a", "b", "c"])
+
+    parser = argparse.ArgumentParser()
+    hooks.add_chain_flags(parser, "ch")
+    args = parser.parse_args(["--no-a", "--no-c"])
+    assert hooks.collected_skip_actions(args, "ch") == ["a", "c"]
+
+
+def test_collected_skip_actions_handles_dashes_in_action_name():
+    """Action names with underscores translate to dashes in CLI flags."""
+    import argparse
+    register_action("foo_bar_baz", lambda ctx: None)
+    register_chain("ch", trigger_type="explicit", post=["foo_bar_baz"])
+
+    parser = argparse.ArgumentParser()
+    hooks.add_chain_flags(parser, "ch")
+    args = parser.parse_args(["--no-foo-bar-baz"])
+    assert hooks.collected_skip_actions(args, "ch") == ["foo_bar_baz"]
+
+
+def test_cli_flag_propagates_to_fire_skip_actions(empty_orbit_json, tmp_journal):
+    """End-to-end: parse a --no-X flag, pass to fire, action is skipped."""
+    import argparse
+    calls = []
+    register_action("a", lambda ctx: calls.append("a"))
+    register_action("b", lambda ctx: calls.append("b"))
+    register_chain("ch", trigger_type="explicit", post=["a", "b"])
+    bind("t", "ch")
+
+    parser = argparse.ArgumentParser()
+    hooks.add_chain_flags(parser, "ch")
+    args = parser.parse_args(["--no-a"])
+    skip = hooks.collected_skip_actions(args, "ch")
+    fire("t", skip_actions=skip, verbosity="quiet")
+
+    assert calls == ["b"]
+
+
 def test_bootstrap_clears_existing_state(tmp_path):
     """A second bootstrap with a different catalog replaces, doesn't merge."""
     register_action("stale_action", lambda ctx: None)

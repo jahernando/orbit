@@ -353,6 +353,58 @@ def to_json_catalog() -> dict:
     }
 
 
+# ── CLI integration (F7) ──────────────────────────────────────────────────────
+
+def actions_in_chain(chain_name: str) -> list:
+    """Return all action names (pre + core + post) of a chain, in order."""
+    chain = CHAINS.get(chain_name)
+    if chain is None:
+        return []
+    names = list(chain.pre)
+    if chain.core:
+        names.append(chain.core)
+    names.extend(chain.post)
+    return names
+
+
+def add_chain_flags(parser, *chain_names: str) -> None:
+    """Register a `--no-<action>` flag on the argparse parser for every action
+    in the named chains. Deduplicates when chains overlap.
+
+    Each flag stores into ``args.skip_<action_name>`` so callers can recover
+    the list via ``collected_skip_actions(args, *chain_names)``.
+    """
+    seen: set = set()
+    for chain_name in chain_names:
+        for action_name in actions_in_chain(chain_name):
+            if action_name in seen:
+                continue
+            seen.add(action_name)
+            action = ACTIONS.get(action_name)
+            flag = (action.cli_flag if action and action.cli_flag
+                    else f"--no-{action_name.replace('_', '-')}")
+            dest = f"skip_{action_name}"
+            parser.add_argument(
+                flag, dest=dest, action="store_true",
+                help=f"Skip the `{action_name}` hook action in this chain",
+            )
+
+
+def collected_skip_actions(args, *chain_names: str) -> list:
+    """Read the `--no-<action>` flags set on `args` and return the action names
+    to pass as `skip_actions` to fire()."""
+    skip: list = []
+    seen: set = set()
+    for chain_name in chain_names:
+        for action_name in actions_in_chain(chain_name):
+            if action_name in seen:
+                continue
+            seen.add(action_name)
+            if getattr(args, f"skip_{action_name}", False):
+                skip.append(action_name)
+    return skip
+
+
 # ── Catalog bootstrap (F6) ────────────────────────────────────────────────────
 
 def bootstrap(catalog_path: Optional[Path] = None) -> bool:

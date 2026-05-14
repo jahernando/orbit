@@ -460,7 +460,9 @@ def cmd_clip(args):
 
 def cmd_render(args):
     from core.render import run_render
-    return run_render(project=args.project, full=args.full, check=args.check)
+    skip = _hooks.collected_skip_actions(args, "render")
+    return run_render(project=args.project, full=args.full, check=args.check,
+                      skip_actions=skip)
 
 
 def cmd_deliver(args):
@@ -482,7 +484,9 @@ def cmd_recloud(args):
 
 
 def cmd_commit(args):
-    return run_commit(message=getattr(args, "message", None))
+    skip = _hooks.collected_skip_actions(args, "commit_pre", "commit_post")
+    return run_commit(message=getattr(args, "message", None),
+                      skip_actions=skip)
 
 
 def cmd_task_new(args):
@@ -2017,6 +2021,7 @@ def _build_parser():
     rnd_p.add_argument("project", nargs="?", default=None, help="Project name (partial match)")
     rnd_p.add_argument("--full", action="store_true", help="Full render of all projects")
     rnd_p.add_argument("--check", action="store_true", help="Check cloud sync status")
+    _hooks.add_chain_flags(rnd_p, "render")
 
     # --- deliver ---
     dlv_p = subparsers.add_parser("deliver", help="Deliver file to cloud (copy + clipboard)")
@@ -2038,6 +2043,7 @@ def _build_parser():
     cmt_p = subparsers.add_parser("commit", help="Git commit with confirmation")
     cmt_p.add_argument("message", nargs="?", default=None,
                        help="Commit message (prompted if omitted; auto-generated on empty input)")
+    _hooks.add_chain_flags(cmt_p, "commit_pre", "commit_post")
 
     # --- project ---
     prj_p   = subparsers.add_parser("project", help="Manage projects (new model)")

@@ -191,7 +191,8 @@ def render_delivered_md(project_dir: Path, dest_md: Path,
     return True
 
 
-def render_all(cloud_root: Optional[Path] = None) -> int:
+def render_all(cloud_root: Optional[Path] = None,
+                skip_actions: Optional[list] = None) -> int:
     """Render all projects to HTML. Returns total files rendered."""
     if not cloud_root:
         cloud_root = _find_cloud_root()
@@ -208,7 +209,8 @@ def render_all(cloud_root: Optional[Path] = None) -> int:
         n = render_project(project_dir, cloud_root)
         total += n
 
-    _hooks.fire("after_render", ctx={"cloud_root": cloud_root}, verbosity="quiet")
+    _hooks.fire("after_render", ctx={"cloud_root": cloud_root},
+                 skip_actions=skip_actions, verbosity="quiet")
     return total
 
 
@@ -242,7 +244,8 @@ def _action_ics_emit_workspace(ctx):
 from core import hooks as _hooks
 
 
-def render_changed(cloud_root: Optional[Path] = None) -> int:
+def render_changed(cloud_root: Optional[Path] = None,
+                    skip_actions: Optional[list] = None) -> int:
     """Render only .md files changed in the last commit. Returns count."""
     if not cloud_root:
         cloud_root = _find_cloud_root()
@@ -289,7 +292,8 @@ def render_changed(cloud_root: Optional[Path] = None) -> int:
     # .ics generation is cheap (~50 ms for a typical workspace) so we
     # regenerate on every render-changed pass; the snapshot diff inside
     # write_workspace summarises real deltas.
-    _hooks.fire("after_render", ctx={"cloud_root": cloud_root}, verbosity="quiet")
+    _hooks.fire("after_render", ctx={"cloud_root": cloud_root},
+                 skip_actions=skip_actions, verbosity="quiet")
     return rendered
 
 
@@ -475,7 +479,8 @@ def ensure_cloud_inboxes(cloud_root: Optional[Path] = None) -> int:
 
 
 def run_render(project: Optional[str] = None, full: bool = False,
-               check: bool = False) -> int:
+               check: bool = False,
+               skip_actions: Optional[list] = None) -> int:
     """CLI entry point: orbit render [project] [--full] [--check]."""
     if check:
         from core.cloudsync import check_cloud_sync
@@ -495,11 +500,11 @@ def run_render(project: Optional[str] = None, full: bool = False,
         _render_dashboard(cloud_root)
         print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''} ({project_dir.name})")
     elif full:
-        n = render_all(cloud_root)
+        n = render_all(cloud_root, skip_actions=skip_actions)
         _render_dashboard(cloud_root)
         print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''} (todos)")
     else:
-        n = render_changed(cloud_root)
+        n = render_changed(cloud_root, skip_actions=skip_actions)
         _render_dashboard(cloud_root)
         if n:
             print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''}")
