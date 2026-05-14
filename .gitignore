@@ -31,3 +31,7 @@ agenda.md
 calendar.md
 panel.md
 history.md
+
+# Hook system journal (runtime artifact, per-workspace)
+.journal.jsonl
+.journal.jsonl.1
