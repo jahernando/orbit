@@ -28,6 +28,7 @@ include = ["core*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
     "uses_osa: opt out of the autouse AppleScript stub (test exercises _osa directly)",
 ]
