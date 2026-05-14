@@ -11,11 +11,6 @@
       "fn": "_action_cronograma_log_completed",
       "critical": false
     },
-    "tracked_files_refresh": {
-      "module": "core.commit",
-      "fn": "_action_tracked_files_refresh",
-      "critical": true
-    },
     "gsync_reconcile_renames": {
       "module": "core.commit",
       "fn": "_action_gsync_reconcile_renames",
@@ -93,7 +88,6 @@
       "pre": [
         "cloud_imgs_process",
         "cronograma_log_completed",
-        "tracked_files_refresh",
         "gsync_reconcile_renames",
         "gsync_drift_check"
       ]

@@ -987,38 +987,68 @@ def cmd_ics(args):
 
 
 def cmd_track(args):
-    """Alias: ``orbit track <proj> "title" --file X.md`` ≡ ``orbit note <proj> "title" --track --file X.md``.
+    """Track an external .md file: ``orbit track <proj> <fullpath>``.
 
-    Shortcut for users who think "voy a trackear este fichero" rather
-    than "voy a importar como note con flag track". Routes to
-    ``run_note_create(..., track=True)``.
+    Creates a relative symlink at ``notes/<source.name>`` pointing at the
+    source. The source is the truth; orbit just keeps a window into it.
     """
     project = getattr(args, "project", None)
-    title   = getattr(args, "title", None) or ""
-    file_str = getattr(args, "file", None)
-    if not project or not title or not file_str:
-        print("Uso: orbit track <project> <title> --file <ruta.md> [--hl TYPE]")
+    file_str = getattr(args, "file", None) or getattr(args, "path", None)
+    if not project or not file_str:
+        print("Uso: orbit track <project> <fullpath>")
         return 2
-    from core.notes import run_note_create
-    return run_note_create(
-        project   = project,
-        title     = title,
-        file_str  = file_str,
-        open_after= not getattr(args, "no_open", False),
-        editor    = _editor_from_args(args),
-        no_date   = True,           # tracked files always canonical
-        entry     = getattr(args, "entry", None) or "apunte",
-        hl_type   = getattr(args, "hl", None),
-        track     = True,
-    )
+    from pathlib import Path
+    src = Path(file_str).expanduser().resolve()
+    if not src.exists():
+        print(f"Error: no existe {src}")
+        return 1
+    # Confirmation echo (the UX the user spec'd).
+    print(f"  local? {src.parent}/")
+    print(f"  note?  {src.name}")
+
+    from core.project import _find_new_project
+    project_dir = _find_new_project(project)
+    if project_dir is None:
+        return 1
+    from core.tracked import track as _tracked_track
+    try:
+        name = _tracked_track(project_dir, src)
+    except (FileNotFoundError, ValueError, FileExistsError) as e:
+        print(f"Error: {e}")
+        return 1
+    print(f"✓ [{project_dir.name}] Tracked: notes/{name} → {src}")
+    return 0
+
+
+def cmd_untrack(args):
+    """``orbit untrack <project> <name>`` — remove a tracked entry.
+
+    Deletes the symlink in notes/ and removes the registry entry. The
+    source file is never touched.
+    """
+    project = getattr(args, "project", None)
+    name = getattr(args, "name", None)
+    if not project or not name:
+        print("Uso: orbit untrack <project> <name>")
+        return 2
+    from core.project import _find_new_project
+    project_dir = _find_new_project(project)
+    if project_dir is None:
+        return 1
+    # Accept "notes/X.md" or bare "X.md".
+    if name.startswith("notes/"):
+        name = name.split("/", 1)[1]
+    from core.tracked import untrack as _tracked_untrack
+    if _tracked_untrack(project_dir, name):
+        print(f"✓ Untracked: notes/{name} en {project_dir.name}")
+        return 0
+    print(f"No estaba tracked: {name}")
+    return 1
 
 
 def cmd_tracked(args):
-    """Dispatcher for ``orbit tracked {list,refresh,remove,retrack}``."""
-    from core.tracked import (
-        load_registry, refresh_all, unregister, retrack, check_entry,
-        apply_refresh,
-    )
+    """Dispatcher for ``orbit tracked {list,migrate}``."""
+    from core.tracked import load_registry, check_status
     from core.config import iter_project_dirs
 
     action = getattr(args, "action", None) or "list"
@@ -1037,75 +1067,20 @@ def cmd_tracked(args):
             reg = load_registry(pd)
             if not reg:
                 continue
-            print(f"  📌 [{pd.name}] ({len(reg)})")
-            for rel, entry in reg.items():
-                outcome = check_entry(pd, rel, entry)
-                status_emoji = {
-                    "clean": "✓", "refreshed": "↻",
-                    "dest_tampered": "⚠️", "conflict": "❌",
-                    "source_missing": "❓"
-                }.get(outcome.status, "?")
-                print(f"    {status_emoji} {rel} ← {entry['source']}")
+            print(f"  🔄 [{pd.name}] ({len(reg)})")
+            for name, src_path in sorted(reg.items()):
+                status = check_status(pd, name)
+                emoji = {"ok": "✓", "broken_link": "❓",
+                         "missing_link": "⚠️", "not_link": "⚠️"}.get(status, "?")
+                print(f"    {emoji} notes/{name} → {src_path}")
             any_shown = True
         if not any_shown:
             print("Sin ficheros tracked.")
         return 0
 
-    if action == "refresh":
-        force_source = getattr(args, "force_source", False)
-        force_dest = getattr(args, "force_dest", False)
-        if force_source and force_dest:
-            print("Error: --force-source y --force-dest son mutuamente exclusivos.")
-            return 2
-        if force_dest:
-            print("--force-dest aún no implementado (requiere escritura inversa al source). "
-                  "Por ahora, edita el source manualmente y vuelve a refresh.")
-            return 2
-        outcomes = refresh_all(_resolve_projects(), force=force_source)
-        for o in outcomes:
-            emoji = {"clean": "✓", "refreshed": "↻",
-                     "dest_tampered": "⚠️", "conflict": "❌",
-                     "source_missing": "❓"}.get(o.status, "?")
-            print(f"  {emoji} [{o.project}] {o.rel_dest}: {o.status}"
-                  + (f" — {o.detail}" if o.detail else ""))
-        return 0
-
-    if action == "remove":
-        if not project_arg:
-            print("Uso: orbit tracked remove <proj> <note>")
-            return 2
-        rel = getattr(args, "note", None)
-        if not rel:
-            print("Error: indica el path relativo del note tracked (ej: notes/decisions.md).")
-            return 2
-        pds = _resolve_projects()
-        if not pds:
-            return 1
-        ok = unregister(pds[0], rel,
-                        keep_file=not getattr(args, "delete_file", False))
-        if ok:
-            print(f"✓ Untracked {rel} en {pds[0].name}")
-        else:
-            print(f"No estaba tracked: {rel}")
-        return 0 if ok else 1
-
-    if action == "retrack":
-        rel = getattr(args, "note", None)
-        new_source = getattr(args, "new_source", None)
-        if not project_arg or not rel or not new_source:
-            print("Uso: orbit tracked retrack <proj> <note> <new-source-path>")
-            return 2
-        from pathlib import Path
-        pds = _resolve_projects()
-        if not pds:
-            return 1
-        try:
-            retrack(pds[0], rel, Path(new_source).expanduser())
-            print(f"✓ Retracked {rel} → {new_source}")
-            return 0
-        except (KeyError, FileNotFoundError) as e:
-            print(f"Error: {e}")
-            return 1
+    if action == "migrate":
+        from core.tracked_migrate import migrate_all
+        return migrate_all(_resolve_projects(), dry_run=getattr(args, "dry_run", False))
 
     print(f"Acción desconocida: {action}")
     return 2
@@ -1684,22 +1659,20 @@ def _build_parser():
     ics_p.add_argument("--diff", action="store_true",
                        help="Preview pending changes vs last render (no writes). Reads the local .cache/ics mirror.")
 
-    # --- track (alias of `note ... --track ... --file ...`) ---
+    # --- track (externa: symlink notes/<basename> → fullpath) ---
     track_p = subparsers.add_parser("track",
-        help="Track an external .md file: mirrors into the project's notes/, auto-refresh on commit")
+        help="Track an external .md file as externa: notes/<basename> → fullpath (symlink)")
     track_p.add_argument("project", help="Project name (partial match)")
-    track_p.add_argument("title",   help="Note title (becomes the filename slug)")
-    track_p.add_argument("--file",  dest="file", required=True, metavar="PATH",
-                         help="External .md file to track")
-    track_p.add_argument("--hl",    default=None, metavar="TYPE",
-                         help="Also register as highlight under TYPE (refs, results, …)")
-    track_p.add_argument("--entry", default="apunte",
-                         help="Logbook entry type (default: apunte)")
-    track_p.add_argument("--no-open", action="store_true",
-                         help="Do not open the imported file after track")
-    track_p.add_argument("--editor", default=None)
+    track_p.add_argument("file",    metavar="FULLPATH",
+                         help="External .md file to track (full path)")
 
-    # --- tracked (external file tracking) ---
+    # --- untrack ---
+    untr_p = subparsers.add_parser("untrack",
+        help="Untrack an externa: removes the symlink, source untouched")
+    untr_p.add_argument("project", help="Project name (partial match)")
+    untr_p.add_argument("name", help="Filename in notes/ (e.g. DECISIONS.md)")
+
+    # --- tracked (list / migrate) ---
     tr_p   = subparsers.add_parser("tracked",
                                     help="Manage tracked external markdown files")
     tr_sub = tr_p.add_subparsers(dest="action")
@@ -1708,24 +1681,12 @@ def _build_parser():
     tr_list.add_argument("project", nargs="?", default=None,
                           help="Project name (partial match). Omit to list all.")
 
-    tr_refresh = tr_sub.add_parser("refresh", help="Refresh tracked files now (does not commit)")
-    tr_refresh.add_argument("project", nargs="?", default=None)
-    tr_refresh.add_argument("--force-source", action="store_true", dest="force_source",
-                             help="Overwrite local dest with source content (discards local edits)")
-    tr_refresh.add_argument("--force-dest", action="store_true", dest="force_dest",
-                             help="(Not yet implemented) Push local dest back to source")
-
-    tr_rm = tr_sub.add_parser("remove", help="Untrack a file (keeps the local copy)")
-    tr_rm.add_argument("project", help="Project name (partial match)")
-    tr_rm.add_argument("note", help="Relative path inside the project, e.g. notes/decisions.md")
-    tr_rm.add_argument("--delete-file", action="store_true", dest="delete_file",
-                        help="Also delete the local copy")
-
-    tr_re = tr_sub.add_parser("retrack", help="Repoint a tracked entry at a new source")
-    tr_re.add_argument("project", help="Project name (partial match)")
-    tr_re.add_argument("note", help="Relative path inside the project, e.g. notes/decisions.md")
-    tr_re.add_argument("new_source", metavar="NEW-SOURCE-PATH",
-                        help="New source path")
+    tr_mig = tr_sub.add_parser("migrate",
+        help="One-shot: convert v0.34 tracked copies into v0.36 symlinks")
+    tr_mig.add_argument("project", nargs="?", default=None,
+                          help="Project name (partial match). Omit for all.")
+    tr_mig.add_argument("--dry-run", action="store_true", dest="dry_run",
+                          help="Show what would be migrated without applying")
 
     # --- ics-share (export a single cita as .ics) ---
     icss_p = subparsers.add_parser("ics-share",
@@ -2217,7 +2178,7 @@ _COMMANDS = {
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "import": cmd_import,
     "project": cmd_project, "migrate": cmd_migrate,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "untrack": cmd_untrack, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "reorganize": cmd_reorganize,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,

@@ -436,10 +436,12 @@ def test_bootstrap_loads_default_catalog():
     assert hooks.BINDINGS["shell_startup"] == "shell_start"
 
 
-def test_bootstrap_applies_critical_flag():
+def test_bootstrap_loads_non_critical_flag():
+    # v0.36: catalog has no critical actions. Verify default flag value
+    # round-trips correctly through bootstrap.
     hooks.bootstrap()
-    assert hooks.ACTIONS["tracked_files_refresh"].critical is True
     assert hooks.ACTIONS["cloud_imgs_process"].critical is False
+    assert hooks.ACTIONS["cloudsync_push_background"].critical is False
 
 
 def test_bootstrap_is_idempotent():

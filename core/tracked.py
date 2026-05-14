@@ -1,57 +1,43 @@
-"""tracked — registry of tracked external files mirrored into orbit-ws.
+"""tracked — registry of tracked external markdown files (propia/externa model).
 
-A *tracked file* is a markdown document whose truth lives outside the
-workspace (a public docs repo, a draft elsewhere, a colleague's notes)
-but that orbit mirrors into a project's ``notes/`` so:
+In the v0.36 model:
 
-* the file is versioned in orbit-ws's git history (one diff per commit
-  in which the source evolved),
-* the post-commit render generates HTML to the cloud automatically.
+* **Propia** notes live entirely in the workspace (`notes/<name>.md`),
+  owned by the user, edited freely. They are not registered here.
+* **Externa** notes live elsewhere (a public docs repo, a shared Drive
+  folder, a colleague's directory). The workspace holds a **symlink**
+  at `notes/<name>` pointing to the source. The truth never leaves the
+  source; orbit just keeps a window into it.
 
-The registry lives in ``<project>/.orbit-tracked.json`` (one per project):
+The registry lives in ``<project>/.orbit-tracked.json``:
 
     {
-        "notes/decisions.md": {
-            "source":  "/absolute/path/to/DECISIONS.md",
-            "sha256":  "a3f5…",       # hash at the last successful refresh
-            "added":   "2026-05-13"
+        "files": {
+            "DECISIONS.md": "/Users/hernando/orbit/DECISIONS.md",
+            "RING.md":      "/Users/hernando/orbit/RING.md"
         }
     }
 
-The mirrored note also carries a YAML frontmatter line so a human
-reading the file in Obsidian/GitHub immediately knows "don't edit me,
-the truth is elsewhere":
+The registry exists so orbit can enumerate "what's tracked here" without
+scanning the filesystem, and so render knows which symlinks to publish
+to the cloud HTML. The symlink itself is the operational truth.
 
-    ---
-    orbit_tracked_from: /absolute/path/to/DECISIONS.md
-    ---
-    # Contenido importado…
+Symlinks are stored as **relative paths** computed from the symlink's
+own location to the target. This makes them survive a clone to another
+Mac as long as orbit-ws and the source repo maintain their relative
+position (the user's standard layout: both under ``$HOME``).
 
-Refresh policy (pre-commit hook in ``core/commit.py``):
-
-    | source changed | dest changed | action                            |
-    |----------------|--------------|-----------------------------------|
-    | no             | no           | nothing                           |
-    | yes            | no           | copy source → dest, update sha    |
-    | no             | yes          | ABORT: dest tampered (warning)    |
-    | yes            | yes          | ABORT: conflict (manual resolve)  |
-
-See DECISIONS.md ADR-024 for the broader design rationale.
+See DECISIONS.md ADR-026 for the rationale (supersedes ADR-024).
 """
 from __future__ import annotations
 
-import hashlib
 import json
-import re
-import shutil
-from dataclasses import dataclass
-from datetime import date as _date
+import os
 from pathlib import Path
 from typing import Iterable, Optional
 
 
 REGISTRY_NAME = ".orbit-tracked.json"
-FRONTMATTER_KEY = "orbit_tracked_from"
 
 
 # ── Registry I/O ───────────────────────────────────────────────────────
@@ -61,236 +47,163 @@ def _registry_path(project_dir: Path) -> Path:
 
 
 def load_registry(project_dir: Path) -> dict:
-    """Return the project's registry dict, or ``{}`` if none."""
+    """Return ``{filename: source_path}`` map for the project (empty if none).
+
+    Transparently handles both v0.36 (``{"files": {...}}``) and legacy
+    v0.34 (``{"notes/x.md": {"source": ...}}``) formats; legacy format is
+    surfaced under the same dict for read-only consumers, but writers
+    should use ``save_registry`` to canonicalize on next save.
+    """
     p = _registry_path(project_dir)
     if not p.exists():
         return {}
     try:
-        return json.loads(p.read_text())
+        raw = json.loads(p.read_text())
     except json.JSONDecodeError:
         return {}
+    # v0.36 schema
+    if isinstance(raw, dict) and "files" in raw and isinstance(raw["files"], dict):
+        return {k: str(v) for k, v in raw["files"].items()}
+    # v0.34 schema: keys "notes/<name>" → {"source": ...}
+    out: dict = {}
+    for k, v in raw.items():
+        if isinstance(v, dict) and "source" in v:
+            name = k.split("/", 1)[1] if k.startswith("notes/") else k
+            out[name] = v["source"]
+    return out
 
 
-def save_registry(project_dir: Path, registry: dict) -> None:
-    """Persist the registry. Deletes the file when empty."""
+def save_registry(project_dir: Path, files: dict) -> None:
+    """Persist the registry in v0.36 schema. Deletes the file when empty."""
     p = _registry_path(project_dir)
-    if not registry:
+    if not files:
         p.unlink(missing_ok=True)
         return
-    p.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n")
+    payload = {"files": {k: str(v) for k, v in files.items()}}
+    p.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
 
 
-# ── Hashing ────────────────────────────────────────────────────────────
+# ── Symlink helpers ────────────────────────────────────────────────────
 
-def _sha256_of_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def _relative_symlink_target(symlink_path: Path, target: Path) -> str:
+    """Compute a relative path from symlink_path's parent to target.
 
-
-# ── Frontmatter helpers ────────────────────────────────────────────────
-
-_FRONTMATTER_RE = re.compile(
-    rf"^---\s*\n([^-]*\n)?\s*{FRONTMATTER_KEY}:\s*(.+?)\s*\n([^-]*\n)?---\s*\n",
-    re.DOTALL,
-)
-
-
-def _strip_tracked_frontmatter(text: str) -> str:
-    """Remove our YAML frontmatter block if present. Leaves other
-    frontmatter alone (we only inject our key when missing)."""
-    # Conservative implementation: only strip if the frontmatter is
-    # exactly our minimal injected block.
-    m = re.match(r"^---\s*\n" + re.escape(FRONTMATTER_KEY)
-                 + r":[^\n]+\n---\s*\n", text)
-    if m:
-        return text[m.end():]
-    return text
-
-
-def _inject_tracked_frontmatter(text: str, source: str) -> str:
-    """Prepend (or replace) our minimal frontmatter block."""
-    text = _strip_tracked_frontmatter(text)
-    return f"---\n{FRONTMATTER_KEY}: {source}\n---\n{text}"
-
-
-# ── Refresh primitives ─────────────────────────────────────────────────
-
-@dataclass
-class RefreshOutcome:
-    rel_dest: str        # path under project_dir (e.g. "notes/decisions.md")
-    project: str         # project dir name
-    status: str          # "clean" | "refreshed" | "dest_tampered" | "conflict" | "source_missing"
-    source: str
-    detail: str = ""     # optional explanation
-
-
-def _content_with_frontmatter(source: Path, source_str: str) -> bytes:
-    """Source content (bytes) wrapped with our frontmatter."""
-    raw = source.read_text()
-    return _inject_tracked_frontmatter(raw, source_str).encode("utf-8")
-
-
-def _hash_dest_payload(dest: Path) -> str:
-    """SHA256 of the dest *with* our frontmatter — that's what we wrote,
-    so that's what we compare. If we hashed the source only, the
-    frontmatter we inject would always show "dest tampered"."""
-    return _sha256_of_file(dest)
-
-
-def check_entry(project_dir: Path, rel_dest: str, entry: dict) -> RefreshOutcome:
-    """Inspect one tracked entry without modifying anything."""
-    source = Path(entry["source"])
-    dest = project_dir / rel_dest
-    stored_sha = entry.get("sha256", "")
-
-    if not source.exists():
-        return RefreshOutcome(rel_dest, project_dir.name, "source_missing",
-                              str(source), detail=f"{source} no existe")
-
-    if not dest.exists():
-        # Dest deleted manually — treat as conflict to force resolution.
-        return RefreshOutcome(rel_dest, project_dir.name, "conflict",
-                              str(source),
-                              detail=f"{dest} fue borrado; re-add con orbit tracked refresh --force-source")
-
-    # Compute current hash of source-with-frontmatter and current dest.
-    current_payload = _content_with_frontmatter(source, str(source))
-    current_source_sha = hashlib.sha256(current_payload).hexdigest()
-    current_dest_sha = _hash_dest_payload(dest)
-
-    source_changed = (current_source_sha != stored_sha)
-    dest_changed = (current_dest_sha != stored_sha)
-
-    if not source_changed and not dest_changed:
-        return RefreshOutcome(rel_dest, project_dir.name, "clean", str(source))
-    if source_changed and not dest_changed:
-        return RefreshOutcome(rel_dest, project_dir.name, "refreshed",
-                              str(source))
-    if not source_changed and dest_changed:
-        return RefreshOutcome(rel_dest, project_dir.name, "dest_tampered",
-                              str(source),
-                              detail="la copia tracked fue editada; tus cambios se perderán al próximo refresh")
-    # both changed
-    return RefreshOutcome(rel_dest, project_dir.name, "conflict",
-                          str(source),
-                          detail="source y dest divergieron; resolución manual requerida")
-
-
-def apply_refresh(project_dir: Path, rel_dest: str, entry: dict) -> RefreshOutcome:
-    """Copy source → dest, update sha. Assumes the caller already
-    decided it's safe to proceed."""
-    source = Path(entry["source"])
-    dest = project_dir / rel_dest
-    payload = _content_with_frontmatter(source, str(source))
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(payload)
-    entry["sha256"] = hashlib.sha256(payload).hexdigest()
-    return RefreshOutcome(rel_dest, project_dir.name, "refreshed",
-                          str(source))
-
-
-# ── Registration ───────────────────────────────────────────────────────
-
-def register(project_dir: Path, rel_dest: str, source: Path) -> dict:
-    """Copy the source into dest, write frontmatter, register, save.
-
-    Raises ``FileNotFoundError`` if source doesn't exist.
-    Returns the registry entry for the new tracked file.
+    The result survives git clones as long as both paths sit in the same
+    relative arrangement on the new host.
     """
-    source = source.resolve()
+    return os.path.relpath(target, start=symlink_path.parent)
+
+
+def resolve_target(project_dir: Path, name: str) -> Optional[Path]:
+    """Return the resolved absolute path the symlink points to, or None
+    if the symlink is missing or its target doesn't exist."""
+    link = project_dir / "notes" / name
+    if not link.is_symlink():
+        return None
+    try:
+        return link.resolve(strict=True)
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def is_external(project_dir: Path, note_path: Path) -> bool:
+    """True if ``note_path`` (under ``project_dir/notes/``) is registered
+    as externa (its filename is in the project's registry)."""
+    if note_path.parent.name != "notes":
+        return False
+    return note_path.name in load_registry(project_dir)
+
+
+# ── Track / untrack ────────────────────────────────────────────────────
+
+def track(project_dir: Path, source: Path,
+          name: Optional[str] = None) -> str:
+    """Track ``source`` (external .md) as externa in ``project_dir``.
+
+    Creates a relative symlink at ``project_dir/notes/<name>`` pointing
+    to ``source``, and registers the pair. Returns the filename used.
+
+    Args:
+        source: full path to the external markdown file.
+        name: filename for the symlink in notes/ (defaults to source.name).
+
+    Raises:
+        FileNotFoundError: if ``source`` does not exist.
+        ValueError: if ``source`` is not a .md file.
+        FileExistsError: if ``notes/<name>`` already exists.
+    """
+    source = source.expanduser().resolve()
     if not source.exists():
         raise FileNotFoundError(str(source))
+    if source.is_dir():
+        raise ValueError(f"track requiere un fichero, no un directorio: {source}")
     if source.suffix.lower() != ".md":
         raise ValueError(
-            f"--track solo soporta .md; recibido {source.suffix or 'sin extensión'}"
+            f"track solo soporta .md; recibido {source.suffix or 'sin extensión'}"
         )
 
-    payload = _content_with_frontmatter(source, str(source))
-    dest = project_dir / rel_dest
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(payload)
+    notes_dir = project_dir / "notes"
+    notes_dir.mkdir(exist_ok=True)
+    filename = name or source.name
+    link = notes_dir / filename
+    if link.exists() or link.is_symlink():
+        raise FileExistsError(f"notes/{filename} ya existe en {project_dir.name}")
 
-    entry = {
-        "source":  str(source),
-        "sha256":  hashlib.sha256(payload).hexdigest(),
-        "added":   _date.today().isoformat(),
-    }
-    registry = load_registry(project_dir)
-    registry[rel_dest] = entry
-    save_registry(project_dir, registry)
-    return entry
+    rel_target = _relative_symlink_target(link, source)
+    link.symlink_to(rel_target)
+
+    files = load_registry(project_dir)
+    files[filename] = str(source)
+    save_registry(project_dir, files)
+    return filename
 
 
-def unregister(project_dir: Path, rel_dest: str,
-               keep_file: bool = True) -> bool:
-    """Remove an entry from the registry. If ``keep_file`` is False,
-    also remove the mirrored file. Returns True if an entry was removed."""
-    registry = load_registry(project_dir)
-    if rel_dest not in registry:
+def untrack(project_dir: Path, name: str) -> bool:
+    """Remove a tracked entry. Deletes the symlink (source intact).
+
+    Returns True if an entry was removed, False if it didn't exist.
+    """
+    files = load_registry(project_dir)
+    if name not in files:
         return False
-    del registry[rel_dest]
-    save_registry(project_dir, registry)
-    if not keep_file:
-        (project_dir / rel_dest).unlink(missing_ok=True)
+    link = project_dir / "notes" / name
+    if link.is_symlink() or link.exists():
+        link.unlink()
+    del files[name]
+    save_registry(project_dir, files)
     return True
-
-
-def retrack(project_dir: Path, rel_dest: str, new_source: Path) -> dict:
-    """Repoint an existing tracked entry at a new source. Re-imports
-    immediately. Returns the updated entry."""
-    new_source = new_source.resolve()
-    if not new_source.exists():
-        raise FileNotFoundError(str(new_source))
-    registry = load_registry(project_dir)
-    if rel_dest not in registry:
-        raise KeyError(rel_dest)
-    registry[rel_dest]["source"] = str(new_source)
-    payload = _content_with_frontmatter(new_source, str(new_source))
-    (project_dir / rel_dest).write_bytes(payload)
-    registry[rel_dest]["sha256"] = hashlib.sha256(payload).hexdigest()
-    save_registry(project_dir, registry)
-    return registry[rel_dest]
 
 
 # ── Scan all projects ──────────────────────────────────────────────────
 
 def iter_tracked(project_dirs: Iterable[Path]):
-    """Yield ``(project_dir, rel_dest, entry)`` over every tracked file
-    across the given project dirs."""
+    """Yield ``(project_dir, filename, source_path)`` over every tracked
+    file across the given project dirs."""
     for pd in project_dirs:
-        registry = load_registry(pd)
-        for rel, entry in registry.items():
-            yield (pd, rel, entry)
+        for name, src in load_registry(pd).items():
+            yield (pd, name, src)
 
 
-def refresh_all(project_dirs: Iterable[Path], force: bool = False) -> list:
-    """Refresh every tracked file. Returns list of RefreshOutcomes.
+def check_status(project_dir: Path, name: str) -> str:
+    """Return a status string for one tracked entry:
 
-    If ``force=False`` (default): only "refreshed" outcomes apply
-    changes. "dest_tampered" and "conflict" are reported untouched
-    (caller decides whether to abort).
-
-    If ``force=True``: even tampered/conflict get the source written
-    over the dest (source wins, dest edits lost).
+        "ok"            — symlink + target both exist and readable
+        "broken_link"   — symlink exists but target missing
+        "missing_link"  — registry entry but no symlink on disk
+        "not_link"      — notes/<name> exists but isn't a symlink (manual override)
     """
-    outcomes = []
-    for pd, rel, entry in iter_tracked(project_dirs):
-        outcome = check_entry(pd, rel, entry)
-        if outcome.status == "refreshed":
-            apply_refresh(pd, rel, entry)
-            registry = load_registry(pd)
-            registry[rel] = entry
-            save_registry(pd, registry)
-        elif outcome.status in ("dest_tampered", "conflict") and force:
-            apply_refresh(pd, rel, entry)
-            registry = load_registry(pd)
-            registry[rel] = entry
-            save_registry(pd, registry)
-            outcome = RefreshOutcome(rel, pd.name, "refreshed",
-                                      entry["source"],
-                                      detail="forced (previous state discarded)")
-        outcomes.append(outcome)
-    return outcomes
+    files = load_registry(project_dir)
+    if name not in files:
+        return "not_tracked"
+    link = project_dir / "notes" / name
+    if not link.exists() and not link.is_symlink():
+        return "missing_link"
+    if not link.is_symlink():
+        return "not_link"
+    try:
+        target = link.resolve(strict=True)
+        if target.is_file():
+            return "ok"
+        return "broken_link"
+    except (FileNotFoundError, OSError):
+        return "broken_link"

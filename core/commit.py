@@ -301,47 +301,6 @@ def _action_cronograma_log_completed(ctx):
     return {"ok": True, "msg": f"{n} logged"}
 
 
-def _action_tracked_files_refresh(ctx):
-    """Refresh tracked external files. CRITICAL — aborts chain on conflict/tamper."""
-    try:
-        from core.tracked import refresh_all
-        from core.config import iter_project_dirs
-        outcomes = refresh_all(list(iter_project_dirs()), force=False)
-    except Exception as e:
-        # Unexpected failure: warn but don't abort the chain.
-        print(f"  ⚠️  Tracked refresh falló: {e}")
-        return {"ok": True, "msg": f"error: {type(e).__name__}"}
-
-    refreshed = [o for o in outcomes if o.status == "refreshed"]
-    tampered  = [o for o in outcomes if o.status == "dest_tampered"]
-    conflicts = [o for o in outcomes if o.status == "conflict"]
-    missing   = [o for o in outcomes if o.status == "source_missing"]
-
-    for o in refreshed:
-        print(f"  ↻ [{o.project}] {o.rel_dest} ← {o.source}")
-    if refreshed:
-        _git_add_all_tracked()
-    for o in missing:
-        print(f"  ⚠️  [{o.project}] {o.rel_dest}: {o.detail}")
-
-    if tampered or conflicts:
-        n_bad = len(tampered) + len(conflicts)
-        print()
-        print(f"❌ Commit abortado: {n_bad} tracked file{'s' if n_bad != 1 else ''} con problemas:")
-        for o in tampered:
-            print(f"  ⚠️  [{o.project}] {o.rel_dest}: {o.detail}")
-        for o in conflicts:
-            print(f"  ❌ [{o.project}] {o.rel_dest}: {o.detail}")
-        print()
-        print("Resoluciones:")
-        print("  orbit tracked refresh --force-source <note>   # descartar edits en la copia")
-        print("  orbit tracked refresh --force-dest <note>     # escribir tu copia sobre el origen")
-        print("  orbit tracked remove <proj> <note>            # untrack (conserva la copia local)")
-        return {"ok": False, "msg": f"{n_bad} conflicts"}
-
-    return {"ok": True, "msg": f"{len(refreshed)} refreshed"}
-
-
 def _action_gsync_reconcile_renames(ctx):
     """Reconcile title renames in gsync IDs. Dormant unless applescript_writes."""
     try:
@@ -415,7 +374,7 @@ def run_commit(message: Optional[str] = None,
         print("Sin cambios para commitear.")
         return 0
 
-    # Pre-chain: cloud_imgs, cronograma, tracked_refresh (critical), gsync_reconcile, gsync_drift.
+    # Pre-chain: cloud_imgs, cronograma, gsync_reconcile, gsync_drift.
     pre_results = _hooks.fire("commit_pre", skip_actions=skip_actions, verbosity="quiet")
     if _chain_aborted(pre_results):
         return 1

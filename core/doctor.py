@@ -542,31 +542,37 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     except Exception:
         pass
 
-    # Check tracked external files (v0.34, see DECISIONS.md ADR-024).
+    # Check tracked external files (v0.36, see DECISIONS.md ADR-026).
+    # Each entry must have (a) a symlink at notes/<name>, (b) a target that exists.
     try:
-        from core.tracked import iter_tracked, check_entry
+        from core.tracked import iter_tracked, check_status
         from core.config import iter_project_dirs
         tracked_problems = []
-        tracked_clean = 0
-        for pd, rel, entry in iter_tracked(list(iter_project_dirs())):
-            outcome = check_entry(pd, rel, entry)
-            if outcome.status in ("clean", "refreshed"):
-                tracked_clean += 1
+        tracked_ok = 0
+        for pd, name, src in iter_tracked(list(iter_project_dirs())):
+            status = check_status(pd, name)
+            if status == "ok":
+                tracked_ok += 1
             else:
-                tracked_problems.append(outcome)
+                tracked_problems.append((pd.name, name, src, status))
         if tracked_problems:
             print(f"  🔄 Tracked: {len(tracked_problems)} fichero"
                   f"{'s' if len(tracked_problems) != 1 else ''} con problema:")
-            for o in tracked_problems:
-                emoji = {"dest_tampered": "⚠️", "conflict": "❌",
-                         "source_missing": "❓"}.get(o.status, "?")
-                print(f"      {emoji} [{o.project}] {o.rel_dest}: {o.detail}")
-            print("  → orbit tracked refresh / remove / retrack para resolver.")
+            emoji = {"broken_link": "❓", "missing_link": "⚠️", "not_link": "⚠️"}
+            detail = {
+                "broken_link": "el target no existe",
+                "missing_link": "el symlink falta en notes/",
+                "not_link": "notes/ tiene un fichero normal (esperado symlink)",
+            }
+            for proj, name, src, status in tracked_problems:
+                e = emoji.get(status, "?")
+                d = detail.get(status, status)
+                print(f"      {e} [{proj}] notes/{name}: {d} (source: {src})")
+            print("  → orbit tracked untrack / retrack para resolver.")
             print()
-        elif tracked_clean:
-            # Positive feedback when there are tracked files and all are OK.
-            print(f"  🔄 Tracked: {tracked_clean} fichero"
-                  f"{'s' if tracked_clean != 1 else ''} OK")
+        elif tracked_ok:
+            print(f"  🔄 Tracked: {tracked_ok} fichero"
+                  f"{'s' if tracked_ok != 1 else ''} OK")
             print()
     except Exception:
         pass

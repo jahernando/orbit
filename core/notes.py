@@ -170,27 +170,20 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
     notes_dir = project_dir / "notes"
     notes_dir.mkdir(exist_ok=True)
 
-    # Externa: copy + register (v0.34 API; symlink in v0.36).
+    # Externa: relative symlink at notes/<source.name>, registry-tracked.
     if track:
         src = Path(file_str).expanduser().resolve()
         if not src.exists():
             print(f"Error: fichero no encontrado: {src}")
             return 1
-        if src.suffix.lower() != ".md":
-            print(f"Error: solo se pueden trackear ficheros .md (recibido: {src.name})")
-            return 1
-        base_name = _title_to_filename(title)
-        note_name = base_name
-        dest = notes_dir / note_name
-        from core.undo import save_snapshot
-        save_snapshot(dest)
-        from core.tracked import register as _tracked_register
+        from core.tracked import track as _tracked_track
         try:
-            _tracked_register(project_dir, f"notes/{note_name}", src)
-        except ValueError as e:
+            note_name = _tracked_track(project_dir, src)
+        except (FileNotFoundError, ValueError, FileExistsError) as e:
             print(f"Error: {e}")
             return 1
-        print(f"✓ [{project_dir.name}] Nota tracked: {note_name} ← {src}")
+        dest = notes_dir / note_name
+        print(f"✓ [{project_dir.name}] Tracked: notes/{note_name} → {src}")
     else:
         # Propia: date prefix for logbook entries, plain for highlights/no-date.
         use_date_prefix = not hl_type and not no_date
@@ -388,40 +381,40 @@ def run_note_list(project: str) -> int:
         print(f"[{project_dir.name}/notes/] — sin notas")
         return 0
 
-    # Load the tracked registry once so we can mark dynamic notes.
-    # ✏️ user-written, 📌 static (imported snapshot), 🔄 tracked (mirror).
+    # Load the tracked registry once so we can mark externas.
+    # ✏️ propia (lives in the workspace), 🔄 externa (symlink to source).
     from core.tracked import load_registry
-    registry = load_registry(project_dir)
-    tracked_rel = set(registry.keys())   # e.g. {"notes/decisions.md"}
+    registry = load_registry(project_dir)   # {filename: source_path}
 
-    def _kind_emoji(note_path: Path) -> str:
-        rel = f"notes/{note_path.name}"
-        if rel in tracked_rel:
-            return "🔄"
-        # Heuristic: a date prefix (YYYY-MM-DD_) signals an imported snapshot.
-        # Without a prefix the user authored it locally.
-        if re.match(r"^\d{4}-\d{2}-\d{2}_", note_path.name):
-            return "📌"
-        return "✏️"
+    # Re-glob including symlinks (the default *.md glob already does, but
+    # we want to be explicit: externas appear as symlinks under notes/).
+    notes = sorted(
+        [p for p in notes_dir.iterdir()
+         if (p.is_file() or p.is_symlink()) and p.name.endswith(".md")]
+    )
 
     print(f"\nNotas — {project_dir.name}/notes/:")
     for note in notes:
         tracked = _git_tracked(note)
         git_mark = "✓" if tracked else ("✗" if tracked is False else "?")
-        kind = _kind_emoji(note)
+        is_externa = note.name in registry
+        kind = "🔄" if is_externa else "✏️"
         line = f"  {git_mark} git  {kind}  {note.name}"
-        rel = f"notes/{note.name}"
-        if rel in tracked_rel:
-            line += f"   ← {registry[rel]['source']}"
+        if is_externa:
+            line += f"   → {registry[note.name]}"
         print(line)
     print()
-    print("  Leyenda: ✏️ libre · 📌 snapshot · 🔄 tracked (auto-refresh)")
+    print("  Leyenda: ✏️ propia · 🔄 externa (symlink al fuente)")
     return 0
 
 
 def run_note_drop(project: str, file_str: Optional[str] = None,
                   force: bool = False) -> int:
-    """Delete a note from project notes/ (interactive if no file given)."""
+    """Delete a note from project notes/ (interactive if no file given).
+
+    For externas, the symlink is removed and the registry entry cleaned;
+    the source file is never touched.
+    """
     import sys
     project_dir = _find_new_project(project)
     if project_dir is None:
@@ -433,19 +426,32 @@ def run_note_drop(project: str, file_str: Optional[str] = None,
         return 1
 
     note_name = note_path.name
-    # Read title from first # line
+
+    # Externa: route to untrack (removes symlink, leaves source intact).
+    from core.tracked import load_registry, untrack as _tracked_untrack
+    is_externa = note_name in load_registry(project_dir)
+
+    # Read title from first # line (skip for externas since the symlink
+    # may follow to a slow filesystem; just use the filename).
     title = note_name
-    for line in note_path.read_text().splitlines():
-        if line.startswith("# "):
-            title = line[2:].strip()
-            break
+    if not is_externa:
+        try:
+            for line in note_path.read_text().splitlines():
+                if line.startswith("# "):
+                    title = line[2:].strip()
+                    break
+        except (OSError, UnicodeDecodeError):
+            pass
 
     if not force:
         if not sys.stdin.isatty():
             print("Error: usa --force para confirmar el borrado en modo no interactivo.")
             return 1
+        prompt = (f"¿Untrack \"{note_name}\" (borra el symlink, source intacto)? [s/N]: "
+                  if is_externa else
+                  f"¿Seguro que quieres eliminar \"{note_name}\"? [s/N]: ")
         try:
-            ans = input(f"¿Seguro que quieres eliminar \"{note_name}\"? [s/N]: ").strip().lower()
+            ans = input(prompt).strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()
             return 1
@@ -453,10 +459,16 @@ def run_note_drop(project: str, file_str: Optional[str] = None,
             print("Cancelado.")
             return 0
 
-    from core.undo import save_snapshot
-    save_snapshot(note_path)
-    note_path.unlink()
-    print(f"✓ [{project_dir.name}] Nota borrada: {note_name}")
-    add_orbit_entry(project_dir,
-                    f"[nota borrada] {note_name} — \"{title}\"", "apunte")
+    if is_externa:
+        _tracked_untrack(project_dir, note_name)
+        print(f"✓ [{project_dir.name}] Untracked: notes/{note_name} (source intacto)")
+        add_orbit_entry(project_dir,
+                        f"[untracked] {note_name}", "apunte")
+    else:
+        from core.undo import save_snapshot
+        save_snapshot(note_path)
+        note_path.unlink()
+        print(f"✓ [{project_dir.name}] Nota borrada: {note_name}")
+        add_orbit_entry(project_dir,
+                        f"[nota borrada] {note_name} — \"{title}\"", "apunte")
     return 0

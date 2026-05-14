@@ -267,29 +267,25 @@ def run_hl_add(project: str, text: str, hl_type: str,
         text = f"{text} ({resolved})"
 
     # --- Tracked external file shortcut ---
-    # When --track is used, the file is mirrored into notes/<slug>.md,
-    # registered in .orbit-tracked.json, and the highlight points to it.
-    # The post-commit hook refreshes it whenever the source changes.
+    # When --track is used, a relative symlink is created in notes/
+    # pointing at the source, the highlight points to that symlink.
     if track:
         if not link:
             print("Error: --track requiere un fichero origen.")
             return 1
         from pathlib import Path
-        src = Path(link).expanduser()
+        src = Path(link).expanduser().resolve()
         if not src.exists():
             print(f"Error: no existe {src}")
             return 1
-        from core.tracked import register as _tracked_register
-        # Derive a stable filename from the highlight text (slugified).
-        from core.notes import _title_to_filename
-        rel_dest = f"notes/{_title_to_filename(text)}"
+        from core.tracked import track as _tracked_track
         try:
-            _tracked_register(project_dir, rel_dest, src)
-        except (FileNotFoundError, ValueError) as e:
+            note_name = _tracked_track(project_dir, src)
+        except (FileNotFoundError, ValueError, FileExistsError) as e:
             print(f"Error: {e}")
             return 1
-        link = f"./{rel_dest}"
-        print(f"  ↻ tracked desde {src}")
+        link = f"./notes/{note_name}"
+        print(f"  🔄 tracked: notes/{note_name} → {src}")
         # Fall through to highlight write below.
 
     # Handle file/URL/deliver logic for link argument
@@ -431,7 +427,7 @@ def run_hl_list(project: Optional[str] = None,
 
         # Tracked highlights are marked with 🔄 next to their text.
         from core.tracked import load_registry
-        tracked_rel = set(load_registry(project_dir))
+        tracked_names = set(load_registry(project_dir))  # {filename}
 
         proj_lines = []
         for k in keys:
@@ -442,7 +438,8 @@ def run_hl_list(project: Optional[str] = None,
             for item in items:
                 marker = ""
                 link = item.get("link") or ""
-                if link.startswith("./") and link[2:] in tracked_rel:
+                # link like "./notes/DECISIONS.md" → match basename against registry
+                if link.startswith("./notes/") and link.removeprefix("./notes/") in tracked_names:
                     marker = "🔄 "
                 proj_lines.append(f"    {marker}{_item_display(item)}")
             total += len(items)

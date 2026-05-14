@@ -1,11 +1,12 @@
 """Tests for F2: commit_pre / commit_post chain registration + action wrappers.
 
 The wrappers in core/commit.py adapt orbit helpers (cloud_imgs, cronograma,
-tracked, gsync, cloudsync) into the hook registry. These tests cover:
+gsync, cloudsync) into the hook registry. These tests cover:
   - Both chains are registered with the expected actions in the right order.
-  - tracked_files_refresh is marked critical (so a conflict aborts the chain).
   - Each action wrapper returns the documented ok/msg shape under both success
     and failure of its underlying helper.
+
+v0.36: tracked_files_refresh action removed (propia/externa model, no refresh).
 """
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -32,7 +33,6 @@ def test_commit_pre_chain_registered():
     assert chain.pre == [
         "cloud_imgs_process",
         "cronograma_log_completed",
-        "tracked_files_refresh",
         "gsync_reconcile_renames",
         "gsync_drift_check",
     ]
@@ -53,12 +53,9 @@ def test_commit_pre_and_post_bound():
     assert hooks.BINDINGS["commit_post"] == "commit_post"
 
 
-def test_tracked_files_refresh_is_critical():
-    action = hooks.ACTIONS["tracked_files_refresh"]
-    assert action.critical is True
-
-
-def test_other_commit_actions_are_non_critical():
+def test_all_commit_actions_are_non_critical():
+    # v0.36: no critical actions in commit chains (tracked_files_refresh
+    # was the only one and is now gone).
     for name in ("cloud_imgs_process", "cronograma_log_completed",
                  "gsync_reconcile_renames", "gsync_drift_check",
                  "cloudsync_push_background"):
@@ -107,62 +104,6 @@ def test_cronograma_log_some(capsys):
     restage.assert_called_once()
     out = capsys.readouterr().out
     assert "2 tareas de cronograma" in out
-
-
-# ── tracked_files_refresh ────────────────────────────────────────────────────
-
-def _outcome(status, project="p", rel_dest="d", source="s", detail=""):
-    return SimpleNamespace(status=status, project=project,
-                            rel_dest=rel_dest, source=source, detail=detail)
-
-
-def test_tracked_refresh_clean_no_changes():
-    with patch("core.tracked.refresh_all", return_value=[]), \
-         patch("core.config.iter_project_dirs", return_value=[]):
-        result = commit._action_tracked_files_refresh(None)
-    assert result == {"ok": True, "msg": "0 refreshed"}
-
-
-def test_tracked_refresh_with_refreshed_restages(capsys):
-    outcomes = [_outcome("refreshed")]
-    with patch("core.tracked.refresh_all", return_value=outcomes), \
-         patch("core.config.iter_project_dirs", return_value=[]), \
-         patch("core.commit._git_add_all_tracked") as restage:
-        result = commit._action_tracked_files_refresh(None)
-    assert result == {"ok": True, "msg": "1 refreshed"}
-    restage.assert_called_once()
-    assert "↻" in capsys.readouterr().out
-
-
-def test_tracked_refresh_conflict_aborts(capsys):
-    outcomes = [_outcome("conflict", detail="diverged")]
-    with patch("core.tracked.refresh_all", return_value=outcomes), \
-         patch("core.config.iter_project_dirs", return_value=[]):
-        result = commit._action_tracked_files_refresh(None)
-    assert result["ok"] is False
-    assert "1 conflicts" in result["msg"]
-    out = capsys.readouterr().out
-    assert "Commit abortado" in out
-    assert "Resoluciones:" in out
-
-
-def test_tracked_refresh_tampered_aborts():
-    outcomes = [_outcome("dest_tampered", detail="local edit")]
-    with patch("core.tracked.refresh_all", return_value=outcomes), \
-         patch("core.config.iter_project_dirs", return_value=[]):
-        result = commit._action_tracked_files_refresh(None)
-    assert result["ok"] is False
-    assert "1 conflicts" in result["msg"]
-
-
-def test_tracked_refresh_swallows_unexpected_exception(capsys):
-    with patch("core.tracked.refresh_all", side_effect=RuntimeError("boom")), \
-         patch("core.config.iter_project_dirs", return_value=[]):
-        result = commit._action_tracked_files_refresh(None)
-    # Unexpected: don't abort the chain — warn and continue.
-    assert result["ok"] is True
-    assert "error: RuntimeError" in result["msg"]
-    assert "Tracked refresh falló" in capsys.readouterr().out
 
 
 # ── gsync_reconcile_renames ──────────────────────────────────────────────────
@@ -230,32 +171,10 @@ def test_cloudsync_push_failure():
     assert "RuntimeError" in result["msg"]
 
 
-# ── End-to-end: chain abort propagates ────────────────────────────────────────
-
-def test_commit_pre_aborts_on_tracked_conflict(reset_journal):
-    outcomes = [_outcome("conflict", detail="diverged")]
-    with patch("core.tracked.refresh_all", return_value=outcomes), \
-         patch("core.config.iter_project_dirs", return_value=[]), \
-         patch("core.cloud_imgs.check_pending_imgs", return_value=0), \
-         patch("core.cronograma.log_crono_completions", return_value=0):
-        results = hooks.fire("commit_pre", verbosity="quiet")
-
-    # Critical failure on tracked_files_refresh aborts the chain — gsync actions
-    # after it are NOT in results.
-    actions_run = [r.action for r in results]
-    assert "tracked_files_refresh" in actions_run
-    failed = [r for r in results if not r.ok and not r.skipped]
-    assert len(failed) == 1
-    assert failed[0].action == "tracked_files_refresh"
-    # gsync actions after tracked are absent because chain aborted.
-    assert "gsync_reconcile_renames" not in actions_run
-    assert "gsync_drift_check" not in actions_run
-
+# ── End-to-end: chain runs cleanly ────────────────────────────────────────────
 
 def test_commit_pre_continues_when_clean(reset_journal):
-    with patch("core.tracked.refresh_all", return_value=[]), \
-         patch("core.config.iter_project_dirs", return_value=[]), \
-         patch("core.cloud_imgs.check_pending_imgs", return_value=0), \
+    with patch("core.cloud_imgs.check_pending_imgs", return_value=0), \
          patch("core.cronograma.log_crono_completions", return_value=0), \
          patch("core.gsync.reconcile_gsync_renames", return_value=[]), \
          patch("core.gsync.check_gsync_drift", return_value=[]):
@@ -265,7 +184,6 @@ def test_commit_pre_continues_when_clean(reset_journal):
     assert actions_run == [
         "cloud_imgs_process",
         "cronograma_log_completed",
-        "tracked_files_refresh",
         "gsync_reconcile_renames",
         "gsync_drift_check",
     ]

@@ -102,58 +102,137 @@ def _render_file(src: Path, dest: Path, css_rel: str,
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _workspace_cache_dir(project_dir: Path) -> Optional[Path]:
+    """Return the per-workspace cache dir for tracked-note mirrors.
+
+    The cache lives at ``<workspace>/.cache/notes/<project_basename>/``.
+    Walks parents from ``project_dir`` looking for the workspace root
+    (the dir that already contains ``.cache`` or, failing that, the
+    nearest ``$HOME/<emoji>orbit-*`` ancestor). Returns None if the
+    workspace can't be located.
+    """
+    home = Path.home()
+    for ancestor in [project_dir] + list(project_dir.parents):
+        if ancestor == home or ancestor == ancestor.parent:
+            return None
+        parent = ancestor.parent
+        if parent == home and ancestor.name.startswith(("🚀", "🌿", "🛠️", "📦")):
+            return ancestor / ".cache" / "notes" / project_dir.name
+    return None
+
+
+def _resolve_external(project_dir: Path, name: str, source_path: str) -> Optional[Path]:
+    """Return a Path with current content of the externa, or None if
+    both source and cache are unavailable.
+
+    Source path wins; if missing, fall back to last-known cache. The
+    cache is refreshed lazily here (when source is reachable and newer).
+    """
+    src = Path(source_path)
+    cache_dir = _workspace_cache_dir(project_dir)
+    cache_file = cache_dir / name if cache_dir else None
+
+    if src.exists() and src.is_file():
+        if cache_file is not None:
+            try:
+                src_mtime = src.stat().st_mtime
+                cache_mtime = cache_file.stat().st_mtime if cache_file.exists() else -1
+                if src_mtime > cache_mtime:
+                    cache_file.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, cache_file)
+            except OSError:
+                pass
+        return src
+
+    # Source missing — fall back to cache.
+    if cache_file is not None and cache_file.exists():
+        return cache_file
+    return None
+
+
 def render_project(project_dir: Path, cloud_root: Path) -> int:
     """Render all .md files of a project to HTML in cloud.
 
     Returns number of files rendered.
+
+    Externas (tracked) are rendered from their resolved source path
+    (or from the local mtime-cache if source is unreachable).
     """
     cloud_dir = _project_cloud_dir(project_dir, cloud_root)
     if not cloud_dir:
         return 0
 
-    # Collect .md files (root + notes/)
-    md_files = list(project_dir.glob("*.md"))
+    from core.tracked import load_registry
+    tracked_registry = load_registry(project_dir)   # {filename: source_path}
+
     notes_dir = project_dir / "notes"
+
+    # Collect .md files: root + propias under notes/ (excluding externas, handled separately).
+    md_files = list(project_dir.glob("*.md"))
     if notes_dir.is_dir():
-        md_files.extend(notes_dir.rglob("*.md"))
+        for p in notes_dir.iterdir():
+            if not p.name.endswith(".md"):
+                continue
+            if p.name in tracked_registry:
+                continue   # externa, handled below
+            if p.is_file() and not p.is_symlink():
+                md_files.append(p)
 
     # Exclude inbox.txt (lives separately in cloud)
     md_files = [f for f in md_files if f.name != "inbox.txt"]
 
-    rel_project = project_dir.relative_to(ORBIT_HOME)
-
-    # Build the "Tracked files" snippet once for the project.md page.
-    # Appears as an extra section in the rendered HTML so a reader of
-    # the cloud copy sees the tracked mirrors at a glance.
-    from core.tracked import load_registry
-    tracked_registry = load_registry(project_dir)
+    # Build the "Tracked" snippet for the project.md page.
     tracked_section_md = ""
     if tracked_registry:
         lines = ["## 🔄 Tracked"]
-        for rel_dest, entry in sorted(tracked_registry.items()):
-            note_html = rel_dest.replace(".md", ".html")
-            display_name = Path(rel_dest).stem
-            lines.append(f"- [{display_name}](./{note_html}) ← `{entry['source']}`")
+        for name, src_path in sorted(tracked_registry.items()):
+            note_html = f"notes/{name}".replace(".md", ".html")
+            display_name = Path(name).stem
+            lines.append(f"- [{display_name}](./{note_html}) → `{src_path}`")
         tracked_section_md = "\n".join(lines)
 
     rendered = 0
+    broken_externas = []
     for src in md_files:
         rel = src.relative_to(project_dir)
         dest = cloud_dir / rel.with_suffix(".html")
         depth = _depth(rel)
         css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
         nav_links = f'<a href="{"../" * (depth + 2)}index.html">🏠 Inicio</a>'
-        # Link to project root
         project_html = list(project_dir.glob("*-project.md"))
         if project_html:
             proj_name = project_html[0].stem + ".html"
             if depth > 0:
                 proj_name = "../" + proj_name
             nav_links += f' <a href="{proj_name}">📋 Proyecto</a>'
-        # Only the project.md page gets the tracked section appended.
         extra = tracked_section_md if src.name.endswith("-project.md") else ""
         _render_file(src, dest, css_rel, nav_links, extra_md=extra)
         rendered += 1
+
+    # Render externas: read content from the resolved source (or cache),
+    # write HTML into cloud_dir/notes/<name>.html.
+    for name, src_path in tracked_registry.items():
+        content_src = _resolve_external(project_dir, name, src_path)
+        if content_src is None:
+            broken_externas.append(name)
+            continue
+        rel = Path("notes") / name
+        dest = cloud_dir / rel.with_suffix(".html")
+        depth = _depth(rel)
+        css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
+        nav_links = f'<a href="{"../" * (depth + 2)}index.html">🏠 Inicio</a>'
+        project_html = list(project_dir.glob("*-project.md"))
+        if project_html:
+            proj_name = project_html[0].stem + ".html"
+            if depth > 0:
+                proj_name = "../" + proj_name
+            nav_links += f' <a href="{proj_name}">📋 Proyecto</a>'
+        _render_file(content_src, dest, css_rel, nav_links)
+        rendered += 1
+
+    if broken_externas:
+        print(f"  ⚠️  [{project_dir.name}] tracked sin fuente accesible: "
+              f"{', '.join(broken_externas)}")
 
     return rendered
 
