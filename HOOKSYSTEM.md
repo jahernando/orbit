@@ -1,6 +1,6 @@
 # HOOKSYSTEM.md — El hook system de orbit
 
-> Estado: documento vivo. Pasada 1 (inventario) completada 2026-05-14. Pasada 2 (diseño) acordada 2026-05-14. F1+F2 shipped 2026-05-14. F3-F7 pendientes.
+> Estado: documento vivo. Pasada 1 (inventario) completada 2026-05-14. Pasada 2 (diseño) acordada 2026-05-14. F1+F2+F3 shipped 2026-05-14. F4-F7 pendientes.
 
 ## 1. ¿Qué es "automagia"?
 
@@ -396,7 +396,7 @@ Rotación: cuando >10MB, mover a `.journal.1.jsonl`. `orbit doctor --hooks` lee 
 |------|---------|--------|--------|
 | **F1** | `core/hooks.py` con registry + `HookResult` + `fire()` + journal. Tests del registry. No migra nada. | bajo | **✓ shipped 2026-05-14** (34 tests) |
 | **F2** | Migrar chain `commit`. Pre/post de inline a `register_action()` + catálogo. `run_commit` ahora llama `fire("commit_pre")` antes del flujo interactivo y `fire("commit_post")` después. Doctor check se queda inline (interactivo). Dos chains (`commit_pre`, `commit_post`) por la interacción entre medias. | medio | **✓ shipped 2026-05-14** (32 tests) |
-| **F3** | Quick wins (sección 8.7). | bajo | pendiente |
+| **F3** | Quick wins (sección 8.7). | bajo | **✓ shipped 2026-05-14** |
 | **F4** | Migrar `shell_start` (la más larga, 11 actions). | medio | pendiente |
 | **F5** | Resto: `render`, `day_open` (con render añadido), `appointment_sync`, `sync_item`, `note_create`. | medio | pendiente |
 | **F6** | Mover catálogo a `core/hooks_catalog.json` cargado al import. Python solo registra `fn → name`. | bajo | pendiente |
@@ -406,15 +406,16 @@ Cada fase se commitea aparte y puede revertirse aislada. Tests específicos por 
 
 **Nota F2**: se usó `verbosity="quiet"` en los `fire()` para no duplicar output — las actions wrappers conservan los prints ricos originales (e.g. `↻ [proj] file ← source`), y el registry solo imprime fallos. El journal sigue capturando todo.
 
-## 8.7. Quick wins (F3 — independientes del registry, todos pendientes)
+## 8.7. Quick wins (F3 — independientes del registry)
 
-1. Borrar `schedule_new_format_reminders` de startup + day_changed (dead code).
-2. Move-up `applescript_writes` check en `gsync_background`.
-3. `_dash_stop` poll cada 5s (no cada 1h) → shutdown limpio.
-4. Print en `advance_overdue_recurring` ("↻ Avanzadas N citas") — actualmente silencioso.
-5. Documentar en docstring que `advance_overdue_recurring` muta disco.
-
-Además, **decisión 2 del diseño**: añadir render a `day_changed` para cerrar la inconsistencia temporal.
+| # | Acción | Estado |
+|---|--------|--------|
+| 1 | Borrar `schedule_new_format_reminders` de startup + day_changed (dead code). Función en `core/ring.py` queda como no-op (tests la cubren). | ✓ done |
+| 2 | Move-up `applescript_writes` check en `gsync_background`. | descartado — el check ya estaba en `gsync.py:2836`, nada que mover |
+| 3 | `_dash_stop` poll cada 5s en vez de cada 1h. Shutdown latency ≤5s. | ✓ done |
+| 4 | Print en `advance_overdue_recurring`. | descartado — el print ya existe en el caller (`shell.py:88-94`) |
+| 5 | Documentar en docstring que `advance_overdue_recurring` muta disco. | ✓ done |
+| **bonus** | **Decisión 2 del diseño**: `day_changed` ahora invoca `run_dash(silent=True)` tras avanzar recurrentes → regenera dash + `.ics`. Cierra la inconsistencia temporal (render). Commit auto pendiente para F5 (riesgo de prompt interactivo). | ✓ done |
 
 ## 8.8. Lo que NO se hace
 

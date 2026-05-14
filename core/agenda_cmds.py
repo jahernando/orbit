@@ -2126,14 +2126,20 @@ def _advance_to_today_or_future(item_date: str, recur: str,
 def startup_advance_past_recurring() -> list:
     """Auto-advance recurring items with dates strictly before today.
 
-    Called at shell startup. For each local project, advances recurring
-    items whose date is in the past:
+    Called at shell startup and on day-change. For each local project, advances
+    recurring items whose date is in the past:
       - Events: pop old, append new occurrence
       - Reminders: advance date in-place
       - Tasks/milestones: cancel old, append new occurrence
 
     Advances multiple steps if needed (e.g. user was away for weeks).
     Returns list of info strings like "[project] Título → 2026-04-22".
+
+    **Side effect**: writes modified `agenda.md` files to disk without prompting
+    for confirmation. The caller is expected to surface the returned list to the
+    user (shell.py:88 does this). To inspect what would change without writing,
+    no dry-run mode is provided — read agendas via `_read_agenda` and reproduce
+    the loop manually.
     """
     from core.config import iter_project_dirs
     from core.log import resolve_file

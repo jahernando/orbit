@@ -22,25 +22,36 @@ from core.config import ORBIT_HOME as ORBIT_DIR, ORBIT_CODE, ORBIT_PROMPT
 
 _dash_stop = threading.Event()
 
-DASH_INTERVAL = 3600  # seconds (1 hour)
+DASH_INTERVAL = 3600  # seconds (1 hour) — refresh cadence
+_DASH_STOP_POLL = 5   # seconds — shutdown latency
 _DASH_STAMP = ORBIT_DIR / ".dash-stamp"
 
 
 def _dash_background_loop():
-    """Refresh dash files every hour in background.
+    """Refresh dash files every DASH_INTERVAL in background.
 
+    Polls _dash_stop every _DASH_STOP_POLL seconds so shell exit terminates
+    the daemon promptly (otherwise it would linger up to DASH_INTERVAL).
     Uses a timestamp file so multiple shells don't duplicate work.
     """
     import time
-    while not _dash_stop.wait(DASH_INTERVAL):
+    last_refresh = time.time()
+    while True:
+        # Wait briefly; if stop signal arrives, return immediately.
+        if _dash_stop.wait(_DASH_STOP_POLL):
+            return
+        if time.time() - last_refresh < DASH_INTERVAL:
+            continue
         try:
             if _DASH_STAMP.exists():
                 age = time.time() - _DASH_STAMP.stat().st_mtime
                 if age < DASH_INTERVAL * 0.9:
+                    last_refresh = time.time()
                     continue
             from orbit import run_dash
             run_dash(silent=True)
             _DASH_STAMP.touch()
+            last_refresh = time.time()
         except Exception:
             pass
 
@@ -109,14 +120,10 @@ def _run_startup():
     from core.commit import startup_code_update_check
     startup_code_update_check()
 
-    # 6. gsync in background (fire & forget) + schedule reminders
+    # 6. gsync in background (fire & forget) — DORMANT unless applescript_writes
     from core.gsync import gsync_background
-    from core.ring import schedule_new_format_reminders
 
     gsync_background()
-    scheduled = schedule_new_format_reminders()
-    if scheduled:
-        print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
 
     # 7. Cartero — background mail checker
     from core.cartero import startup_cartero
@@ -196,12 +203,11 @@ def run_shell(editor: str = ""):
     from orbit import run_command
 
     while True:
-        # Midnight check — auto-advance recurrentes + programar recordatorios del nuevo día
+        # Midnight check — auto-advance recurrentes y refrescar dash/.ics
         if _date.today() != shell_start_date:
             print()
-            print("☀️ Nuevo día. Avanzando recurrentes y programando recordatorios...")
+            print("☀️ Nuevo día. Avanzando recurrentes...")
             from core.agenda_cmds import startup_advance_past_recurring
-            from core.ring import schedule_new_format_reminders
             from core.gsync import gsync_background
             adv = startup_advance_past_recurring()
             if adv:
@@ -209,11 +215,14 @@ def run_shell(editor: str = ""):
                 print(f"  🔄 {n} cita{'s' if n != 1 else ''} recurrente{'s' if n != 1 else ''} avanzada{'s' if n != 1 else ''}:")
                 for info in adv:
                     print(f"     {info}")
-                # Push the advanced dates to Reminders.app / Calendar.app.
+                # Push the advanced dates to Reminders.app / Calendar.app (dormant by default).
                 gsync_background()
-            scheduled = schedule_new_format_reminders()
-            if scheduled:
-                print(f"  {len(scheduled)} recordatorio{'s' if len(scheduled) != 1 else ''} programado{'s' if len(scheduled) != 1 else ''} para hoy.")
+                # Render dash + .ics so cloud + Calendar subscriptions reflect today's state.
+                try:
+                    from orbit import run_dash
+                    run_dash(silent=True)
+                except Exception:
+                    pass
             print()
             shell_start_date = _date.today()
 
