@@ -1,6 +1,6 @@
 # HOOKSYSTEM.md — El hook system de orbit
 
-> Estado: documento vivo. Pasada 1 (inventario) completada 2026-05-14. Pasada 2 (diseño) acordada 2026-05-14. F1+F2+F3+F4 shipped 2026-05-14. F5-F7 pendientes.
+> Estado: documento vivo. Pasada 1 (inventario) completada 2026-05-14. Pasada 2 (diseño) acordada 2026-05-14. F1+F2+F3+F4+F5 (parcial) shipped 2026-05-14. F5 restantes (`appointment_sync`, `sync_item`, `note_create`) **descartados** (ver §8.6). F6-F7 pendientes.
 
 ## 1. ¿Qué es "automagia"?
 
@@ -398,13 +398,20 @@ Rotación: cuando >10MB, mover a `.journal.1.jsonl`. `orbit doctor --hooks` lee 
 | **F2** | Migrar chain `commit`. Pre/post de inline a `register_action()` + catálogo. `run_commit` ahora llama `fire("commit_pre")` antes del flujo interactivo y `fire("commit_post")` después. Doctor check se queda inline (interactivo). Dos chains (`commit_pre`, `commit_post`) por la interacción entre medias. | medio | **✓ shipped 2026-05-14** (32 tests) |
 | **F3** | Quick wins (sección 8.7). | bajo | **✓ shipped 2026-05-14** |
 | **F4** | Migrar `shell_start` (la más larga, 10 actions tras F3). | medio | **✓ shipped 2026-05-14** (19 tests) |
-| **F5** | Resto: `render`, `day_open` (con render añadido), `appointment_sync`, `sync_item`, `note_create`. | medio | pendiente |
+| **F5** | `render` + `day_open` (con render añadido). `appointment_sync` / `sync_item` / `note_create` descartados (justificación abajo). | medio | **✓ shipped 2026-05-14** (parcial — 16 tests) |
 | **F6** | Mover catálogo a `core/hooks_catalog.json` cargado al import. Python solo registra `fn → name`. | bajo | pendiente |
 | **F7** | Añadir `--no-X` flags al CLI generados del catálogo. | bajo | pendiente |
 
 Cada fase se commitea aparte y puede revertirse aislada. Tests específicos por fase.
 
 **Nota F2**: se usó `verbosity="quiet"` en los `fire()` para no duplicar output — las actions wrappers conservan los prints ricos originales (e.g. `↻ [proj] file ← source`), y el registry solo imprime fallos. El journal sigue capturando todo.
+
+**Nota F5 — `appointment_sync` / `sync_item` / `note_create` descartados.** Tras releer el código:
+
+- **`appointment_sync`** y **`sync_item`** son *verbs*, no chains. El "ciclo" `apply_edits → advance_recurrence → sync_item → agenda_write` está entrelazado con la lógica de cada verb (task add/edit/done/drop × 4 tipos = ~14 funciones), no es una capa de hooks alrededor de un verb. Migrarlos tocaría 14 call sites para mover solo `sync_item` a chain, y `sync_item` está **dormant por defecto** (`applescript_writes: false`) — el usuario no notaría diferencia. Sin valor.
+- **`note_create`** es un solo verb. Sus 5 "pasos" (crear fichero, log o highlight, git_add prompt, abrir editor, register tracked) están atados a parámetros del comando (`title`, `file_str`, `hl_type`, `track`, `open_after`); refactorizar para que los pasos sean actions independientes con ctx threading sería un refactor mayor sin valor añadido — el usuario ya tiene control mediante flags CLI.
+
+El meta-modelo `trigger → chain → actions` aplica cuando *hay* automatización alrededor del verb. Cuando los pasos *son* el verb, no hay chain que migrar.
 
 ## 8.7. Quick wins (F3 — independientes del registry)
 

@@ -153,12 +153,18 @@ def _action_cartero_startup(ctx):
 
 
 def _action_dash_render(ctx):
-    """Regenerate panel.md / agenda.md / calendar.md + emit .ics."""
+    """Regenerate panel.md / agenda.md / calendar.md + emit .ics.
+
+    `silent` flag in ctx (default False) skips the leading print() separator
+    and runs run_dash silently — used by `day_open` chain at midnight.
+    """
+    silent = bool((ctx or {}).get("silent")) if isinstance(ctx, dict) else False
     try:
         from orbit import run_dash
-        print()
-        run_dash(silent=False)
-        return {"ok": True}
+        if not silent:
+            print()
+        run_dash(silent=silent)
+        return {"ok": True, "msg": "silent" if silent else "shown"}
     except Exception as e:
         return {"ok": False, "msg": f"{type(e).__name__}: {e}"}
 
@@ -202,6 +208,21 @@ _hooks.register_chain(
     ],
 )
 _hooks.bind("shell_startup", "shell_start")
+
+# day_open chain (see HOOKSYSTEM.md §6.4): fired in the REPL loop when the
+# system date rolls over. Reuses three actions registered above. Caller passes
+# ctx={"silent": True} so dash_render skips the separator print and runs
+# silently — at midnight the user is mid-session, not starting fresh.
+_hooks.register_chain(
+    "day_open",
+    trigger_type="temporal",
+    post=[
+        "advance_overdue_recurring",
+        "gsync_background",
+        "dash_render",
+    ],
+)
+_hooks.bind("day_changed", "day_open")
 
 
 # ── Startup sequence ─────────────────────────────────────────────────────────
@@ -270,26 +291,11 @@ def run_shell(editor: str = ""):
     from orbit import run_command
 
     while True:
-        # Midnight check — auto-advance recurrentes y refrescar dash/.ics
+        # Midnight check — fire `day_open` chain (see HOOKSYSTEM.md §6.4).
         if _date.today() != shell_start_date:
             print()
             print("☀️ Nuevo día. Avanzando recurrentes...")
-            from core.agenda_cmds import startup_advance_past_recurring
-            from core.gsync import gsync_background
-            adv = startup_advance_past_recurring()
-            if adv:
-                n = len(adv)
-                print(f"  🔄 {n} cita{'s' if n != 1 else ''} recurrente{'s' if n != 1 else ''} avanzada{'s' if n != 1 else ''}:")
-                for info in adv:
-                    print(f"     {info}")
-                # Push the advanced dates to Reminders.app / Calendar.app (dormant by default).
-                gsync_background()
-                # Render dash + .ics so cloud + Calendar subscriptions reflect today's state.
-                try:
-                    from orbit import run_dash
-                    run_dash(silent=True)
-                except Exception:
-                    pass
+            _hooks.fire("day_changed", ctx={"silent": True}, verbosity="quiet")
             print()
             shell_start_date = _date.today()
 

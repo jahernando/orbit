@@ -208,19 +208,44 @@ def render_all(cloud_root: Optional[Path] = None) -> int:
         n = render_project(project_dir, cloud_root)
         total += n
 
-    _emit_ics(cloud_root)
+    _hooks.fire("after_render", ctx={"cloud_root": cloud_root}, verbosity="quiet")
     return total
 
 
-def _emit_ics(cloud_root: Path) -> None:
-    """Best-effort: regenerate .ics files alongside the HTML render and
-    trigger Calendar.app to refresh its subscriptions. Failures don't
-    block the HTML render (just a warning)."""
+# ── Render-chain hook actions ─────────────────────────────────────────────────
+#
+# See HOOKSYSTEM.md §6.2. The `render` chain has a single post-action
+# (`ics_emit_workspace`) that regenerates .ics files and triggers Calendar.app
+# to refresh subscriptions. Fired by render_changed and render_all after the
+# HTML render completes.
+
+def _action_ics_emit_workspace(ctx):
+    """Best-effort: regenerate .ics files + trigger Calendar.app reload.
+
+    Failures don't block the chain — they print a warning and return ok=False
+    (non-critical, so the chain continues).
+    """
+    cloud_root = (ctx or {}).get("cloud_root") if isinstance(ctx, dict) else None
+    if cloud_root is None:
+        return {"ok": True, "msg": "no cloud_root", "data": None}
     try:
         from core.ics import write_workspace
         write_workspace(cloud_root)
+        return {"ok": True, "msg": "emitted"}
     except Exception as exc:
         print(f"  ⚠️  ics: error generando calendarios: {exc}")
+        return {"ok": False, "msg": f"{type(exc).__name__}: {exc}"}
+
+
+from core import hooks as _hooks
+
+_hooks.register_action("ics_emit_workspace", _action_ics_emit_workspace)
+_hooks.register_chain(
+    "render",
+    trigger_type="explicit",
+    post=["ics_emit_workspace"],
+)
+_hooks.bind("after_render", "render")
 
 
 def render_changed(cloud_root: Optional[Path] = None) -> int:
@@ -270,7 +295,7 @@ def render_changed(cloud_root: Optional[Path] = None) -> int:
     # .ics generation is cheap (~50 ms for a typical workspace) so we
     # regenerate on every render-changed pass; the snapshot diff inside
     # write_workspace summarises real deltas.
-    _emit_ics(cloud_root)
+    _hooks.fire("after_render", ctx={"cloud_root": cloud_root}, verbosity="quiet")
     return rendered
 
 

@@ -172,7 +172,7 @@ def test_dash_render_success():
     with patch("orbit.run_dash") as h:
         result = shell._action_dash_render(None)
     h.assert_called_once_with(silent=False)
-    assert result == {"ok": True}
+    assert result["ok"] is True
 
 
 def test_dash_render_swallows_exception():
@@ -198,6 +198,58 @@ def test_dash_background_loop_start_spawns_daemon():
         assert result == {"ok": True, "msg": "daemon started"}
     finally:
         shell._dash_stop.clear()
+
+
+# ── day_open chain (F5.2) ────────────────────────────────────────────────────
+
+def test_day_open_chain_registered():
+    chain = hooks.CHAINS.get("day_open")
+    assert chain is not None
+    assert chain.trigger_type == "temporal"
+    assert chain.post == [
+        "advance_overdue_recurring",
+        "gsync_background",
+        "dash_render",
+    ]
+
+
+def test_day_changed_trigger_bound():
+    assert hooks.BINDINGS["day_changed"] == "day_open"
+
+
+def test_dash_render_silent_via_ctx(capsys):
+    with patch("orbit.run_dash") as h:
+        shell._action_dash_render({"silent": True})
+    h.assert_called_once_with(silent=True)
+    out = capsys.readouterr().out
+    # No leading print() separator when silent
+    assert out == ""
+
+
+def test_dash_render_non_silent_default(capsys):
+    with patch("orbit.run_dash") as h:
+        shell._action_dash_render(None)
+    h.assert_called_once_with(silent=False)
+    # Leading print() separator emits a newline
+    assert capsys.readouterr().out == "\n"
+
+
+def test_day_open_fires_all_actions(reset_journal):
+    """Fire day_changed; verify the three actions run with silent ctx."""
+    with patch("core.agenda_cmds.startup_advance_past_recurring", return_value=[]), \
+         patch("core.gsync.gsync_background") as gsync, \
+         patch("orbit.run_dash") as dash:
+        results = hooks.fire("day_changed", ctx={"silent": True},
+                              verbosity="quiet")
+
+    assert [r.action for r in results] == [
+        "advance_overdue_recurring",
+        "gsync_background",
+        "dash_render",
+    ]
+    assert all(r.ok for r in results)
+    gsync.assert_called_once()
+    dash.assert_called_once_with(silent=True)
 
 
 # ── End-to-end ──────────────────────────────────────────────────────────────
