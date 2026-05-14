@@ -23,9 +23,21 @@ from core.hooks import (
 
 @pytest.fixture(autouse=True)
 def clean_registries():
+    """Isolate each test: start with empty registries, restore globals after.
+
+    Other test modules (test_commit_hooks, test_shell_hooks) rely on the
+    module-import-time registrations done by core.commit / core.shell. Just
+    clearing the registries would break them when tests interleave.
+    """
+    saved_actions = dict(hooks.ACTIONS)
+    saved_chains = dict(hooks.CHAINS)
+    saved_bindings = dict(hooks.BINDINGS)
     _reset_registries_for_test()
     yield
     _reset_registries_for_test()
+    hooks.ACTIONS.update(saved_actions)
+    hooks.CHAINS.update(saved_chains)
+    hooks.BINDINGS.update(saved_bindings)
 
 
 @pytest.fixture

@@ -56,18 +56,14 @@ def _dash_background_loop():
             pass
 
 
-# ── Startup sequence ─────────────────────────────────────────────────────────
+# ── Shell-start hook actions (chain `shell_start`) ────────────────────────────
+#
+# See HOOKSYSTEM.md §6.3. Each function is a registered hook action; the chain
+# is bound to the temporal trigger `shell_startup` and runs once when the
+# shell starts.
 
-def _run_startup():
-    """Execute all startup checks. Called once when shell starts.
-
-    Order matters:
-      1. Doctor — validate data integrity (fast, local)
-      2. Google sync + reminders — only after data is clean
-      3. Untracked files + commit + push
-    """
-
-    # 1. Doctor — validate data integrity, offer fixes
+def _action_doctor_startup(ctx):
+    """Background doctor check + interactive fix prompt."""
     from core.doctor import doctor_background
     doctor_thread, doctor_issues = doctor_background()
     doctor_thread.join(timeout=5)
@@ -75,26 +71,33 @@ def _run_startup():
     if doctor_thread.is_alive():
         print("  🏥 Doctor aún revisando... (ejecuta 'doctor' manualmente)")
         print()
-    elif doctor_issues:
-        fixable = [i for i in doctor_issues if i.fix]
-        unfixable = [i for i in doctor_issues if not i.fix]
-        n = len(doctor_issues)
-        print(f"  🏥 {n} problema{'s' if n != 1 else ''} de sintaxis encontrado{'s' if n != 1 else ''}:")
-        for issue in doctor_issues:
-            prefix = "🔧" if issue.fix else "⚠️"
-            line_preview = issue.line.strip()[:60]
-            print(f"      {prefix} [{issue.project}] {issue.file}:{issue.line_num} — {issue.msg}")
-            print(f"        │ {line_preview}")
-        print()
-        if fixable:
-            from core.doctor import _interactive_fix
-            _interactive_fix(fixable)
-            print()
-        if unfixable:
-            print(f"  {len(unfixable)} problema{'s' if len(unfixable) != 1 else ''} requiere{'n' if len(unfixable) != 1 else ''} corrección manual.")
-            print()
+        return {"ok": True, "msg": "still running"}
 
-    # 1.5. Auto-advance past recurring items
+    if not doctor_issues:
+        return {"ok": True, "msg": "clean"}
+
+    fixable = [i for i in doctor_issues if i.fix]
+    unfixable = [i for i in doctor_issues if not i.fix]
+    n = len(doctor_issues)
+    print(f"  🏥 {n} problema{'s' if n != 1 else ''} de sintaxis encontrado{'s' if n != 1 else ''}:")
+    for issue in doctor_issues:
+        prefix = "🔧" if issue.fix else "⚠️"
+        line_preview = issue.line.strip()[:60]
+        print(f"      {prefix} [{issue.project}] {issue.file}:{issue.line_num} — {issue.msg}")
+        print(f"        │ {line_preview}")
+    print()
+    if fixable:
+        from core.doctor import _interactive_fix
+        _interactive_fix(fixable)
+        print()
+    if unfixable:
+        print(f"  {len(unfixable)} problema{'s' if len(unfixable) != 1 else ''} requiere{'n' if len(unfixable) != 1 else ''} corrección manual.")
+        print()
+    return {"ok": True, "msg": f"{n} issues ({len(fixable)} fixable)"}
+
+
+def _action_advance_overdue_recurring(ctx):
+    """Auto-advance recurring items past today. See agenda_cmds.startup_advance_past_recurring."""
     from core.agenda_cmds import startup_advance_past_recurring
     adv = startup_advance_past_recurring()
     if adv:
@@ -103,45 +106,109 @@ def _run_startup():
         for info in adv:
             print(f"     {info}")
         print()
+    return {"ok": True, "msg": f"{len(adv)} advanced"}
 
-    # 2. Cloud sync check — warn if last background sync failed
+
+def _action_cloud_sync_status_check(ctx):
+    """Warn if last background cloud sync failed (reads .cloud-sync.json)."""
     from core.cloudsync import startup_cloud_check
     startup_cloud_check()
+    return {"ok": True}
 
-    # 3. Untracked files — prompt to stage new files
-    from core.commit import startup_untracked_check, startup_commit_offer
+
+def _action_untracked_check(ctx):
+    """Stage tracked + prompt to add untracked (tty-only)."""
+    from core.commit import startup_untracked_check
     startup_untracked_check()
+    return {"ok": True}
 
-    # 4. Commit + push — offer to commit staged changes
+
+def _action_commit_offer(ctx):
+    """Show uncommitted changes and offer commit + push (tty-only)."""
+    from core.commit import startup_commit_offer
     startup_commit_offer()
     print()
+    return {"ok": True}
 
-    # 5. Code update check — pull new code from orbit repo
+
+def _action_code_update_check(ctx):
+    """Check upstream of orbit code repo and offer pull (tty-only)."""
     from core.commit import startup_code_update_check
     startup_code_update_check()
+    return {"ok": True}
 
-    # 6. gsync in background (fire & forget) — DORMANT unless applescript_writes
+
+def _action_gsync_background(ctx):
+    """Spawn background gsync thread. Dormant unless applescript_writes."""
     from core.gsync import gsync_background
-
     gsync_background()
+    return {"ok": True}
 
-    # 7. Cartero — background mail checker
+
+def _action_cartero_startup(ctx):
+    """Start the mail/Slack daemon if cartero.json is configured."""
     from core.cartero import startup_cartero
     startup_cartero()
+    return {"ok": True}
 
-    # 8. Dash — refresh panel.md + agenda.md + calendar.md
+
+def _action_dash_render(ctx):
+    """Regenerate panel.md / agenda.md / calendar.md + emit .ics."""
     try:
         from orbit import run_dash
         print()
         run_dash(silent=False)
-    except Exception:
-        pass
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "msg": f"{type(e).__name__}: {e}"}
 
-    # 9. Background dash refresh every hour
+
+def _action_dash_background_loop_start(ctx):
+    """Spawn the hourly dash refresh daemon (polls _dash_stop every 5s)."""
     _dash_stop.clear()
     t = threading.Thread(target=_dash_background_loop, daemon=True)
     t.start()
+    return {"ok": True, "msg": "daemon started"}
 
+
+# Register actions + chain at module import time.
+from core import hooks as _hooks
+
+_hooks.register_action("doctor_startup", _action_doctor_startup)
+_hooks.register_action("advance_overdue_recurring", _action_advance_overdue_recurring)
+_hooks.register_action("cloud_sync_status_check", _action_cloud_sync_status_check)
+_hooks.register_action("untracked_check", _action_untracked_check)
+_hooks.register_action("commit_offer", _action_commit_offer)
+_hooks.register_action("code_update_check", _action_code_update_check)
+_hooks.register_action("gsync_background", _action_gsync_background)
+_hooks.register_action("cartero_startup", _action_cartero_startup)
+_hooks.register_action("dash_render", _action_dash_render)
+_hooks.register_action("dash_background_loop_start", _action_dash_background_loop_start)
+
+_hooks.register_chain(
+    "shell_start",
+    trigger_type="temporal",
+    post=[
+        "doctor_startup",
+        "advance_overdue_recurring",
+        "cloud_sync_status_check",
+        "untracked_check",
+        "commit_offer",
+        "code_update_check",
+        "gsync_background",
+        "cartero_startup",
+        "dash_render",
+        "dash_background_loop_start",
+    ],
+)
+_hooks.bind("shell_startup", "shell_start")
+
+
+# ── Startup sequence ─────────────────────────────────────────────────────────
+
+def _run_startup():
+    """Execute the `shell_start` chain. See HOOKSYSTEM.md §6.3 for the action list."""
+    _hooks.fire("shell_startup", verbosity="quiet")
     print()
 
 
