@@ -177,52 +177,9 @@ def _action_dash_background_loop_start(ctx):
     return {"ok": True, "msg": "daemon started"}
 
 
-# Register actions + chain at module import time.
+# Chain composition and bindings live in core/hooks_catalog.json — loaded once
+# by hooks.bootstrap() at orbit startup.
 from core import hooks as _hooks
-
-_hooks.register_action("doctor_startup", _action_doctor_startup)
-_hooks.register_action("advance_overdue_recurring", _action_advance_overdue_recurring)
-_hooks.register_action("cloud_sync_status_check", _action_cloud_sync_status_check)
-_hooks.register_action("untracked_check", _action_untracked_check)
-_hooks.register_action("commit_offer", _action_commit_offer)
-_hooks.register_action("code_update_check", _action_code_update_check)
-_hooks.register_action("gsync_background", _action_gsync_background)
-_hooks.register_action("cartero_startup", _action_cartero_startup)
-_hooks.register_action("dash_render", _action_dash_render)
-_hooks.register_action("dash_background_loop_start", _action_dash_background_loop_start)
-
-_hooks.register_chain(
-    "shell_start",
-    trigger_type="temporal",
-    post=[
-        "doctor_startup",
-        "advance_overdue_recurring",
-        "cloud_sync_status_check",
-        "untracked_check",
-        "commit_offer",
-        "code_update_check",
-        "gsync_background",
-        "cartero_startup",
-        "dash_render",
-        "dash_background_loop_start",
-    ],
-)
-_hooks.bind("shell_startup", "shell_start")
-
-# day_open chain (see HOOKSYSTEM.md §6.4): fired in the REPL loop when the
-# system date rolls over. Reuses three actions registered above. Caller passes
-# ctx={"silent": True} so dash_render skips the separator print and runs
-# silently — at midnight the user is mid-session, not starting fresh.
-_hooks.register_chain(
-    "day_open",
-    trigger_type="temporal",
-    post=[
-        "advance_overdue_recurring",
-        "gsync_background",
-        "dash_render",
-    ],
-)
-_hooks.bind("day_changed", "day_open")
 
 
 # ── Startup sequence ─────────────────────────────────────────────────────────

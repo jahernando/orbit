@@ -1,6 +1,6 @@
 # HOOKSYSTEM.md — El hook system de orbit
 
-> Estado: documento vivo. Pasada 1 (inventario) completada 2026-05-14. Pasada 2 (diseño) acordada 2026-05-14. F1+F2+F3+F4+F5 (parcial) shipped 2026-05-14. F5 restantes (`appointment_sync`, `sync_item`, `note_create`) **descartados** (ver §8.6). F6-F7 pendientes.
+> Estado: documento vivo. Pasada 1 (inventario) completada 2026-05-14. Pasada 2 (diseño) acordada 2026-05-14. F1+F2+F3+F4+F5+F6 shipped 2026-05-14. F5 restantes (`appointment_sync`, `sync_item`, `note_create`) **descartados** (ver §8.6). F7 pendiente.
 
 ## 1. ¿Qué es "automagia"?
 
@@ -399,7 +399,7 @@ Rotación: cuando >10MB, mover a `.journal.1.jsonl`. `orbit doctor --hooks` lee 
 | **F3** | Quick wins (sección 8.7). | bajo | **✓ shipped 2026-05-14** |
 | **F4** | Migrar `shell_start` (la más larga, 10 actions tras F3). | medio | **✓ shipped 2026-05-14** (19 tests) |
 | **F5** | `render` + `day_open` (con render añadido). `appointment_sync` / `sync_item` / `note_create` descartados (justificación abajo). | medio | **✓ shipped 2026-05-14** (parcial — 16 tests) |
-| **F6** | Mover catálogo a `core/hooks_catalog.json` cargado al import. Python solo registra `fn → name`. | bajo | pendiente |
+| **F6** | Catálogo declarativo en `core/hooks_catalog.json`. Inline `register_*` removidas de los módulos. `hooks.bootstrap()` lo carga en orbit.py import y tests/conftest.py session fixture. | bajo | **✓ shipped 2026-05-14** (6 tests) |
 | **F7** | Añadir `--no-X` flags al CLI generados del catálogo. | bajo | pendiente |
 
 Cada fase se commitea aparte y puede revertirse aislada. Tests específicos por fase.

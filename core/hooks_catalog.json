@@ -1,0 +1,140 @@
+{
+  "_comment": "Hook system catalog. Loaded by core.hooks.bootstrap() at startup. See HOOKSYSTEM.md.",
+  "actions": {
+    "cloud_imgs_process": {
+      "module": "core.commit",
+      "fn": "_action_cloud_imgs_process",
+      "critical": false
+    },
+    "cronograma_log_completed": {
+      "module": "core.commit",
+      "fn": "_action_cronograma_log_completed",
+      "critical": false
+    },
+    "tracked_files_refresh": {
+      "module": "core.commit",
+      "fn": "_action_tracked_files_refresh",
+      "critical": true
+    },
+    "gsync_reconcile_renames": {
+      "module": "core.commit",
+      "fn": "_action_gsync_reconcile_renames",
+      "critical": false
+    },
+    "gsync_drift_check": {
+      "module": "core.commit",
+      "fn": "_action_gsync_drift_check",
+      "critical": false
+    },
+    "cloudsync_push_background": {
+      "module": "core.commit",
+      "fn": "_action_cloudsync_push_background",
+      "critical": false
+    },
+    "doctor_startup": {
+      "module": "core.shell",
+      "fn": "_action_doctor_startup",
+      "critical": false
+    },
+    "advance_overdue_recurring": {
+      "module": "core.shell",
+      "fn": "_action_advance_overdue_recurring",
+      "critical": false
+    },
+    "cloud_sync_status_check": {
+      "module": "core.shell",
+      "fn": "_action_cloud_sync_status_check",
+      "critical": false
+    },
+    "untracked_check": {
+      "module": "core.shell",
+      "fn": "_action_untracked_check",
+      "critical": false
+    },
+    "commit_offer": {
+      "module": "core.shell",
+      "fn": "_action_commit_offer",
+      "critical": false
+    },
+    "code_update_check": {
+      "module": "core.shell",
+      "fn": "_action_code_update_check",
+      "critical": false
+    },
+    "gsync_background": {
+      "module": "core.shell",
+      "fn": "_action_gsync_background",
+      "critical": false
+    },
+    "cartero_startup": {
+      "module": "core.shell",
+      "fn": "_action_cartero_startup",
+      "critical": false
+    },
+    "dash_render": {
+      "module": "core.shell",
+      "fn": "_action_dash_render",
+      "critical": false
+    },
+    "dash_background_loop_start": {
+      "module": "core.shell",
+      "fn": "_action_dash_background_loop_start",
+      "critical": false
+    },
+    "ics_emit_workspace": {
+      "module": "core.render",
+      "fn": "_action_ics_emit_workspace",
+      "critical": false
+    }
+  },
+  "chains": {
+    "commit_pre": {
+      "trigger_type": "explicit",
+      "pre": [
+        "cloud_imgs_process",
+        "cronograma_log_completed",
+        "tracked_files_refresh",
+        "gsync_reconcile_renames",
+        "gsync_drift_check"
+      ]
+    },
+    "commit_post": {
+      "trigger_type": "explicit",
+      "post": ["cloudsync_push_background"]
+    },
+    "shell_start": {
+      "trigger_type": "temporal",
+      "post": [
+        "doctor_startup",
+        "advance_overdue_recurring",
+        "cloud_sync_status_check",
+        "untracked_check",
+        "commit_offer",
+        "code_update_check",
+        "gsync_background",
+        "cartero_startup",
+        "dash_render",
+        "dash_background_loop_start"
+      ]
+    },
+    "day_open": {
+      "trigger_type": "temporal",
+      "post": [
+        "advance_overdue_recurring",
+        "gsync_background",
+        "dash_render"
+      ]
+    },
+    "render": {
+      "trigger_type": "explicit",
+      "post": ["ics_emit_workspace"]
+    }
+  },
+  "bindings": {
+    "commit_pre": "commit_pre",
+    "commit_post": "commit_post",
+    "shell_startup": "shell_start",
+    "day_changed": "day_open",
+    "after_render": "render"
+  }
+}

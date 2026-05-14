@@ -36,6 +36,12 @@ from core.history import log_history, run_history
 from core.claude import run_claude
 from core.deliver import run_deliver
 from core.recloud import run_recloud
+from core import hooks as _hooks
+
+# Load the hook system catalog (actions, chains, bindings) from
+# core/hooks_catalog.json. Idempotent — safe to import this module multiple
+# times. See HOOKSYSTEM.md.
+_hooks.bootstrap()
 
 
 def _d(expr):

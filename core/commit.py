@@ -385,34 +385,10 @@ def _action_cloudsync_push_background(ctx):
         return {"ok": False, "msg": f"{type(e).__name__}: {e}"}
 
 
-# Register actions and chains at import time.
+# Chain composition and bindings live in core/hooks_catalog.json — loaded once
+# by hooks.bootstrap() at orbit startup. This module only defines the action
+# fns; the catalog references them by module.fn.
 from core import hooks as _hooks
-
-_hooks.register_action("cloud_imgs_process", _action_cloud_imgs_process)
-_hooks.register_action("cronograma_log_completed", _action_cronograma_log_completed)
-_hooks.register_action("tracked_files_refresh", _action_tracked_files_refresh, critical=True)
-_hooks.register_action("gsync_reconcile_renames", _action_gsync_reconcile_renames)
-_hooks.register_action("gsync_drift_check", _action_gsync_drift_check)
-_hooks.register_action("cloudsync_push_background", _action_cloudsync_push_background)
-
-_hooks.register_chain(
-    "commit_pre",
-    trigger_type="explicit",
-    pre=[
-        "cloud_imgs_process",
-        "cronograma_log_completed",
-        "tracked_files_refresh",
-        "gsync_reconcile_renames",
-        "gsync_drift_check",
-    ],
-)
-_hooks.register_chain(
-    "commit_post",
-    trigger_type="explicit",
-    post=["cloudsync_push_background"],
-)
-_hooks.bind("commit_pre", "commit_pre")
-_hooks.bind("commit_post", "commit_post")
 
 
 # ── Main command ───────────────────────────────────────────────────────────────

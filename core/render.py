@@ -237,15 +237,9 @@ def _action_ics_emit_workspace(ctx):
         return {"ok": False, "msg": f"{type(exc).__name__}: {exc}"}
 
 
+# Chain composition and bindings live in core/hooks_catalog.json — loaded once
+# by hooks.bootstrap() at orbit startup.
 from core import hooks as _hooks
-
-_hooks.register_action("ics_emit_workspace", _action_ics_emit_workspace)
-_hooks.register_chain(
-    "render",
-    trigger_type="explicit",
-    post=["ics_emit_workspace"],
-)
-_hooks.bind("after_render", "render")
 
 
 def render_changed(cloud_root: Optional[Path] = None) -> int:

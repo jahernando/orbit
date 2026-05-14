@@ -8,6 +8,21 @@ from pathlib import Path
 from datetime import date
 
 
+# ── Hook system bootstrap (session-scoped, autouse) ────────────────────────────
+
+@pytest.fixture(scope="session", autouse=True)
+def _bootstrap_hook_catalog():
+    """Load core/hooks_catalog.json once per session so chains are registered.
+
+    With F6 the inline register_action/register_chain/bind calls were removed
+    from core.commit / core.shell / core.render — the catalog lives in JSON and
+    is loaded by hooks.bootstrap(). In production orbit.py calls it at import
+    time; tests don't import orbit.py, so this fixture takes care of it.
+    """
+    from core import hooks
+    hooks.bootstrap()
+
+
 # ── External side-effect isolation (autouse) ───────────────────────────────────
 
 @pytest.fixture(autouse=True)

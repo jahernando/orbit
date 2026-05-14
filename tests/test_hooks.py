@@ -415,3 +415,81 @@ def test_to_json_catalog_is_serializable():
     assert parsed["actions"]["a"]["critical"] is True
     assert parsed["chains"]["c"]["post"] == ["a"]
     assert parsed["bindings"]["t"] == "c"
+
+
+# ── Catalog bootstrap (F6) ───────────────────────────────────────────────────
+
+def test_bootstrap_with_missing_path_returns_false(tmp_path):
+    missing = tmp_path / "no-such.json"
+    assert hooks.bootstrap(missing) is False
+
+
+def test_bootstrap_loads_default_catalog():
+    """Loading the real catalog should register all five chains."""
+    assert hooks.bootstrap() is True
+    assert "commit_pre" in hooks.CHAINS
+    assert "commit_post" in hooks.CHAINS
+    assert "shell_start" in hooks.CHAINS
+    assert "day_open" in hooks.CHAINS
+    assert "render" in hooks.CHAINS
+    assert hooks.BINDINGS["commit_pre"] == "commit_pre"
+    assert hooks.BINDINGS["shell_startup"] == "shell_start"
+
+
+def test_bootstrap_applies_critical_flag():
+    hooks.bootstrap()
+    assert hooks.ACTIONS["tracked_files_refresh"].critical is True
+    assert hooks.ACTIONS["cloud_imgs_process"].critical is False
+
+
+def test_bootstrap_is_idempotent():
+    hooks.bootstrap()
+    chains_first = dict(hooks.CHAINS)
+    hooks.bootstrap()
+    chains_second = dict(hooks.CHAINS)
+    # Same chain names; identity of Chain objects may differ (we re-register).
+    assert set(chains_first.keys()) == set(chains_second.keys())
+
+
+def test_bootstrap_loads_custom_catalog(tmp_path):
+    catalog = {
+        "actions": {
+            "my_action": {
+                "module": "core.commit",
+                "fn": "_action_cloud_imgs_process",
+                "critical": True,
+            }
+        },
+        "chains": {
+            "my_chain": {"trigger_type": "explicit", "post": ["my_action"]}
+        },
+        "bindings": {"my_trigger": "my_chain"},
+    }
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(json.dumps(catalog))
+    assert hooks.bootstrap(catalog_path) is True
+    assert "my_action" in hooks.ACTIONS
+    assert hooks.ACTIONS["my_action"].critical is True
+    assert hooks.CHAINS["my_chain"].post == ["my_action"]
+    assert hooks.BINDINGS["my_trigger"] == "my_chain"
+
+
+def test_bootstrap_clears_existing_state(tmp_path):
+    """A second bootstrap with a different catalog replaces, doesn't merge."""
+    register_action("stale_action", lambda ctx: None)
+    register_chain("stale_chain", trigger_type="explicit", post=["stale_action"])
+    bind("stale_trigger", "stale_chain")
+    catalog = {
+        "actions": {"new_action": {
+            "module": "core.commit", "fn": "_action_cloud_imgs_process",
+        }},
+        "chains": {"new_chain": {"trigger_type": "explicit",
+                                   "post": ["new_action"]}},
+        "bindings": {"new_trigger": "new_chain"},
+    }
+    catalog_path = tmp_path / "c.json"
+    catalog_path.write_text(json.dumps(catalog))
+    hooks.bootstrap(catalog_path)
+    assert "stale_action" not in hooks.ACTIONS
+    assert "stale_chain" not in hooks.CHAINS
+    assert "stale_trigger" not in hooks.BINDINGS

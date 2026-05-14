@@ -22,10 +22,12 @@ Returning None / any other value = success with no msg.
 """
 from __future__ import annotations
 
+import importlib
 import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, Literal, Optional
 
 from core.config import ORBIT_HOME, _load_orbit_json
@@ -35,6 +37,8 @@ VerbosityLevel = Literal["quiet", "normal", "verbose"]
 
 JOURNAL_PATH = ORBIT_HOME / ".journal.jsonl"
 JOURNAL_MAX_BYTES = 10 * 1024 * 1024  # 10MB rotation threshold
+
+DEFAULT_CATALOG_PATH = Path(__file__).parent / "hooks_catalog.json"
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -347,6 +351,56 @@ def to_json_catalog() -> dict:
         },
         "bindings": dict(BINDINGS),
     }
+
+
+# ── Catalog bootstrap (F6) ────────────────────────────────────────────────────
+
+def bootstrap(catalog_path: Optional[Path] = None) -> bool:
+    """Load the hook catalog from JSON and register all actions, chains, bindings.
+
+    Single source of truth for the orbit hook system: every action/chain/binding
+    is declared in ``core/hooks_catalog.json``. Action functions are resolved by
+    importing their owning module via importlib and looking up the named fn.
+
+    Called once at orbit.py startup (production) and once per pytest session
+    (tests/conftest.py). Idempotent — clears state before reloading so calling
+    twice is safe.
+
+    Returns True on success, False if the catalog file is missing.
+    """
+    path = Path(catalog_path) if catalog_path else DEFAULT_CATALOG_PATH
+    if not path.exists():
+        return False
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    ACTIONS.clear()
+    CHAINS.clear()
+    BINDINGS.clear()
+
+    for name, spec in data.get("actions", {}).items():
+        module = importlib.import_module(spec["module"])
+        fn = getattr(module, spec["fn"])
+        register_action(
+            name, fn,
+            critical=spec.get("critical", False),
+            cli_flag=spec.get("cli_flag", ""),
+            disable_config_key=spec.get("disable_config_key", ""),
+        )
+
+    for name, spec in data.get("chains", {}).items():
+        register_chain(
+            name,
+            trigger_type=spec["trigger_type"],
+            pre=spec.get("pre", []),
+            core=spec.get("core"),
+            post=spec.get("post", []),
+            cli_verb=spec.get("cli_verb", ""),
+        )
+
+    for trigger, chain_name in data.get("bindings", {}).items():
+        bind(trigger, chain_name)
+
+    return True
 
 
 # ── Test utilities ────────────────────────────────────────────────────────────
