@@ -1835,6 +1835,28 @@ class TestEventIndicators:
         assert event_room_urls(item) == ["https://r1", "https://r2"]
         assert event_agenda_urls(item) == ["https://a"]
 
+    def test_email_url_helper(self):
+        from core.agenda_cmds import event_email_urls
+        item = {"notes": ["📋 https://a", "✉️ message://%3Cabc%40x%3E"]}
+        assert event_email_urls(item) == ["message://%3Cabc%40x%3E"]
+
+    def test_email_indicator_terminal(self):
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["✉️ message://%3Cabc%40x%3E"]}
+        assert event_indicators(item, markdown=False) == " ✉️"
+
+    def test_email_indicator_markdown(self):
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["✉️ message://%3Cabc%40x%3E"]}
+        out = event_indicators(item, markdown=True)
+        assert out == " [✉️](message://%3Cabc%40x%3E)"
+
+    def test_room_agenda_email_combined(self):
+        from core.agenda_cmds import event_indicators
+        item = {"notes": ["📋 https://i", "🚪 https://z",
+                          "✉️ message://%3Cm%3E"]}
+        assert event_indicators(item, markdown=False) == " 📹 📋 ✉️"
+
     def test_format_item_line_terminal_includes_emojis(self, proj, projects_dir):
         from core.agenda_cmds import run_ev_add, _read_agenda
         from core.agenda_view import _format_item_line

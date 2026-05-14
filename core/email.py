@@ -992,11 +992,12 @@ def _create_event_from_proposal(project_dir: Path, proposal: dict) -> int:
     """Call run_ev_add with the first room/agenda; append extras directly."""
     from core.agenda_cmds import (
         run_ev_add, _read_agenda, _write_agenda, resolve_file,
-        _AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX,
+        _AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX, _EMAIL_NOTE_PREFIX,
     )
 
     rooms = proposal.get("rooms") or []
     agendas = proposal.get("agendas") or []
+    email_url = proposal.get("email_url")
 
     rc = run_ev_add(
         project=project_dir.name,
@@ -1009,10 +1010,11 @@ def _create_event_from_proposal(project_dir: Path, proposal: dict) -> int:
     if rc != 0:
         return rc
 
-    # Append extras (multiple rooms/agendas) directly to the just-created event
+    # Append extras (multiple rooms/agendas) and source-email link directly
+    # to the just-created event.
     extras_room = rooms[1:]
     extras_agenda = agendas[1:]
-    if not extras_room and not extras_agenda:
+    if not extras_room and not extras_agenda and not email_url:
         return 0
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
@@ -1023,6 +1025,8 @@ def _create_event_from_proposal(project_dir: Path, proposal: dict) -> int:
                 notes.append(f"{_AGENDA_NOTE_PREFIX}{a}")
             for r in extras_room:
                 notes.append(f"{_ROOM_NOTE_PREFIX}{r}")
+            if email_url:
+                notes.append(f"{_EMAIL_NOTE_PREFIX}{email_url}")
             break
     _write_agenda(agenda_path, data)
     return 0
@@ -1039,6 +1043,10 @@ def _emit_event_from_email(project_dir: Path, email: dict) -> int:
     if not confirmed:
         print("Cancelado.")
         return 0
+    # Carry the source-email link into the event so the user can jump back
+    # to the original message from Calendar.app / khal / agenda.md.
+    if email.get("msg_id"):
+        confirmed["email_url"] = f"message://%3C{email['msg_id']}%3E"
     return _create_event_from_proposal(project_dir, confirmed)
 
 

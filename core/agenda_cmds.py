@@ -1021,10 +1021,12 @@ def _validate_edit_params(new_date=None, new_until=None, new_recur=None,
 
 # Note prefixes for structured event metadata. Lines indented under an event
 # starting with one of these emojis are treated as typed fields by orbit
-# (📋 agenda/indico, 🚪 room/zoom) and preserved across `--desc` edits.
+# (📋 agenda/indico, 🚪 room/zoom, ✉️ source email) and preserved across
+# `--desc` edits.
 _AGENDA_NOTE_PREFIX = "📋 "
 _ROOM_NOTE_PREFIX   = "🚪 "
-_STRUCTURED_PREFIXES = (_AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX)
+_EMAIL_NOTE_PREFIX  = "✉️ "
+_STRUCTURED_PREFIXES = (_AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX, _EMAIL_NOTE_PREFIX)
 
 
 def _is_meeting_url(s: str) -> bool:
@@ -1049,20 +1051,31 @@ def event_agenda_urls(item: dict) -> list:
             if n.startswith(_AGENDA_NOTE_PREFIX)]
 
 
+def event_email_urls(item: dict) -> list:
+    """Return list of source-email URLs (✉️) attached to an event item.
+
+    Populated by `orbit email <proj> --ev`: the originating message URL
+    (typically ``message://<Message-ID>`` for Apple Mail captures).
+    """
+    return [n[len(_EMAIL_NOTE_PREFIX):] for n in (item.get("notes") or [])
+            if n.startswith(_EMAIL_NOTE_PREFIX)]
+
+
 def event_indicators(item: dict, markdown: bool = False) -> str:
-    """Return a leading-space suffix flagging room/agenda presence on an event.
+    """Return a leading-space suffix flagging room/agenda/email presence.
 
     Room icon adapts to its content: 📹 for URLs (videoconference, like
     Calendar.app), 🚪 for physical rooms or other plain text.
 
-    - markdown=False  → ' 📹 🚪 📋'              (one icon per room/agenda)
-    - markdown=True   → ' [📹](url) [🚪](room) [📋](url)' (clickable links)
+    - markdown=False  → ' 📹 🚪 📋 ✉️'              (one icon per item)
+    - markdown=True   → ' [📹](url) [🚪](room) [📋](url) [✉️](msg-url)'
 
     Returns empty string if no structured notes.
     """
     rooms = event_room_urls(item)
     agendas = event_agenda_urls(item)
-    if not rooms and not agendas:
+    emails = event_email_urls(item)
+    if not rooms and not agendas and not emails:
         return ""
     parts = []
     if markdown:
@@ -1070,11 +1083,15 @@ def event_indicators(item: dict, markdown: bool = False) -> str:
             parts.append(f"[{_room_icon(u)}]({u})")
         for u in agendas:
             parts.append(f"[📋]({u})")
+        for u in emails:
+            parts.append(f"[✉️]({u})")
     else:
         for r in rooms:
             parts.append(_room_icon(r))
         if agendas:
             parts.append("📋")
+        if emails:
+            parts.append("✉️")
     return " " + " ".join(parts)
 
 

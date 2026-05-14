@@ -780,6 +780,29 @@ class TestEmitEventFromEmail:
         assert "🚪 https://cern.zoom.us/j/111" in agenda_md
         assert "🚪 https://meet.google.com/abc-defg-hij" in agenda_md
 
+    def test_email_link_attached_as_structured_note(self, env, monkeypatch):
+        """The source email message:// URL is preserved as ✉️ note under the
+        event so the user can jump back to the original mail from any view
+        (Calendar.app, khal, agenda.md)."""
+        from core import email as email_mod
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *_: "")
+        rc = email_mod._emit_event_from_email(env["proj"], self._email())
+        assert rc == 0
+        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        assert "✉️ message://%3Cevt@x.com%3E" in agenda_md
+
+    def test_email_link_absent_when_no_msg_id(self, env, monkeypatch):
+        """If the captured email has no Message-ID, no ✉️ note is added."""
+        from core import email as email_mod
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *_: "")
+        em = self._email(msg_id="")
+        rc = email_mod._emit_event_from_email(env["proj"], em)
+        assert rc == 0
+        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        assert "✉️" not in agenda_md
+
 
 class TestRunEmailAsEvent:
     """Integration: full run_email(..., as_ev=True) with .eml capture."""
