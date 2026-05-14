@@ -148,6 +148,41 @@ class TestRunNoteCreate:
         assert rc == 1
         assert "no encontrado" in capsys.readouterr().out
 
+    def test_from_path_accepts_any_extension(self, tmp_path, proj, projects_dir,
+                                              monkeypatch, capsys):
+        """--from pre-loads content from any extension; result is a propia .md."""
+        from core.notes import run_note_create
+        monkeypatch.setattr(sys, "stdin", open("/dev/null"))
+        monkeypatch.setattr("core.notes.open_file", lambda p, e: None)
+        src = tmp_path / "shared.txt"
+        src.write_text("Contenido externo no markdown.\n")
+        rc = run_note_create("test-project", "Mi Copia", from_path=str(src),
+                             open_after=False)
+        assert rc == 0
+        today = date.today().isoformat()
+        dest = proj / "notes" / f"{today}_mi_copia.md"
+        assert dest.exists()
+        assert "Contenido externo no markdown" in dest.read_text()
+        # No registry entry: it's propia, not tracked.
+        assert not (proj / ".orbit-tracked.json").exists()
+
+    def test_from_path_missing_fails(self, proj, projects_dir, capsys):
+        from core.notes import run_note_create
+        rc = run_note_create("test-project", "Ghost", from_path="/nonexistent/file.md",
+                             open_after=False)
+        assert rc == 1
+        assert "no encontrado" in capsys.readouterr().out
+
+    def test_from_and_track_mutually_exclusive(self, tmp_path, proj, projects_dir,
+                                                capsys):
+        from core.notes import run_note_create
+        src = tmp_path / "x.md"
+        src.write_text("x")
+        rc = run_note_create("test-project", "X", from_path=str(src),
+                             file_str=str(src), track=True, open_after=False)
+        assert rc == 1
+        assert "mutuamente exclusivos" in capsys.readouterr().out
+
     def test_project_not_found(self, projects_dir, capsys):
         from core.notes import run_note_create
         rc = run_note_create("nonexistent", "Note", open_after=False)

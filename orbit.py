@@ -436,6 +436,7 @@ def cmd_note(args):
             entry     = getattr(args, "entry", None) or "apunte",
             hl_type   = getattr(args, "hl", None),
             track     = getattr(args, "track", False),
+            from_path = getattr(args, "from_path", None),
         )
     # default: create (shorthand uses _project/_title/_file)
     title = getattr(args, "title", None) or getattr(args, "_title", "") or ""
@@ -450,6 +451,7 @@ def cmd_note(args):
         entry     = getattr(args, "entry", None) or "apunte",
         hl_type   = getattr(args, "hl", None),
         track     = getattr(args, "track", False),
+        from_path = getattr(args, "from_path", None),
     )
 
 
@@ -1958,6 +1960,8 @@ def _build_parser():
                            help="Register in highlights instead of logbook (e.g. referencia)")
     nt_create.add_argument("--track",   action="store_true",
                            help="Register as tracked external file (auto-refresh on commit). Requires file.")
+    nt_create.add_argument("--from",    dest="from_path", default=None, metavar="PATH",
+                           help="Pre-load note content from PATH (any extension). Result is fully owned, no link to source.")
     nt_create.add_argument("--editor",  default=None)
 
     nt_import = note_sub.add_parser("import", help="Import an existing .md file as a note")
@@ -1974,6 +1978,8 @@ def _build_parser():
                            help="Register in highlights instead of logbook")
     nt_import.add_argument("--track",   action="store_true",
                            help="Register as tracked external file (auto-refresh on commit)")
+    nt_import.add_argument("--from",    dest="from_path", default=None, metavar="PATH",
+                           help="Pre-load note content from PATH (any extension). Result is fully owned.")
     nt_import.add_argument("--editor",  default=None)
 
     nt_open = note_sub.add_parser("open", help="Open note (create if missing)")
@@ -2005,6 +2011,7 @@ def _build_parser():
     note_p.add_argument("--entry",   default="apunte")
     note_p.add_argument("--hl",      default=None, metavar="TYPE")
     note_p.add_argument("--track",   action="store_true")
+    note_p.add_argument("--from",    dest="from_path", default=None, metavar="PATH")
     note_p.add_argument("--editor",  default=None)
 
     # --- clip ---

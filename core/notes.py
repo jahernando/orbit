@@ -133,27 +133,36 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
                     no_date: bool = False,
                     entry: str = "apunte",
                     hl_type: Optional[str] = None,
-                    track: bool = False) -> int:
-    """Create a new note or import an existing .md into project notes/.
+                    track: bool = False,
+                    from_path: Optional[str] = None) -> int:
+    """Create a new note (propia) or track an external file (externa).
 
-    By default registers in logbook (with date prefix in filename).
-    With --hl <type>: registers in highlights instead (no date prefix).
-    With --no-date: no date prefix in filename, still registers in logbook.
-    With --track (requires file_str): registers as a tracked external file
-    in ``.orbit-tracked.json``; future commits auto-refresh from the source.
-    Forces ``no_date=True`` (tracked files have a canonical filename).
+    Modes (mutually exclusive):
+      - default: create new note with template, date prefix optional.
+      - --from <path>: pre-load content from <path> into a new propia. The
+        result is fully owned (no link to source). Any extension accepted as
+        input; written as .md.
+      - --track / file_str: register as externa — symlink notes/<basename> →
+        source. The source remains the truth; orbit just keeps a window.
 
     Args:
-        file_str: if given and exists as file, imports it; otherwise title only.
+        file_str: external source path for --track (externa).
+        from_path: source path for --from (propia with pre-loaded content).
         no_date: skip date prefix in filename.
         entry: logbook entry type (default: apunte).
-        hl_type: if set, register in highlights under this section instead of logbook.
-        track: register as tracked external file (requires file_str).
+        hl_type: if set, register in highlights under this section.
+        track: create externa (symlink).
     """
     project_dir = _find_new_project(project)
     if project_dir is None:
         return 1
 
+    if from_path and track:
+        print("Error: --from y --track son mutuamente exclusivos (propia vs externa).")
+        return 1
+    if from_path and file_str:
+        print("Error: --from y file (positional) son redundantes; usa solo --from.")
+        return 1
     if track and not file_str:
         print("Error: --track requiere un fichero origen (úsalo con --file o pasando un path).")
         return 1
@@ -161,44 +170,67 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
     notes_dir = project_dir / "notes"
     notes_dir.mkdir(exist_ok=True)
 
-    # Decide filename: date prefix for logbook entries, plain for highlights/no-date/track.
-    use_date_prefix = not hl_type and not no_date and not track
-    base_name = _title_to_filename(title)
-    if use_date_prefix:
-        note_name = f"{date.today().isoformat()}_{base_name}"
-    else:
-        note_name = base_name
-
-    dest = notes_dir / note_name
-
-    from core.undo import save_snapshot
-
-    if file_str:
+    # Externa: copy + register (v0.34 API; symlink in v0.36).
+    if track:
         src = Path(file_str).expanduser().resolve()
         if not src.exists():
             print(f"Error: fichero no encontrado: {src}")
             return 1
         if src.suffix.lower() != ".md":
-            print(f"Error: solo se pueden importar ficheros .md (recibido: {src.name})")
+            print(f"Error: solo se pueden trackear ficheros .md (recibido: {src.name})")
             return 1
+        base_name = _title_to_filename(title)
+        note_name = base_name
+        dest = notes_dir / note_name
+        from core.undo import save_snapshot
         save_snapshot(dest)
-        if track:
-            from core.tracked import register as _tracked_register
-            try:
-                _tracked_register(project_dir, f"notes/{note_name}", src)
-            except ValueError as e:
-                print(f"Error: {e}")
+        from core.tracked import register as _tracked_register
+        try:
+            _tracked_register(project_dir, f"notes/{note_name}", src)
+        except ValueError as e:
+            print(f"Error: {e}")
+            return 1
+        print(f"✓ [{project_dir.name}] Nota tracked: {note_name} ← {src}")
+    else:
+        # Propia: date prefix for logbook entries, plain for highlights/no-date.
+        use_date_prefix = not hl_type and not no_date
+        base_name = _title_to_filename(title)
+        note_name = f"{date.today().isoformat()}_{base_name}" if use_date_prefix else base_name
+        dest = notes_dir / note_name
+
+        from core.undo import save_snapshot
+
+        if from_path:
+            src = Path(from_path).expanduser().resolve()
+            if not src.exists():
+                print(f"Error: fichero no encontrado: {src}")
                 return 1
-            print(f"✓ [{project_dir.name}] Nota tracked: {note_name} ← {src}")
-        else:
+            try:
+                content = src.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError) as e:
+                print(f"Error: no se pudo leer {src}: {e}")
+                return 1
+            save_snapshot(dest)
+            dest.write_text(content)
+            print(f"✓ [{project_dir.name}] Nota creada desde {src.name}: {note_name}")
+        elif file_str:
+            # Legacy positional file: import-once (same as --from, kept for backcompat).
+            src = Path(file_str).expanduser().resolve()
+            if not src.exists():
+                print(f"Error: fichero no encontrado: {src}")
+                return 1
+            if src.suffix.lower() != ".md":
+                print(f"Error: solo se pueden importar ficheros .md (recibido: {src.name})")
+                return 1
+            save_snapshot(dest)
             shutil.copy2(src, dest)
             print(f"✓ [{project_dir.name}] Nota importada: {note_name}")
-    else:
-        if dest.exists():
-            print(f"⚠️  La nota ya existe: {note_name} (se sobreescribirá)")
-        save_snapshot(dest)
-        dest.write_text(_note_template(title, project_dir.name, project_dir))
-        print(f"✓ [{project_dir.name}] Nota creada: {note_name}")
+        else:
+            if dest.exists():
+                print(f"⚠️  La nota ya existe: {note_name} (se sobreescribirá)")
+            save_snapshot(dest)
+            dest.write_text(_note_template(title, project_dir.name, project_dir))
+            print(f"✓ [{project_dir.name}] Nota creada: {note_name}")
 
     # Ask about git tracking
     if sys.stdin.isatty():
@@ -235,7 +267,8 @@ def run_note_import(project: str, title: str, file_str: str,
                     no_date: bool = False,
                     entry: str = "apunte",
                     hl_type: Optional[str] = None,
-                    track: bool = False) -> int:
+                    track: bool = False,
+                    from_path: Optional[str] = None) -> int:
     """Import an existing .md file as a project note, log it, and clip the link.
 
     Like run_note_create with a file, but file is required and the markdown
@@ -245,7 +278,7 @@ def run_note_import(project: str, title: str, file_str: str,
     rc = run_note_create(
         project=project, title=title, file_str=file_str,
         open_after=open_after, editor=editor, no_date=no_date,
-        entry=entry, hl_type=hl_type, track=track,
+        entry=entry, hl_type=hl_type, track=track, from_path=from_path,
     )
     if rc != 0:
         return rc
