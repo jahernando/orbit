@@ -349,6 +349,7 @@ class TestUndoNote:
 
     def test_undo_note_create(self, proj, projects_dir, monkeypatch):
         import sys
+        from datetime import date
         monkeypatch.setattr(sys, "stdin", open("/dev/null"))
         from core.notes import run_note_create
         import core.notes as nm
@@ -356,7 +357,7 @@ class TestUndoNote:
         from core.undo import commit_operation, run_undo
         run_note_create("test-project", "My note", open_after=False)
         commit_operation("note create")
-        note = proj / "notes" / "my_note.md"
+        note = proj / "notes" / f"{date.today().isoformat()}_my_note.md"
         assert note.exists()
         run_undo(choice=1)
         # Note file removed, logbook restored
@@ -364,6 +365,7 @@ class TestUndoNote:
 
     def test_undo_note_drop(self, proj, projects_dir, monkeypatch):
         import sys
+        from datetime import date
         monkeypatch.setattr(sys, "stdin", open("/dev/null"))
         from core.notes import run_note_create, run_note_drop
         import core.notes as nm
@@ -371,10 +373,11 @@ class TestUndoNote:
         from core.undo import commit_operation, run_undo
         run_note_create("test-project", "Temp note", open_after=False)
         commit_operation("note create")
-        note = proj / "notes" / "temp_note.md"
+        note_name = f"{date.today().isoformat()}_temp_note.md"
+        note = proj / "notes" / note_name
         assert note.exists()
         content_before = note.read_text()
-        run_note_drop("test-project", "temp_note.md", force=True)
+        run_note_drop("test-project", note_name, force=True)
         commit_operation("note drop")
         assert not note.exists()
         run_undo(choice=1)

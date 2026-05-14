@@ -150,11 +150,16 @@ orbit ring uninstall               # descarga y elimina
 
 **Caveat TCC**: primera vez tras `orbit ring install`, macOS bloquea EventKit hasta que el usuario autorice el binario Python en *System Settings → Privacy & Security → Reminders*. Doctor lo detecta leyendo `~/Library/Logs/orbit/ring-daemon.stderr.log`.
 
-**Tests**: `tests/test_ring_export.py` (45 tests). Suite: 1804 pass, 4 skipped.
+**Tests**: `tests/test_ring_export.py` (45 tests). Suite: 1874 pass, 4 skipped.
 
 **Migración**: las 3 listas obsoletas (`Orbit`, `🚀 orbit-ws` con espacio, `🌿 orbit-ps` con espacio) y `Orbit Ring` (modelo único original) borradas tras validación. Las listas nuevas son `🚀orbit-ws` y `🌿orbit-ps` (sin espacio).
 
 **Dependencia nueva**: `pyobjc-framework-EventKit` (registrada en `DEPENDENCIES.md`).
+
+
+## CI (2026-05-14)
+
+GitHub Actions workflow en `.github/workflows/tests.yml`. Ejecuta `pytest -q` en cada push a `main` y en cada PR a `main`. Runner: `ubuntu-latest`, Python 3.11, deps mínimas (`pytest`, `markdown`). El daemon EventKit y los tests `uses_osa` corren sin tocar AppleScript real gracias a los stubs del autouse fixture en `tests/conftest.py`, así que la suite es 100% pasable en Linux.
 
 
 ## Historial anterior
