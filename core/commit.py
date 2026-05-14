@@ -267,87 +267,186 @@ def _auto_message(status_lines: list) -> str:
     return f"orbit: {summary}"
 
 
-# ── Main command ───────────────────────────────────────────────────────────────
+# ── Hook actions (commit_pre / commit_post chains) ────────────────────────────
+#
+# Each function is a registered action; the inline pre/post code from the
+# original run_commit was extracted here. See HOOKSYSTEM.md §6.1.
+# The doctor check stays inline in run_commit because it is interactive
+# (prompts the user to continue / abort).
 
-def run_commit(message: Optional[str] = None) -> int:
-    # Stage all tracked-file changes
-    _git_add_all_tracked()
-
-    # Detect and offer to add untracked files in projects
-    _prompt_untracked()
-
-    status = _git_status()
-
-    if not status:
-        print("Sin cambios para commitear.")
-        return 0
-
-    # Collect pending images from _imgs/ before doctor checks
+def _action_cloud_imgs_process(ctx):
+    """Process pending cloud images; re-stage if modified."""
     try:
         from core.cloud_imgs import run_cloud_imgs, check_pending_imgs
-        if check_pending_imgs() > 0:
-            run_cloud_imgs()
-            # Re-stage any files modified by cloud imgs
-            _git_add_all_tracked()
-    except Exception:
-        pass
+        n = check_pending_imgs()
+        if n <= 0:
+            return {"ok": True, "msg": "0 pending"}
+        run_cloud_imgs()
+        _git_add_all_tracked()
+        return {"ok": True, "msg": f"{n} processed"}
+    except Exception as e:
+        return {"ok": False, "msg": f"{type(e).__name__}: {e}"}
 
-    # Log manually completed crono tasks before doctor checks
+
+def _action_cronograma_log_completed(ctx):
+    """Log manually completed cronograma tasks to logbook."""
     try:
         from core.cronograma import log_crono_completions
-        n_crono = log_crono_completions()
-        if n_crono:
-            print(f"  📊 {n_crono} tarea{'s' if n_crono != 1 else ''} de cronograma registrada{'s' if n_crono != 1 else ''} en logbook")
-            _git_add_all_tracked()  # re-stage logbook changes
-    except Exception:
-        pass
+        n = log_crono_completions()
+    except Exception as e:
+        return {"ok": False, "msg": f"{type(e).__name__}: {e}"}
+    if n:
+        print(f"  📊 {n} tarea{'s' if n != 1 else ''} de cronograma registrada{'s' if n != 1 else ''} en logbook")
+        _git_add_all_tracked()
+    return {"ok": True, "msg": f"{n} logged"}
 
-    # Refresh tracked external files (see DECISIONS.md ADR-024).
-    # Aborts the commit on dest-tampered or source/dest conflicts so the
-    # user resolves them explicitly rather than losing work silently.
+
+def _action_tracked_files_refresh(ctx):
+    """Refresh tracked external files. CRITICAL — aborts chain on conflict/tamper."""
     try:
         from core.tracked import refresh_all
         from core.config import iter_project_dirs
         outcomes = refresh_all(list(iter_project_dirs()), force=False)
-        refreshed = [o for o in outcomes if o.status == "refreshed"]
-        tampered  = [o for o in outcomes if o.status == "dest_tampered"]
-        conflicts = [o for o in outcomes if o.status == "conflict"]
-        missing   = [o for o in outcomes if o.status == "source_missing"]
-        for o in refreshed:
-            print(f"  ↻ [{o.project}] {o.rel_dest} ← {o.source}")
-        if refreshed:
-            _git_add_all_tracked()
-        for o in missing:
-            print(f"  ⚠️  [{o.project}] {o.rel_dest}: {o.detail}")
-        if tampered or conflicts:
-            print()
-            print(f"❌ Commit abortado: {len(tampered) + len(conflicts)} tracked file{'s' if len(tampered) + len(conflicts) != 1 else ''} con problemas:")
-            for o in tampered:
-                print(f"  ⚠️  [{o.project}] {o.rel_dest}: {o.detail}")
-            for o in conflicts:
-                print(f"  ❌ [{o.project}] {o.rel_dest}: {o.detail}")
-            print()
-            print("Resoluciones:")
-            print("  orbit tracked refresh --force-source <note>   # descartar edits en la copia")
-            print("  orbit tracked refresh --force-dest <note>     # escribir tu copia sobre el origen")
-            print("  orbit tracked remove <proj> <note>            # untrack (conserva la copia local)")
-            return 1
     except Exception as e:
+        # Unexpected failure: warn but don't abort the chain.
         print(f"  ⚠️  Tracked refresh falló: {e}")
+        return {"ok": True, "msg": f"error: {type(e).__name__}"}
 
-    # Run doctor checks before committing
+    refreshed = [o for o in outcomes if o.status == "refreshed"]
+    tampered  = [o for o in outcomes if o.status == "dest_tampered"]
+    conflicts = [o for o in outcomes if o.status == "conflict"]
+    missing   = [o for o in outcomes if o.status == "source_missing"]
+
+    for o in refreshed:
+        print(f"  ↻ [{o.project}] {o.rel_dest} ← {o.source}")
+    if refreshed:
+        _git_add_all_tracked()
+    for o in missing:
+        print(f"  ⚠️  [{o.project}] {o.rel_dest}: {o.detail}")
+
+    if tampered or conflicts:
+        n_bad = len(tampered) + len(conflicts)
+        print()
+        print(f"❌ Commit abortado: {n_bad} tracked file{'s' if n_bad != 1 else ''} con problemas:")
+        for o in tampered:
+            print(f"  ⚠️  [{o.project}] {o.rel_dest}: {o.detail}")
+        for o in conflicts:
+            print(f"  ❌ [{o.project}] {o.rel_dest}: {o.detail}")
+        print()
+        print("Resoluciones:")
+        print("  orbit tracked refresh --force-source <note>   # descartar edits en la copia")
+        print("  orbit tracked refresh --force-dest <note>     # escribir tu copia sobre el origen")
+        print("  orbit tracked remove <proj> <note>            # untrack (conserva la copia local)")
+        return {"ok": False, "msg": f"{n_bad} conflicts"}
+
+    return {"ok": True, "msg": f"{len(refreshed)} refreshed"}
+
+
+def _action_gsync_reconcile_renames(ctx):
+    """Reconcile title renames in gsync IDs. Dormant unless applescript_writes."""
+    try:
+        from core.gsync import reconcile_gsync_renames
+        renames = reconcile_gsync_renames()
+    except Exception:
+        return {"ok": True, "msg": "skipped"}
+    for proj, old_desc, new_desc in renames:
+        print(f"  🔗 [{proj}] Revinculado: «{old_desc}» → «{new_desc}»")
+    if renames:
+        print()
+    return {"ok": True, "msg": f"{len(renames)} renames"}
+
+
+def _action_gsync_drift_check(ctx):
+    """Warn about post-sync drift. Dormant unless applescript_writes."""
+    try:
+        from core.gsync import check_gsync_drift
+        drift = check_gsync_drift()
+    except Exception:
+        return {"ok": True, "msg": "skipped"}
+    if drift:
+        n = len(drift)
+        print(f"  ☁️  {n} item{'s' if n != 1 else ''} modificado{'s' if n != 1 else ''} desde último gsync:")
+        for proj, kind, desc, diffs in drift:
+            print(f"    ⚠️  [{proj}] {kind}: {desc}")
+            for d in diffs:
+                print(f"        {d}")
+        print("  → Considera ejecutar `orbit gsync` tras el commit.\n")
+    return {"ok": True, "msg": f"{len(drift)} drift items"}
+
+
+def _action_cloudsync_push_background(ctx):
+    """Detached subprocess that syncs HTML to cloud after commit."""
+    try:
+        from core.cloudsync import sync_to_cloud_background
+        sync_to_cloud_background()
+        print("  ☁️  Sincronización al cloud en background.")
+        return {"ok": True, "msg": "launched"}
+    except Exception as e:
+        return {"ok": False, "msg": f"{type(e).__name__}: {e}"}
+
+
+# Register actions and chains at import time.
+from core import hooks as _hooks
+
+_hooks.register_action("cloud_imgs_process", _action_cloud_imgs_process)
+_hooks.register_action("cronograma_log_completed", _action_cronograma_log_completed)
+_hooks.register_action("tracked_files_refresh", _action_tracked_files_refresh, critical=True)
+_hooks.register_action("gsync_reconcile_renames", _action_gsync_reconcile_renames)
+_hooks.register_action("gsync_drift_check", _action_gsync_drift_check)
+_hooks.register_action("cloudsync_push_background", _action_cloudsync_push_background)
+
+_hooks.register_chain(
+    "commit_pre",
+    trigger_type="explicit",
+    pre=[
+        "cloud_imgs_process",
+        "cronograma_log_completed",
+        "tracked_files_refresh",
+        "gsync_reconcile_renames",
+        "gsync_drift_check",
+    ],
+)
+_hooks.register_chain(
+    "commit_post",
+    trigger_type="explicit",
+    post=["cloudsync_push_background"],
+)
+_hooks.bind("commit_pre", "commit_pre")
+_hooks.bind("commit_post", "commit_post")
+
+
+# ── Main command ───────────────────────────────────────────────────────────────
+
+def _chain_aborted(results: list) -> bool:
+    """Return True if any critical action failed in the chain results."""
+    for r in results:
+        if r.skipped or r.ok:
+            continue
+        action = _hooks.ACTIONS.get(r.action)
+        if action and action.critical:
+            return True
+    return False
+
+
+def run_commit(message: Optional[str] = None,
+               skip_actions: Optional[list] = None) -> int:
+    # Stage all tracked-file changes upfront so prompt_untracked + status see current state.
+    _git_add_all_tracked()
+    _prompt_untracked()
+
+    status = _git_status()
+    if not status:
+        print("Sin cambios para commitear.")
+        return 0
+
+    # Pre-chain: cloud_imgs, cronograma, tracked_refresh (critical), gsync_reconcile, gsync_drift.
+    pre_results = _hooks.fire("commit_pre", skip_actions=skip_actions, verbosity="quiet")
+    if _chain_aborted(pre_results):
+        return 1
+
+    # Doctor check (interactive — stays inline).
     try:
         from core.doctor import check_all_projects
-        from core.gsync import check_gsync_drift, reconcile_gsync_renames
-        # Reconcile title renames before drift check
-        try:
-            renames = reconcile_gsync_renames()
-            for proj, old_desc, new_desc in renames:
-                print(f"  🔗 [{proj}] Revinculado: «{old_desc}» → «{new_desc}»")
-            if renames:
-                print()
-        except Exception:
-            pass
         issues = check_all_projects()
         if issues:
             print(f"  🏥 Doctor: {len(issues)} problema{'s' if len(issues) != 1 else ''} en las agendas:")
@@ -367,18 +466,6 @@ def run_commit(message: Optional[str] = None) -> int:
                     return 0
             else:
                 print("⚠️  Hay problemas en las agendas. Ejecuta `orbit doctor --fix`.")
-        # Check gsync drift
-        try:
-            drift = check_gsync_drift()
-            if drift:
-                print(f"  ☁️  {len(drift)} item{'s' if len(drift) != 1 else ''} modificado{'s' if len(drift) != 1 else ''} desde último gsync:")
-                for proj, kind, desc, diffs in drift:
-                    print(f"    ⚠️  [{proj}] {kind}: {desc}")
-                    for d in diffs:
-                        print(f"        {d}")
-                print("  → Considera ejecutar `orbit gsync` tras el commit.\n")
-        except Exception:
-            pass
     except ImportError:
         pass
 
@@ -419,9 +506,8 @@ def run_commit(message: Optional[str] = None) -> int:
     rc = _git_commit(final_msg)
     if rc == 0:
         print("\n✓ Commit realizado.")
-        from core.cloudsync import sync_to_cloud_background
-        sync_to_cloud_background()
-        print("  ☁️  Sincronización al cloud en background.")
+        # Post-chain: cloudsync push.
+        _hooks.fire("commit_post", skip_actions=skip_actions, verbosity="quiet")
     else:
         print("\n✗ Error al hacer el commit.")
     return rc

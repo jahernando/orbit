@@ -1,6 +1,6 @@
 # HOOKSYSTEM.md — El hook system de orbit
 
-> Estado: documento vivo. Pasada 1 (inventario) completada 2026-05-14. Pasada 2 (diseño) acordada 2026-05-14. F1 shipped 2026-05-14. F2-F7 pendientes.
+> Estado: documento vivo. Pasada 1 (inventario) completada 2026-05-14. Pasada 2 (diseño) acordada 2026-05-14. F1+F2 shipped 2026-05-14. F3-F7 pendientes.
 
 ## 1. ¿Qué es "automagia"?
 
@@ -395,7 +395,7 @@ Rotación: cuando >10MB, mover a `.journal.1.jsonl`. `orbit doctor --hooks` lee 
 | Fase | Alcance | Riesgo | Estado |
 |------|---------|--------|--------|
 | **F1** | `core/hooks.py` con registry + `HookResult` + `fire()` + journal. Tests del registry. No migra nada. | bajo | **✓ shipped 2026-05-14** (34 tests) |
-| **F2** | Migrar chain `commit`. Pre/post de inline a `register_action()` + catálogo. `run_commit` ahora llama `fire("commit_pre")` antes del flujo interactivo y `fire("commit_post")` después. Doctor check se queda inline (interactivo). | medio | pendiente |
+| **F2** | Migrar chain `commit`. Pre/post de inline a `register_action()` + catálogo. `run_commit` ahora llama `fire("commit_pre")` antes del flujo interactivo y `fire("commit_post")` después. Doctor check se queda inline (interactivo). Dos chains (`commit_pre`, `commit_post`) por la interacción entre medias. | medio | **✓ shipped 2026-05-14** (32 tests) |
 | **F3** | Quick wins (sección 8.7). | bajo | pendiente |
 | **F4** | Migrar `shell_start` (la más larga, 11 actions). | medio | pendiente |
 | **F5** | Resto: `render`, `day_open` (con render añadido), `appointment_sync`, `sync_item`, `note_create`. | medio | pendiente |
@@ -403,6 +403,8 @@ Rotación: cuando >10MB, mover a `.journal.1.jsonl`. `orbit doctor --hooks` lee 
 | **F7** | Añadir `--no-X` flags al CLI generados del catálogo. | bajo | pendiente |
 
 Cada fase se commitea aparte y puede revertirse aislada. Tests específicos por fase.
+
+**Nota F2**: se usó `verbosity="quiet"` en los `fire()` para no duplicar output — las actions wrappers conservan los prints ricos originales (e.g. `↻ [proj] file ← source`), y el registry solo imprime fallos. El journal sigue capturando todo.
 
 ## 8.7. Quick wins (F3 — independientes del registry, todos pendientes)
 
