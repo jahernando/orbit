@@ -213,30 +213,60 @@ Solo en `.ics`. `agenda.md` no contiene este dato.
 ---
 
 ## ADR-024 — Ficheros tracked: copia versionada en orbit-ws con refresh automático
-**Estado**: VIGENTE (desde v0.34)
+**Estado**: DEROGADA por **ADR-026** (v0.36, 2026-05-14). Mantenida aquí como histórico de razonamiento.
 **Contexto**: hay ficheros markdown que evolucionan y viven *fuera* del workspace de orbit (DECISIONS.md en el repo del código, drafts compartidos con colaboradores, planes vivos). Querías versionarlos en orbit-ws y tener el cloud actualizado sin re-importación manual tras cada edición.
-**Decisión**: dos modos de importación distintos para notes y highlights:
+**Decisión (v0.34)**: dos modos de importación distintos para notes y highlights:
 
-- **Static** (`--file`): copia única, fechada en el filename, congelada. Ideal para PDFs, papers publicados, attachments. Comportamiento de orbit pre-v0.34.
-- **Dynamic / tracked** (`--track`): mirror sin fecha en `notes/<slug>.md`, registrado en `.orbit-tracked.json` por proyecto. El pre-commit hook re-importa el fichero si el origen cambió. Sólo `.md` (los binarios no se diffean útilmente en git).
+- **Static** (`--file`): copia única, fechada en el filename, congelada.
+- **Dynamic / tracked** (`--track`): mirror sin fecha en `notes/<slug>.md`, registrado en `.orbit-tracked.json` por proyecto. El pre-commit hook re-importa el fichero si el origen cambió. Sólo `.md`. Frontmatter `orbit_tracked_from: <path>` como pista humana.
 
-El fichero importado lleva frontmatter `orbit_tracked_from: <path>` como pista humana ("no me edites, soy un mirror").
+**Detección de conflictos** (cuatro escenarios): clean / refresh / dest_tampered / conflict; los dos últimos abortaban el commit.
 
-**Detección de conflictos** (cuatro escenarios cubiertos por `core/tracked.check_entry`):
-- source y dest sin cambios → no se hace nada
-- solo source cambió → refresh automático
-- solo dest cambió (usuario editó la copia por error) → **ABORT** commit con warning, sugerir `untrack`/`retrack`/`force-source`
-- source y dest cambiaron a la vez → **ABORT** commit, conflicto como merge git
+**Por qué se derogó**: dos puntos de fricción reales durante el primer mes de uso:
+1. Cross-links rotos — DECISIONS.md → RING.md no resolvía si RING.md no estaba también tracked.
+2. Edición desde Obsidian sobre el mirror → abort en commit. Correcto pero friccional.
+La copia versionada en git de orbit-ws sí era valor (historia local), pero el precio (4-scenario + abort + frontmatter + sólo-md-only) era alto para una característica usada con 3-4 ficheros típicamente. ADR-026 mantiene el espíritu (verdad fuera + ventana dentro + render al cloud) pero baja el coste a un symlink relativo.
 
-`orbit tracked refresh --force-source` resuelve descartando la copia local; `--force-dest` (pendiente de v1) escribiría la copia sobre el source.
+**Tradeoff considerado en v0.34** (revisado en v0.36): symlinks rechazados entonces por (cross-volume / clone público / OneDrive sync). En v0.36 se reabrieron tras confirmar que el workspace es local-only (sin cloud sync), los clones son raros y bajo control del usuario, y el repo público es `~/orbit/` (público) — `~/🚀orbit-ws/` (privado, sin terceros que lo clonen).
 
-**Consecuencias positivas**: una sola verdad por fichero (el origen), versionado en git de orbit-ws, cloud auto-actualizado, sin re-importación manual, detección honesta de conflictos.
-**Consecuencias negativas**: complejidad añadida en commit pre-hook + doctor; nuevo concepto que el usuario debe entender (la asimetría static/dynamic).
-**Tradeoff considerado**: symlinks (rechazado — incompatible con cloud sync clients y con clones del repo público), hardlinks (rechazado — frágil cross-volume), git submodule (rechazado — pesado), reference-only sin copia (rechazado — pierde versionado git). Ver `DEPENDENCIES.md` y la discusión completa en el changelog de v0.34.
+---
 
-**Comandos**: `orbit hl add --track <file>`, `orbit note <proj> "title" --track <file>`, `orbit tracked list/refresh/remove/retrack`.
+## ADR-026 — Notes: modelo propia/externa con symlinks
+**Estado**: VIGENTE (desde v0.36, 2026-05-14). Reemplaza ADR-024.
+**Contexto**: tras un mes con el sistema de tracked-con-copia de v0.34, dos puntos de fricción concretos (ver ADR-024): cross-links rotos a no-tracked y abort-on-commit cuando editas el mirror sin querer desde Obsidian. La copia versionada en orbit-ws era valor menor (el repo fuente ya tiene su propia historia git en la mayoría de casos reales).
+**Decisión**: simplificar a un único eje **propia / externa** basado en *dónde vive la verdad del fichero*:
 
-**Where lives**: `core/tracked.py` (~250 líneas), tests en `tests/test_tracked.py`, hook en `core/commit.py:run_commit`, check en `core/doctor.py`.
+- **Propia** — vive entera en el workspace, en `notes/<name>.md`. El usuario la crea, la edita, la versiona. Sin registry.
+- **Externa** — vive fuera; orbit guarda un **symlink relativo** en `notes/<basename>` apuntando al fuente. El registry `.orbit-tracked.json` (esquema `{"files": {<name>: <source_path>}}`) lista qué externas hay para que render sepa cuáles publicar al cloud.
+
+Editar la externa desde Obsidian escribe en el fuente directamente. No hay refresh, no hay 4-scenario, no hay abort. Render lee el fuente al momento; un mirror gitignored en `.cache/notes/<proj>/` actúa de fallback si el fuente no es accesible (mismo patrón que `.cache/ics/` de ADR-025).
+
+**Comando**: `orbit track <proj> <fullpath>` (alias `note <proj> <title> --track --file <path>`). Eco de confirmación `local? <dir>` + `note? <basename>`. `untrack` borra el symlink, deja el fuente intacto.
+
+Además, `note --from <path>` para el caso "cópiame el contenido de un fichero externo como punto de partida, pero la nota es **mía** desde el primer momento" (Drive USC compartido, email, draft de un colega que vas a hacer tuyo). Es el reemplazo del modo "static snapshot" sin reintroducirlo como modo separado.
+
+**Migración v0.34 → v0.36** (`orbit tracked migrate`): para cada entry v0.34 con copia idéntica al fuente, borra la copia y crea symlink. Si la copia diverge, aborta para resolución manual. Idempotente.
+
+**Consecuencias positivas**:
+- Una sola verdad (el fuente externo), sin duplicación que pueda divergir.
+- Edits en Obsidian fluyen al fuente, sin fricción.
+- Render más simple, doctor más simple, sin pre-commit refresh hook.
+- Cross-links entre externas funcionan automáticamente (siblings en `notes/` a través del symlink).
+- ~200 LOC menos en `core/tracked.py` + tests.
+
+**Consecuencias negativas**:
+- Pierdes la "historia git en orbit-ws" del contenido tracked. Mitigación: el repo fuente ya la tiene en la mayoría de casos (`~/orbit` es git, repos colaborativos son git).
+- En migración a otro Mac, hay una ventana entre clonar `~/orbit` y `~/🚀orbit-ws` donde los symlinks están rotos. Doctor lo flagea.
+- Cross-links a ficheros NO trackeados se rompen silenciosamente en cloud HTML. Mitigación: render emite warning con la lista.
+- Si el fuente desaparece y el cache local no existe, render salta esa nota con warning.
+
+**Tradeoff considerado**:
+- Mantener v0.34 (rechazado — la fricción supera el valor de la copia versionada).
+- Symlink de directorio único `notes/orbit-src/` → `~/orbit/` (rechazado — expone todo el repo fuente al vault, no solo lo trackeable; mezcla visible y publishable).
+- Stub files con metadata + sin copia + manifest (rechazado — Obsidian no abre el fuente, hay que navegar fuera del vault).
+- Lazy refresh en render manteniendo la copia (rechazado — sigue siendo dos artefactos a sincronizar).
+
+**Where lives**: `core/tracked.py` (~80 líneas, reescrito), `core/tracked_migrate.py` (one-shot), tests en `tests/test_tracked.py`, doctor check en `core/doctor.py`, render integration en `core/render.py::_resolve_external` + `.cache/notes/<proj>/`.
 
 ---
 

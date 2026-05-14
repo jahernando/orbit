@@ -383,64 +383,66 @@ Viernes por la tarde
 
 ## 13. Otros comandos útiles
 
-### Notas libres
+### Notas: propia vs externa
+
+Modelo (v0.36): todas las notas son markdown vivos. Lo único que cambia es **dónde vive la verdad**:
+
+- **Propia**: la nota vive en el workspace. Tú la creas, tú la editas. Está en `notes/` como un `.md` normal.
+- **Externa**: el `.md` vive fuera del workspace (otro repo, Drive compartido, etc.). En `notes/` hay un **symlink relativo** al fuente. Editar en Obsidian = editar el fuente.
 
 ```bash
-note next-kr "Análisis detallado de calibración"   # crea nota en notes/
-note import next-kr "Resultados" ./results.md       # importa .md existente (log + clip)
-note list next-kr                                   # listar notas con estado git
+# Propia
+note next-kr "Análisis detallado de calibración"           # nueva, con fecha
+note next-kr "Plantilla" --no-date                          # nueva, sin fecha
+note next-kr "Brief inicial" --from ~/drive/shared.md      # contenido pre-cargado
+
+# Externa
+track next-kr ~/repos/specs/calibration.md                 # symlink
+note list next-kr                                          # ✏️ propia / 🔄 externa
+untrack next-kr calibration.md                             # quita la externa, fuente intacta
 ```
 
-Las notas se clasifican en `note list` con tres emojis:
+`note list` marca cada nota:
 
-- **✏️ libre**: tú la escribiste en orbit (sin prefijo de fecha en el nombre).
-- **📌 snapshot**: importaste un `.md` externo como copia fija (con `--file`, prefijo `YYYY-MM-DD_`). Si el original cambia, tu copia no.
-- **🔄 tracked**: el fichero externo se refresca automáticamente cuando lo edites (ver sección siguiente).
+- **✏️ propia**: vive en el workspace.
+- **🔄 externa**: symlink; muestra `→ /ruta/al/fuente`.
 
-### Tracked — ficheros externos que evolucionan
+### Externa — `.md` que vive fuera del workspace
 
-Para markdown que vive fuera de orbit-ws pero quieres versionado y con cloud actualizado sin reimportar manualmente (ej. `DECISIONS.md` de otro repo, draft de paper, plan vivo):
+Para markdown que evoluciona en otro sitio y quieres a mano en Obsidian + publicado al cloud, sin duplicar la verdad. Casos típicos:
+
+- `DECISIONS.md` de tu repo público de código
+- Draft compartido en un Drive USC (carpeta de equipo)
+- Plan vivo de otro proyecto del workspace personal
 
 ```bash
-track next-kr "Calibración-spec" --file ~/repos/specs/calibration.md
-# equivalente:
-note next-kr "Calibración-spec" --file ~/repos/specs/calibration.md --track
+$ track next-kr /Users/hernando/repos/specs/calibration.md
+  local? /Users/hernando/repos/specs/
+  note?  calibration.md
+✓ [next-kr] Tracked: notes/calibration.md → /Users/hernando/repos/specs/calibration.md
 ```
 
 Lo que pasa:
 
-1. Orbit copia el fichero a `next-kr/notes/calibracion-spec.md` (sin fecha, nombre canónico).
-2. Lo registra en `next-kr/.orbit-tracked.json` con un hash del contenido.
-3. Le añade una línea de frontmatter `orbit_tracked_from: <ruta>` (pista visual: no editar el mirror).
-4. Crea entrada en logbook como cualquier `note import`.
+1. Orbit crea un symlink relativo en `next-kr/notes/calibration.md` → `~/repos/specs/calibration.md`.
+2. Lo registra en `next-kr/.orbit-tracked.json` con el path del fuente.
+3. Desde ese momento Obsidian abre el fuente cuando navegas a esa nota.
 
-Después, cuando edites el fichero original y hagas `orbit commit`:
+Después, cualquier edición:
 
-- Pre-commit detecta que el source cambió → copia el nuevo contenido al mirror → lo añade al commit.
-- Render genera HTML actualizado al cloud (sin acciones extra).
+- **En Obsidian** sobre la externa → se escribe en el fuente directamente. Sin refresh, sin abort, sin frontmatter.
+- **Render HTML al cloud** (`orbit render` o `commit`) lee el fuente en ese momento. Si no es accesible (disco desmontado, fuente borrada), usa el último mirror cacheado en `.cache/notes/<proj>/` y emite warning.
 
-**Si editas el mirror por error** (la copia dentro de orbit-ws), el pre-commit aborta:
-
-```
-❌ Commit abortado: 1 tracked file con problemas:
-  ⚠️ [next-kr] notes/calibracion-spec.md: la copia tracked fue editada;
-     tus cambios se perderán al próximo refresh
-
-Resoluciones:
-  orbit tracked refresh --force-source <note>   # descartar edits en la copia
-  orbit tracked remove <proj> <note>            # untrack (conserva la copia local)
-```
-
-Otros comandos de gestión:
+Gestión:
 
 ```bash
-tracked list                              # ver todos los tracked del workspace
-tracked list next-kr                      # solo un proyecto
-tracked refresh                           # refresh ad-hoc, sin commit
-tracked refresh --force-source            # source gana siempre (descarta tus edits)
-tracked remove next-kr notes/calibracion-spec.md      # untrack
-tracked retrack next-kr notes/calibracion-spec.md ~/repos-nuevo/calibration.md
+tracked list                          # listar externas con status
+tracked list next-kr                  # solo un proyecto
+untrack next-kr calibration.md        # quita el symlink (fuente intacta)
+tracked migrate                       # one-shot v0.34 → v0.36 (si vienes de la copia antigua)
 ```
+
+**Cross-links**: si `DECISIONS.md` (externa) tiene `[RING](RING.md)`, el link resuelve si **también** trackeas `RING.md` desde el mismo dir. Render avisa de cross-links a no-tracked.
 
 **Limitación**: solo ficheros `.md`. Git no diffea binarios útilmente y el render solo procesa markdown. Para PDFs que cambian, usa `orbit deliver` con re-entrega cuando haga falta.
 

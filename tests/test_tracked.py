@@ -206,16 +206,23 @@ class TestReadLegacyRegistry:
 
 class TestMigration:
     def _write_legacy(self, proj, source, name="decisions.md", tampered=False):
-        """Recreate v0.34 state: copy + frontmatter + legacy registry."""
+        """Recreate v0.34 state: copy + frontmatter + legacy registry.
+
+        Computes the real sha256 of the copy and stores it. If ``tampered``,
+        appends an extra line to the copy *after* hashing — simulating the
+        user editing the mirror after the last refresh.
+        """
+        import hashlib
         copy = proj / "notes" / name
         body = source.read_text()
-        if tampered:
-            body = body + "\n\nuser edit\n"
         copy.write_text(f"---\norbit_tracked_from: {source}\n---\n{body}")
+        sha = hashlib.sha256(copy.read_bytes()).hexdigest()
+        if tampered:
+            copy.write_text(copy.read_text() + "\n\nuser edit\n")
         legacy = {
             f"notes/{name}": {
                 "source": str(source),
-                "sha256": "stale",
+                "sha256": sha,
                 "added": "2026-05-13",
             }
         }

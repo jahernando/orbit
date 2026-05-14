@@ -2,18 +2,20 @@
 
 v0.34 stored each tracked entry as a *copy* of the source content (with
 an injected frontmatter line) inside ``notes/``, plus a registry mapping
-``"notes/<name>"`` → ``{source, sha256, added}``.
+``"notes/<name>"`` → ``{source, sha256, added}``. The stored ``sha256``
+was the SHA-256 of the copy file at the moment of the last refresh.
 
 v0.36 replaces the copy with a **relative symlink** to the source. The
 registry simplifies to ``{"files": {name: source_path}}``.
 
-For each entry:
+For each entry, "did the user tamper with the copy?" is the only question
+that matters for migration safety:
 
-* If the v0.34 copy's content is byte-identical to ``source + frontmatter``
-  (i.e. clean — the user never tampered) → delete the copy, create a
-  relative symlink at ``notes/<name>``, rewrite the registry.
-* If the copy diverges → ABORT for that entry, surface the divergence
-  so the user can resolve manually (with diff/edit/decide).
+* If ``sha256(copy_file_bytes) == registry["sha256"]`` → copy is exactly
+  what v0.34's last refresh wrote. No user edits to lose. Safe to delete
+  the copy and replace with a symlink. Whether the source has evolved
+  since then is irrelevant — the source is the truth in v0.36 anyway.
+* Otherwise → ABORT for that entry. The copy contains edits we'd lose.
 
 Idempotent: if a project is already on the new schema, the migration
 visits no entries.
@@ -21,7 +23,6 @@ visits no entries.
 from __future__ import annotations
 
 import hashlib
-import re
 from pathlib import Path
 from typing import Iterable
 
@@ -31,14 +32,12 @@ from core.tracked import (
 )
 
 
-_LEGACY_FRONTMATTER_RE = re.compile(
-    r"^---\s*\norbit_tracked_from:[^\n]+\n---\s*\n",
-)
-
-
-def _strip_legacy_frontmatter(text: str) -> str:
-    m = _LEGACY_FRONTMATTER_RE.match(text)
-    return text[m.end():] if m else text
+def _sha256_of_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _is_legacy_format(project_dir: Path) -> bool:
@@ -114,17 +113,18 @@ def migrate_project(project_dir: Path, dry_run: bool = False) -> dict:
             summary["migrated"].append(name)
             continue
 
-        # Compare: copy content (minus our injected frontmatter) vs source.
+        # Did the user tamper with the copy? Compare current file hash
+        # against the sha256 stored by v0.34's last refresh.
+        stored_sha = entry.get("sha256", "")
         try:
-            copy_text = copy_path.read_text(encoding="utf-8")
-            source_text = source.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError) as e:
+            current_sha = _sha256_of_file(copy_path)
+        except OSError as e:
             summary["skipped"].append((name, f"lectura falló: {e}"))
             continue
 
-        stripped = _strip_legacy_frontmatter(copy_text)
-        if stripped == source_text:
-            # Clean: replace copy with symlink.
+        if stored_sha and current_sha == stored_sha:
+            # No tampering — copy is exactly what last refresh wrote.
+            # Safe to replace with symlink; source is truth from now on.
             if not dry_run:
                 copy_path.unlink()
                 try:

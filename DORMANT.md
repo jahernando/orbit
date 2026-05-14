@@ -13,6 +13,7 @@ Sigue el patrón de [feedback memory: "dormant deprecation"]: cuando se decide r
 | Google Tasks / Google Calendar API | `core/gsync.py:run_gsync` cuerpo legacy | UNREACHABLE (return 0 antes del cuerpo Google API) desde v0.29 | Junto con el resto de `gsync.py` |
 | `☁️` marker en agenda.md | parsers en `core/agenda_cmds._parse_*_line` | Reconocido pero nunca escrito desde v0.33 (formatters omiten) | Cuando borremos gsync — el campo `cloud_verified` deja de tener sentido |
 | `TestSetCloudVerified` | `tests/test_sync_verify.py` | `@pytest.mark.skip` desde v0.33 | Cuando borremos gsync |
+| Tracked v0.34 (copia + 4-scenario refresh) | `core/tracked.py` reescrito en v0.36 | RETIRADO completamente desde v0.36 (no dormante: borrado del repo). El código vive en git history, ver `git show v0.34.0:core/tracked.py` | n/a (history-only) |
 
 ---
 
@@ -139,6 +140,47 @@ Restaurar la línea `if X.get("cloud_verified"): parts.append("☁️")` en cada
 ### Criterio para borrar
 
 Junto con gsync. El campo `cloud_verified` puede entonces eliminarse del dict del parser.
+
+---
+
+## 6. Tracked v0.34 — copia versionada + refresh con 4-scenario
+
+### Qué se retiró
+
+- `core/tracked.py` v0.34: ~250 líneas con `register`, `unregister`, `retrack`, `check_entry` (4-scenario), `apply_refresh`, `refresh_all`, `_inject_tracked_frontmatter`.
+- `core/commit.py:_action_tracked_files_refresh` (acción pre-commit critical=True).
+- `core/hooks_catalog.json`: la entrada `tracked_files_refresh` en `actions` y en `commit_pre`.
+- Frontmatter `orbit_tracked_from: <path>` inyectado en cada copia.
+- CLI: `orbit tracked refresh|remove|retrack` y `orbit track <proj> <title> --file <path>` (la variante con title).
+
+### Por qué
+
+Ver ADR-026 en DECISIONS.md. Resumen: dos puntos de fricción reales (cross-links a no-tracked rotos, abort en commit al editar el mirror desde Obsidian) y un coste alto (~250 LOC, 4 escenarios, frontmatter) para una característica usada con 3-4 ficheros típicos. v0.36 baja el coste a un symlink relativo.
+
+### Cómo revivir (poco probable)
+
+No es un dormant "detrás de flag" — el código fue **eliminado** del repo. Si alguna vez quieres volver al modelo de copia versionada:
+
+1. `git show v0.34.0:core/tracked.py > core/tracked.py` (restaurar fichero).
+2. `git show v0.34.0:core/commit.py` — recuperar `_action_tracked_files_refresh` y reinstalarla.
+3. `git show v0.34.0:core/hooks_catalog.json` — restaurar la entrada `tracked_files_refresh` (critical=True) en `actions` y en `commit_pre.pre`.
+4. Restaurar `core/doctor.py:check_tracked` (versión con `iter_tracked` + `check_entry`).
+5. Restaurar `tests/test_tracked.py` con los 16 tests de v0.34.
+6. Adaptar `core/notes.py:run_note_create` y `core/highlights.py:run_hl_add` para llamar al viejo `register` en vez del nuevo `track`.
+
+### Migración v0.36 → v0.34 (inversa)
+
+Si has migrado y quieres volver:
+
+1. En cada workspace con externas (v0.36 symlinks), por cada entry del registry `{name: source_path}`:
+   - Borra el symlink en `notes/<name>`.
+   - Copia el contenido del fuente a `notes/<name>` con frontmatter `orbit_tracked_from: <source_path>`.
+   - Reescribe el registry al schema v0.34: `{f"notes/{name}": {"source": src, "sha256": <sha>, "added": <date>}}`.
+2. Comitea — el viejo refresh pre-commit asumirá control desde el siguiente commit.
+
+### Criterio para borrar esta sección
+
+Nunca (es history-only). Se mantiene para que si alguien lee DECISIONS.md ADR-024 + ADR-026 pueda reconstruir el camino completo.
 
 ---
 

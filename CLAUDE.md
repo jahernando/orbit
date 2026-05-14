@@ -85,7 +85,48 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.34.0, 2026-05-13)
+## Estado actual (v0.36.0, 2026-05-14)
+
+### v0.36.0 (2026-05-14) — Notes: modelo propia/externa (refactor de tracked v0.34)
+
+Reformulación del sistema de notes. **Todas las notas son markdown vivos**; la única distinción real es **dónde vive la verdad del fichero**.
+
+- **Propia** — vive en `notes/<name>.md`, dentro del workspace. Tú la creas, la editas, la versiona git. Sin registry.
+- **Externa** — la verdad vive fuera. En `notes/<basename>` orbit pone un **symlink relativo** al fuente. Editar = editar el fuente vía Obsidian.
+
+**Por qué retiramos el modelo v0.34** (ADR-024 → derogada por ADR-026): dos fricciones reales durante el primer mes:
+1. **Cross-links rotos**: si DECISIONS.md (tracked) linkea a RING.md (no tracked) → Obsidian no resuelve y cloud HTML idem.
+2. **Edit accidental del mirror → abort en commit**: correcto pero friccional al editar desde Obsidian con frecuencia.
+
+El precio (4-scenario detection + frontmatter + critical pre-commit + ~250 LOC) era alto para una característica usada con 3-4 ficheros típicos. v0.36 baja el coste a un symlink relativo + registry minimalista.
+
+**Comandos**:
+```
+orbit track <proj> <fullpath>      # crear externa
+orbit untrack <proj> <name>        # quitar (source intacto)
+orbit tracked list [<proj>]        # listar con status
+orbit tracked migrate [--dry-run]  # one-shot v0.34 → v0.36
+note <proj> "<title>" --from PATH  # propia con contenido pre-cargado (Drive, email)
+```
+
+**Cambios técnicos**:
+- `core/tracked.py` reescrito (~80 LOC): `track`, `untrack`, `load_registry`, `check_status`, `iter_tracked`, `resolve_target`, `is_external`. Registry schema `{"files": {<name>: <source_path>}}`.
+- `core/tracked_migrate.py` nuevo (one-shot, ~150 LOC): por cada entry v0.34, si la copia es idéntica al fuente borra la copia y crea symlink; si diverge aborta para resolución manual.
+- `core/commit.py`: `_action_tracked_files_refresh` eliminada; `hooks_catalog.json` la quita de `actions` y de `commit_pre.pre`. No hay acciones críticas en el catalog actualmente.
+- `core/doctor.py`: chequeo simplificado — verifica que el symlink existe y target legible. Reporta `broken_link / missing_link / not_link`.
+- `core/render.py:_resolve_external` lee el fuente al momento; mtime cache en `.cache/notes/<proj>/` (gitignored, patrón de `.cache/ics/`) actúa de fallback si el fuente no es accesible.
+- `core/notes.py:run_note_create` añade `--from <path>` (cualquier extensión, escribe como .md, sin link al origen). `note edit` sobre externa abre el target real; `note drop` sobre externa = untrack.
+- `core/highlights.py:run_hl_add` rama `--track` usa la nueva API (symlink en vez de copia).
+- Tests: `tests/test_tracked.py` reescrito (25 tests), `tests/test_commit_hooks.py` quita los específicos de refresh. Suite: 1827 pass, 4 skipped, 2 pre-existing date-dep failures.
+
+**Migración aplicada**: `~/🚀orbit-ws/💻software/💻orbit/` tenía 3 entries v0.34 (DECISIONS, RING, roadmap) → migradas a symlinks limpios.
+
+**Memorias**:
+- [[project_tracked_files_v034]] → marcar SUPERSEDED
+- [[feedback_tracked_design]] → principio #1 (no symlinks) revisado en este refactor con las razones nuevas (workspace local-only, sin OneDrive del ws, repo público es `~/orbit/` no `~/🚀orbit-ws/`)
+- Nuevo memo [[project_tracked_v036]] resume el cambio
+
+**Commits**: 130ae36 (--from), d13fadb (refactor + tests).
 
 ### v0.34.0 (2026-05-13) — Tracked external files + local `.ics` mirror + `ics --diff`
 - **Tracked external files** (4c1dc08 / 85d463b / 9e49b45):
