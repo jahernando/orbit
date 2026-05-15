@@ -2,7 +2,7 @@
 
 Mapa de módulos del paquete y sus dependencias internas. Sirve para guiar la limpieza/simplificación del CLI sin perder de vista qué encaja con qué.
 
-Última auditoría: 2026-05-15 (post-Fase 1: borrados gsync, calsync, reminders, migrate, tracked_migrate, importer; carve-out startup; salvage de orbit-id y AppleScript helpers). Total: 43 módulos en `core/` + `orbit.py` (CLI) + `orbit_ring_daemon.py` ≈ 22 850 líneas (−5 350 ℓ vs antes).
+Última auditoría: 2026-05-15 (post-Fase 1 simplificación + F1 satellites refactor: ring-daemon movido a `satellites/ring-daemon/daemon.py`). Total: 43 módulos en `core/` + `orbit.py` (CLI) + `satellites/ring-daemon/daemon.py` ≈ 22 850 líneas.
 
 ---
 
@@ -78,7 +78,7 @@ graph TB
         ics_share["ics_share · 680"]
         ring_export["ring_export · 572"]
         ring["ring · 377 (helpers + dormant-flag path)"]
-        daemon["orbit_ring_daemon · 288"]
+        daemon["satellites/ring-daemon/daemon · 288"]
         google_oauth["google_oauth · 75 (OAuth helpers para cartero)"]
     end
 
@@ -173,7 +173,7 @@ graph TB
 | 2.2.0 | dash → panel + agenda + calendar md | `panel` (panel.md) + `agenda_view` (agenda+cal) | ✓ |
 | 2.2.1 | render HTML agenda | `render` | mismo módulo que 1.3 |
 | 2.2.2 | .ics buckets + Calendar subscribe | `ics` `ics_share` + `hooks` | Calendar.app es solo subscriber (read-only) desde v0.33. |
-| 2.2.3 | reminders → daemon → Reminders.app | `ring_export` `orbit_ring_daemon` (+ `ring` legacy dormante) | v0.37 con EventKit. `reminders.py` ya borrado (v0.38). |
+| 2.2.3 | reminders → daemon → Reminders.app | `ring_export` `satellites/ring-daemon/daemon` (+ `ring` legacy dormante) | v0.37 con EventKit; daemon movido a `satellites/` en F1 satellites refactor (2026-05-15). `reminders.py` ya borrado (v0.38). |
 | 3   | log + agenda en project | `project` `project_view` `search` `ls` `stats` | ✓ |
 | 3.3.1 | Obsidian editor; md = verdad | (`editor` en `orbit.json`) | ✓ |
 

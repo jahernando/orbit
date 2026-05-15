@@ -20,11 +20,12 @@ Principios de diseño:
     agenda_cmds.py        ← CRUD de las 4 citas (task, ms, ev, reminder)
     ring.py               ← parsing y helpers AppleScript-direct (legacy, gateado)
     ring_export.py        ← ring.json + invoke daemon (modelo declarativo v0.37)
-    orbit_ring_daemon.py  ← EventKit upsert idempotente en Reminders.app
     ics.py / ics_share.py ← emisión de buckets .ics que Calendar.app subscribe
     doctor.py             ← validación de sintaxis de ficheros
     shell.py              ← shell interactivo
     startup.py            ← prompts de arranque (untracked, commit, code update)
+  satellites/
+    ring-daemon/daemon.py ← EventKit upsert idempotente en Reminders.app (daemon externo)
     config.py             ← ORBIT_HOME, ORBIT_PROMPT, orbit.json
     log.py                ← logbook entries
     highlights.py         ← highlights CRUD
@@ -67,7 +68,7 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 Una sola dirección: orbit es source-of-truth, los backends consumen.
 
 - **Calendar.app** (eventos / tasks-as-0min-events / reminders-as-0min-events): se suscribe a buckets `.ics` emitidos a `cloud_root/<workspace>/calendar/` por `ics.py` + `ics_share.py`. Read-only por construcción → no hay drift posible.
-- **Reminders.app** (alarmas con ring): `ring_export` proyecta agenda.md → `<workspace>/.reminders/ring.json`. El daemon `orbit_ring_daemon.py` (EventKit) hace upsert idempotente. Una lista Reminders.app por workspace (default = nombre del directorio).
+- **Reminders.app** (alarmas con ring): `ring_export` proyecta agenda.md → `<workspace>/.reminders/ring.json`. El daemon `satellites/ring-daemon/daemon.py` (EventKit) hace upsert idempotente. Una lista Reminders.app por workspace (default = nombre del directorio).
 - Anteriormente había un push AppleScript-direct vía `gsync.py` + `calsync.py` (3673 ℓ); borrado en v0.38 tras 2 semanas de validación del modelo `.ics`. Ver DORMANT.md.
 
 ## Convenciones de código
@@ -106,7 +107,7 @@ orbit ring refresh / hook commit_post / hook shell_start
 <workspace>/.reminders/ring.json   (gitignored, ventana rolling 7 días)
    │  (launchd WatchPaths o hook dispara el daemon)
    ▼
-orbit_ring_daemon.py   (EventKit/PyObjC, NO AppleScript)
+satellites/ring-daemon/daemon.py   (EventKit/PyObjC, NO AppleScript)
    │
    ▼
 Reminders.app — lista por workspace (default: nombre del directorio del workspace)
@@ -133,7 +134,7 @@ iPhone / iPad
 
 **Componentes nuevos**:
 - `core/ring_export.py` (~300 LOC): `build_payload`, `write_payload`, `refresh_all`, `invoke_daemon`, `run_ring_refresh/status/install/uninstall`, `_action_ring_refresh`, `_load_ring_config`.
-- `orbit_ring_daemon.py` (~200 LOC, standalone): EventKit upsert idempotente, dedup, agrupación por lista, manejo de TCC permission denied.
+- `satellites/ring-daemon/daemon.py` (~200 LOC, standalone): EventKit upsert idempotente, dedup, agrupación por lista, manejo de TCC permission denied. Movido a `satellites/` en F1 del refactor 2026-05-15.
 - `core/hooks_catalog.json`: nueva acción `ring_refresh` añadida a `commit_post.post` y `shell_start.post`.
 - `core/doctor.py::_check_ring_health`: avisa de plist no instalado, TCC denied en stderr log reciente, ring.json viejo (>24h).
 - `core/ring.py` antiguo queda **dormante** (la API `schedule_new_format_reminders` ya estaba marcada como deprecada; ahora aún más).

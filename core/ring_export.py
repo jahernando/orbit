@@ -2,7 +2,7 @@
 
 Declarative projection of the rolling 7-day window of items carrying a
 ``--ring`` attribute into a JSON payload. The standalone daemon
-``orbit_ring_daemon.py`` consumes one or more of these and upserts the
+``satellites/ring-daemon/daemon.py`` consumes one or more of these and upserts the
 union into the single ``Orbit Ring`` Reminders.app list.
 
 Eligibility:
@@ -318,11 +318,11 @@ def refresh_all() -> list:
 
 def invoke_daemon(daemon_path: Optional[Path] = None,
                   ring_paths: Optional[list] = None) -> tuple:
-    """Run orbit_ring_daemon.py in background; return (success, message)."""
+    """Run satellites/ring-daemon/daemon.py in background; return (success, message)."""
     import subprocess
     import sys
 
-    daemon = daemon_path or (Path(__file__).resolve().parent.parent / "orbit_ring_daemon.py")
+    daemon = daemon_path or (Path(__file__).resolve().parent.parent / "satellites" / "ring-daemon" / "daemon.py")
     if not daemon.exists():
         return False, f"daemon not found: {daemon}"
 
@@ -475,7 +475,7 @@ def run_ring_install() -> int:
     """Install the launchd plist that fires the daemon on ring.json changes."""
     import sys
 
-    daemon = Path(__file__).resolve().parent.parent / "orbit_ring_daemon.py"
+    daemon = Path(__file__).resolve().parent.parent / "satellites" / "ring-daemon" / "daemon.py"
     if not daemon.exists():
         print(f"  ✗ Daemon no encontrado en {daemon}.")
         return 1

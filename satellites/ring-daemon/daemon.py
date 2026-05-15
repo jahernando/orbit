@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""orbit_ring_daemon.py — reconcile ring.json → Reminders.app via EventKit.
+"""satellites/ring-daemon/daemon.py — reconcile ring.json → Reminders.app via EventKit.
 
 Reads one or more ring.json payloads (each describing the rolling 7-day ring
 window for a workspace) and upserts EKReminder objects in a single list
@@ -11,7 +11,7 @@ Items in the list **without** an orbit-tag are never touched — the user
 can add manual reminders to the same list safely.
 
 Usage:
-    python3 orbit_ring_daemon.py <ring.json> [<ring.json> ...]
+    python3 satellites/ring-daemon/daemon.py <ring.json> [<ring.json> ...]
 
 Exit codes:
     0  success
@@ -256,7 +256,7 @@ def apply_payloads(store, payloads: list, default_list: str = DEFAULT_LIST_NAME)
 
 def main(argv: list) -> int:
     if len(argv) < 2:
-        print("Usage: orbit_ring_daemon.py <ring.json> [<ring.json> ...]")
+        print("Usage: satellites/ring-daemon/daemon.py <ring.json> [<ring.json> ...]")
         return 2
     payloads = []
     for arg in argv[1:]:
