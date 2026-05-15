@@ -23,12 +23,14 @@ Description lines are stored as indented lines (4 spaces) below the item
 in agenda.md.  They are NOT shown in list/agenda views — only in the raw
 file and propagated to Google Calendar/Tasks descriptions.
 """
-import calendar as _cal
 import re
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
+
+from dateutil.relativedelta import relativedelta
+from dateutil.rrule import rrule, DAILY, MONTHLY, MO, TU, WE, TH, FR, SA, SU
 
 from core.project import _find_new_project, _is_new_project
 from core.log import add_orbit_entry, resolve_file
@@ -140,11 +142,12 @@ def _valid_time(val: str) -> bool:
     return True
 
 # Extended recurrence patterns (stored in [recur:...])
-_WEEKDAY_NAMES = {
-    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
-    "friday": 4, "saturday": 5, "sunday": 6,
-    "lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3,
-    "viernes": 4, "sabado": 5, "domingo": 6,
+# Maps weekday names (English + Spanish) to dateutil.rrule weekday tokens.
+_WEEKDAY_RRULE = {
+    "monday": MO,    "tuesday": TU,   "wednesday": WE, "thursday": TH,
+    "friday": FR,    "saturday": SA,  "sunday": SU,
+    "lunes":  MO,    "martes":  TU,   "miercoles": WE, "jueves":   TH,
+    "viernes": FR,   "sabado":  SA,   "domingo":   SU,
 }
 
 _EVERY_RE = re.compile(r"^every[- ](\d+)[- ](days?|weeks?|months?)$")
@@ -668,63 +671,47 @@ def _select_event(events: list, text: Optional[str]) -> Optional[int]:
 # ── Recurrence helpers ─────────────────────────────────────────────────────────
 
 def _next_occurrence(due: Optional[str], recur: str, done_date: str) -> str:
-    """Compute next recurrence date after completing a task."""
+    """Compute next recurrence date after completing a task.
+
+    Delegates the calendar arithmetic to :mod:`dateutil`:
+      * ``relativedelta(months=N)`` for ``monthly`` / ``every-N-months`` —
+        gives the natural "clamp to last day if the target month is short"
+        behaviour (31-Jan + 1 month → 28-Feb).
+      * ``rrule(DAILY, byweekday=MO..FR)`` for ``weekdays``.
+      * ``rrule(MONTHLY, byweekday=X, bysetpos=±1)`` for ``first-X`` /
+        ``last-X`` — encodes "first/last X of next month" directly.
+    The trivial ``daily`` / ``weekly`` / ``every-N-{days,weeks}`` paths
+    stay on plain :func:`timedelta`.
+    """
     base = date.fromisoformat(due) if due else date.fromisoformat(done_date)
     if recur == "daily":
         nxt = base + timedelta(days=1)
     elif recur == "weekly":
         nxt = base + timedelta(weeks=1)
     elif recur == "monthly":
-        m = base.month + 1
-        y = base.year + (m - 1) // 12
-        m = (m - 1) % 12 + 1
-        last = _cal.monthrange(y, m)[1]
-        nxt = date(y, m, min(base.day, last))
+        nxt = base + relativedelta(months=1)
     elif recur == "weekdays":
-        nxt = base + timedelta(days=1)
-        while nxt.weekday() >= 5:
-            nxt += timedelta(days=1)
-    else:
-        # Extended patterns
-        em = _EVERY_RE.match(recur)
-        if em:
-            n = int(em.group(1))
-            unit = em.group(2).rstrip("s")
-            if unit == "day":
-                nxt = base + timedelta(days=n)
-            elif unit == "week":
-                nxt = base + timedelta(weeks=n)
-            elif unit == "month":
-                for _ in range(n):
-                    mo = base.month + 1
-                    yr = base.year + (mo - 1) // 12
-                    mo = (mo - 1) % 12 + 1
-                    last = _cal.monthrange(yr, mo)[1]
-                    base = date(yr, mo, min(base.day, last))
-                nxt = base
-            else:
-                nxt = base + timedelta(weeks=1)
+        nxt = next(iter(rrule(DAILY, dtstart=base + timedelta(days=1),
+                              byweekday=(MO, TU, WE, TH, FR), count=1))).date()
+    elif (em := _EVERY_RE.match(recur)):
+        n = int(em.group(1))
+        unit = em.group(2).rstrip("s")
+        if unit == "day":
+            nxt = base + timedelta(days=n)
+        elif unit == "week":
+            nxt = base + timedelta(weeks=n)
+        elif unit == "month":
+            nxt = base + relativedelta(months=n)
         else:
-            pm = _POS_RE.match(recur)
-            if pm:
-                pos = pm.group(1)
-                wd = _WEEKDAY_NAMES.get(pm.group(2), 0)
-                # Advance to next month
-                mo = base.month + 1
-                yr = base.year + (mo - 1) // 12
-                mo = (mo - 1) % 12 + 1
-                if pos in ("first", "1st"):
-                    d = date(yr, mo, 1)
-                    while d.weekday() != wd:
-                        d += timedelta(days=1)
-                else:  # last
-                    last_day = _cal.monthrange(yr, mo)[1]
-                    d = date(yr, mo, last_day)
-                    while d.weekday() != wd:
-                        d -= timedelta(days=1)
-                nxt = d
-            else:
-                nxt = base + timedelta(weeks=1)
+            nxt = base + timedelta(weeks=1)
+    elif (pm := _POS_RE.match(recur)):
+        wd = _WEEKDAY_RRULE.get(pm.group(2), MO)
+        pos = +1 if pm.group(1) in ("first", "1st") else -1
+        anchor = base + relativedelta(months=1, day=1)
+        nxt = next(iter(rrule(MONTHLY, dtstart=anchor, byweekday=wd,
+                              bysetpos=pos, count=1))).date()
+    else:
+        nxt = base + timedelta(weeks=1)
     return nxt.isoformat()
 
 
