@@ -9,12 +9,14 @@ Sigue el patrón de [feedback memory: "dormant deprecation"]: cuando se decide r
 | Subsystem | Módulo | Estado | Borrar después de |
 |-----------|--------|--------|-------------------|
 | Tracked v0.34 (copia + 4-scenario refresh) | `core/tracked.py` reescrito en v0.36 | RETIRADO completamente desde v0.36 (no dormante: borrado del repo). El código vive en git history, ver `git show v0.34.0:core/tracked.py` | n/a (history-only) |
-| Pull Google→orbit en `calendar_sync.py` | `fetch_day_events`, `_event_in_agenda`, `_sync_new_format`, `sync_events_to_logbooks`, `run_calendar_sync` | DORMANTE: sin CLI desde antes de v0.38; solo `cartero` usa los OAuth helpers (`CREDENTIALS_PATH`, `TOKEN_PATH`, `SCOPES`, `_get_credentials`, `_build_service`). Tests vivos en `test_ring_calendar.py` (`TestEventInAgenda`, `TestSyncNewFormat`, `TestSyncEventsToLogbooks`) | Si nadie reactiva el pull en 3 meses — entonces partir el fichero: dejar OAuth helpers como `core/google_oauth.py`, borrar el resto |
+
+(No quedan dormancias activas tras Fase 2 sub-paso 2.)
 
 ## Borrados ejecutados
 
 Para auditoría histórica. Si necesitas cualquiera de estos paths, recupéralos de `git log`.
 
+- **2026-05-15 (Fase 2)** — `core/calendar_sync.py` (247 ℓ) + 3 clases de test (`TestEventInAgenda`, `TestSyncNewFormat`, `TestSyncEventsToLogbooks` ≈ 165 ℓ, 14 tests). Salvage: los OAuth helpers (`CREDENTIALS_PATH`, `TOKEN_PATH`, `SCOPES`, `_get_credentials`, `_build_service`) extraídos a `core/google_oauth.py` (cartero los importa desde ahí). El pull Google→orbit estaba sin CLI desde v0.33 (commit `c952889`, 2026-05-12); la precondición original de 3 meses se acortó porque no había callers ni ruta posible de reactivación accidental.
 - **2026-05-15 (v0.38)** — `core/gsync.py` (2880 ℓ) + `core/calsync.py` (793 ℓ) + 8 tests (≈3950 ℓ). Cumplido el criterio "ningún workspace tiene `applescript_writes:true`". Junto con ello murieron: AppleScript-write a Calendar.app, backend Reminders.app vía `_sync_one_to_reminders`, cuerpo legacy Google Tasks/Calendar API en `run_gsync`, marker `☁️` en agenda.md, `TestSetCloudVerified`. La rama `_agenda_via_calendar()` en `agenda_cmds.py` queda stub a `True`; las antiguas ramas legacy gateadas por `not _agenda_via_calendar()` son código muerto pendiente de podar (Fase 3 del plan en `MODULES.md`). Commit: ver `git log --grep="drop gsync"`.
 - **2026-05-15 (v0.38)** — `core/migrate.py` + `core/tracked_migrate.py` + `core/importer.py` + CLI wiring + 4 tests (~1325 ℓ). Migraciones one-shot completadas en todos los workspaces; importador Evernote sin uso.
 - **2026-05-15 (v0.38)** — `core/reminders.py` + sus tests (508 ℓ). Superseded por `ring_export+orbit_ring_daemon` (v0.37).
@@ -22,38 +24,7 @@ Para auditoría histórica. Si necesitas cualquiera de estos paths, recupéralos
 
 ---
 
-## 1. Pull Google→orbit en `calendar_sync.py`
-
-### Qué está dormante
-
-- `fetch_day_events(target)` — fetch de eventos del día desde Google Calendar API.
-- `_event_in_agenda`, `_sync_new_format` — chequea si un evento ya existe en `agenda.md` o en logbook.
-- `sync_events_to_logbooks(events, target, dry_run)` — toma eventos fetched y los inserta en logbook/agenda.
-- `run_calendar_sync(date_str, dry_run)` — entry point pensado para `orbit calendar-sync` (CLI nunca expuesta).
-
-### Qué sigue vivo
-
-`CREDENTIALS_PATH`, `TOKEN_PATH`, `SCOPES`, `_get_credentials`, `_build_service`, `_get_service` — usados por `core/cartero.py` para OAuth de Gmail.
-
-### Por qué
-
-El "pull Google→orbit" duplicaba el modelo "orbit es source of truth, .ics emite". Si Google Calendar tiene un evento que orbit debe conocer, el flujo correcto es manual o vía email→evento (`orbit email --ev`), no auto-pull.
-
-### Cómo revivir
-
-Restaurar argparse para `orbit calendar-sync` en `orbit.py` y un dispatcher que llame a `run_calendar_sync(date_str, dry_run)`.
-
-### Tests
-
-Vivos en `tests/test_ring_calendar.py`: `TestEventInAgenda`, `TestSyncNewFormat`, `TestSyncEventsToLogbooks`.
-
-### Criterio para borrar
-
-3 meses sin reactivación → partir el fichero: extraer OAuth helpers a `core/google_oauth.py` (única dependencia activa de cartero), borrar el resto + sus 3 clases de test.
-
----
-
-## 2. Tracked v0.34 — copia versionada + refresh con 4-scenario
+## 1. Tracked v0.34 — copia versionada + refresh con 4-scenario
 
 ### Qué se retiró
 

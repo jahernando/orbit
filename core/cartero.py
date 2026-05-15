@@ -179,7 +179,7 @@ def _get_gmail_service():
 
     Adds gmail.readonly scope if needed.  Returns service or None.
     """
-    from core.calendar_sync import CREDENTIALS_PATH, TOKEN_PATH, SCOPES as BASE_SCOPES
+    from core.google_oauth import CREDENTIALS_PATH, TOKEN_PATH, SCOPES as BASE_SCOPES
 
     all_scopes = list(BASE_SCOPES)
     if GMAIL_SCOPE not in all_scopes:
