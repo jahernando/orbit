@@ -2,7 +2,7 @@
 # Compatible with sh/bash/zsh. Source from your shell rc file.
 # Editor: configura "editor" en orbit.json de cada workspace.
 
-ORBIT_CODE="$HOME/orbit"
+ORBIT_CODE="$ORBIT"
 ORBIT_PYTHON="$HOME/miniconda3/envs/nu/bin/python3"
 export PATH="$ORBIT_CODE/bin:$PATH"
 
