@@ -29,9 +29,11 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-from datetime import date as _date, datetime, timedelta
+from datetime import date as _date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Optional
+
+from icalendar import Alarm, Calendar, Event
 
 from core.config import ORBIT_HOME
 from core.agenda_cmds import (
@@ -69,72 +71,6 @@ _DEFAULT_DURATION_MIN = {
     "cronograma": 60,
     "reminder":   5,
 }
-
-
-# ── iCalendar low-level helpers ────────────────────────────────────────
-
-def _escape(s: str) -> str:
-    """Escape a TEXT-type iCalendar value per RFC 5545 §3.3.11.
-
-    Order matters: backslash first so we don't double-escape.
-    """
-    if s is None:
-        return ""
-    s = s.replace("\\", "\\\\")
-    s = s.replace("\n", "\\n").replace("\r", "")
-    s = s.replace(",", "\\,").replace(";", "\\;")
-    return s
-
-
-def _fold(line: str) -> str:
-    """Fold a logical line so no physical line exceeds 75 octets.
-
-    Continuation lines start with one space (per RFC §3.1). Counts in
-    bytes (UTF-8) to handle multibyte chars safely.
-    """
-    raw = line.encode("utf-8")
-    if len(raw) <= 75:
-        return line
-    out = []
-    i = 0
-    while i < len(raw):
-        chunk_size = 75 if not out else 74  # later chunks lose 1 to the leading SP
-        end = min(i + chunk_size, len(raw))
-        # Avoid cutting in the middle of a multibyte char: rewind to a
-        # UTF-8 char boundary.
-        while end < len(raw) and (raw[end] & 0xC0) == 0x80:
-            end -= 1
-        out.append(raw[i:end].decode("utf-8"))
-        i = end
-    return "\r\n ".join(out)
-
-
-def _fmt_dt_local(iso: str) -> str:
-    """``YYYY-MM-DDTHH:MM`` → ``YYYYMMDDTHHMMSS`` (floating local).
-
-    Floating means no ``Z`` suffix and no ``TZID=`` param — the
-    receiving client interprets it in its own local time. Matches
-    today's AppleScript behaviour.
-    """
-    d, t = iso.split("T")
-    y, mo, da = d.split("-")
-    if t.count(":") == 1:
-        h, mn = t.split(":")
-        sec = "00"
-    else:
-        h, mn, sec = t.split(":")
-    return f"{y}{mo}{da}T{h}{mn}{sec}"
-
-
-def _fmt_date(iso_d: str) -> str:
-    """``YYYY-MM-DD`` → ``YYYYMMDD`` for ``VALUE=DATE`` (all-day)."""
-    return iso_d.replace("-", "")
-
-
-def _now_stamp() -> str:
-    """``DTSTAMP`` value: UTC now in ``YYYYMMDDTHHMMSSZ`` form. RFC
-    requires UTC for this property."""
-    return datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
 
 # ── Item → VEVENT ──────────────────────────────────────────────────────
@@ -191,19 +127,6 @@ def _event_url(item: dict) -> str:
     return ""
 
 
-def _alarm_block(minutes_before: int) -> list:
-    """VALARM rendering. Negative ``TRIGGER`` = before start."""
-    if minutes_before is None or minutes_before < 0:
-        return []
-    return [
-        "BEGIN:VALARM",
-        "ACTION:DISPLAY",
-        "DESCRIPTION:Reminder",
-        f"TRIGGER:-PT{minutes_before}M",
-        "END:VALARM",
-    ]
-
-
 def _alarm_minutes(item: dict, kind: str) -> Optional[int]:
     """Compute the alarm offset in minutes. None → no alarm.
 
@@ -226,12 +149,22 @@ def _alarm_minutes(item: dict, kind: str) -> Optional[int]:
     return n * (1 if unit == "m" else 60 if unit == "h" else 1440)
 
 
+def _parse_hm(t: str) -> tuple:
+    """``HH:MM`` → (hour, minute)."""
+    h, m = t.split(":")
+    return (int(h), int(m))
+
+
 def render_vevent(item: dict, kind: str, project_name: str,
                   occurrence_date: Optional[str] = None) -> list:
-    """Build a single VEVENT block as a list of folded lines.
+    """Build a single VEVENT as a list of serialized lines.
 
     ``occurrence_date`` overrides the item's stored date when set —
     used by the recurrence expander to emit one VEVENT per occurrence.
+
+    Mechanics (escape, folding, DT formatting) delegated to ``icalendar``;
+    this function only translates an orbit item dict into the Event's
+    field set and returns ``event.to_ical().decode().splitlines()``.
     """
     date_iso = occurrence_date or item["date"]
     orbit_id = item.get("orbit_id")
@@ -245,17 +178,21 @@ def render_vevent(item: dict, kind: str, project_name: str,
     is_event = (kind == "event")
     all_day  = (is_event and not time_val)
 
+    start_d = _date.fromisoformat(date_iso)
     if all_day:
         # DTEND is exclusive for VALUE=DATE → add one day.
-        end_d = item.get("end") or date_iso
-        end_plus = (_date.fromisoformat(end_d) + timedelta(days=1)).isoformat()
-        dtstart = f"DTSTART;VALUE=DATE:{_fmt_date(date_iso)}"
-        dtend   = f"DTEND;VALUE=DATE:{_fmt_date(end_plus)}"
+        end_d_iso = item.get("end") or date_iso
+        dtstart_val = start_d
+        dtend_val   = _date.fromisoformat(end_d_iso) + timedelta(days=1)
     else:
         if is_event and time_val and "-" in time_val:
             start_part, end_part = time_val.split("-", 1)
-            start_iso = f"{date_iso}T{start_part}"
-            end_iso   = f"{item.get('end') or date_iso}T{end_part}"
+            sh, sm = _parse_hm(start_part)
+            eh, em = _parse_hm(end_part)
+            end_d_iso = item.get("end") or date_iso
+            dtstart_val = datetime(start_d.year, start_d.month, start_d.day, sh, sm)
+            end_d = _date.fromisoformat(end_d_iso)
+            dtend_val = datetime(end_d.year, end_d.month, end_d.day, eh, em)
         else:
             # Single-time entry (event with HH:MM only, or any agenda kind):
             # synthesize end = start + per-kind default duration so the block
@@ -265,38 +202,44 @@ def render_vevent(item: dict, kind: str, project_name: str,
             else:
                 t = (time_val.split("-")[0] if time_val and "-" in time_val
                      else time_val) or "09:00"
-            start_iso = f"{date_iso}T{t}"
-            minutes = _DEFAULT_DURATION_MIN.get(kind, 20)
             try:
-                end_dt = datetime.fromisoformat(f"{start_iso}:00") + timedelta(minutes=minutes)
-                end_iso = end_dt.strftime("%Y-%m-%dT%H:%M")
+                sh, sm = _parse_hm(t)
             except ValueError:
-                end_iso = start_iso
-        dtstart = f"DTSTART:{_fmt_dt_local(start_iso)}"
-        dtend   = f"DTEND:{_fmt_dt_local(end_iso)}"
+                sh, sm = 9, 0
+            dtstart_val = datetime(start_d.year, start_d.month, start_d.day, sh, sm)
+            minutes = _DEFAULT_DURATION_MIN.get(kind, 20)
+            dtend_val = dtstart_val + timedelta(minutes=minutes)
 
-    lines = [
-        "BEGIN:VEVENT",
-        f"UID:{uid}",
-        f"DTSTAMP:{_now_stamp()}",
-        dtstart,
-        dtend,
-        f"SUMMARY:{_escape(summary)}",
-        f"DESCRIPTION:{_escape(description)}",
-    ]
+    ev = Event()
+    ev.add("uid", uid)
+    ev.add("dtstamp", datetime.now(timezone.utc).replace(microsecond=0))
+    ev.add("dtstart", dtstart_val)
+    ev.add("dtend", dtend_val)
+    ev.add("summary", summary)
+    ev.add("description", description)
     if url:
-        lines.append(f"URL:{_escape(url)}")
+        ev.add("url", url)
         # Also expose as LOCATION so the address line carries the link
         # (some clients show only LOCATION in compact views).
-        lines.append(f"LOCATION:{_escape(url)}")
-    lines.append(f"CATEGORIES:{kind}")
+        ev.add("location", url)
+    ev.add("categories", [kind])
     if orbit_id:
-        lines.append(f"X-ORBIT-ID:{orbit_id}")
-    lines.append(f"X-ORBIT-PROJECT:{_escape(project_name)}")
-    lines.append(f"X-ORBIT-KIND:{kind}")
-    lines.extend(_alarm_block(_alarm_minutes(item, kind)))
-    lines.append("END:VEVENT")
-    return [_fold(ln) for ln in lines]
+        ev.add("X-ORBIT-ID", orbit_id)
+    ev.add("X-ORBIT-PROJECT", project_name)
+    ev.add("X-ORBIT-KIND", kind)
+
+    alarm_min = _alarm_minutes(item, kind)
+    if alarm_min is not None and alarm_min >= 0:
+        al = Alarm()
+        al.add("action", "DISPLAY")
+        al.add("description", "Reminder")
+        al.add("trigger", timedelta(minutes=-alarm_min))
+        ev.add_component(al)
+
+    # icalendar already folds at 75 octets and emits CRLF; splitlines()
+    # strips the line terminators and yields one entry per logical line.
+    rendered = ev.to_ical().decode("utf-8")
+    return rendered.splitlines()
 
 
 # ── Recurrence expansion ───────────────────────────────────────────────
@@ -402,19 +345,25 @@ def _collect_cronos(project_dir: Path) -> list:
 
 def _calendar_wrapper(name: str, body_lines: list,
                        description: Optional[str] = None) -> str:
-    """Wrap a list of VEVENT lines in a VCALENDAR header/footer."""
-    header = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "PRODID:-//Orbit//Orbit Calendar//EN",
-        "CALSCALE:GREGORIAN",
-        "METHOD:PUBLISH",
-        f"X-WR-CALNAME:{_escape(name)}",
-    ]
+    """Wrap a list of pre-rendered VEVENT lines in a VCALENDAR header/footer.
+
+    The header is built with ``icalendar.Calendar`` (so the X-WR-CALNAME /
+    X-WR-CALDESC values get RFC-correct escape + folding) and then the
+    body lines are spliced in literally — they already come from
+    :func:`render_vevent` which uses the same library, so the resulting
+    blob is fully RFC 5545 compliant.
+    """
+    cal = Calendar()
+    cal.add("version", "2.0")
+    cal.add("prodid", "-//Orbit//Orbit Calendar//EN")
+    cal.add("calscale", "GREGORIAN")
+    cal.add("method", "PUBLISH")
+    cal.add("X-WR-CALNAME", name)
     if description:
-        header.append(f"X-WR-CALDESC:{_escape(description)}")
-    footer = ["END:VCALENDAR"]
-    return "\r\n".join([_fold(h) for h in header] + body_lines + footer) + "\r\n"
+        cal.add("X-WR-CALDESC", description)
+    rendered = cal.to_ical().decode("utf-8")
+    head, _, _ = rendered.rpartition("END:VCALENDAR")
+    return head + "\r\n".join(body_lines) + "\r\nEND:VCALENDAR\r\n"
 
 
 # ── Public renderers ───────────────────────────────────────────────────
@@ -536,34 +485,45 @@ def validate_buckets(buckets: dict) -> list:
 
 # ── Snapshot diff ──────────────────────────────────────────────────────
 
+_DIFF_SKIP_PROPS = {"DTSTAMP"}
+
+
 def _parse_vevents(ics_text: str) -> dict:
     """Parse a ``.ics`` blob into ``{uid: {prop: value}}`` for diff.
 
     Strips ``DTSTAMP`` (UTC-now, regenerated every render) so diffs
-    surface only real content changes. Unfolds RFC 5545 line folds.
+    surface only real content changes. Folding/unescaping is handled
+    by ``icalendar``.
     """
-    # Unfold continuation lines (`\r\n ` or `\r\n\t`).
-    text = ics_text.replace("\r\n ", "").replace("\r\n\t", "")
-    text = text.replace("\n ", "").replace("\n\t", "")
+    try:
+        cal = Calendar.from_ical(ics_text)
+    except (ValueError, KeyError):
+        return {}
 
-    events = {}
-    current = None
-    for raw in text.splitlines():
-        line = raw.rstrip("\r")
-        if line == "BEGIN:VEVENT":
-            current = {}
-        elif line == "END:VEVENT":
-            if current is not None and "UID" in current:
-                events[current["UID"]] = current
-            current = None
-        elif current is not None and ":" in line:
-            key, _, val = line.partition(":")
-            key = key.split(";", 1)[0]   # strip params (e.g. VALUE=DATE)
-            if key == "DTSTAMP":
+    events: dict = {}
+    for vev in cal.walk("VEVENT"):
+        uid = str(vev.get("UID") or "")
+        if not uid:
+            continue
+        props: dict = {"UID": uid}
+        for key in vev.keys():
+            up = str(key).upper()
+            if up == "UID" or up in _DIFF_SKIP_PROPS:
                 continue
-            # First occurrence wins (e.g. two LOCATION/URL — we kept one).
-            if key not in current:
-                current[key] = val
+            val = vev.get(key)
+            # Use ``to_ical()`` so dates/datetimes/strings serialize to
+            # the same bytes the file would carry — yields a stable diff
+            # signal regardless of the value's Python type.
+            try:
+                rendered = val.to_ical()
+            except AttributeError:
+                rendered = str(val).encode("utf-8")
+            if isinstance(rendered, bytes):
+                rendered = rendered.decode("utf-8", errors="replace")
+            # First occurrence wins (e.g. two LOCATION/URL — kept one).
+            if up not in props:
+                props[up] = rendered
+        events[uid] = props
     return events
 
 

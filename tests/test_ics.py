@@ -8,55 +8,6 @@ import pytest
 from core import ics
 
 
-# ── Low-level helpers ────────────────────────────────────────────────────────
-
-class TestEscape:
-    def test_comma_semicolon_backslash_newline(self):
-        assert ics._escape("a,b;c\\d\ne") == "a\\,b\\;c\\\\d\\ne"
-
-    def test_none_returns_empty(self):
-        assert ics._escape(None) == ""
-
-    def test_no_special_chars_passthrough(self):
-        assert ics._escape("hello world") == "hello world"
-
-
-class TestFold:
-    def test_short_line_unchanged(self):
-        assert ics._fold("DTSTART:20260101T100000") == "DTSTART:20260101T100000"
-
-    def test_long_line_folds_with_crlf_space(self):
-        line = "DESCRIPTION:" + ("a" * 200)
-        out = ics._fold(line)
-        # First chunk ≤ 75, subsequent chunks ≤ 74 (account for leading space)
-        physical = out.split("\r\n ")
-        assert len(physical) >= 3
-        assert len(physical[0].encode("utf-8")) <= 75
-        for chunk in physical[1:]:
-            assert len(chunk.encode("utf-8")) <= 74
-
-    def test_multibyte_chars_dont_split(self):
-        # Each '✅' is 3 bytes — line folding must not break mid-codepoint
-        line = "SUMMARY:" + ("✅" * 30)
-        out = ics._fold(line)
-        for chunk in out.split("\r\n "):
-            # If a chunk decodes cleanly, we didn't split a codepoint
-            chunk.encode("utf-8").decode("utf-8")
-
-
-class TestFmtDt:
-    def test_minutes_only_padded_to_seconds(self):
-        assert ics._fmt_dt_local("2026-05-15T10:30") == "20260515T103000"
-
-    def test_with_seconds(self):
-        assert ics._fmt_dt_local("2026-05-15T10:30:45") == "20260515T103045"
-
-
-class TestFmtDate:
-    def test_strips_dashes(self):
-        assert ics._fmt_date("2026-05-15") == "20260515"
-
-
 # ── UID stability ────────────────────────────────────────────────────────────
 
 class TestUid:
@@ -98,7 +49,8 @@ class TestRenderVevent:
     def test_alarm_block_default_zero_for_agenda(self):
         block = "\n".join(ics.render_vevent(self._task(), "task", "proj"))
         assert "BEGIN:VALARM" in block
-        assert "TRIGGER:-PT0M" in block
+        # icalendar serializes timedelta(0) as P0D (RFC-equivalent to -PT0M).
+        assert "TRIGGER:P0D" in block
 
     def test_alarm_honors_ring(self):
         block = "\n".join(ics.render_vevent(self._task(ring="15m"),
