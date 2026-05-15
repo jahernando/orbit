@@ -80,7 +80,7 @@ graph TB
         recloud["recloud · 230"]
         ics_share["ics_share · 680"]
         ring_export["ring_export · 572"]
-        ring["ring · 520 ❓ legacy"]
+        ring["ring · 377 (helpers + dormant-flag path)"]
         daemon["orbit_ring_daemon · 288"]
         gsync["gsync · 2880 ⚠️"]
         calsync["calsync · 793"]
@@ -228,8 +228,9 @@ Añadir `icalendar` y `python-dateutil` lleva las dependencias pip de 2 a 4 (hoy
 
 | # | Bloque | Tamaño aprox. | Acción | Estado |
 |---|---|---|---|---|
-| 1 | `reminders.py` (+ `tests/test_reminders.py`) | 190 + 318 | Borrar | ✅ 2026-05-15 (−508 ℓ, 1847 tests pasan) |
-| 2 | `ring.py` legacy | 520 | Confirmar dormancia post-v0.37 → borrar | pendiente |
+| 1 | `reminders.py` (+ `tests/test_reminders.py`) | 190 + 318 | Borrar | ✅ 2026-05-15 (−508 ℓ, 1847 tests) |
+| 2a | `ring.schedule_new_format_reminders` (no-op) + 2 helpers huérfanos + tests | ~250 | Borrar | ✅ 2026-05-15 (−252 ℓ, 1839 tests) |
+| 2b | Resto de `ring.py` (path AppleScript-direct) | ~200 | **Bloqueado por gsync** — `DORMANT.md`: borrar gsync primero | depende de paso 5 |
 | 3 | `migrate` `tracked_migrate` `importer` | ~1200 | Mover a `scripts/` o borrar | pendiente |
 | 4 | `commit.py` (lógica de hooks) | extraer ~300 | Mover a `hooks.py`, dejar `commit.py` ≤400 ℓ | pendiente |
 | 5 | `gsync.py` paths dormantes | hasta −2000 | Auditar caller-by-caller, borrar lo no alcanzable | pendiente |

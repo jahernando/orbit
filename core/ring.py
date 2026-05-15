@@ -1,4 +1,4 @@
-"""ring.py — ring attribute resolution and reminder scheduling for new-format projects.
+"""ring.py — ring attribute resolution + AppleScript-direct Reminders helpers.
 
 Ring attribute values on agenda.md tasks:
   [ring:1d]              → remind 1 day before due date at 09:00
@@ -6,11 +6,14 @@ Ring attribute values on agenda.md tasks:
   [ring:30m]             → remind 30 minutes before (uses task time or 09:00)
   [ring:YYYY-MM-DD HH:MM]→ remind at exact datetime
 
-Schedule flow:
-  1. Scan all new-format projects for pending tasks with ring attribute.
-  2. Resolve ring datetime for each task.
-  3. For tasks whose ring fires on *target* date, schedule via macOS Reminders.app.
-  4. After scheduling, clear the ring attribute (one-shot) or leave it (recurring).
+Public surface (still in use):
+  - ``_parse_ring`` / ``resolve_ring_datetime`` — used by agenda_cmds, gsync, ring_export.
+  - ``_schedule_reminder`` / ``_delete_reminder`` — AppleScript-direct path used by
+    agenda_cmds when ``reminders_backend != "calendar"``. **Dormant behind that flag**
+    in v0.37+; the active backend is ``ring_export.py`` + ``orbit_ring_daemon.py``
+    (EventKit). See DORMANT.md.
+  - ``_tasks_ringing_on`` / ``_reminders_on`` — used by tests and agenda_cmds.
+  - ``_clear_ring`` — used by tests.
 """
 import re
 import subprocess
@@ -18,12 +21,9 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
 
-from core.project import _is_new_project
-from core.config import iter_project_dirs, iter_federated_project_dirs, is_federated
 from core.agenda_cmds import _read_agenda, _write_agenda, _next_occurrence
 from core.log import resolve_file
 
-from core.config import ORBIT_HOME as ORBIT_DIR
 REMINDERS_LIST  = "Orbit"
 
 _WEEKDAYS_ABBR_ES = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
@@ -319,66 +319,6 @@ def _clear_ring(project_dir: Path, task_index: int) -> None:
         _write_agenda(resolve_file(project_dir, "agenda"), data)
 
 
-def _milestones_ringing_on(project_dir: Path, target: date) -> list:
-    """Return list of milestone dicts from agenda.md whose ring fires on *target* date."""
-    data = _read_agenda(resolve_file(project_dir, "agenda"))
-    results = []
-
-    for i, ms in enumerate(data["milestones"]):
-        if ms["status"] != "pending":
-            continue
-        if not ms.get("ring") or not ms.get("date"):
-            continue
-
-        ring_dt = resolve_ring_datetime(ms["date"], ms["ring"],
-                                        due_time=ms.get("time"))
-        if ring_dt is None:
-            continue
-        if ring_dt.date() != target:
-            continue
-
-        results.append({
-            "index":   i,
-            "desc":    ms["desc"],
-            "due":     ms["date"],
-            "ring":    ms["ring"],
-            "recur":   ms.get("recur"),
-            "ring_dt": ring_dt,
-            "appt_dt": _appointment_dt(ms["date"], ms.get("time")),
-        })
-
-    return results
-
-
-def _events_ringing_on(project_dir: Path, target: date) -> list:
-    """Return list of event dicts from agenda.md whose ring fires on *target* date."""
-    data = _read_agenda(resolve_file(project_dir, "agenda"))
-    results = []
-
-    for i, ev in enumerate(data["events"]):
-        if not ev.get("ring") or not ev.get("date"):
-            continue
-
-        ev_time = ev.get("time", "").split("-")[0] if ev.get("time") else None
-        ring_dt = resolve_ring_datetime(ev["date"], ev["ring"], due_time=ev_time)
-        if ring_dt is None:
-            continue
-        if ring_dt.date() != target:
-            continue
-
-        results.append({
-            "index":   i,
-            "desc":    ev["desc"],
-            "due":     ev["date"],
-            "ring":    ev["ring"],
-            "recur":   ev.get("recur"),
-            "ring_dt": ring_dt,
-            "appt_dt": _appointment_dt(ev["date"], ev.get("time")),
-        })
-
-    return results
-
-
 # ── Reminder collection ───────────────────────────────────────────────────────
 
 def _reminders_on(project_dir: Path, target: date) -> list:
@@ -435,86 +375,3 @@ def _reminders_on(project_dir: Path, target: date) -> list:
         })
 
     return results
-
-
-# ── Public API ─────────────────────────────────────────────────────────────────
-
-def schedule_new_format_reminders(target: Optional[date] = None) -> list:
-    """DEPRECATED: declarative sync model.
-
-    orbit no longer programs daily ring alarms in Reminders.app at startup.
-    Tasks/milestones/reminders flow continuously via gsync (sync_item hooks
-    on add/edit/done) into Reminders.app as completable items with their
-    own native alarms. Events use Calendar.app's native display alarms.
-
-    Kept as a no-op for callers; returns []. Body retained below for the
-    record but never executes.
-    """
-    return []
-    target = target or date.today()  # unreachable
-    now = datetime.now()
-
-    # Avoid duplicate scheduling: check stamp file
-    stamp = ORBIT_DIR / ".last_ring"
-    if stamp.exists():
-        try:
-            last = date.fromisoformat(stamp.read_text().strip())
-            if last == target:
-                return []
-        except ValueError:
-            pass
-
-    scheduled = []
-    for project_dir in iter_federated_project_dirs():
-        if not _is_new_project(project_dir):
-            continue
-        federated = is_federated(project_dir)
-
-        def _print_scheduled(emoji: str, item: dict) -> None:
-            appt = item.get("appt_dt") or item["ring_dt"]
-            label = _format_appt(appt, target)
-            hint = _ring_hint(item.get("ring"))
-            suffix = f"  {hint}" if hint else ""
-            print(f"  {emoji} {label}  {project_dir.name}  {item['desc']}{suffix}")
-
-        # Schedule ring tasks
-        tasks = _tasks_ringing_on(project_dir, target)
-        for t in tasks:
-            ring_dt = t["ring_dt"] if t["ring_dt"] > now else now + timedelta(minutes=1)
-            ok = _schedule_reminder(t["desc"], project_dir.name, ring_dt, kind="task")
-            if ok:
-                _print_scheduled("✅", t)
-                if not t.get("recur") and not federated:
-                    _clear_ring(project_dir, t["index"])
-                scheduled.append({**t, "project": project_dir.name})
-            else:
-                print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {t['desc']}")
-
-        # Schedule ring milestones
-        milestones = _milestones_ringing_on(project_dir, target)
-        for m in milestones:
-            ring_dt = m["ring_dt"] if m["ring_dt"] > now else now + timedelta(minutes=1)
-            ok = _schedule_reminder(m["desc"], project_dir.name, ring_dt, kind="milestone")
-            if ok:
-                _print_scheduled("🏁", m)
-                scheduled.append({**m, "project": project_dir.name})
-            else:
-                print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {m['desc']}")
-
-        # Events: rings are now native alarms in Calendar.app (set by gsync).
-        # No longer programmed in Reminders.app — would duplicate the alert.
-
-        # Schedule reminders (💬)
-        reminders = _reminders_on(project_dir, target)
-        for r in reminders:
-            ring_dt = r["ring_dt"] if r["ring_dt"] > now else now + timedelta(minutes=1)
-            ok = _schedule_reminder(r['desc'], project_dir.name, ring_dt, kind="reminder")
-            if ok:
-                _print_scheduled("💬", r)
-                scheduled.append({**r, "project": project_dir.name})
-            else:
-                print(f"  ⚠️  No se pudo programar: [{project_dir.name}] {r['desc']}")
-
-    # Write stamp so we don't re-schedule on subsequent shell starts today
-    stamp.write_text(target.isoformat())
-    return scheduled
