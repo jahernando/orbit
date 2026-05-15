@@ -20,6 +20,7 @@ that :func:`core.ics._parse_vevents` discards, e.g. ``VALUE=DATE``).
 from __future__ import annotations
 
 import re
+import secrets
 import subprocess
 import sys
 from datetime import date as _date, datetime, timedelta
@@ -29,10 +30,14 @@ from typing import Optional
 from core.agenda_cmds import (
     _read_agenda, _write_agenda, _next_occurrence,
 )
-from core.gsync import _new_orbit_id
 from core.ics import (
     render_vevent, _calendar_wrapper, _KIND_EMOJI, write_workspace,
 )
+
+
+def _new_orbit_id() -> str:
+    """Generate a fresh 8-char hex id for a cita's [orbit:xxx] tag."""
+    return secrets.token_hex(4)
 from core.log import find_project, resolve_file
 
 

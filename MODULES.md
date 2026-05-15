@@ -2,7 +2,7 @@
 
 Mapa de módulos del paquete y sus dependencias internas. Sirve para guiar la limpieza/simplificación del CLI sin perder de vista qué encaja con qué.
 
-Última auditoría: 2026-05-15. Total: 48 módulos en `core/` + `orbit.py` (CLI) + `orbit_ring_daemon.py` ≈ 28 200 líneas.
+Última auditoría: 2026-05-15 (post-Fase 1: borrados gsync, calsync, reminders, migrate, tracked_migrate, importer; carve-out startup; salvage de orbit-id y AppleScript helpers). Total: 43 módulos en `core/` + `orbit.py` (CLI) + `orbit_ring_daemon.py` ≈ 22 850 líneas (−5 350 ℓ vs antes).
 
 ---
 
@@ -80,9 +80,7 @@ graph TB
         ring_export["ring_export · 572"]
         ring["ring · 377 (helpers + dormant-flag path)"]
         daemon["orbit_ring_daemon · 288"]
-        gsync["gsync · 2880 ⚠️"]
-        calsync["calsync · 793"]
-        calendar_sync["calendar_sync · 247"]
+        calendar_sync["calendar_sync · 247 (OAuth helpers para cartero)"]
     end
 
     subgraph VIEW [D · Vistas / dashboards]
@@ -133,8 +131,7 @@ graph TB
     agenda_cmds --> ring_export --> daemon --> REMAPP
     agenda_cmds --> ring -.legacy.-> REMAPP
     agenda_cmds --> ics_share --> CLOUD --> CALSUB
-    agenda_cmds --> calsync --> gsync
-    agenda_cmds --> calendar_sync
+    cartero --> calendar_sync
     log --> render --> CLOUD
     log --> deliver --> CLOUD
     notes --> deliver
@@ -197,7 +194,7 @@ graph TB
 
 ## 4. Solapamientos y candidatos a simplificación
 
-1. **Tres caminos a Google/Calendar** — `gsync` (2880) + `calsync` (793) + `calendar_sync` (247). Según `DEPENDENCIES.md` Calendar.app es read-only subscriber desde v0.33. **Mayor potencial de borrado del repo.**
+1. ~~**Tres caminos a Google/Calendar** — `gsync` (2880) + `calsync` (793) + `calendar_sync` (247). Según `DEPENDENCIES.md` Calendar.app es read-only subscriber desde v0.33. **Mayor potencial de borrado del repo.**~~ ✅ **Resuelto** (2026-05-15): `gsync` y `calsync` borrados completos. `calendar_sync` queda solo con OAuth helpers para cartero (~80 ℓ activos); resto del fichero anotado como dormante en `DORMANT.md`.
 2. ~~**Dos caminos a Reminders.app** — `reminders.py` (AppleScript directo, legacy) vs `ring_export+daemon` (EventKit, v0.35). `reminders.py` parece dormante.~~ ✅ **Resuelto** (2026-05-15): `reminders.py` borrado. Queda `ring.py` (520 ℓ) marcado como dormante en CLAUDE.md desde v0.37 — siguiente candidato.
 3. **Cuatro módulos cloud** — `deliver` + `cloudsync` + `recloud` + `cloud_imgs`. Todos giran sobre "copiar a `cloud_root`". Fusionables en un único `cloud.py`.
 4. **`agenda_cmds.py` (2245 ℓ)** — mezcla CRUD de las 4 citas + parsing recurrencia + propagación. Candidato a partir en `agenda_io.py` + `recurrence.py` + `appointments/`.
@@ -226,7 +223,7 @@ Añadir `icalendar` y `python-dateutil` lleva las dependencias pip de 2 a 4 (hoy
 |---|---|---|---|---|
 | 1 | `reminders.py` (+ `tests/test_reminders.py`) | 190 + 318 | Borrar | ✅ 2026-05-15 (−508 ℓ, 1847 tests) |
 | 2a | `ring.schedule_new_format_reminders` (no-op) + 2 helpers huérfanos + tests | ~250 | Borrar | ✅ 2026-05-15 (−252 ℓ, 1839 tests) |
-| 2b | Resto de `ring.py` (path AppleScript-direct) | ~200 | **Bloqueado por gsync** — `DORMANT.md`: borrar gsync primero | depende de paso 5 |
+| 2b | Resto de `ring.py` (path AppleScript-direct) | ~200 | **Desbloqueado** post-gsync. Pendiente de podar las ramas `not _agenda_via_calendar()` en `agenda_cmds.py` que ya son inalcanzables | pendiente (Fase 3) |
 | 3 | `migrate` (548) `tracked_migrate` (179) `importer` (478) + CLI wiring + 4 tests | ~1325 | Borrar | ✅ 2026-05-15 (−1323 ℓ, 1835 tests) |
 | 4 | `commit.py` carve-out de `startup_*` | extraer 226 | Nuevo `core/startup.py`. (Las 5 hook actions se quedan; revisitar tras paso 5) | ✅ 2026-05-15 (commit.py 707→481, suite verde) |
-| 5 | `gsync.py` paths dormantes | hasta −2000 | Auditar caller-by-caller, borrar lo no alcanzable | pendiente |
+| 5 | `gsync.py` + `calsync.py` + 8 tests | −6826 ℓ borrados; +salvage de 3 helpers (`_new_orbit_id`, `_osa`, `_calendar_app_running`) a `ics`/`ics_share` | Borrar enteros (precondición `applescript_writes:false` cumplida en todos los workspaces) | ✅ 2026-05-15 (1567 tests verde) |

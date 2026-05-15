@@ -301,38 +301,6 @@ def _action_cronograma_log_completed(ctx):
     return {"ok": True, "msg": f"{n} logged"}
 
 
-def _action_gsync_reconcile_renames(ctx):
-    """Reconcile title renames in gsync IDs. Dormant unless applescript_writes."""
-    try:
-        from core.gsync import reconcile_gsync_renames
-        renames = reconcile_gsync_renames()
-    except Exception:
-        return {"ok": True, "msg": "skipped"}
-    for proj, old_desc, new_desc in renames:
-        print(f"  🔗 [{proj}] Revinculado: «{old_desc}» → «{new_desc}»")
-    if renames:
-        print()
-    return {"ok": True, "msg": f"{len(renames)} renames"}
-
-
-def _action_gsync_drift_check(ctx):
-    """Warn about post-sync drift. Dormant unless applescript_writes."""
-    try:
-        from core.gsync import check_gsync_drift
-        drift = check_gsync_drift()
-    except Exception:
-        return {"ok": True, "msg": "skipped"}
-    if drift:
-        n = len(drift)
-        print(f"  ☁️  {n} item{'s' if n != 1 else ''} modificado{'s' if n != 1 else ''} desde último gsync:")
-        for proj, kind, desc, diffs in drift:
-            print(f"    ⚠️  [{proj}] {kind}: {desc}")
-            for d in diffs:
-                print(f"        {d}")
-        print("  → Considera ejecutar `orbit gsync` tras el commit.\n")
-    return {"ok": True, "msg": f"{len(drift)} drift items"}
-
-
 def _action_cloudsync_push_background(ctx):
     """Detached subprocess that syncs HTML to cloud after commit."""
     try:
@@ -374,7 +342,7 @@ def run_commit(message: Optional[str] = None,
         print("Sin cambios para commitear.")
         return 0
 
-    # Pre-chain: cloud_imgs, cronograma, gsync_reconcile, gsync_drift.
+    # Pre-chain: cloud_imgs, cronograma.
     pre_results = _hooks.fire("commit_pre", skip_actions=skip_actions, verbosity="quiet")
     if _chain_aborted(pre_results):
         return 1

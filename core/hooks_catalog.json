@@ -11,16 +11,6 @@
       "fn": "_action_cronograma_log_completed",
       "critical": false
     },
-    "gsync_reconcile_renames": {
-      "module": "core.commit",
-      "fn": "_action_gsync_reconcile_renames",
-      "critical": false
-    },
-    "gsync_drift_check": {
-      "module": "core.commit",
-      "fn": "_action_gsync_drift_check",
-      "critical": false
-    },
     "cloudsync_push_background": {
       "module": "core.commit",
       "fn": "_action_cloudsync_push_background",
@@ -56,11 +46,6 @@
       "fn": "_action_code_update_check",
       "critical": false
     },
-    "gsync_background": {
-      "module": "core.shell",
-      "fn": "_action_gsync_background",
-      "critical": false
-    },
     "cartero_startup": {
       "module": "core.shell",
       "fn": "_action_cartero_startup",
@@ -92,9 +77,7 @@
       "trigger_type": "explicit",
       "pre": [
         "cloud_imgs_process",
-        "cronograma_log_completed",
-        "gsync_reconcile_renames",
-        "gsync_drift_check"
+        "cronograma_log_completed"
       ]
     },
     "commit_post": {
@@ -110,7 +93,6 @@
         "untracked_check",
         "commit_offer",
         "code_update_check",
-        "gsync_background",
         "cartero_startup",
         "ring_refresh",
         "dash_render",
@@ -121,7 +103,6 @@
       "trigger_type": "temporal",
       "post": [
         "advance_overdue_recurring",
-        "gsync_background",
         "dash_render"
       ]
     },

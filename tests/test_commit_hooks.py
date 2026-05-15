@@ -33,8 +33,6 @@ def test_commit_pre_chain_registered():
     assert chain.pre == [
         "cloud_imgs_process",
         "cronograma_log_completed",
-        "gsync_reconcile_renames",
-        "gsync_drift_check",
     ]
     assert chain.core is None
     assert chain.post == []
@@ -57,7 +55,6 @@ def test_all_commit_actions_are_non_critical():
     # v0.36: no critical actions in commit chains (tracked_files_refresh
     # was the only one and is now gone).
     for name in ("cloud_imgs_process", "cronograma_log_completed",
-                 "gsync_reconcile_renames", "gsync_drift_check",
                  "cloudsync_push_background"):
         assert hooks.ACTIONS[name].critical is False, name
 
@@ -106,53 +103,6 @@ def test_cronograma_log_some(capsys):
     assert "2 tareas de cronograma" in out
 
 
-# ── gsync_reconcile_renames ──────────────────────────────────────────────────
-
-def test_gsync_reconcile_zero():
-    with patch("core.gsync.reconcile_gsync_renames", return_value=[]):
-        result = commit._action_gsync_reconcile_renames(None)
-    assert result == {"ok": True, "msg": "0 renames"}
-
-
-def test_gsync_reconcile_swallows_exception():
-    with patch("core.gsync.reconcile_gsync_renames",
-               side_effect=RuntimeError("boom")):
-        result = commit._action_gsync_reconcile_renames(None)
-    assert result == {"ok": True, "msg": "skipped"}
-
-
-def test_gsync_reconcile_prints_renames(capsys):
-    renames = [("proj", "old", "new")]
-    with patch("core.gsync.reconcile_gsync_renames", return_value=renames):
-        commit._action_gsync_reconcile_renames(None)
-    out = capsys.readouterr().out
-    assert "🔗" in out and "old" in out and "new" in out
-
-
-# ── gsync_drift_check ────────────────────────────────────────────────────────
-
-def test_gsync_drift_zero():
-    with patch("core.gsync.check_gsync_drift", return_value=[]):
-        result = commit._action_gsync_drift_check(None)
-    assert result == {"ok": True, "msg": "0 drift items"}
-
-
-def test_gsync_drift_swallows_exception():
-    with patch("core.gsync.check_gsync_drift", side_effect=RuntimeError("boom")):
-        result = commit._action_gsync_drift_check(None)
-    assert result == {"ok": True, "msg": "skipped"}
-
-
-def test_gsync_drift_prints_items(capsys):
-    drift = [("proj", "task", "fooitem", ["was X", "now Y"])]
-    with patch("core.gsync.check_gsync_drift", return_value=drift):
-        commit._action_gsync_drift_check(None)
-    out = capsys.readouterr().out
-    assert "1 item modificado" in out
-    assert "fooitem" in out
-    assert "was X" in out
-
-
 # ── cloudsync_push_background ────────────────────────────────────────────────
 
 def test_cloudsync_push_launches(capsys):
@@ -175,16 +125,12 @@ def test_cloudsync_push_failure():
 
 def test_commit_pre_continues_when_clean(reset_journal):
     with patch("core.cloud_imgs.check_pending_imgs", return_value=0), \
-         patch("core.cronograma.log_crono_completions", return_value=0), \
-         patch("core.gsync.reconcile_gsync_renames", return_value=[]), \
-         patch("core.gsync.check_gsync_drift", return_value=[]):
+         patch("core.cronograma.log_crono_completions", return_value=0):
         results = hooks.fire("commit_pre", verbosity="quiet")
 
     actions_run = [r.action for r in results]
     assert actions_run == [
         "cloud_imgs_process",
         "cronograma_log_completed",
-        "gsync_reconcile_renames",
-        "gsync_drift_check",
     ]
     assert all(r.ok for r in results)

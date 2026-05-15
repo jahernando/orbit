@@ -41,7 +41,6 @@ def test_shell_start_chain_registered():
         "untracked_check",
         "commit_offer",
         "code_update_check",
-        "gsync_background",
         "cartero_startup",
         "ring_refresh",
         "dash_render",
@@ -57,7 +56,7 @@ def test_shell_actions_all_registered():
     for name in (
         "doctor_startup", "advance_overdue_recurring", "cloud_sync_status_check",
         "untracked_check", "commit_offer", "code_update_check",
-        "gsync_background", "cartero_startup", "ring_refresh",
+        "cartero_startup", "ring_refresh",
         "dash_render", "dash_background_loop_start",
     ):
         assert name in hooks.ACTIONS, f"Missing: {name}"
@@ -155,12 +154,6 @@ def test_code_update_check_delegates():
     h.assert_called_once()
 
 
-def test_gsync_background_delegates():
-    with patch("core.gsync.gsync_background") as h:
-        shell._action_gsync_background(None)
-    h.assert_called_once()
-
-
 def test_cartero_startup_delegates():
     with patch("core.cartero.startup_cartero") as h:
         shell._action_cartero_startup(None)
@@ -209,7 +202,6 @@ def test_day_open_chain_registered():
     assert chain.trigger_type == "temporal"
     assert chain.post == [
         "advance_overdue_recurring",
-        "gsync_background",
         "dash_render",
     ]
 
@@ -236,20 +228,17 @@ def test_dash_render_non_silent_default(capsys):
 
 
 def test_day_open_fires_all_actions(reset_journal):
-    """Fire day_changed; verify the three actions run with silent ctx."""
+    """Fire day_changed; verify the two actions run with silent ctx."""
     with patch("core.agenda_cmds.startup_advance_past_recurring", return_value=[]), \
-         patch("core.gsync.gsync_background") as gsync, \
          patch("orbit.run_dash") as dash:
         results = hooks.fire("day_changed", ctx={"silent": True},
                               verbosity="quiet")
 
     assert [r.action for r in results] == [
         "advance_overdue_recurring",
-        "gsync_background",
         "dash_render",
     ]
     assert all(r.ok for r in results)
-    gsync.assert_called_once()
     dash.assert_called_once_with(silent=True)
 
 
@@ -283,8 +272,6 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
                side_effect=record("startup_commit_offer")), \
          patch("core.startup.startup_code_update_check",
                side_effect=record("startup_code_update_check")), \
-         patch("core.gsync.gsync_background",
-               side_effect=record("gsync_background")), \
          patch("core.cartero.startup_cartero",
                side_effect=record("startup_cartero")), \
          patch("core.ring_export.refresh_all",
@@ -302,7 +289,6 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
         "startup_untracked_check",
         "startup_commit_offer",
         "startup_code_update_check",
-        "gsync_background",
         "startup_cartero",
         "ring_refresh_all",
         "run_dash",
@@ -316,7 +302,6 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
         "untracked_check",
         "commit_offer",
         "code_update_check",
-        "gsync_background",
         "cartero_startup",
         "ring_refresh",
         "dash_render",
@@ -335,7 +320,6 @@ def test_shell_startup_non_critical_failure_continues(reset_journal):
          patch("core.startup.startup_untracked_check"), \
          patch("core.startup.startup_commit_offer"), \
          patch("core.startup.startup_code_update_check"), \
-         patch("core.gsync.gsync_background"), \
          patch("core.cartero.startup_cartero"), \
          patch("orbit.run_dash"), \
          patch("core.shell.threading.Thread"):

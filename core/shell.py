@@ -138,13 +138,6 @@ def _action_code_update_check(ctx):
     return {"ok": True}
 
 
-def _action_gsync_background(ctx):
-    """Spawn background gsync thread. Dormant unless applescript_writes."""
-    from core.gsync import gsync_background
-    gsync_background()
-    return {"ok": True}
-
-
 def _action_cartero_startup(ctx):
     """Start the mail/Slack daemon if cartero.json is configured."""
     from core.cartero import startup_cartero

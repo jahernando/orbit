@@ -859,14 +859,12 @@ def _agenda_via_calendar() -> bool:
     """Return True when tasks/ms/reminders are delivered as Calendar events
     (alarm via CalendarAgent). Used to short-circuit Reminders.app paths.
 
-    Falls back to False (legacy Reminders.app behaviour) on any config error
-    so a misconfigured workspace still gets its alarms one way or another.
+    Always True since v0.38 (gsync removed): the only path is the
+    declarative one — agenda.md → ics_share/.ics → Calendar.app subscribes,
+    plus ring_export → daemon → Reminders.app. The legacy AppleScript-direct
+    branches gated by ``not _agenda_via_calendar()`` are unreachable.
     """
-    try:
-        from core.gsync import _load_config, _agenda_backend
-        return _agenda_backend(_load_config()) == "calendar"
-    except Exception:
-        return False
+    return True
 
 
 def _schedule_ring_if_today(text, project_dir, date_val, ring, time_val, kind):
@@ -917,9 +915,9 @@ def _update_ring_on_edit(old_desc, item, project_dir, kind, changed_fields):
 
 
 def _sync_to_google(project_dir, item, kind):
-    """Sync item to Google if type supports it."""
-    from core.gsync import sync_item
-    sync_item(project_dir, item, kind)
+    """No-op since v0.38 (gsync removed). Kept as a stub so the many call
+    sites in this module don't need surgery yet — they fall through harmlessly."""
+    return
 
 
 def _ask_drop_confirmation(desc, recur, force, occurrence, series, label) -> tuple:
@@ -1355,21 +1353,12 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
             print(f"✓ [{project_dir.name}] [serie cancelada] {item_desc} ({item['recur']})")
         else:
             print(f"✓ [{project_dir.name}] Serie eliminada: {display} ({item['recur']})")
-        # Event series: delete from Google Calendar
-        if type_name == "event" and item.get("orbit_id"):
-            from core.gsync import delete_gcal_event
-            delete_gcal_event(project_dir, item)
     else:
         if cfg["has_status"]:
             add_orbit_entry(project_dir, f"[{cfg['drop_verb']}] {cfg['label']}: {item_desc}{next_info}", "apunte")
             print(f"✓ [{project_dir.name}] [{cfg['drop_verb']}] {item_desc}{next_info}")
         else:
             print(f"✓ [{project_dir.name}] {cfg['label']} {cfg['drop_verb']}: {display}{next_info}")
-        # Event non-recurring: delete from Calendar.app
-        if type_name == "event" and not item.get("recur") and item.get("orbit_id"):
-            from core.gsync import delete_gcal_event
-            delete_gcal_event(project_dir, item)
-
     # Ring cleanup
     if cfg["has_ring"]:
         _delete_ring_if_today(item_desc, project_dir, item.get("date"),
@@ -1600,14 +1589,6 @@ def run_task_done(project: Optional[str], text: Optional[str]) -> int:
     add_orbit_entry(project_dir, f"[completada] Tarea: {task_desc}{next_info}", "apunte")
     print(f"✓ [{project_dir.name}] [completada] {task_desc}{next_info}")
 
-    # Sync completed task first (deletes its calendar event / clears storage
-    # slot), THEN sync the new occurrence so the orbit-id resolution in
-    # _sync_one_agenda_event sees a clean state.
-    from core.gsync import sync_item
-    sync_item(project_dir, task, "task")
-    if next_task is not None:
-        sync_item(project_dir, next_task, "task")
-
     return 0
 
 
@@ -1754,12 +1735,6 @@ def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
     _write_agenda(agenda_path, data)
     add_orbit_entry(project_dir, f"[alcanzado] Hito: {ms_desc}{next_info}", "resultado")
     print(f"✓ [{project_dir.name}] [alcanzado] {ms_desc}{next_info}")
-
-    # Sync completed milestone first, then the new occurrence (if any).
-    from core.gsync import sync_item
-    sync_item(project_dir, ms, "milestone")
-    if next_ms is not None:
-        sync_item(project_dir, next_ms, "milestone")
 
     return 0
 
@@ -1994,11 +1969,6 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
                     from core.ring import _delete_reminder
                     _delete_reminder(rem["desc"], project_dir.name,
                                       kind="reminder", background=True)
-                # Push the advanced occurrence to Calendar so it shows the new
-                # date. orbit-id is carried in `rem` → _sync_one_agenda_event
-                # updates the existing event in place.
-                from core.gsync import sync_item
-                sync_item(project_dir, rem, "reminder")
                 print(f"✓ [{project_dir.name}] Recordatorio avanzado: {rem['desc']} → {next_due}")
                 return 0
 

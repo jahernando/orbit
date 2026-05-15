@@ -26,11 +26,14 @@ EXDATE / RECURRENCE-ID dance.
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 from datetime import date as _date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable, Optional
 
+from core.config import ORBIT_HOME
 from core.agenda_cmds import (
     _read_agenda, _next_occurrence,
     event_room_urls, event_agenda_urls, _is_meeting_url,
@@ -467,15 +470,39 @@ def render_bucket(bucket_name: str, bucket_kinds: list,
 
 # ── Bucket config ──────────────────────────────────────────────────────
 
+_CONFIG_PATH = ORBIT_HOME / "calendar-sync.json"
+
+
 def get_buckets(config: Optional[dict] = None) -> dict:
     """Read ``ics_buckets`` from calendar-sync.json or fall back to the
     default partition (agenda=tasks+rem, events=ev+ms+cronos)."""
     if config is None:
-        from core.gsync import _load_config
-        config = _load_config()
+        try:
+            config = json.loads(_CONFIG_PATH.read_text())
+        except (FileNotFoundError, json.JSONDecodeError):
+            config = {}
     return config.get("ics_buckets") or {
         k: list(v) for k, v in _DEFAULT_BUCKETS.items()
     }
+
+
+# ── AppleScript helpers (read-only: reload Calendar.app subscriptions) ───
+
+def _osa(script: str, timeout: int = 30) -> Optional[str]:
+    """Run osascript and return stdout (stripped) or None on error."""
+    try:
+        r = subprocess.run(["osascript", "-e", script],
+                           capture_output=True, text=True, timeout=timeout)
+        if r.returncode != 0:
+            return None
+        return r.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
+def _calendar_app_running() -> bool:
+    out = _osa('tell application "System Events" to (exists process "Calendar")')
+    return out == "true"
 
 
 def validate_buckets(buckets: dict) -> list:
@@ -762,10 +789,6 @@ def _trigger_calendar_reload() -> None:
     anything). If Calendar.app isn't running, the auto-refresh interval
     of the subscription closes the gap eventually.
     """
-    try:
-        from core.gsync import _calendar_app_running, _osa
-    except ImportError:
-        return
     if not _calendar_app_running():
         return
     _osa('tell application "Calendar" to reload calendars', timeout=5)

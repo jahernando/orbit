@@ -498,23 +498,6 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     except Exception:
         pass
 
-    # Check gsync drift (items changed since last sync)
-    try:
-        from core.gsync import check_gsync_drift
-        drift = check_gsync_drift()
-        if drift:
-            print(f"  ☁️  {len(drift)} item{'s' if len(drift) != 1 else ''} modificado{'s' if len(drift) != 1 else ''} desde último gsync:")
-            print()
-            for proj, kind, desc, diffs in drift:
-                print(f"  ⚠️  [{proj}] {kind}: {desc}")
-                for d in diffs:
-                    print(f"      {d}")
-                print()
-            print("  → Ejecuta `orbit gsync` para sincronizar los cambios con Google.")
-            print()
-    except Exception:
-        pass  # gsync not configured or not available
-
     # Check ics_buckets config (v0.32): every kind must appear in exactly
     # one bucket. Buckets surface as .ics files in cloud/calendar/.
     try:
@@ -568,46 +551,6 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     # ring.json freshness. v0.35.
     try:
         _check_ring_health()
-    except Exception:
-        pass
-
-    # Check pending sync failures (v0.30): items where sync_item ran but
-    # the post-write verify didn't match. They live in `.gsync-failures.json`
-    # per project. The ☁️ marker is absent on these items in agenda.md.
-    #
-    # DORMANT since v0.33: with AppleScript writes off, no new failures
-    # are recorded. Skip the report when the flag is off — existing
-    # journals (if any) are inert and irrelevant.
-    try:
-        from core.gsync import _applescript_writes_enabled
-        _failures_pass_enabled = _applescript_writes_enabled()
-    except ImportError:
-        _failures_pass_enabled = True
-    try:
-        if not _failures_pass_enabled:
-            raise StopIteration   # caught below
-        from core.gsync import _load_failures
-        from core.config import iter_project_dirs
-        failures_total = []
-        for pd in iter_project_dirs():
-            for key, entry in _load_failures(pd).items():
-                failures_total.append((pd.name, key, entry))
-        if failures_total:
-            n = len(failures_total)
-            print(f"  ☁️  {n} cita{'s' if n != 1 else ''} sin verificar en Calendar:")
-            print()
-            for proj, key, entry in failures_total:
-                naked = key
-                for prefix in ("task::", "milestone::", "reminder::"):
-                    if naked.startswith(prefix):
-                        naked = naked[len(prefix):]
-                        break
-                desc = naked.split("::", 1)[0]
-                print(f"  ⚠️  [{proj}] {entry.get('kind', '?')}: {desc}")
-                print(f"      {entry.get('reason', '?')}")
-            print()
-            print("  → Vuelve a editar la cita (cualquier cambio relanza el sync).")
-            print()
     except Exception:
         pass
 

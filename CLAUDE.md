@@ -18,15 +18,18 @@ Principios de diseño:
   orbit.py                ← CLI principal y dispatchers
   core/
     agenda_cmds.py        ← CRUD de las 4 citas (task, ms, ev, reminder)
-    ring.py               ← resolución de ring y programación en Reminders.app
-    gsync.py              ← sincronización con Google Calendar/Tasks
+    ring.py               ← parsing y helpers AppleScript-direct (legacy, gateado)
+    ring_export.py        ← ring.json + invoke daemon (modelo declarativo v0.37)
+    orbit_ring_daemon.py  ← EventKit upsert idempotente en Reminders.app
+    ics.py / ics_share.py ← emisión de buckets .ics que Calendar.app subscribe
     doctor.py             ← validación de sintaxis de ficheros
-    shell.py              ← shell interactivo y startup
+    shell.py              ← shell interactivo
+    startup.py            ← prompts de arranque (untracked, commit, code update)
     config.py             ← ORBIT_HOME, ORBIT_PROMPT, orbit.json
     log.py                ← logbook entries
     highlights.py         ← highlights CRUD
     project.py            ← gestión de proyectos
-  tests/                  ← pytest, ~765 tests
+  tests/                  ← pytest, ~1567 tests
 
 ~/🚀orbit-ws/             ← workspace de trabajo (privado)
 ~/🌿orbit-ps/             ← workspace personal (privado)
@@ -59,12 +62,13 @@ Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 - Startup programa las 4 citas del día (tasks, ms, ev, reminders)
 - Formato: `🚀[☀️mission] ✅ título` (workspace emoji + tipo proyecto + emoji cita + título)
 
-### gsync (Google sync)
-- Tasks/milestones → Google Tasks (una lista por tipo)
-- Events → Google Calendar (un calendario por tipo, RRULE para recurrentes)
-- Descripción: notas indentadas bajo el item se propagan a Google
-- Error en un evento no bloquea el resto
-- IDs en `.gsync-ids.json` por proyecto
+### Salida de citas (v0.38: gsync borrado)
+
+Una sola dirección: orbit es source-of-truth, los backends consumen.
+
+- **Calendar.app** (eventos / tasks-as-0min-events / reminders-as-0min-events): se suscribe a buckets `.ics` emitidos a `cloud_root/<workspace>/calendar/` por `ics.py` + `ics_share.py`. Read-only por construcción → no hay drift posible.
+- **Reminders.app** (alarmas con ring): `ring_export` proyecta agenda.md → `<workspace>/.reminders/ring.json`. El daemon `orbit_ring_daemon.py` (EventKit) hace upsert idempotente. Una lista Reminders.app por workspace (default = nombre del directorio).
+- Anteriormente había un push AppleScript-direct vía `gsync.py` + `calsync.py` (3673 ℓ); borrado en v0.38 tras 2 semanas de validación del modelo `.ics`. Ver DORMANT.md.
 
 ## Convenciones de código
 

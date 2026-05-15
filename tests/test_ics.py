@@ -357,7 +357,7 @@ class TestWriteWorkspace:
             "2026-06-01 — E [orbit:cafebabe]\n\n"
         )
         # Block calendar reload (would need Calendar.app).
-        monkeypatch.setattr("core.gsync._calendar_app_running", lambda: False)
+        monkeypatch.setattr("core.ics._calendar_app_running", lambda: False)
         cloud = orbit_env["tmp"] / "cloud"
         cloud.mkdir()
         n = ics.write_workspace(cloud)
@@ -380,7 +380,7 @@ class TestWriteWorkspace:
         assert (local / "agenda.ics").read_text() == (cal_dir / "agenda.ics").read_text()
 
     def test_aborts_on_invalid_buckets(self, orbit_env, monkeypatch, capsys):
-        monkeypatch.setattr("core.gsync._calendar_app_running", lambda: False)
+        monkeypatch.setattr("core.ics._calendar_app_running", lambda: False)
         # Inject a broken config.
         monkeypatch.setattr("core.ics.get_buckets",
                             lambda: {"agenda": ["task", "bogus"]})
@@ -403,7 +403,7 @@ class TestDiffWorkspace:
             "## ✅ Tareas\n"
             "- [ ] T (2026-05-15) [orbit:abc12345]\n\n"
         )
-        monkeypatch.setattr("core.gsync._calendar_app_running", lambda: False)
+        monkeypatch.setattr("core.ics._calendar_app_running", lambda: False)
         cloud = orbit_env["tmp"] / "cloud"
         cloud.mkdir()
         ics.write_workspace(cloud)
