@@ -270,26 +270,31 @@ def _is_url(ref: str) -> bool:
 
 
 def _ask_deliver() -> bool:
-    """Ask user interactively whether to deliver file to cloud."""
+    """Ask interactively: import to cloud (True) or link to source (False).
+
+    Default (Enter) = import. Returns False if not a tty.
+    """
     if not sys.stdin.isatty():
         return False
     try:
-        ans = input("  📦 ¿Entregar fichero a cloud? [S/n]: ").strip().lower()
+        ans = input("  📦 ¿Cómo guardar este fichero? [I]mportar (cloud) / [L]ink (fuente): ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
         return True
-    return ans not in ("n", "no")
+    return ans not in ("l", "link")
 
 
 def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                        tipo: str, fecha: Optional[str],
                        deliver: bool = False, orbit: bool = False,
+                       link: bool = False,
                        project_dir: Optional[Path] = None) -> int:
-    """Add a logbook entry, handling URL/file/deliver logic.
+    """Add a logbook entry, handling URL/file/import/link logic.
 
     - ref is URL → link title to URL
-    - ref is file + --deliver → copy to cloud/logs/ with date prefix, link to cloud
-    - ref is file (no --deliver) → link to local file, ask if deliver
+    - ref is file + --import (deliver) → copy to cloud/logs/ with date prefix
+    - ref is file + --link → keep as link to local source (no copy, no prompt)
+    - ref is file (no flag) → prompt: import to cloud or link to source
     - ref is None → plain entry
     """
     from core.deliver import deliver_file, IMAGE_EXTS, relative_cloud_link
@@ -315,7 +320,12 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                     src = Path.cwd() / ref
             if src.exists():
                 is_image = src.suffix.lower() in IMAGE_EXTS
-                should_deliver = deliver or _ask_deliver()
+                if link:
+                    should_deliver = False
+                elif deliver:
+                    should_deliver = True
+                else:
+                    should_deliver = _ask_deliver()
 
                 if should_deliver:
                     dest = deliver_file(project_dir, src, subdir="logs", date_prefix=True)

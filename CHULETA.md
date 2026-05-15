@@ -148,14 +148,14 @@ orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [
 ## hl — highlights
 
 ```bash
-orbit hl add  <project> "<text>" [<file|url>] --type TYPE [--deliver] [--track] [--date [FECHA]]
+orbit hl add  <project> "<text>" [<file|url>] --type TYPE [--import] [--link] [--date [FECHA]]
 orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
 orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE] [--editor E]
 ```
 
-- `<file|url>`: argumento posicional opcional. Si es URL, enlaza el texto. Si es fichero local, enlaza y pregunta si quieres entregarlo a cloud
-- `--deliver`: entrega el fichero directamente a cloud sin preguntar (copia a `hls/`, sin prefijo de fecha)
-- `--track`: registra el fichero como **externa** (symlink al fuente). Solo `.md`. Ver sección [externa](#externa--symlink-a-md-fuera-del-workspace) abajo
+- `<file|url>`: argumento posicional opcional. Si es URL, enlaza el texto. Si es fichero local, enlaza y pregunta si quieres importarlo a cloud o linkar a la fuente
+- `--import`: importa el fichero a cloud sin preguntar (copia a `hls/`, sin prefijo de fecha). Alias legacy: `--deliver`
+- `--link`: registra el fichero como **externa** (symlink al fuente). Solo `.md`. Alias legacy: `--track`. Ver sección [externa](#externa--symlink-a-md-fuera-del-workspace) abajo
 - `--type`: `refs` (📎) · `results` (📊) · `decisions` (📌) · `ideas` (💡) · `evals` (🔍) · `plans` (🗓️)
 - `--date`: añade fecha al final del texto — `--date` (hoy), `--date tomorrow`, `--date 2026-04-15`
 - `drop` pide confirmación (defecto **No**); `--force` la omite
@@ -177,9 +177,11 @@ orbit note open   <project> [<name>] [--date D] [--editor E]
 orbit note list   <project> [--open [EDITOR]]
 orbit note drop   <project> [<file>] [--force]    # propia: borra; externa: untrack
 
-orbit track   <project> <fullpath>                 # crear externa (alias top-level)
-orbit untrack <project> <name>                     # quitar externa, source intacto
+orbit link    <project> <fullpath>                 # crear externa (alias top-level)
+orbit unlink  <project> <name>                     # quitar externa, source intacto
 ```
+
+> Aliases legacy: `orbit track` / `orbit untrack` siguen funcionando.
 
 - **create** (propia): crea nota en `notes/` desde plantilla y registra en logbook
   - Nombre: `YYYY-MM-DD_título.md` (con fecha de hoy como prefijo)
@@ -204,26 +206,28 @@ orbit untrack <project> <name>                     # quitar externa, source inta
 Casos: `DECISIONS.md` de tu repo público, draft compartido en Drive de la USC, plan vivo de otro proyecto. **Markdown que vive fuera de orbit-ws, lo quieres a mano en Obsidian y publicado al cloud, sin duplicar la verdad**.
 
 ```bash
-orbit tracked add  <project> <fullpath>    # crear externa (canónico)
-orbit tracked drop <project> <name>        # quitar (canónico)
+orbit link    <project> <fullpath>         # crear externa (atajo top-level, uso diario)
+orbit unlink  <project> <name>             # quitar externa, source intacto
+
+# forma canónica noun-verb (equivalente):
+orbit tracked add  <project> <fullpath>    # = orbit link
+orbit tracked drop <project> <name>        # = orbit unlink
 orbit tracked list [<project>]             # listar externas con status
-
-# atajos top-level equivalentes (uso diario):
-orbit track   <project> <fullpath>         # = orbit tracked add
-orbit untrack <project> <name>             # = orbit tracked drop
 ```
 
-UX de `track` / `tracked add` con eco de confirmación:
+> Aliases legacy: `orbit track` / `orbit untrack` siguen funcionando. La noun-verb `orbit tracked …` conserva su nombre porque coincide con el registry (`.orbit-tracked.json`).
+
+UX de `link` / `tracked add` con eco de confirmación:
 
 ```
-$ orbit track orbit /Users/hernando/orbit/DECISIONS.md
+$ orbit link orbit /Users/hernando/orbit/DECISIONS.md
   local? /Users/hernando/orbit/
   note?  DECISIONS.md
-✓ [💻orbit] Tracked: notes/DECISIONS.md → /Users/hernando/orbit/DECISIONS.md
+✓ [💻orbit] Linked: notes/DECISIONS.md → /Users/hernando/orbit/DECISIONS.md
 ```
 
 - **Mecanismo**: orbit crea un **symlink relativo** en `notes/<basename>` apuntando al fuente. La verdad es el fuente; el symlink solo es una ventana. Editar en Obsidian = editar el fuente.
-- **Solo `.md`** (git no diffea binarios; PDFs usa `orbit deliver`).
+- **Solo `.md`** (git no diffea binarios; PDFs usa `orbit import`).
 - **Registry**: `<project>/.orbit-tracked.json` con schema `{"files": {<name>: <source_path>}}`.
 - **Render HTML al cloud**: para cada externa, render lee el fuente al momento, lo convierte a HTML y lo escribe en `cloud/notes/`. Si el fuente no es accesible, usa el último mirror cacheado en `.cache/notes/<proj>/` (gitignored).
 - **Doctor**: chequea que cada symlink existe y su target es legible. Si no, reporta `broken_link` / `missing_link` / `not_link` y sugiere `untrack` o `retrack`.
@@ -276,14 +280,16 @@ orbit open  <project> [logbook|highlights|agenda|project] [--editor E] [--dir]
 ## log y search
 
 ```bash
-orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--deliver] [--note NOTA] [--date D] [--open [EDITOR]]
+orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--import] [--link] [--note NOTA] [--date D] [--open [EDITOR]]
 
 orbit search [query] [--project P...] [--entry TIPO] [--date D] [--from D] [--to D]
              [--in logbook|highlights|agenda] [--any] [--notes]
              [--limit N] [--open [EDITOR]]
 ```
 
-- `<file|url>`: argumento posicional opcional. Si es URL, enlaza el título. Si es fichero local, enlaza al fichero y pregunta si quieres entregarlo a cloud
+- `<file|url>`: argumento posicional opcional. Si es URL, enlaza el título. Si es fichero local, pregunta si quieres importarlo a cloud o linkar a la fuente
+- `--import`: importa a cloud sin preguntar (copia a `logs/` con prefijo `YYYY-MM-DD_`). Alias legacy: `--deliver`
+- `--link`: linka a la fuente sin preguntar (sin copia). Alias legacy: `--track`
 Muchos comandos soportan `--append proyecto:nota` para añadir su salida a una nota:
 
 ```bash
@@ -292,7 +298,6 @@ orbit agenda --append mission:W12                    # agenda → nota semanal
 orbit view catedra --append catedra:estado           # vista del proyecto → nota
 orbit search "algo" --append catedra:busqueda        # resultados de búsqueda → nota
 ```
-- `--deliver`: entrega el fichero directamente a cloud sin preguntar (copia a `logs/` con prefijo `YYYY-MM-DD_`)
 - Si el fichero es imagen (png, jpg, svg...), se inserta `![título](link)` en la línea siguiente de la entrada
 - `--entry`: filtra por tipo de entrada (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
 - `--in`: busca en un tipo de fichero específico (por defecto logbook)

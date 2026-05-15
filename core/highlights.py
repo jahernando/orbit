@@ -233,15 +233,18 @@ def _is_url(ref: str) -> bool:
 
 
 def _ask_deliver() -> bool:
-    """Ask user interactively whether to deliver file to cloud."""
+    """Ask interactively: import to cloud (True) or link to source (False).
+
+    Default (Enter) = import. Returns False if not a tty.
+    """
     if not sys.stdin.isatty():
         return False
     try:
-        ans = input("  📦 ¿Entregar fichero a cloud? [S/n]: ").strip().lower()
+        ans = input("  📦 ¿Cómo guardar este fichero? [I]mportar (cloud) / [L]ink (fuente): ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
         return True
-    return ans not in ("n", "no")
+    return ans not in ("l", "link")
 
 
 def run_hl_add(project: str, text: str, hl_type: str,

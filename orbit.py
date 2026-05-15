@@ -316,6 +316,7 @@ def cmd_log(args):
         tipo=args.entry,
         fecha=_d(args.date),
         deliver=getattr(args, "deliver", False),
+        link=getattr(args, "link", False),
         project_dir=project_dir,
     )
     if rc == 0 and args.open:
@@ -1356,7 +1357,13 @@ def _build_parser():
         metavar="ENTRY",
         help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
     )
-    log_p.add_argument("--deliver", action="store_true", help="Deliver file to cloud (logs/ with date prefix)")
+    log_p.add_argument("--import", "--deliver", action="store_true",
+                       dest="deliver",
+                       help="Import file to cloud (logs/ with date prefix). Alias: --deliver.")
+    log_p.add_argument("--link", "--track", action="store_true",
+                       dest="link",
+                       help="Keep file as link to local source (skips the import-vs-link prompt). "
+                            "Alias: --track.")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
     log_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
                        help="Open in editor (optionally specify editor name)")
@@ -1623,13 +1630,14 @@ def _build_parser():
         p.add_argument("project", help="Project name (partial match)")
         p.add_argument("name", help="Filename in notes/ (e.g. DECISIONS.md)")
 
-    track_p = subparsers.add_parser("track",
-        help="Atajo para `orbit tracked add` — registra un .md externo como nota del proyecto")
-    _add_track_args(track_p)
+    link_p = subparsers.add_parser("link", aliases=["track"],
+        help="Link an external .md file as a project note (creates a symlink). "
+             "Alias: track.")
+    _add_track_args(link_p)
 
-    untr_p = subparsers.add_parser("untrack",
-        help="Atajo para `orbit tracked drop` — quita el symlink, fuente intacta")
-    _add_untrack_args(untr_p)
+    unlink_p = subparsers.add_parser("unlink", aliases=["untrack"],
+        help="Remove the symlink (source untouched). Alias: untrack.")
+    _add_untrack_args(unlink_p)
 
     # --- tracked (canonical noun-verb form) ---
     tr_p   = subparsers.add_parser("tracked",
@@ -1746,9 +1754,13 @@ def _build_parser():
     hl_add.add_argument("ref",     nargs="?", default=None, help="File path or URL (optional)")
     hl_add.add_argument("--type",  required=True, choices=HL_TYPES,
                         help="Section type: refs, results, decisions, ideas, evals")
-    hl_add.add_argument("--deliver", action="store_true", help="Deliver file to cloud (hls/)")
-    hl_add.add_argument("--track", action="store_true",
-                        help="Register the file as tracked (auto-refresh on commit). .md only.")
+    hl_add.add_argument("--import", "--deliver", action="store_true",
+                        dest="deliver",
+                        help="Import file to cloud (hls/). Alias: --deliver.")
+    hl_add.add_argument("--link", "--track", action="store_true",
+                        dest="track",
+                        help="Link to external file (symlink in notes/, auto-refresh on commit). "
+                             ".md only. Alias: --track.")
     hl_add.add_argument("--date",  nargs="?", const="today", default=None,
                         help="Prefix date (today, tomorrow, YYYY-MM-DD)")
 
@@ -1794,8 +1806,10 @@ def _build_parser():
                            help="Logbook entry type (default: apunte)")
     nt_create.add_argument("--hl",      default=None, metavar="TYPE",
                            help="Register in highlights instead of logbook (e.g. referencia)")
-    nt_create.add_argument("--track",   action="store_true",
-                           help="Register as tracked external file (auto-refresh on commit). Requires file.")
+    nt_create.add_argument("--link", "--track", action="store_true",
+                           dest="track",
+                           help="Link as external file (symlink, auto-refresh on commit). "
+                                "Requires file. Alias: --track.")
     nt_create.add_argument("--from",    dest="from_path", default=None, metavar="PATH",
                            help="Pre-load note content from PATH (any extension). Result is fully owned, no link to source.")
     nt_create.add_argument("--editor",  default=None)
@@ -1812,8 +1826,10 @@ def _build_parser():
                            help="Logbook entry type (default: apunte)")
     nt_import.add_argument("--hl",      default=None, metavar="TYPE",
                            help="Register in highlights instead of logbook")
-    nt_import.add_argument("--track",   action="store_true",
-                           help="Register as tracked external file (auto-refresh on commit)")
+    nt_import.add_argument("--link", "--track", action="store_true",
+                           dest="track",
+                           help="Link as external file (symlink, auto-refresh on commit). "
+                                "Alias: --track.")
     nt_import.add_argument("--from",    dest="from_path", default=None, metavar="PATH",
                            help="Pre-load note content from PATH (any extension). Result is fully owned.")
     nt_import.add_argument("--editor",  default=None)
@@ -1846,7 +1862,7 @@ def _build_parser():
     note_p.add_argument("--no-date", action="store_true")
     note_p.add_argument("--entry",   default="apunte")
     note_p.add_argument("--hl",      default=None, metavar="TYPE")
-    note_p.add_argument("--track",   action="store_true")
+    note_p.add_argument("--link", "--track", action="store_true", dest="track")
     note_p.add_argument("--from",    dest="from_path", default=None, metavar="PATH")
     note_p.add_argument("--editor",  default=None)
 
@@ -1867,9 +1883,10 @@ def _build_parser():
     _hooks.add_chain_flags(rnd_p, "render")
 
     # --- deliver (top-level alias of `cloud deliver`, kept for daily use) ---
-    dlv_p = subparsers.add_parser("deliver", help="Deliver file to cloud (alias of `cloud deliver`)")
+    dlv_p = subparsers.add_parser("import", aliases=["deliver"],
+        help="Import file to cloud (alias of `cloud deliver`). Alias: deliver.")
     dlv_p.add_argument("project", help="Project name (partial match)")
-    dlv_p.add_argument("file",    help="File path to deliver")
+    dlv_p.add_argument("file",    help="File path to import")
 
     # --- cloud {deliver,sync,imgs} ---
     cld_p   = subparsers.add_parser("cloud", help="Cloud operations: deliver, sync, imgs")
@@ -1987,7 +2004,7 @@ _COMMANDS = {
     "log": cmd_log, "search": cmd_search,
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "project": cmd_project,
-    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "untrack": cmd_untrack, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
+    "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "link": cmd_track, "untrack": cmd_untrack, "unlink": cmd_untrack, "import": cmd_deliver, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "ring": cmd_ring,
     "reorganize": cmd_reorganize,
