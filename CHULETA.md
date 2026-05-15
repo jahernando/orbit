@@ -627,21 +627,26 @@ orbit ics-import <proj> --clipboard      # lee del portapapeles (pbpaste)
 - Conflicto: si ya existe cita con mismo `desc+date` en el destino → prompt `[d-duplicar / o-overwrite / c-cancel]`.
 - Tras crear: regen automático del `.ics` del proyecto.
 
-### Cloud (OneDrive/Google Drive) — render y deliver
+### Cloud (OneDrive/Google Drive) — render y cloud
 
 ```bash
-orbit render                  # renderiza ficheros del último commit
-orbit render <project>        # renderiza un proyecto completo
-orbit render --full           # renderiza todos los proyectos
-orbit deliver <project> <file>   # entrega un fichero al cloud del proyecto
+orbit render                          # renderiza ficheros del último commit
+orbit render <project>                # renderiza un proyecto completo
+orbit render --full                   # renderiza todos los proyectos
+
+orbit cloud deliver <project> <file>  # entrega un fichero al cloud del proyecto
+orbit cloud sync [--dry-run]          # fuerza sync completo md→HTML al cloud
+orbit cloud imgs [--dry-run]          # recoge imágenes de _imgs/ y entrega a cloud
+
+orbit deliver <project> <file>        # alias top-level de `cloud deliver`
 ```
 
 - Convierte ficheros `.md` de cada proyecto a `.html` en el directorio cloud
 - Genera `index.html` con dashboard de proyectos
 - Incluye soporte KaTeX para ecuaciones LaTeX (`$...$` y `$$...$$`)
-- Se ejecuta automáticamente en background tras cada `commit`
+- `cloud sync` se ejecuta automáticamente en background tras cada `commit`; el verbo manual sirve para forzar o auditar con `--dry-run`
 - `deliver` también disponible como `--deliver` en `log` y `hl add`
-- Estructura cloud: `cloud_root/{tipo}/{proyecto}/logs/`, `hls/`
+- Estructura cloud: `cloud_root/{tipo}/{proyecto}/cloud/{logs,hls,imgs,...}/`
 - `cloud_root` se configura en `orbit.json`; cada proyecto tiene un link `[cloud]` en `project.md`
 
 ### Mac Reminders — notificaciones

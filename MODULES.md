@@ -75,7 +75,6 @@ graph TB
         deliver["deliver · 205"]
         cloudsync["cloudsync · 240"]
         cloud_imgs["cloud_imgs · 278"]
-        recloud["recloud · 230"]
         ics_share["ics_share · 680"]
         ring_export["ring_export · 572"]
         ring["ring · 377 (helpers + dormant-flag path)"]
@@ -137,7 +136,6 @@ graph TB
     notes --> deliver
     cloudsync --> CLOUD
     cloud_imgs --> CLOUD
-    recloud --> CLOUD
 
     log --> panel
     agenda_cmds --> panel
@@ -167,7 +165,7 @@ graph TB
 | 0.2 | Mail/Slack → notif. al prompt | `cartero` (958) | Solo escribe `[📬N]` en el shell. Independiente del log. |
 | 1   | Log + hl + notes + cloud | `log` `highlights` `notes` + `archive` | `highlights` y `notes` escriben en `log` (no son independientes). |
 | 1.1a | md propios en repo | `notes` | ✓ |
-| 1.1b | pesados a cloud | `deliver` `cloudsync` `cloud_imgs` `recloud` | 4 módulos para "copiar a `cloud_root`". Fusión clara. |
+| 1.1b | pesados a cloud | `deliver` `cloudsync` `cloud_imgs` | 3 módulos para "copiar a `cloud_root`". Agrupados bajo `orbit cloud {deliver,sync,imgs}` en v0.38 (Fase 2). `recloud` (one-shot de migración) borrado. |
 | 1.1c | links externos md / others | (convención de log; sin módulo dedicado) | Resuelto en `log` + `open`. |
 | 1.3 | render HTML mirror | `render` (713) | ✓ |
 | 2   | agenda.md (4 citas) | `agenda_cmds` (2245) `tasks` `agenda_view` (1086) | `agenda_cmds` es el corazón y el módulo más grande. |
@@ -196,7 +194,7 @@ graph TB
 
 1. ~~**Tres caminos a Google/Calendar** — `gsync` (2880) + `calsync` (793) + `calendar_sync` (247). Según `DEPENDENCIES.md` Calendar.app es read-only subscriber desde v0.33. **Mayor potencial de borrado del repo.**~~ ✅ **Resuelto** (2026-05-15): `gsync` y `calsync` borrados completos. `calendar_sync` queda solo con OAuth helpers para cartero (~80 ℓ activos); resto del fichero anotado como dormante en `DORMANT.md`.
 2. ~~**Dos caminos a Reminders.app** — `reminders.py` (AppleScript directo, legacy) vs `ring_export+daemon` (EventKit, v0.35). `reminders.py` parece dormante.~~ ✅ **Resuelto** (2026-05-15): `reminders.py` borrado. Queda `ring.py` (520 ℓ) marcado como dormante en CLAUDE.md desde v0.37 — siguiente candidato.
-3. **Cuatro módulos cloud** — `deliver` + `cloudsync` + `recloud` + `cloud_imgs`. Todos giran sobre "copiar a `cloud_root`". Fusionables en un único `cloud.py`.
+3. ~~**Cuatro módulos cloud** — `deliver` + `cloudsync` + `recloud` + `cloud_imgs`.~~ ✅ **Resuelto** (2026-05-15, Fase 2): `recloud` borrado (one-shot de migración ya aplicado en todos los workspaces); los 3 restantes (`deliver`, `cloudsync`, `cloud_imgs`) viven intactos pero el CLI se agrupó bajo `orbit cloud {deliver,sync,imgs}`. La fusión a un único módulo se deja para Fase 4 (cuando se diseñe el seam `orbit/api.py`).
 4. **`agenda_cmds.py` (2245 ℓ)** — mezcla CRUD de las 4 citas + parsing recurrencia + propagación. Candidato a partir en `agenda_io.py` + `recurrence.py` + `appointments/`.
 5. **`cronograma.py` (1830 ℓ)** — orbita fuera del modelo de las 4 citas; convivencia o absorción es decisión de producto.
 
@@ -209,7 +207,7 @@ Cuatro fases en este orden. **Cada fase debe dejar `pytest` verde antes de pasar
 | Fase | Qué | Beneficio esperado |
 |---|---|---|
 | **1 · Borrar** | Paths dormantes en `gsync.py`; `reminders.py` legacy si está superseded por `ring_export+daemon`; `migrate*` y `tracked_migrate` ya aplicados; `importer` si no se usa; lógica de hooks atrapada en `commit.py` extraída a `hooks.py` | **−4000 a −5000 ℓ**. Sin tocar interfaces de usuario |
-| **2 · Mergear** | Cluster cloud: `deliver`+`cloudsync`+`cloud_imgs`+`recloud` → un solo `cloud.py` con subcomandos. Cluster calendar: lo que sobreviva tras Fase 1 absorbe al resto. Decisión sobre `cronograma`: absorber en agenda como quinto tipo o aislar | CLI con menos verbos top-level; mismo poder |
+| **2 · Mergear** | Cluster cloud: `deliver`+`cloudsync`+`cloud_imgs`+`recloud` → un solo `cloud.py` con subcomandos. Cluster calendar: lo que sobreviva tras Fase 1 absorbe al resto. Decisión sobre `cronograma`: absorber en agenda como quinto tipo o aislar | CLI con menos verbos top-level; mismo poder. **Estado**: cluster cloud agrupado en `orbit cloud {deliver,sync,imgs}` (2026-05-15, `recloud` borrado); cluster calendar y cronograma pendientes. |
 | **3 · Reemplazar internals con libs estándar** | `icalendar` (PyPI) para producción/parseo ICS — sustituye hand-rolled en `ics`, `ics_share`, partes de `gsync`, `email._parse_ics`. `python-dateutil.rrule` para recurrencia — sustituye lógica hand-rolled en `agenda_cmds` y `ring`. **Aquí cae también la partición de monstruos** (`agenda_cmds.py` → `agenda/io.py` + `agenda/recurrence.py` + `agenda/{task,ms,ev,reminder}.py`) cuando sea prerrequisito | **−800 a −1200 ℓ adicionales**; menos edge cases de timezones / RRULE serialization |
 | **4 · Simplificar API/CLI** | Convención `noun verb` por defecto (`orbit task add`, `orbit hl add`, `orbit cloud deliver`, `orbit ics share`). 3–4 atajos top-level por uso (`log`, `dash`, `commit`, `shell`). Seam estable `orbit/api.py`: funciones puras (`add_task(project, title, **kw) → Task`, etc.) que CLI, hooks y scripts externos llaman | `orbit.py` de 2296 ℓ → ~800 ℓ. CLI navegable por intuición, no por chuleta |
 
@@ -227,3 +225,12 @@ Añadir `icalendar` y `python-dateutil` lleva las dependencias pip de 2 a 4 (hoy
 | 3 | `migrate` (548) `tracked_migrate` (179) `importer` (478) + CLI wiring + 4 tests | ~1325 | Borrar | ✅ 2026-05-15 (−1323 ℓ, 1835 tests) |
 | 4 | `commit.py` carve-out de `startup_*` | extraer 226 | Nuevo `core/startup.py`. (Las 5 hook actions se quedan; revisitar tras paso 5) | ✅ 2026-05-15 (commit.py 707→481, suite verde) |
 | 5 | `gsync.py` + `calsync.py` + 8 tests | −6826 ℓ borrados; +salvage de 3 helpers (`_new_orbit_id`, `_osa`, `_calendar_app_running`) a `ics`/`ics_share` | Borrar enteros (precondición `applescript_writes:false` cumplida en todos los workspaces) | ✅ 2026-05-15 (1567 tests verde) |
+
+### Orden táctico dentro de la Fase 2
+
+| # | Bloque | Tamaño aprox. | Acción | Estado |
+|---|---|---|---|---|
+| 1a | `recloud.py` (one-shot migración layout cloud) | 230 ℓ | Borrar (migración ya aplicada en todos los workspaces). Limpiar también `migrate`/`gsync` zombies en `shell.py:217 COMMANDS` | ✅ 2026-05-15 (−239 ℓ, 1567 tests) |
+| 1b | CLI: agrupar `deliver`/`cloud imgs`/`cloudsync` bajo un solo verbo | +17/−5 ℓ orbit.py | Subcomandos `orbit cloud {deliver,sync,imgs}`. `orbit deliver` se mantiene como atajo top-level. Internals (`core/deliver.py`, `core/cloudsync.py`, `core/cloud_imgs.py`) intactos para no romper los ~30 callsites + mocks de tests; la fusión de internals queda para Fase 4 (seam `orbit/api.py`) | ✅ 2026-05-15 (1567 tests verde) |
+| 2 | `calendar_sync.py` (~247 ℓ, mayormente dormante) | 247 ℓ | Partir en `core/google_oauth.py` (lo vivo que usa `cartero`, ~80 ℓ) + borrar el resto. **Precondición**: 3 meses sin reactivar el pull Google→orbit (cuenta desde fecha de marcado dormante en `DORMANT.md`) | pendiente |
+| 3 | Decisión sobre `cronograma.py` (1830 ℓ) | — | Decisión de producto: ¿absorber en agenda como quinto tipo o aislar mejor? Sin pasos concretos hasta tomar decisión con JAngel | pendiente |
