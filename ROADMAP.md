@@ -85,9 +85,9 @@ generador HTML, integración con `orbit` CLI y test).
 
 ## 3. Fase 3 del plan de simplificación · Reemplazar internals con libs estándar
 
-**Estado**: 3.A ✅ + 3.B ✅ cerradas 2026-05-15. 3.C pendiente.
+**Estado**: 3.A ✅ + 3.B ✅ + 3.C ✅ cerradas 2026-05-15. **Fase 3 completa.**
 
-**Objetivo**: delegar mecánica RFC 5545 y recurrencia a libs maduras. Ahorro neto realista −120 a −150 ℓ (más correctitud en edge cases); la estimación original de 500-1000 ℓ era optimista.
+**Objetivo**: delegar mecánica RFC 5545 y recurrencia a libs maduras + reorganizar el monolito de agenda. Ahorro neto de mecánica −120 ℓ (más correctitud en edge cases); 3.C suma +170 ℓ de docstrings de subpaquete pero rompe el monolito de 2202 ℓ en seis módulos manejables.
 
 **Orden táctico**:
 
@@ -95,9 +95,7 @@ generador HTML, integración con `orbit` CLI y test).
 
 - **3.B · `python-dateutil` ✅** (commit `e130c38`, 2026-05-15). Sustituye la aritmética manual de `_next_occurrence` en `core/agenda_cmds.py` con `relativedelta(months=N)` (clamp natural) + `rrule(MONTHLY/DAILY, byweekday=..., bysetpos=±1)` (weekdays, first-X, last-X). Ahorro real: **−13 ℓ netas**; los 12 tests existentes (`TestNextOccurrence`) pasan sin cambios. La dep ya estaba como transitiva de `icalendar` — coste real cero. Ver [ADR-030](DECISIONS.md#adr-030--migración-a-python-dateutil-para-la-mecánica-de-recurrencia).
 
-- **3.C · Partir `core/agenda_cmds.py`** (2202 ℓ) → subpaquete `core/agenda/{io,recurrence,task,ms,ev,reminder}.py`. **Parcialmente acoplado a cronograma**: si el sub-paso 2.3.2 del plan (ADR-028) decide añadir un campo `composite: <name>` al modelo task, conviene saberlo antes. Alternativa: partir con `composite=None` placeholder y rellenar después.
-
-**Estimación restante**: 3.C ~1-2 días.
+- **3.C · Partir `core/agenda_cmds.py` ✅** (commit `1db9fba`, 2026-05-15). 2202 ℓ → subpaquete `core/agenda/{recurrence,io,display,lifecycle,runners,startup}.py` (6 módulos entre 120 y 840 ℓ) + shim de 28 ℓ en `core/agenda_cmds.py` que preserva la compat para los ~20 callers externos. **Reorganización, no consolidación**: ninguna función borrada, suite sin cambios (1536 → 1536). El acoplamiento previsto con cronograma 2.3.2 (campo `composite` en task) queda pospuesto: la partición se hizo con `composite=None` placeholder y se rellenará al final del plan. Ver [ADR-031](DECISIONS.md#adr-031--partir-coreagenda_cmdspy-en-subpaquete-coreagenda).
 
 ---
 

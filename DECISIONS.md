@@ -407,6 +407,45 @@ La firma `_next_occurrence(due, recur, done_date) → str` se mantiene; los 6 ca
 
 ---
 
+## ADR-031 — Partir `core/agenda_cmds.py` en subpaquete `core/agenda/`
+**Estado**: VIGENTE (decisión 2026-05-15, Fase 3 sub-paso C del plan en `MODULES.md §5` / `ROADMAP.md §3`).
+
+**Contexto**: `core/agenda_cmds.py` acumuló **2202 ℓ y 89 funciones top-level** mezclando gramática de recurrencia, line parsers/formatters, IO de `agenda.md`, helpers de selección interactiva, lifecycle CRUD (validate / ask / advance / ring hooks), 22 entry points públicos `run_*`, y el hook de startup. Era el fichero más grande del repo después de `orbit.py`, y la sección "Lifecycle helpers" (~620 ℓ) en particular era difícil de localizar sin abrir el fichero entero. **21 ficheros externos importan de él** (orbit.py, ring.py, ring_export.py, ics.py, ics_share.py, agenda_view.py, panel.py, doctor.py, email.py, archive.py, stats.py, inbox.py, reorganize.py, cronograma.py, project_view.py, shell.py + tests + scripts), así que la partición tiene que cuidar la compatibilidad de imports.
+
+**Decisión**: partir en **6 módulos** bajo el subpaquete `core/agenda/`, agrupados por responsabilidad:
+
+| Módulo | LOC | Contenido |
+|---|---:|---|
+| `recurrence.py` | 140 | Gramática + `_next_occurrence` + `_advance_to_today_or_future` |
+| `io.py` | 405 | `_read_agenda`/`_write_agenda` + line parsers/formatters + validators |
+| `display.py` | 212 | `_display_*` + `_select_*` + `event_*_urls` + `event_indicators` |
+| `lifecycle.py` | 844 | `_TYPE_CONFIG` + generic CRUD + ring hooks + validate + ask helpers |
+| `runners.py` | 567 | `run_task_*` (6) + `run_ms_*` (6) + `run_ev_*` (5) + `run_reminder_*` (5) |
+| `startup.py` | 118 | `startup_advance_past_recurring` |
+
+`core/agenda_cmds.py` queda como **shim de 28 ℓ** que inyecta cada símbolo del paquete (incluyendo `_underscore` privates) en su namespace vía `setattr(self, name, getattr(core.agenda, name))`. Esto preserva `from core.agenda_cmds import _read_agenda, _next_occurrence, ...` para los ~20 callers existentes sin pedirles que migren todavía.
+
+**Razón**:
+- *Localización*: cada bloque conceptual tiene un home; la gramática de recurrencia ya no vive entreverada con `_TYPE_CONFIG` ni con `_display_event`. Buscar dónde ajustar el VALARM ring → mira `lifecycle.py`, no escanea 2200 ℓ.
+- *Sin riesgo de breakage*: el shim mantiene compat 100%. Las 21 importaciones externas siguen funcionando. La suite (1536 tests) pasa sin tocar ningún test.
+- *Preparación para 4.B*: el seam `orbit/api.py` previsto en Fase 4.B se construirá sobre los runners. Tenerlos en su propio módulo (`runners.py`, 567 ℓ) hace ese paso directo.
+
+**Lo que NO se hizo** (deliberado):
+- *Migrar los 21 callers* para que importen de `core.agenda.<submódulo>` directamente. Sería un commit grande tocando muchos ficheros sin valor inmediato — el shim cubre el caso sin tocarlos. Migración incremental queda para cuando 4.B reescriba consumers.
+- *Partir aún más fino* (un módulo por kind: `task.py`, `ms.py`, `ev.py`, `reminder.py`). Considerado y descartado por el usuario el 2026-05-15: 11 módulos pequeños con mucho cross-import era peor ratio coste/beneficio que 6 módulos con responsabilidad clara.
+- *Borrar funciones intactas*: ninguna función desaparece. Esto es **reorganización**, no consolidación. El número absoluto de líneas sube ~170 ℓ por los docstrings de cada nuevo módulo y los imports por-fichero; eso es coste explícito asumido.
+
+**Consecuencias**:
+- Una pequeña limpieza colateral: `core/email.py` importaba `resolve_file` de `core.agenda_cmds` (re-export accidental de `core.log` que sobrevivía solo porque `agenda_cmds.py` tenía `from core.log import ... resolve_file` en sus imports). Corregido al import directo en `email.py`.
+- Net del fichero shim: 2202 → 28 ℓ (−2174). El subpaquete suma 2378 ℓ. **Total +176 ℓ** — pero el problema que 3.C resolvía no era LOC, era el monolito.
+- Suite sin cambios (1536 → 1536, sin regresiones).
+
+**Tradeoff considerado**: dejar el monolito + añadir comentarios de sección. Descartado: los comentarios no resuelven el problema de localización ni preparan el seam para Fase 4.B.
+
+**Where lives**: refactor en commit `1db9fba`. Subpaquete en `core/agenda/{recurrence,io,display,lifecycle,runners,startup}.py` + `__init__.py`. Shim en `core/agenda_cmds.py`.
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

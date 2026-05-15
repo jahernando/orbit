@@ -215,6 +215,7 @@ Cuatro fases en este orden. **Cada fase debe dejar `pytest` verde antes de pasar
 
 - **Fase 3.A · icalendar adoptado** (2026-05-15, ADR-029): `icalendar` reemplaza la mecánica RFC 5545 hand-rolled en `ics`/`ics_share`/`email`. Bumpea deps pip de 2 a 3 (`+icalendar`, trae `python-dateutil` y `tzdata` como transitivas). Ahorro real: −110 ℓ netas + 17 tests de implementación.
 - **Fase 3.B · python-dateutil promovido a directo** (2026-05-15, ADR-030): `relativedelta` + `rrule` reemplazan la aritmética manual de `_next_occurrence`. Coste real cero — ya estaba como transitiva de `icalendar`. Ahorro: −13 ℓ; los 12 tests de `TestNextOccurrence` (incluyendo el clamp 31-Jan → 28-Feb) pasan sin cambios.
+- **Fase 3.C · `core/agenda_cmds.py` partido en subpaquete** (2026-05-15, ADR-031): 2202 ℓ → 6 módulos bajo `core/agenda/` (recurrence + io + display + lifecycle + runners + startup) + shim de 28 ℓ en el viejo path que preserva compat para los ~20 callers. Suite sin cambios. Reorganización, no consolidación.
 
 ### Orden táctico dentro de la Fase 1 (de menor superficie a mayor)
 
@@ -245,8 +246,8 @@ Cuatro fases en este orden. **Cada fase debe dejar `pytest` verde antes de pasar
 |---|---|---|---|---|
 | A | `icalendar` (PyPI) reemplaza la mecánica RFC 5545 en `core/ics.py`, `core/ics_share.py`, `core/email._parse_ics` | 4 commits, −110 ℓ netas | Borrar 10 helpers RFC (`_escape`, `_fold`, `_fmt_dt_local`, `_fmt_date`, `_now_stamp`, `_alarm_block`, `_unfold`, `_unescape`, `_split_prop_line`, `_parse_dt`, `_parse_ics_dt`) y delegar a `icalendar.{Calendar,Event,Alarm}.to_ical()` / `Calendar.from_ical().walk("VEVENT")`. Firmas públicas mantenidas (callers en orbit.py/render.py/doctor.py no se enteran). Ver [ADR-029](DECISIONS.md#adr-029--migración-a-icalendar-pypi-para-mecánica-rfc-5545) | ✅ 2026-05-15 (commits `f63f7ac` + `5223dbd` + `40d4a93` + C4 docs, 1536 tests verde) |
 | B | `python-dateutil` reemplaza la aritmética manual de `_next_occurrence` en `core/agenda_cmds.py` | 1 commit, −13 ℓ netas | `relativedelta(months=N)` para `monthly`/`every-N-months` (clamp natural). `rrule(DAILY, byweekday=MO..FR)` para `weekdays`. `rrule(MONTHLY, byweekday=X, bysetpos=±1)` para `first-X`/`last-X`. Firma `_next_occurrence(due, recur, done)` mantenida — 6 callers externos (ring, ring_export, agenda_view, ics, ics_share) intactos. Ver [ADR-030](DECISIONS.md#adr-030--migración-a-python-dateutil-para-la-mecánica-de-recurrencia) | ✅ 2026-05-15 (commit `e130c38`, 1536 tests verde) |
-| C | Partir `core/agenda_cmds.py` (2202 ℓ) → subpaquete `core/agenda/{io,recurrence,task,ms,ev,reminder}.py` | refactor sin borrado | Parcialmente acoplado a cronograma 3.2 (campo `composite`) | pendiente |
+| C | Partir `core/agenda_cmds.py` (2202 ℓ) en subpaquete `core/agenda/` | 1 commit, +176 ℓ totales | 6 módulos (recurrence 140 + io 405 + display 212 + lifecycle 844 + runners 567 + startup 118) + `__init__.py` re-exporting + shim de 28 ℓ en `core/agenda_cmds.py`. Ningún caller externo modificado (la única limpieza colateral es `email.py` que importaba `resolve_file` de paso por agenda_cmds). El acoplamiento con cronograma 2.3.2 se difiere — partir con `composite=None` placeholder. Ver [ADR-031](DECISIONS.md#adr-031--partir-coreagenda_cmdspy-en-subpaquete-coreagenda) | ✅ 2026-05-15 (commit `1db9fba`, 1536 tests verde) |
 
 ### Orden efectivo del plan tras la posposición de cronograma
 
-Decidido 2026-05-15: **3.A ✅ → 3.B ✅ → 3.C → 4.A → 4.B (básico) → 2.3.2 → 2.3.3 → 4.B (composite)**.
+Decidido 2026-05-15: **3.A ✅ → 3.B ✅ → 3.C ✅ → 4.A → 4.B (básico) → 2.3.2 → 2.3.3 → 4.B (composite)**.
