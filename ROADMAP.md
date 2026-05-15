@@ -82,6 +82,44 @@ generador HTML, integración con `orbit` CLI y test).
 
 ---
 
+## 3. Fase 3 del plan de simplificación · Reemplazar internals con libs estándar
+
+**Estado**: pendiente. Plan táctico decidido 2026-05-15 al cierre de Fase 2.
+
+**Objetivo**: ~−1000 ℓ de código propio a cambio de 2 deps pip nuevas (`icalendar`, `python-dateutil`). Registro de la decisión en `DECISIONS.md` al adoptar y bump en `DEPENDENCIES.md §3`.
+
+**Orden táctico recomendado** (de más aislado a más entrelazado):
+
+- **3.A · `icalendar`** (PyPI) sustituye el hand-rolled ICS en `core/ics.py`, `core/ics_share.py` y `core/email._parse_ics`. Ahorro estimado: 500-800 ℓ. **Independiente del estado de cronograma** (cronograma no usa ICS más allá del bucket que emite `.ics.py`).
+
+- **3.B · `python-dateutil.rrule`** sustituye la lógica hand-rolled de recurrencia en `core/agenda_cmds.py` y `core/ring.py`. Ahorro estimado: 200-400 ℓ. **Independiente de cronograma** (cronograma usa scheduling propio `after:1.2` + working days, no RRULE).
+
+- **3.C · Partir `core/agenda_cmds.py`** (2245 ℓ) → subpaquete `core/agenda/{io,recurrence,task,ms,ev,reminder}.py`. **Parcialmente acoplado a cronograma**: si el sub-paso 3.2 del plan (ADR-028) decide añadir un campo `composite: <name>` al modelo task, conviene saberlo antes. Alternativa: partir con `composite=None` placeholder y rellenar después.
+
+**Decisión paralela a registrar**: subir deps pip de 2 (`markdown`, `pyobjc-framework-EventKit`) a 4 (`+icalendar`, `+python-dateutil`). Trade-off consciente: ~1000 ℓ menos de código propio + menos edge cases de TZ/RRULE serialization a cambio de 2 dependencias mantenidas por terceros.
+
+**Estimación**: 3.A ~1 día, 3.B ~1 día, 3.C ~1-2 días (depende de si cronograma 3.2 está cerrado).
+
+---
+
+## 4. Fase 4 del plan de simplificación · Simplificar API/CLI
+
+**Estado**: pendiente. Algunas piezas ya parcialmente iniciadas en Fase 2 (cluster cloud, task crono).
+
+**Objetivo**: `orbit.py` de ~2200 ℓ → ~800 ℓ. CLI navegable por intuición, no por chuleta.
+
+**Piezas**:
+
+- **4.A · Convención `noun verb` para el resto del CLI**. Ya iniciada: `orbit cloud {deliver,sync,imgs}` (Fase 2.1) y `orbit task crono <sub>` (Fase 2.3.1). Aplicar al resto donde tenga sentido: `orbit ics share`, `orbit hl add`, etc. Mantener atajos top-level para los verbos de uso diario (`log`, `dash`, `commit`, `shell`). Independiente de cronograma.
+
+- **4.B · Seam estable `orbit/api.py`** con funciones puras (`add_task(project, title, **kw) → Task`, `add_event(...)`, `add_milestone(...)`, etc.) que CLI, hooks y scripts externos llaman. Independiente para las 4 citas básicas. `add_task_composite(...)` queda para cuando 3.2 cierre.
+
+**Pendiente cronograma (sub-pasos 3.2/3.3)**: ver [ADR-028](DECISIONS.md#adr-028--cronograma-como-task-compuesta-extensi%C3%B3n-del-sistema-task) y `MODULES.md §5` (orden táctico Fase 2). Diseño del vínculo `agenda.md ↔ cronos/`, done-cascading y migración de datos en ambos workspaces. No bloquea 3.A, 3.B, 4.A ni la mitad básica de 4.B.
+
+**Estimación**: 4.A ~1-2 días, 4.B ~2-3 días (el seam requiere refactor de dispatchers en `orbit.py`).
+
+---
+
 ## Convenciones del fichero
 
 - Cada entrada lleva: **Estado**, **Objetivo**, **A decidir** (si aplica),

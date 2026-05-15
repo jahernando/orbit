@@ -292,6 +292,27 @@ El comando **`orbit ics --diff`** renderiza in-memory y compara contra el mirror
 
 ---
 
+## ADR-028 — Cronograma como task-compuesta (extensión del sistema task)
+**Estado**: VIGENTE (decisión 2026-05-15, Fase 2 del plan en `MODULES.md §5`). Complementa (no deroga) [ADR-020](#adr-020--cronograma-como-fichero-propio-no-secci%C3%B3n-de-agendamd).
+
+**Contexto**: ADR-020 estableció que cada cronograma vive en su propio fichero `cronos/crono-<nombre>.md` y no se inline-a en `agenda.md`. Esa decisión es **física** (dónde viven los datos) y sigue vigente. Lo que faltaba era una decisión **conceptual** sobre qué ES un cronograma en el modelo de citas: en la documentación anterior aparecía como "quinto tipo" paralelo a task/ms/ev/reminder (CLAUDE.md lo llama así), pero su CRUD no comparte interfaz con los otros 4 — no tiene `add/drop/edit/list/log/done` uniformes, sino su propio set de 9 verbos (`add/show/edit/check/list/done/reindex/gantt/mermaid`).
+
+**Decisión**: cronograma se modela como **task-compuesta** — una extensión del sistema `task`, no un tipo paralelo. CLI canónico: `orbit task crono <sub>`. `orbit crono <sub>` se mantiene como atajo top-level por uso diario (mismo patrón que `orbit deliver` ↔ `orbit cloud deliver`).
+
+**Razón**: una task hoy puede tener título, fecha, status (pending/done/cancelled), recurrencia y ring. Una task-compuesta añade subtareas con índices jerárquicos, dependencias `after:`, duración por hoja, fechas calculadas (no inputadas) y visualizaciones. Es estrictamente más, no algo paralelo. La fusión conceptual con `task` ordena el modelo mental (cinco citas → cuatro tipos + composite); la separación física (ADR-020) sigue justificándose por la complejidad propia del fichero `cronos/`.
+
+**Consecuencias**:
+- Inmediatas (Fase 2 sub-paso 3.1, commit `5828196`): el CLI ya expone ambas formas. Internals de `core/cronograma.py` intactos.
+- Pendientes (sub-paso 3.2): diseñar el vínculo modelo entre la task-padre en `agenda.md` y `cronos/<name>.md`. Decisiones abiertas: ¿atributo `composite: <name>` en la línea de task?, ¿done-cascading?, ¿`task crono add` crea ambos artefactos?, ¿`task crono drop` los borra a la vez? Salida natural: un futuro ADR-029 cuando esto se decida.
+- Pendientes (sub-paso 3.3): ejecución del 3.2 + script one-shot de migración para crear la task-padre faltante en los cronogramas existentes de cada workspace.
+- Las menciones a "quinto tipo de cita" en CLAUDE.md y CHULETA.md deben repasarse cuando 3.2 cierre — ahora siguen ahí porque describen el comportamiento actual (cronograma sigue apareciendo en `.ics` con su propio bucket).
+
+**Tradeoff considerado**: embed total en `agenda.md` (cronos indentado en `## ✅ Tareas` con metadata inline). Descartado: rompe `agenda_cmds.py`, exige migración de datos en ambos workspaces y elimina la separación que ADR-020 justifica.
+
+**Where lives**: `core/cronograma.py` (motor), `orbit.py::_add_crono_subparsers` (helper CLI reusable), `orbit.py::cmd_crono` (dispatcher polimórfico que lee `action` o `crono_action`).
+
+---
+
 ## ADR-027 — Ring desacoplado: ring.json + daemon EventKit + launchd
 **Estado**: VIGENTE (desde v0.35)
 **Contexto**: las alarmas de calendarios suscritos (`.ics` con `VALARM`) no son fiables — macOS muestra alarmas como banner sin sonido en suscripciones; iOS las ignora a veces; el refresh es ≥5 min. Reminders.app sí tiene notificaciones system-level fiables + iCloud sync gratis a iPhone/iPad. El path antiguo (`reminders_backend: "reminders"` en v0.29) acoplaba `sync_item` → AppleScript directamente, con todos los problemas crónicos de `osascript` (timeouts, error -10025, escape de strings, app abierta requerida).
