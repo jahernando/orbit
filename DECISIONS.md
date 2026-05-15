@@ -446,6 +446,46 @@ La firma `_next_occurrence(due, recur, done_date) → str` se mantiene; los 6 ca
 
 ---
 
+## ADR-032 — Seam `core.api` + split parcial de `_build_parser`
+**Estado**: VIGENTE (decisión 2026-05-15, Fase 4 sub-paso B del plan en `MODULES.md §5` / `ROADMAP.md §4`).
+
+**Contexto**: el ROADMAP §4.B prometía dos cosas en un sub-paso: (a) un seam estable `orbit/api.py` con funciones puras consumibles por hooks/scripts externos, y (b) reducir `orbit.py` de 2200 a ~800 ℓ partiendo `_build_parser`. Tras 3.C los runners de `core.agenda` ya cumplían un rol de seam parcial, así que la decisión de qué shape darle al API y cuánto del CLI dispatcher tocar era abierta. La estimación 2200→800 era además optimista (lección registrada en `feedback_orbit_refactor_lessons` tras Fase 3).
+
+**Decisión**: tres elementos concretos:
+
+1. **`core/api.py` con shape pura, no fachada de nombres** (4 add + 2 complete + 4 drop). Cada función:
+   * Valida sus argumentos. Errores → `raise ValueError` (no exit codes).
+   * Ejecuta la lógica de datos (read agenda → mutar → write agenda).
+   * Devuelve el item dict (o tupla `(item, next_or_None)` para complete/drop con recurrencia).
+   * **No imprime, no agenda ring scheduling, no toca Google sync**. Esos son CLI concerns que viven en los wrappers de `core.agenda.lifecycle` y `core.agenda.runners`.
+
+2. **Path = `core/api.py`, no `orbit/api.py`** como sugería el ROADMAP. `orbit.py` es un script, no un paquete; todo lo importable en el repo vive bajo `core/`. Mantener convención.
+
+3. **Split parcial de `_build_parser`** en `core/parsers/` con tres ficheros: `_helpers.py` (la clase `_OrbitParser` + 8 `_add_*_args`), `agenda.py` (los 4 verbos task/ms/ev/reminder), y el resto en `__init__.py`/orbit.py. orbit.py baja 2303 → 2072 ℓ.
+
+**Razón**:
+- *Pure shape over fachada*: el usuario explícitamente eligió "API verdaderamente pura" sobre la opción más conservadora (aliasing de runners). La motivación: scripts externos pueden invocar `core.api.add_task("proj", "do X")` sin captar prints ni mockear stdout.
+- *Errores como excepciones*: las funciones puras son testables sin parsear stdout. El runner CLI las captura con `try/except` y traduce a wording legacy vía `_translate_api_error`.
+- *Scope incompleto deliberado*: `edit_*` y `log_*` quedan fuera del API. El primero arrastra la maquinaria de occurrence-vs-series con preservación de structured notes (📋 / 🚪); el segundo es trivial (`core.log.add_entry`). Ninguno entra en el 80/20 de "qué pide un script externo".
+- *Split parcial sobre split total*: extraer solo el bloque agenda + helpers da el grueso del valor de reorganización. Cada uno de los ~30 bloques restantes en `_build_parser` añade ~10 ℓ de boilerplate al subpaquete por cada ~15 ℓ que saca de orbit.py — ratio decreciente. La estimación 2200→800 era optimista.
+
+**Lo que NO se hizo** (deuda explícita):
+- `core.api.edit_*` / `core.api.log_*`. Si emerge un consumer externo claro, se añaden en C2-bis.
+- Refactor de `_generic_drop` para usar `core.api.drop_*`. La lógica CLI (interactive confirmation, advance-in-place de reminder, ring cleanup, logbook entry) está demasiado entrelazada para separar sin triplicar el diff. La API existe y funciona; el flow CLI sigue usando el código legacy.
+- Resto del split de `_build_parser` (~30 subparsers / ~470 ℓ). Futuro C4-bis.
+
+**Consecuencias**:
+- 5 commits en Fase 4.B: `6e3b464` (api.add_*), `2ad4c73` (api.complete_*/drop_*), `3ccf3e8` (ics share/import via argv rewrite — cierra deuda 4.A), `af7397f` (split parcial de `_build_parser`), `<este>` (docs).
+- Net del repo: `core/api.py` +405 ℓ + `core/parsers/` +300 ℓ + orbit.py −231 ℓ + lifecycle/runners deltas. **~+500 ℓ totales** sobre el repo. La ganancia real es **API contractual estable** + **localización del argparse**, no reducción de LOC.
+- Suite sin cambios (1536 → 1536, ninguna regresión).
+- Deuda 4.A resuelta: `orbit ics share` / `orbit ics import` aceptados vía argv rewrite en `_fix_argv` (no via argparse subparsers — argparse no combina positional + flags + add_subparsers; el rewrite es coherente con el patrón `add task → task add` ya existente).
+
+**Tradeoff considerado**: opción A (fachada de nombres) habría sido coste mínimo pero entregaría una "API" que es solo `add_task = run_task_add`. El user eligió shape diferente — más trabajo, más valor real para scripts externos.
+
+**Where lives**: `core/api.py`, `core/parsers/{_helpers,agenda}.py`, `orbit.py::_fix_argv` (argv rewrite), `core/agenda/lifecycle.py::_generic_add` (CLI wrapper sobre el API).
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

@@ -252,9 +252,13 @@ Cuatro fases en este orden. **Cada fase debe dejar `pytest` verde antes de pasar
 
 | # | Bloque | Tamaño aprox. | Acción | Estado |
 |---|---|---|---|---|
-| A | Convención `noun verb` para el resto del CLI | 1 commit, +30 ℓ argparse | Promover `tracked add` / `tracked drop` a forma canónica + mantener `track` / `untrack` como atajos top-level (helpers `_add_track_args` / `_add_untrack_args` evitan duplicar la declaración). Patrón consolidado tras 2.1 (`cloud deliver`) y 2.3.1 (`task crono`). **`ics share` / `ics import` NO migrado**: argparse no combina positional `nargs="?"` + 5 flags + `add_subparsers` sin romper UX o introducir preprocesado frágil. Se difiere a 4.B donde el seam puede preprocesar sin tocar argparse | ✅ 2026-05-15 (commit `e46931f`, 1536 tests verde) |
-| B | Seam estable `orbit/api.py` | refactor mayor | Funciones puras `add_task` / `add_event` / `add_milestone` / `add_reminder` que CLI + hooks + scripts externos llaman. `orbit.py` baja de ~2200 a ~800 ℓ. `add_task_composite` espera a 2.3.2 | pendiente |
+| A | Convención `noun verb` para el resto del CLI | 1 commit, +30 ℓ argparse | Promover `tracked add` / `tracked drop` a forma canónica + mantener `track` / `untrack` como atajos top-level (helpers `_add_track_args` / `_add_untrack_args` evitan duplicar la declaración). Patrón consolidado tras 2.1 (`cloud deliver`) y 2.3.1 (`task crono`). **`ics share` / `ics import` resuelto en 4.B** (argv rewrite en `_fix_argv`, no argparse subparsers) | ✅ 2026-05-15 (commit `e46931f`, 1536 tests verde) |
+| B | Seam `core/api.py` + split parcial de `_build_parser` | 5 commits, +500 ℓ netas | `core/api.py` (~405 ℓ) con 10 funciones puras: 4 `add_*` + 2 `complete_*` + 4 `drop_*`. Cada una valida + raise ValueError, devuelve item dict. `_generic_add` se reescribe como wrapper CLI. `ics share` / `ics import` vía argv rewrite. Split parcial de `_build_parser` (helpers + agenda) a `core/parsers/` — orbit.py 2303 → 2072 ℓ. `edit_*`/`log_*` no entran en el API (80/20 sweet spot); refactor de `_generic_drop` queda como deuda. Path `core/api.py` (no `orbit/api.py`) por convención del repo. Ver [ADR-032](DECISIONS.md#adr-032--seam-coreapi--split-parcial-de-_build_parser) | ✅ 2026-05-15 (commits `6e3b464`+`2ad4c73`+`3ccf3e8`+`af7397f`+docs, 1536 tests verde) |
 
 ### Orden efectivo del plan tras la posposición de cronograma
 
-Decidido 2026-05-15: **3.A ✅ → 3.B ✅ → 3.C ✅ → 4.A ✅ → 4.B (básico) → 2.3.2 → 2.3.3 → 4.B (composite)**.
+Decidido 2026-05-15: **3.A ✅ → 3.B ✅ → 3.C ✅ → 4.A ✅ → 4.B ✅ → 2.3.2 → 2.3.3 → `api.add_task_composite`**.
+
+### Único pendiente del plan
+
+Cronograma 2.3.2 (diseño vínculo agenda↔cronos) + 2.3.3 (ejecución + migración) + `api.add_task_composite` como cierre. Ver [ADR-028](DECISIONS.md#adr-028--cronograma-como-task-compuesta-extensión-del-sistema-task).

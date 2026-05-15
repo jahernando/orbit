@@ -101,19 +101,19 @@ generador HTML, integración con `orbit` CLI y test).
 
 ## 4. Fase 4 del plan de simplificación · Simplificar API/CLI
 
-**Estado**: 4.A ✅ cerrada 2026-05-15. 4.B pendiente.
+**Estado**: 4.A ✅ + 4.B ✅ cerradas 2026-05-15. **Fase 4 completa salvo el sub-paso `add_task_composite` ligado a cronograma 2.3.2/2.3.3.**
 
-**Objetivo**: `orbit.py` de ~2200 ℓ → ~800 ℓ a través del seam `orbit/api.py`. CLI navegable por intuición, no por chuleta.
+**Objetivo cumplido**: seam estable `core/api.py` con funciones puras + ics share/import como noun-verb + split parcial de `_build_parser`. La estimación original "orbit.py 2200→800 ℓ" se recalibra (ADR-032): el split total tiene ratio coste/beneficio decreciente.
 
 **Piezas**:
 
-- **4.A · Convención `noun verb` ✅** (commit `e46931f`, 2026-05-15). Tras Fase 2 (`orbit cloud {deliver,sync,imgs}`, `orbit task crono <sub>`) y 4.A (`orbit tracked {add,drop,list}`), el patrón está aplicado donde encajaba. Atajos top-level mantenidos para uso diario: `deliver`, `crono`, `track`, `untrack`, `log`, `dash`, `commit`, `shell`. **No aplicado a `ics`** por conflicto técnico de argparse (positional `project nargs="?"` + 5 flags + add_subparsers no combinan sin romper la UX actual de `orbit ics <project>`); `ics-share`/`ics-import` se mantienen flat. Decisión registrada en el commit.
+- **4.A · Convención `noun verb` ✅** (commit `e46931f`, 2026-05-15). Tras Fase 2 (`orbit cloud {deliver,sync,imgs}`, `orbit task crono <sub>`) y 4.A (`orbit tracked {add,drop,list}`), el patrón está aplicado donde encajaba. Atajos top-level mantenidos para uso diario: `deliver`, `crono`, `track`, `untrack`, `log`, `dash`, `commit`, `shell`. `ics share` / `ics import` resueltos en 4.B vía argv rewrite (no argparse subparsers).
 
-- **4.B · Seam estable `orbit/api.py`** con funciones puras (`add_task(project, title, **kw) → Task`, `add_event(...)`, `add_milestone(...)`, etc.) que CLI, hooks y scripts externos llaman. Independiente para las 4 citas básicas. `add_task_composite(...)` queda para cuando 2.3.2 cierre. Aprovechar el seam para revisitar `ics` con subcomandos sin romper UX (preprocesado controlado en el seam, no en argparse).
+- **4.B · Seam `core/api.py` + split parcial de `_build_parser` ✅** (5 commits, 2026-05-15). `core/api.py` expone 10 funciones puras (4 add + 2 complete + 4 drop) que devuelven el item dict y raisan `ValueError` en errores. `core/agenda/lifecycle._generic_add` reescrito como wrapper CLI. `core/parsers/` con helpers + agenda extraídos (orbit.py 2303→2072 ℓ). Ver [ADR-032](DECISIONS.md#adr-032--seam-coreapi--split-parcial-de-_build_parser).
 
-**Pendiente cronograma (sub-pasos 2.3.2/2.3.3)**: ver [ADR-028](DECISIONS.md#adr-028--cronograma-como-task-compuesta-extensión-del-sistema-task) y `MODULES.md §5`. Diseño del vínculo `agenda.md ↔ cronos/`, done-cascading y migración de datos en ambos workspaces. Pospuesto al final del plan (después de 4.B).
+**Pendiente cronograma (sub-pasos 2.3.2/2.3.3)**: ver [ADR-028](DECISIONS.md#adr-028--cronograma-como-task-compuesta-extensión-del-sistema-task) y `MODULES.md §5`. Diseño del vínculo `agenda.md ↔ cronos/`, done-cascading y migración de datos en ambos workspaces. Pospuesto al final del plan, ahora único pendiente del plan completo.
 
-**Estimación restante**: 4.B ~2-3 días.
+**Estimación restante**: 2.3.2 ~1-2 días de diseño + 2.3.3 ~1-2 días de ejecución.
 
 ---
 
