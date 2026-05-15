@@ -5,10 +5,11 @@ deliberada**. A diferencia de [IDEAS.md](IDEAS.md) (ideas sin decidir),
 las entradas aquí ya tienen luz verde para implementarse — solo falta
 acometerlas.
 
-Diferencia con [ORBIT_REVISION.md](ORBIT_REVISION.md): ese fichero es la
-revisión sistemática del estado actual (housekeeping de la base de
-código existente). ROADMAP.md mira hacia adelante: features y revisiones
-nuevas pendientes de hacer.
+Diferencia con [ORBIT_REVISION.md](docs/conv/ORBIT_REVISION.md): ese
+fichero (archivado en `docs/conv/`) fue la revisión sistemática del
+estado en v0.18.1 — congelado en el tiempo, valor histórico.
+ROADMAP.md mira hacia adelante: features y revisiones nuevas
+pendientes de hacer.
 
 ---
 
