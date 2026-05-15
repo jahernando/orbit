@@ -79,7 +79,7 @@ graph TB
         ring_export["ring_export · 572"]
         ring["ring · 377 (helpers + dormant-flag path)"]
         daemon["orbit_ring_daemon · 288"]
-        calendar_sync["calendar_sync · 247 (OAuth helpers para cartero)"]
+        google_oauth["google_oauth · 75 (OAuth helpers para cartero)"]
     end
 
     subgraph VIEW [D · Vistas / dashboards]
@@ -130,7 +130,7 @@ graph TB
     agenda_cmds --> ring_export --> daemon --> REMAPP
     agenda_cmds --> ring -.legacy.-> REMAPP
     agenda_cmds --> ics_share --> CLOUD --> CALSUB
-    cartero --> calendar_sync
+    cartero --> google_oauth
     log --> render --> CLOUD
     log --> deliver --> CLOUD
     notes --> deliver
@@ -192,7 +192,7 @@ graph TB
 
 ## 4. Solapamientos y candidatos a simplificación
 
-1. ~~**Tres caminos a Google/Calendar** — `gsync` (2880) + `calsync` (793) + `calendar_sync` (247). Según `DEPENDENCIES.md` Calendar.app es read-only subscriber desde v0.33. **Mayor potencial de borrado del repo.**~~ ✅ **Resuelto** (2026-05-15): `gsync` y `calsync` borrados completos. `calendar_sync` queda solo con OAuth helpers para cartero (~80 ℓ activos); resto del fichero anotado como dormante en `DORMANT.md`.
+1. ~~**Tres caminos a Google/Calendar** — `gsync` (2880) + `calsync` (793) + `calendar_sync` (247). Según `DEPENDENCIES.md` Calendar.app es read-only subscriber desde v0.33. **Mayor potencial de borrado del repo.**~~ ✅ **Resuelto** (2026-05-15): `gsync`, `calsync` y `calendar_sync` borrados completos. Los OAuth helpers que cartero necesita viven en `core/google_oauth.py` (~75 ℓ). Total purgado del eje Google: 3920 ℓ.
 2. ~~**Dos caminos a Reminders.app** — `reminders.py` (AppleScript directo, legacy) vs `ring_export+daemon` (EventKit, v0.35). `reminders.py` parece dormante.~~ ✅ **Resuelto** (2026-05-15): `reminders.py` borrado. Queda `ring.py` (520 ℓ) marcado como dormante en CLAUDE.md desde v0.37 — siguiente candidato.
 3. ~~**Cuatro módulos cloud** — `deliver` + `cloudsync` + `recloud` + `cloud_imgs`.~~ ✅ **Resuelto** (2026-05-15, Fase 2): `recloud` borrado (one-shot de migración ya aplicado en todos los workspaces); los 3 restantes (`deliver`, `cloudsync`, `cloud_imgs`) viven intactos pero el CLI se agrupó bajo `orbit cloud {deliver,sync,imgs}`. La fusión a un único módulo se deja para Fase 4 (cuando se diseñe el seam `orbit/api.py`).
 4. **`agenda_cmds.py` (2245 ℓ)** — mezcla CRUD de las 4 citas + parsing recurrencia + propagación. Candidato a partir en `agenda_io.py` + `recurrence.py` + `appointments/`.
@@ -232,5 +232,6 @@ Añadir `icalendar` y `python-dateutil` lleva las dependencias pip de 2 a 4 (hoy
 |---|---|---|---|---|
 | 1a | `recloud.py` (one-shot migración layout cloud) | 230 ℓ | Borrar (migración ya aplicada en todos los workspaces). Limpiar también `migrate`/`gsync` zombies en `shell.py:217 COMMANDS` | ✅ 2026-05-15 (−239 ℓ, 1567 tests) |
 | 1b | CLI: agrupar `deliver`/`cloud imgs`/`cloudsync` bajo un solo verbo | +17/−5 ℓ orbit.py | Subcomandos `orbit cloud {deliver,sync,imgs}`. `orbit deliver` se mantiene como atajo top-level. Internals (`core/deliver.py`, `core/cloudsync.py`, `core/cloud_imgs.py`) intactos para no romper los ~30 callsites + mocks de tests; la fusión de internals queda para Fase 4 (seam `orbit/api.py`) | ✅ 2026-05-15 (1567 tests verde) |
-| 2 | `calendar_sync.py` (~247 ℓ, mayormente dormante) | 247 ℓ | Partir en `core/google_oauth.py` (lo vivo que usa `cartero`, ~80 ℓ) + borrar el resto. **Precondición**: 3 meses sin reactivar el pull Google→orbit (cuenta desde fecha de marcado dormante en `DORMANT.md`) | pendiente |
-| 3 | Decisión sobre `cronograma.py` (1830 ℓ) | — | Decisión de producto: ¿absorber en agenda como quinto tipo o aislar mejor? Sin pasos concretos hasta tomar decisión con JAngel | pendiente |
+| 2a | `calendar_sync.py` (~247 ℓ, mayormente dormante) | 247 ℓ | Partir: salvar OAuth helpers en `core/google_oauth.py` (~75 ℓ, cartero importa de ahí) + borrar resto + 3 clases de test (14 tests). Precondición original de "3 meses" acortada: el CLI llevaba dormante desde v0.33 (2026-05-12) y solo había 3 constantes consumidas | ✅ 2026-05-15 (−442 ℓ, 1553 tests) |
+| 2b | Scripts zombie de gsync | 270 ℓ | `scripts/diagnose_calendar_sync.py` + `scripts/try_update_calendar_event.py` rotos desde v0.38 (importan `core.gsync` borrado) | ✅ 2026-05-15 (−270 ℓ, suite verde) |
+| 3 | Decisión sobre `cronograma.py` (1830 ℓ) | — | **Decisión tomada (2026-05-15)**: cronograma se integra en agenda como **task-compuesta** (extensión de task, no 5º tipo paralelo). Plan concreto pendiente — probablemente toca primero podar cronograma (su tamaño sugiere acreción) antes de fusionar con el sistema task | pendiente (decidido qué, falta cómo) |
