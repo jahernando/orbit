@@ -40,8 +40,9 @@ Auditoría de `grep -hE "^(import|from)"` sobre `core/*.py` + `orbit.py`, filtra
 | `markdown` | `core/render.py` | conversión MD → HTML | No fácilmente — es el motor del cloud render |
 | `pyobjc-framework-EventKit` | `orbit_ring_daemon.py` | EventKit (Reminders.app) API nativa para crear/borrar/actualizar reminders con alarmas | No fácilmente — `osascript` fue rechazado por unreliability. Si se quita, ring queda inoperativo |
 | `icalendar` | `core/ics.py`, `core/ics_share.py`, `core/email.py` | parser y serializador RFC 5545 (VEVENT/VALARM/VCALENDAR + escape + folding + DT parsing) | Posible volver al hand-rolled previo (~280 ℓ de helpers) si la dep se vuelve molesta — pero perdería correctitud en edge cases (TZID, parámetros raros). Adoptada en Fase 3.A, ver [ADR-029](../DECISIONS.md#adr-029) |
+| `python-dateutil` | `core/agenda_cmds.py` (`_next_occurrence`) | `relativedelta` (clamp natural en `monthly`) + `rrule` (`weekdays`, `first-X`/`last-X`) para la mecánica de recurrencia | Posible (la aritmética hand-rolled previa funcionaba, ~58 ℓ); descartado en Fase 3.B porque la dep ya estaba en el árbol como transitiva de `icalendar` — promover a directa fue coste cero. Ver [ADR-030](../DECISIONS.md#adr-030) |
 
-**Tres dependencias externas en core.** El resto son stdlib. `icalendar` arrastra `python-dateutil` y `tzdata` como transitivas — eso allana el camino para Fase 3.B (reemplazar la recurrencia hand-rolled con `dateutil.rrule`).
+**Cuatro dependencias externas en core.** El resto son stdlib. `python-dateutil` se promueve a directa en Fase 3.B (antes era solo transitiva de `icalendar`); ningún paquete nuevo aparece en `pip list`.
 
 ### Externos usados por subsistemas opcionales
 

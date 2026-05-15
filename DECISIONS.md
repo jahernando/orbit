@@ -374,6 +374,39 @@ Las funciones públicas (`render_vevent`, `_calendar_wrapper`, `_parse_vevents`,
 
 ---
 
+## ADR-030 — Migración a `python-dateutil` para la mecánica de recurrencia
+**Estado**: VIGENTE (decisión 2026-05-15, Fase 3 sub-paso B del plan en `MODULES.md §5` / `ROADMAP.md §3`).
+
+**Contexto**: `core/agenda_cmds._next_occurrence` (58 ℓ) calculaba "siguiente ocurrencia" para 8 patrones de recurrencia (`daily`, `weekly`, `monthly`, `weekdays`, `every-N-{days,weeks,months}`, `first-X`, `last-X`) usando aritmética manual con `datetime.timedelta` + `calendar.monthrange`. El path delicado era `monthly` con clamp del 31 al último día del mes corto (31-Jan + 1 mes → 28-Feb), implementado a base de `min(base.day, monthrange(...)[1])`. Los `first-X` / `last-X` exigían un while-loop sobre los días del mes destino.
+
+**Decisión**: adoptar [`python-dateutil`](https://pypi.org/project/python-dateutil/) como dependencia directa y reescribir `_next_occurrence`:
+- `monthly` / `every-N-months` → `relativedelta(months=N)` (clamp natural automático).
+- `weekdays` → `rrule(DAILY, byweekday=(MO,TU,WE,TH,FR))`.
+- `first-X` / `last-X` → `rrule(MONTHLY, byweekday=X, bysetpos=±1)`.
+- `daily` / `weekly` / `every-N-{days,weeks}` siguen con `timedelta` (ya eran one-liners).
+
+La firma `_next_occurrence(due, recur, done_date) → str` se mantiene; los 6 callers externos (`ring.py`, `ring_export.py`, `agenda_view.py`, `ics_share.py`, `ics.py`) no se enteran.
+
+**Razón**:
+- *Correctitud*: el clamp de `monthly` y el manejo de `first-X`/`last-X` son lógica delicada que `relativedelta` y `rrule` cubren con semántica testada por una librería madura. La aritmética manual con `monthrange` funcionaba pero era frágil — cualquier edit accidental podía romper el clamp.
+- *Coste cero de dependencia*: `python-dateutil` ya estaba en el árbol como transitiva obligatoria de `icalendar` (ADR-029). Promoverla a directa solo añade un `import` explícito en `DEPENDENCIES.md §3`; no aparece ningún paquete nuevo en `pip list`.
+- *Coherencia con la dirección del plan*: 3.A ya delegó la mecánica RFC 5545 a una lib; 3.B delega la mecánica de recurrencia. Ambos pasos siguen el mismo principio.
+
+**Lo que NO migra** (decisión deliberada):
+- Constantes y gramática: `VALID_RECUR`, `_EVERY_RE`, `_POS_RE`, `_normalize_recur`, `is_valid_recur` — esa es **gramática orbit** (cómo el user escribe `🔄every-2-weeks` en `agenda.md`), no semántica calendar; queda donde está.
+- Expansión en `core/ics.py::_expand_dates` — sigue usando `_next_occurrence` en un loop. Por [ADR-009](#adr-009--recurrencia-expandida-localmente-no-rrule-en-ics) orbit emite VEVENTs por-ocurrencia en lugar de RRULE en los `.ics`; ese contrato no cambia.
+
+**Consecuencias**:
+- Dependencia `python-dateutil` registrada como directa en `DEPENDENCIES.md §3` (3 deps externas en core: `markdown`, `pyobjc-framework-EventKit`, `icalendar`, `python-dateutil` — bueno, técnicamente 4, pero las 2 últimas comparten árbol de transitivas).
+- Net: −13 ℓ en `core/agenda_cmds.py` (lejos de las 200-400 ℓ estimadas en el ROADMAP). El ROADMAP era optimista porque la mecánica de recurrencia estaba concentrada en una sola función pequeña; el resto del fichero es lógica orbit que no migra. Igual que en 3.A, la ganancia real es **correctitud y claridad**, no LOC.
+- Tests sin cambios — los 12 casos de `TestNextOccurrence` (incluyendo el clamp 31-Jan → 28-Feb) pasan byte-idénticos. No fue necesario añadir ni borrar ningún test.
+
+**Tradeoff considerado**: dejar la aritmética manual. Descartado: 58 ℓ de while-loops y `monthrange` para algo que la lib cubre con 3 ó 4 expresiones declarativas, y con coste real de dependencia = 0 (ya estaba transitivamente).
+
+**Where lives**: refactor en commit `e130c38` (`core/agenda_cmds._next_occurrence`, `_WEEKDAY_NAMES` → `_WEEKDAY_RRULE`).
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

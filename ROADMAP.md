@@ -85,19 +85,19 @@ generador HTML, integración con `orbit` CLI y test).
 
 ## 3. Fase 3 del plan de simplificación · Reemplazar internals con libs estándar
 
-**Estado**: 3.A cerrada 2026-05-15. 3.B y 3.C pendientes.
+**Estado**: 3.A ✅ + 3.B ✅ cerradas 2026-05-15. 3.C pendiente.
 
-**Objetivo**: −300 a −500 ℓ de código propio a cambio de 2 deps pip nuevas (`icalendar`, `python-dateutil`). Registro de cada decisión en `DECISIONS.md` al adoptar y bump en `DEPENDENCIES.md §3`.
+**Objetivo**: delegar mecánica RFC 5545 y recurrencia a libs maduras. Ahorro neto realista −120 a −150 ℓ (más correctitud en edge cases); la estimación original de 500-1000 ℓ era optimista.
 
-**Orden táctico** (de más aislado a más entrelazado):
+**Orden táctico**:
 
-- **3.A · `icalendar` ✅** (commits `f63f7ac` + `5223dbd` + `40d4a93`, 2026-05-15). Sustituye el hand-rolled ICS en `core/ics.py`, `core/ics_share.py` y `core/email._parse_ics`. Ahorro real: **−110 ℓ netas en core + 17 tests de implementación borrados**. La estimación inicial (500-800 ℓ) era optimista — los ficheros tienen mucha lógica orbit (buckets, snapshots, kind detection) que no migra. La ganancia principal acaba siendo correctitud RFC, no LOC. Ver [ADR-029](DECISIONS.md#adr-029--migración-a-icalendar-pypi-para-mecánica-rfc-5545).
+- **3.A · `icalendar` ✅** (commits `f63f7ac` + `5223dbd` + `40d4a93` + `9846194`, 2026-05-15). Sustituye el hand-rolled ICS en `core/ics.py`, `core/ics_share.py` y `core/email._parse_ics`. Ahorro real: **−110 ℓ netas + 17 tests de implementación borrados**. Ver [ADR-029](DECISIONS.md#adr-029--migración-a-icalendar-pypi-para-mecánica-rfc-5545).
 
-- **3.B · `python-dateutil.rrule`** sustituye la lógica hand-rolled de recurrencia en `core/agenda_cmds.py` y `core/ring.py`. Ahorro estimado: 200-400 ℓ. **Independiente de cronograma** (cronograma usa scheduling propio `after:1.2` + working days, no RRULE). Nota: `python-dateutil` ya entra en el árbol de deps como transitiva de `icalendar` desde 3.A, así que la dep "nueva" en realidad solo añade un `import` explícito.
+- **3.B · `python-dateutil` ✅** (commit `e130c38`, 2026-05-15). Sustituye la aritmética manual de `_next_occurrence` en `core/agenda_cmds.py` con `relativedelta(months=N)` (clamp natural) + `rrule(MONTHLY/DAILY, byweekday=..., bysetpos=±1)` (weekdays, first-X, last-X). Ahorro real: **−13 ℓ netas**; los 12 tests existentes (`TestNextOccurrence`) pasan sin cambios. La dep ya estaba como transitiva de `icalendar` — coste real cero. Ver [ADR-030](DECISIONS.md#adr-030--migración-a-python-dateutil-para-la-mecánica-de-recurrencia).
 
-- **3.C · Partir `core/agenda_cmds.py`** (2245 ℓ) → subpaquete `core/agenda/{io,recurrence,task,ms,ev,reminder}.py`. **Parcialmente acoplado a cronograma**: si el sub-paso 2.3.2 del plan (ADR-028) decide añadir un campo `composite: <name>` al modelo task, conviene saberlo antes. Alternativa: partir con `composite=None` placeholder y rellenar después.
+- **3.C · Partir `core/agenda_cmds.py`** (2202 ℓ) → subpaquete `core/agenda/{io,recurrence,task,ms,ev,reminder}.py`. **Parcialmente acoplado a cronograma**: si el sub-paso 2.3.2 del plan (ADR-028) decide añadir un campo `composite: <name>` al modelo task, conviene saberlo antes. Alternativa: partir con `composite=None` placeholder y rellenar después.
 
-**Estimación restante**: 3.B ~1 día, 3.C ~1-2 días (depende de si cronograma 2.3.2 está cerrado).
+**Estimación restante**: 3.C ~1-2 días.
 
 ---
 
