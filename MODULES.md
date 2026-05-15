@@ -48,7 +48,7 @@ graph TB
         CALSUB[(Apple Calendar<br/>read-only subscriber)]
         REMAPP[(Reminders.app)]
         CLOUD[(OneDrive · GDrive)]
-        PROMPT[(Shell prompt 📬N)]
+        NOTIF[(macOS Notifications)]
     end
 
     subgraph FEED [A · Feeds entrantes]
@@ -111,7 +111,7 @@ graph TB
         setup["setup · 298"]
     end
 
-    MAIL --> cartero --> PROMPT
+    MAIL --> cartero --> NOTIF
     SLACK --> cartero
     MAIL --> email
     ICSIN --> ics
@@ -162,7 +162,7 @@ graph TB
 | Nº | Concepto | Módulos | Notas |
 |---|---|---|---|
 | 0.0 | Mail → log/event | `email` (1098) | Captura Apple Mail / Outlook / .eml. `--ev` también escribe agenda → cubre 2.1 a la vez. |
-| 0.2 | Mail/Slack → notif. al prompt | `cartero` (958) | Solo escribe `[📬N]` en el shell. Independiente del log. |
+| 0.2 | Mail/Slack → notificación macOS | `cartero` (~905) | Globito nativo via `osascript`. Independiente del log. Indicador del prompt `[📬N]` retirado en F2 satellites (2026-05-15). |
 | 1   | Log + hl + notes + cloud | `log` `highlights` `notes` + `archive` | `highlights` y `notes` escriben en `log` (no son independientes). |
 | 1.1a | md propios en repo | `notes` | ✓ |
 | 1.1b | pesados a cloud | `deliver` `cloudsync` `cloud_imgs` | 3 módulos para "copiar a `cloud_root`". Agrupados bajo `orbit cloud {deliver,sync,imgs}` en v0.38 (Fase 2). `recloud` (one-shot de migración) borrado. |

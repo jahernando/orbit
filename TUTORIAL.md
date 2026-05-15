@@ -710,13 +710,7 @@ El cartero vigila tu correo (Gmail/Outlook) y canales de Slack, y te avisa desde
 - **Gmail**: requiere habilitar la API de Gmail en Google Cloud Console y tener `credentials.json` en el workspace. Los nombres de etiqueta deben ser exactos (usa `labels.list` de la API para verlos).
 - **Slack**: requiere un user token (`xoxp-...`) guardado en `ORBIT_HOME/.slack-token`. Se obtiene creando una Slack App con scopes `channels:read` y `groups:read`.
 
-Al arrancar la shell, el cartero se lanza en background y revisa cada 10 minutos. Si hay mensajes no leídos, verás un indicador en el prompt:
-
-```
-🚀[📬7] > _
-```
-
-Y una notificación macOS cuando lleguen mensajes nuevos.
+Al arrancar la shell, el cartero se lanza en background y revisa cada 10 minutos. Si hay mensajes no leídos recibirás una notificación nativa de macOS.
 
 **Comandos manuales**:
 

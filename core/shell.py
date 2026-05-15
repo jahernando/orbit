@@ -250,10 +250,7 @@ def run_shell(editor: str = ""):
             shell_start_date = _date.today()
 
         try:
-            from core.cartero import get_prompt_indicator
-            _mail = get_prompt_indicator()
-            _prompt = f"{ORBIT_PROMPT}{_mail} " if _mail else f"{ORBIT_PROMPT} "
-            line = input(_prompt).strip()
+            line = input(f"{ORBIT_PROMPT} ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break

@@ -686,7 +686,6 @@ orbit mail --stop              # para el proceso background
 ```
 
 - Vigila Mail.app, Gmail (legacy) y/o Slack y avisa de mensajes no leídos
-- Indicador en el prompt: `🚀[📬7] >` (suma de todas las fuentes, solo si hay mensajes)
 - Notificación macOS cuando llegan mensajes nuevos (solo al subir el conteo, no en cada check)
 - Proceso background: se lanza al entrar en la shell, un solo proceso por workspace (PID lock)
 - Configuración en `orbit.json`:

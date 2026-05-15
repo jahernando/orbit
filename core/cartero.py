@@ -1,8 +1,8 @@
 """cartero — background mail/messaging notifier for Orbit.
 
 Polls Mail.app, Gmail (legacy) and/or Slack for unread messages and:
-  - Updates a shared state file (ORBIT_HOME/.cartero-state.json)
-  - Shows a prompt indicator [📬N] in the Orbit shell
+  - Updates a shared state file (ORBIT_HOME/.cartero-state.json) for
+    delta detection across poll cycles
   - Sends macOS notifications when new messages arrive
 
 Configuration in orbit.json (any subset; `mail` is preferred over `gmail`):
@@ -445,45 +445,6 @@ def _read_federated_states() -> list:
             except (json.JSONDecodeError, ValueError):
                 pass
     return results
-
-
-def _federated_total() -> tuple:
-    """Return (total, indicator_parts) from federated workspaces.
-
-    indicator_parts: list of "🌿📬3" strings for the prompt.
-    """
-    parts = []
-    total = 0
-    for emoji, state in _read_federated_states():
-        fed_total = 0
-        for source in ("mail", "gmail", "slack"):
-            fed_total += state.get(source, {}).get("total", 0)
-        if fed_total > 0:
-            parts.append(f"{emoji}📬{fed_total}")
-            total += fed_total
-    return total, parts
-
-
-def get_prompt_indicator() -> str:
-    """Return prompt indicator string, e.g. '[📬4]' or '[📬4 🌿📬3]'.
-
-    Combines local sources (gmail + slack) + federated workspaces.
-    Reads local files only — no network I/O.
-    """
-    state = _read_state()
-    local_total = (state.get("mail", {}).get("total", 0)
-                   + state.get("gmail", {}).get("total", 0)
-                   + state.get("slack", {}).get("total", 0))
-    fed_total, fed_parts = _federated_total()
-
-    if local_total == 0 and fed_total == 0:
-        return ""
-
-    parts = []
-    if local_total > 0:
-        parts.append(f"📬{local_total}")
-    parts.extend(fed_parts)
-    return "[" + " ".join(parts) + "]"
 
 
 # ── macOS notifications ─────────────────────────────────────────────────────
