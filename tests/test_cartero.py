@@ -1,4 +1,4 @@
-"""Tests for core/cartero.py — mail notifier."""
+"""Tests for satellites/cartero/daemon.py — mail notifier satellite."""
 
 import json
 import os
@@ -14,9 +14,9 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
     """Redirect all cartero paths to tmp_path."""
-    monkeypatch.setattr("core.cartero.ORBIT_HOME", tmp_path)
-    monkeypatch.setattr("core.cartero.CARTERO_PID", tmp_path / ".cartero.pid")
-    monkeypatch.setattr("core.cartero.CARTERO_STATE", tmp_path / ".cartero-state.json")
+    monkeypatch.setattr("satellites.cartero.daemon.ORBIT_HOME", tmp_path)
+    monkeypatch.setattr("satellites.cartero.daemon.CARTERO_PID", tmp_path / ".cartero.pid")
+    monkeypatch.setattr("satellites.cartero.daemon.CARTERO_STATE", tmp_path / ".cartero-state.json")
     # Create minimal orbit.json
     (tmp_path / "orbit.json").write_text(json.dumps({
         "space": "orbit-ps",
@@ -36,23 +36,23 @@ def _isolate(tmp_path, monkeypatch):
 class TestConfig:
 
     def test_load_cartero_config(self, _isolate):
-        from core.cartero import _load_cartero_config
+        from satellites.cartero.daemon import _load_cartero_config
         cfg = _load_cartero_config()
         assert "gmail" in cfg
         assert cfg["gmail"]["labels"] == ["Importante", "Familia", "Universidad"]
 
     def test_load_cartero_config_missing(self, _isolate):
         (_isolate / "orbit.json").unlink()
-        from core.cartero import _load_cartero_config
+        from satellites.cartero.daemon import _load_cartero_config
         assert _load_cartero_config() == {}
 
     def test_load_cartero_config_no_cartero_section(self, _isolate):
         (_isolate / "orbit.json").write_text(json.dumps({"space": "test"}))
-        from core.cartero import _load_cartero_config
+        from satellites.cartero.daemon import _load_cartero_config
         assert _load_cartero_config() == {}
 
     def test_gmail_config(self, _isolate):
-        from core.cartero import _gmail_config
+        from satellites.cartero.daemon import _gmail_config
         cfg = _gmail_config()
         assert cfg is not None
         assert cfg["labels"] == ["Importante", "Familia", "Universidad"]
@@ -61,7 +61,7 @@ class TestConfig:
         (_isolate / "orbit.json").write_text(json.dumps({
             "cartero": {"gmail": {"labels": []}}
         }))
-        from core.cartero import _gmail_config
+        from satellites.cartero.daemon import _gmail_config
         assert _gmail_config() is None
 
 
@@ -70,11 +70,11 @@ class TestConfig:
 class TestState:
 
     def test_read_state_missing(self, _isolate):
-        from core.cartero import _read_state
+        from satellites.cartero.daemon import _read_state
         assert _read_state() == {}
 
     def test_write_read_state(self, _isolate):
-        from core.cartero import _write_state, _read_state
+        from satellites.cartero.daemon import _write_state, _read_state
         state = {"gmail": {"total": 5, "counts": {"A": 3, "B": 2}}}
         _write_state(state)
         got = _read_state()
@@ -83,13 +83,13 @@ class TestState:
 
     def test_write_state_atomic(self, _isolate):
         """Verify tmp file is cleaned up after atomic write."""
-        from core.cartero import _write_state, CARTERO_STATE
+        from satellites.cartero.daemon import _write_state, CARTERO_STATE
         _write_state({"test": 1})
         assert CARTERO_STATE.exists()
         assert not CARTERO_STATE.with_suffix(".tmp").exists()
 
     def test_read_state_corrupt(self, _isolate):
-        from core.cartero import _read_state, CARTERO_STATE
+        from satellites.cartero.daemon import _read_state, CARTERO_STATE
         CARTERO_STATE.write_text("not json{{{")
         assert _read_state() == {}
 
@@ -99,26 +99,26 @@ class TestState:
 class TestProcessManagement:
 
     def test_is_running_no_file(self, _isolate):
-        from core.cartero import _is_running
+        from satellites.cartero.daemon import _is_running
         assert _is_running() is False
 
     def test_is_running_stale_pid(self, _isolate):
-        from core.cartero import _is_running, CARTERO_PID
+        from satellites.cartero.daemon import _is_running, CARTERO_PID
         CARTERO_PID.write_text("999999999")  # unlikely to exist
         assert _is_running() is False
         assert not CARTERO_PID.exists()  # cleaned up
 
     def test_is_running_current_pid(self, _isolate):
-        from core.cartero import _is_running, CARTERO_PID
+        from satellites.cartero.daemon import _is_running, CARTERO_PID
         CARTERO_PID.write_text(str(os.getpid()))  # this process exists
         assert _is_running() is True
 
     def test_stop_not_running(self, _isolate):
-        from core.cartero import _stop_background
+        from satellites.cartero.daemon import _stop_background
         assert _stop_background() is False
 
     def test_stop_stale_pid(self, _isolate):
-        from core.cartero import _stop_background, CARTERO_PID
+        from satellites.cartero.daemon import _stop_background, CARTERO_PID
         CARTERO_PID.write_text("999999999")
         assert _stop_background() is False
         assert not CARTERO_PID.exists()
@@ -129,7 +129,7 @@ class TestProcessManagement:
 class TestGmailAPI:
 
     def test_resolve_label_ids(self):
-        from core.cartero import _resolve_label_ids
+        from satellites.cartero.daemon import _resolve_label_ids
         service = MagicMock()
         service.users().labels().list().execute.return_value = {
             "labels": [
@@ -142,7 +142,7 @@ class TestGmailAPI:
         assert result == {"Importante": "Label_1", "Familia": "Label_2"}
 
     def test_resolve_label_ids_case_insensitive(self):
-        from core.cartero import _resolve_label_ids
+        from satellites.cartero.daemon import _resolve_label_ids
         service = MagicMock()
         service.users().labels().list().execute.return_value = {
             "labels": [
@@ -153,7 +153,7 @@ class TestGmailAPI:
         assert result == {"Importante": "Label_1"}
 
     def test_check_gmail(self):
-        from core.cartero import _check_gmail
+        from satellites.cartero.daemon import _check_gmail
         service = MagicMock()
 
         def mock_get(userId, id):
@@ -177,7 +177,7 @@ class TestGmailAPI:
         assert "timestamp" in result
 
     def test_check_gmail_api_error(self):
-        from core.cartero import _check_gmail
+        from satellites.cartero.daemon import _check_gmail
         service = MagicMock()
         service.users().labels().get().execute.side_effect = Exception("API error")
 
@@ -192,7 +192,7 @@ class TestNotification:
 
     @patch("subprocess.run")
     def test_notify_macos(self, mock_run):
-        from core.cartero import _notify_macos
+        from satellites.cartero.daemon import _notify_macos
         _notify_macos("📬 2 correos nuevos", "Importante (2)")
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
@@ -205,13 +205,13 @@ class TestNotification:
 class TestRunMail:
 
     def test_status_not_running(self, _isolate, capsys):
-        from core.cartero import run_mail
+        from satellites.cartero.daemon import run_mail
         ret = run_mail(status=True)
         assert ret == 0
         assert "no está corriendo" in capsys.readouterr().out
 
     def test_status_running(self, _isolate, capsys):
-        from core.cartero import run_mail, CARTERO_PID, _write_state
+        from satellites.cartero.daemon import run_mail, CARTERO_PID, _write_state
         CARTERO_PID.write_text(str(os.getpid()))
         _write_state({
             "gmail": {"total": 3, "counts": {"A": 3}, "timestamp": "2026-04-13T10:00:00"},
@@ -224,29 +224,29 @@ class TestRunMail:
         assert "A" in out
 
     def test_stop(self, _isolate, capsys):
-        from core.cartero import run_mail
+        from satellites.cartero.daemon import run_mail
         ret = run_mail(stop=True)
         assert ret == 0
         assert "no estaba corriendo" in capsys.readouterr().out
 
     def test_start_no_config(self, _isolate, capsys):
         (_isolate / "orbit.json").write_text(json.dumps({"space": "test"}))
-        from core.cartero import run_mail
+        from satellites.cartero.daemon import run_mail
         ret = run_mail(start=True)
         assert ret == 1
 
     def test_default_no_config(self, _isolate, capsys):
         (_isolate / "orbit.json").write_text(json.dumps({"space": "test"}))
-        from core.cartero import run_mail
+        from satellites.cartero.daemon import run_mail
         ret = run_mail()
         assert ret == 1
         assert "orbit.json" in capsys.readouterr().out
 
-    @patch("core.cartero._get_gmail_service")
-    @patch("core.cartero._resolve_label_ids")
-    @patch("core.cartero._check_gmail")
+    @patch("satellites.cartero.daemon._get_gmail_service")
+    @patch("satellites.cartero.daemon._resolve_label_ids")
+    @patch("satellites.cartero.daemon._check_gmail")
     def test_default_sync_check(self, mock_check, mock_resolve, mock_service, _isolate, capsys):
-        from core.cartero import run_mail
+        from satellites.cartero.daemon import run_mail
         mock_service.return_value = MagicMock()
         mock_resolve.return_value = {"Importante": "L1", "Familia": "L2"}
         mock_check.return_value = {
@@ -265,23 +265,23 @@ class TestRunMail:
 
 class TestStartup:
 
-    @patch("core.cartero._start_background")
+    @patch("satellites.cartero.daemon._start_background")
     def test_startup_launches_background(self, mock_start, _isolate, capsys):
-        from core.cartero import startup_cartero
+        from satellites.cartero.daemon import startup_cartero
         startup_cartero()
         mock_start.assert_called_once()
         assert "Cartero activo" in capsys.readouterr().out
 
-    @patch("core.cartero._is_running", return_value=True)
+    @patch("satellites.cartero.daemon._is_running", return_value=True)
     def test_startup_skips_if_running(self, mock_running, _isolate, capsys):
-        from core.cartero import startup_cartero, _write_state
+        from satellites.cartero.daemon import startup_cartero, _write_state
         _write_state({"gmail": {"total": 2, "counts": {"A": 2}}})
         startup_cartero()
         assert "Cartero activo" in capsys.readouterr().out
 
     def test_startup_no_config(self, _isolate, capsys):
         (_isolate / "orbit.json").write_text(json.dumps({"space": "test"}))
-        from core.cartero import startup_cartero
+        from satellites.cartero.daemon import startup_cartero
         startup_cartero()
         assert capsys.readouterr().out == ""
 
@@ -294,7 +294,7 @@ class TestSlackConfig:
         (_isolate / "orbit.json").write_text(json.dumps({
             "cartero": {"slack": {"workspace": "test", "channels": ["general"], "interval": 600}}
         }))
-        from core.cartero import _slack_config
+        from satellites.cartero.daemon import _slack_config
         cfg = _slack_config()
         assert cfg is not None
         assert len(cfg) == 1
@@ -307,27 +307,27 @@ class TestSlackConfig:
                 {"workspace": "ws2", "channels": ["b"], "dms": True},
             ]}
         }))
-        from core.cartero import _slack_config
+        from satellites.cartero.daemon import _slack_config
         cfg = _slack_config()
         assert len(cfg) == 2
         assert cfg[1]["dms"] is True
 
     def test_slack_config_missing(self, _isolate):
-        from core.cartero import _slack_config
+        from satellites.cartero.daemon import _slack_config
         assert _slack_config() is None
 
     def test_slack_config_empty_channels(self, _isolate):
         (_isolate / "orbit.json").write_text(json.dumps({
             "cartero": {"slack": {"channels": []}}
         }))
-        from core.cartero import _slack_config
+        from satellites.cartero.daemon import _slack_config
         assert _slack_config() is None
 
     def test_slack_config_dms_only(self, _isolate):
         (_isolate / "orbit.json").write_text(json.dumps({
             "cartero": {"slack": {"workspace": "test", "dms": True}}
         }))
-        from core.cartero import _slack_config
+        from satellites.cartero.daemon import _slack_config
         cfg = _slack_config()
         assert cfg is not None
         assert len(cfg) == 1
@@ -336,16 +336,16 @@ class TestSlackConfig:
 class TestSlackToken:
 
     def test_no_token_file(self, _isolate):
-        from core.cartero import _get_slack_token
+        from satellites.cartero.daemon import _get_slack_token
         assert _get_slack_token() is None
 
     def test_empty_token_file(self, _isolate):
-        from core.cartero import _get_slack_token
+        from satellites.cartero.daemon import _get_slack_token
         (_isolate / ".slack-token").write_text("")
         assert _get_slack_token() is None
 
     def test_valid_token(self, _isolate):
-        from core.cartero import _get_slack_token
+        from satellites.cartero.daemon import _get_slack_token
         (_isolate / ".slack-token-myws").write_text("xoxp-12345\n")
         assert _get_slack_token("myws") == "xoxp-12345"
 
@@ -353,8 +353,8 @@ class TestSlackToken:
 class TestSlackAPI:
 
     def test_resolve_channels(self):
-        from core.cartero import _resolve_slack_channels
-        with patch("core.cartero._slack_api") as mock_api:
+        from satellites.cartero.daemon import _resolve_slack_channels
+        with patch("satellites.cartero.daemon._slack_api") as mock_api:
             mock_api.return_value = {
                 "ok": True,
                 "channels": [
@@ -368,8 +368,8 @@ class TestSlackAPI:
             assert result == {"general": "C001", "alertas": "C002"}
 
     def test_resolve_channels_not_found(self, capsys):
-        from core.cartero import _resolve_slack_channels
-        with patch("core.cartero._slack_api") as mock_api:
+        from satellites.cartero.daemon import _resolve_slack_channels
+        with patch("satellites.cartero.daemon._slack_api") as mock_api:
             mock_api.return_value = {
                 "ok": True,
                 "channels": [{"name": "random", "id": "C003"}],
@@ -380,8 +380,8 @@ class TestSlackAPI:
             assert "no encontrado" in capsys.readouterr().out
 
     def test_check_slack(self):
-        from core.cartero import _check_slack
-        with patch("core.cartero._slack_api") as mock_api:
+        from satellites.cartero.daemon import _check_slack
+        with patch("satellites.cartero.daemon._slack_api") as mock_api:
             def side_effect(method, token, params=None):
                 if method == "conversations.info":
                     cid = params["channel"]
@@ -396,16 +396,16 @@ class TestSlackAPI:
             assert result["total"] == 7
 
     def test_check_slack_error(self):
-        from core.cartero import _check_slack
-        with patch("core.cartero._slack_api") as mock_api:
+        from satellites.cartero.daemon import _check_slack
+        with patch("satellites.cartero.daemon._slack_api") as mock_api:
             mock_api.side_effect = Exception("network error")
             result = _check_slack("token", {"general": "C001"})
             assert result["counts"]["general"] == 0
             assert result["total"] == 0
 
     def test_check_slack_dms(self):
-        from core.cartero import _check_slack_dms
-        with patch("core.cartero._slack_api") as mock_api:
+        from satellites.cartero.daemon import _check_slack_dms
+        with patch("satellites.cartero.daemon._slack_api") as mock_api:
             def side_effect(method, token, params=None):
                 if method == "conversations.list":
                     if params and params.get("types") == "im":
@@ -425,9 +425,9 @@ class TestSlackAPI:
             assert _check_slack_dms("token") == 4
 
     def test_check_slack_workspace_with_dms(self):
-        from core.cartero import _check_slack_workspace
-        with patch("core.cartero._check_slack") as mock_ch, \
-             patch("core.cartero._check_slack_dms") as mock_dm:
+        from satellites.cartero.daemon import _check_slack_workspace
+        with patch("satellites.cartero.daemon._check_slack") as mock_ch, \
+             patch("satellites.cartero.daemon._check_slack_dms") as mock_dm:
             mock_ch.return_value = {
                 "counts": {"general": 2}, "total": 2,
                 "timestamp": "2026-04-13T10:00:00",
@@ -442,19 +442,19 @@ class TestSlackAPI:
 class TestHasAnySource:
 
     def test_gmail_only(self, _isolate):
-        from core.cartero import _has_any_source
+        from satellites.cartero.daemon import _has_any_source
         assert _has_any_source() is True
 
     def test_slack_only(self, _isolate):
         (_isolate / "orbit.json").write_text(json.dumps({
             "cartero": {"slack": {"channels": ["general"]}}
         }))
-        from core.cartero import _has_any_source
+        from satellites.cartero.daemon import _has_any_source
         assert _has_any_source() is True
 
     def test_no_sources(self, _isolate):
         (_isolate / "orbit.json").write_text(json.dumps({"space": "test"}))
-        from core.cartero import _has_any_source
+        from satellites.cartero.daemon import _has_any_source
         assert _has_any_source() is False
 
 
@@ -463,18 +463,18 @@ class TestHasAnySource:
 class TestFederation:
 
     def test_no_federated(self, _isolate):
-        from core.cartero import _read_federated_states
+        from satellites.cartero.daemon import _read_federated_states
         assert _read_federated_states() == []
 
     def test_read_federated_state(self, _isolate, monkeypatch):
-        from core.cartero import _read_federated_states
+        from satellites.cartero.daemon import _read_federated_states
         # Create a fake federated workspace with cartero state
         fed_path = _isolate / "fed-ws"
         fed_path.mkdir()
         (fed_path / ".cartero-state.json").write_text(json.dumps({
             "gmail": {"total": 3, "counts": {"Inbox": 3}},
         }))
-        monkeypatch.setattr("core.cartero._FEDERATED_SPACES", [
+        monkeypatch.setattr("satellites.cartero.daemon._FEDERATED_SPACES", [
             {"name": "personal", "path": str(fed_path), "emoji": "🌿"}
         ])
         results = _read_federated_states()
@@ -518,20 +518,20 @@ class TestDeltaNotification:
 class TestSummary:
 
     def test_summary_no_state(self, _isolate, capsys):
-        from core.cartero import _print_summary
+        from satellites.cartero.daemon import _print_summary
         ret = _print_summary(live=False)
         assert ret == 0
         assert "Sin datos" in capsys.readouterr().out
 
     def test_summary_no_messages(self, _isolate, capsys):
-        from core.cartero import _print_summary, _write_state
+        from satellites.cartero.daemon import _print_summary, _write_state
         _write_state({"gmail": {"total": 0, "counts": {}}})
         ret = _print_summary(live=False)
         assert ret == 0
         assert "Sin mensajes" in capsys.readouterr().out
 
     def test_summary_gmail(self, _isolate, capsys):
-        from core.cartero import _print_summary, _write_state
+        from satellites.cartero.daemon import _print_summary, _write_state
         _write_state({"gmail": {"total": 4, "counts": {"Importante": 3, "Familia": 1}}})
         ret = _print_summary(live=False)
         assert ret == 0
@@ -541,7 +541,7 @@ class TestSummary:
         assert "Familia 1" in out
 
     def test_summary_slack(self, _isolate, capsys):
-        from core.cartero import _print_summary, _write_state
+        from satellites.cartero.daemon import _print_summary, _write_state
         _write_state({"slack": {"total": 7, "counts": {"next:general": 5, "DMs": 2}}})
         ret = _print_summary(live=False)
         assert ret == 0
@@ -550,7 +550,7 @@ class TestSummary:
         assert "#next:general 5" in out
 
     def test_summary_both_sources(self, _isolate, capsys):
-        from core.cartero import _print_summary, _write_state
+        from satellites.cartero.daemon import _print_summary, _write_state
         _write_state({
             "gmail": {"total": 3, "counts": {"A": 3}},
             "slack": {"total": 2, "counts": {"ch": 2}},
@@ -562,13 +562,13 @@ class TestSummary:
         assert "Slack: 2" in out
 
     def test_summary_federated(self, _isolate, monkeypatch, capsys):
-        from core.cartero import _print_summary
+        from satellites.cartero.daemon import _print_summary
         fed_path = _isolate / "fed-ws"
         fed_path.mkdir()
         (fed_path / ".cartero-state.json").write_text(json.dumps({
             "gmail": {"total": 5, "counts": {"Inbox": 3, "Work": 2}},
         }))
-        monkeypatch.setattr("core.cartero._FEDERATED_SPACES", [
+        monkeypatch.setattr("satellites.cartero.daemon._FEDERATED_SPACES", [
             {"name": "personal", "path": str(fed_path), "emoji": "🌿"}
         ])
         ret = _print_summary(live=False)
@@ -577,11 +577,11 @@ class TestSummary:
         assert "🌿" in out
         assert "Gmail: 5" in out
 
-    @patch("core.cartero._get_gmail_service")
-    @patch("core.cartero._resolve_label_ids")
-    @patch("core.cartero._check_gmail")
+    @patch("satellites.cartero.daemon._get_gmail_service")
+    @patch("satellites.cartero.daemon._resolve_label_ids")
+    @patch("satellites.cartero.daemon._check_gmail")
     def test_summary_live(self, mock_check, mock_resolve, mock_service, _isolate, capsys):
-        from core.cartero import _print_summary
+        from satellites.cartero.daemon import _print_summary
         mock_service.return_value = MagicMock()
         mock_resolve.return_value = {"Importante": "L1"}
         mock_check.return_value = {
@@ -597,25 +597,25 @@ class TestSummary:
 
     def test_summary_via_run_mail(self, _isolate, capsys):
         """run_mail(summary=True) calls _print_summary with live=True."""
-        from core.cartero import run_mail, _write_state
+        from satellites.cartero.daemon import run_mail, _write_state
         _write_state({"gmail": {"total": 2, "counts": {"A": 2}}})
-        with patch("core.cartero._sync_check") as mock_sync:
+        with patch("satellites.cartero.daemon._sync_check") as mock_sync:
             mock_sync.return_value = {"gmail": {"total": 2, "counts": {"A": 2}}}
             ret = run_mail(summary=True)
         assert ret == 0
         assert "Gmail: 2" in capsys.readouterr().out
 
     def test_format_source_summary_empty(self):
-        from core.cartero import _format_source_summary
+        from satellites.cartero.daemon import _format_source_summary
         assert _format_source_summary("gmail", {"total": 0, "counts": {}}) == ""
 
     def test_format_source_summary_gmail(self):
-        from core.cartero import _format_source_summary
+        from satellites.cartero.daemon import _format_source_summary
         line = _format_source_summary("gmail", {"total": 4, "counts": {"A": 3, "B": 1}})
         assert line == "📬 Gmail: 4 (A 3, B 1)"
 
     def test_format_source_summary_slack(self):
-        from core.cartero import _format_source_summary
+        from satellites.cartero.daemon import _format_source_summary
         line = _format_source_summary("slack", {"total": 5, "counts": {"ch": 5}})
         assert line == "📬 Slack: 5 (#ch 5)"
 
@@ -628,7 +628,7 @@ class TestMailConfig:
                 {"account": "🏠 Personal", "mailbox": "🏠 hogar"},
             ]}}
         }))
-        from core.cartero import _mail_config
+        from satellites.cartero.daemon import _mail_config
         watch = _mail_config()
         assert watch == [
             {"account": "🏛️ USC", "mailbox": "Inbox"},
@@ -636,7 +636,7 @@ class TestMailConfig:
         ]
 
     def test_mail_config_absent(self, _isolate):
-        from core.cartero import _mail_config
+        from satellites.cartero.daemon import _mail_config
         # Default fixture has only `gmail`; no `mail`
         assert _mail_config() is None
 
@@ -644,7 +644,7 @@ class TestMailConfig:
         (_isolate / "orbit.json").write_text(json.dumps({
             "cartero": {"mail": {"watch": []}}
         }))
-        from core.cartero import _mail_config
+        from satellites.cartero.daemon import _mail_config
         assert _mail_config() is None
 
     def test_mail_config_drops_invalid_entries(self, _isolate):
@@ -655,7 +655,7 @@ class TestMailConfig:
                 {"account": "X", "mailbox": "Y"}, # valid
             ]}}
         }))
-        from core.cartero import _mail_config
+        from satellites.cartero.daemon import _mail_config
         assert _mail_config() == [{"account": "X", "mailbox": "Y"}]
 
     def test_has_any_source_includes_mail(self, _isolate):
@@ -664,13 +664,13 @@ class TestMailConfig:
                 {"account": "A", "mailbox": "B"}
             ]}}
         }))
-        from core.cartero import _has_any_source
+        from satellites.cartero.daemon import _has_any_source
         assert _has_any_source() is True
 
 
 class TestMailBackend:
     def test_check_mail_skipped_when_not_running(self, _isolate, monkeypatch):
-        from core import cartero
+        from satellites.cartero import daemon as cartero
         monkeypatch.setattr(cartero, "_mail_app_running", lambda: False)
         result = cartero._check_mail([{"account": "A", "mailbox": "B"}])
         assert result["total"] == 0
@@ -678,7 +678,7 @@ class TestMailBackend:
         assert "skipped" in result
 
     def test_check_mail_aggregates_counts(self, _isolate, monkeypatch):
-        from core import cartero
+        from satellites.cartero import daemon as cartero
         monkeypatch.setattr(cartero, "_mail_app_running", lambda: True)
         # Simulate: USC/Inbox=3, Personal/🏠 hogar=2
         def fake_count(acc, mb):
@@ -693,23 +693,23 @@ class TestMailBackend:
         assert result["total"] == 5
 
     def test_count_mail_unread_handles_garbage_output(self, monkeypatch):
-        from core import cartero
+        from satellites.cartero import daemon as cartero
         monkeypatch.setattr(cartero, "_osascript_text", lambda s, **k: "not a number")
         assert cartero._count_mail_unread("A", "B") == 0
 
     def test_count_mail_unread_handles_negative_error_sentinel(self, monkeypatch):
-        from core import cartero
+        from satellites.cartero import daemon as cartero
         monkeypatch.setattr(cartero, "_osascript_text", lambda s, **k: "-1")
         assert cartero._count_mail_unread("A", "B") == 0
 
     def test_count_mail_unread_returns_int(self, monkeypatch):
-        from core import cartero
+        from satellites.cartero import daemon as cartero
         monkeypatch.setattr(cartero, "_osascript_text", lambda s, **k: "7")
         assert cartero._count_mail_unread("A", "B") == 7
 
     def test_count_mail_unread_escapes_quotes_in_names(self, monkeypatch):
         """Names with double quotes must not break the AppleScript."""
-        from core import cartero
+        from satellites.cartero import daemon as cartero
         captured = {}
         def fake_osa(script, **k):
             captured["script"] = script
@@ -722,7 +722,7 @@ class TestMailBackend:
 
 class TestMailSummary:
     def test_format_source_summary_mail_strips_account_prefix(self):
-        from core.cartero import _format_source_summary
+        from satellites.cartero.daemon import _format_source_summary
         line = _format_source_summary("mail", {
             "total": 5,
             "counts": {"USC/Inbox": 3, "Personal/🏠 hogar": 2},

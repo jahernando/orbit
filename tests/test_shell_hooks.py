@@ -155,7 +155,7 @@ def test_code_update_check_delegates():
 
 
 def test_cartero_startup_delegates():
-    with patch("core.cartero.startup_cartero") as h:
+    with patch("core.cartero_invoke.startup_cartero") as h:
         shell._action_cartero_startup(None)
     h.assert_called_once()
 
@@ -272,7 +272,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
                side_effect=record("startup_commit_offer")), \
          patch("core.startup.startup_code_update_check",
                side_effect=record("startup_code_update_check")), \
-         patch("core.cartero.startup_cartero",
+         patch("core.cartero_invoke.startup_cartero",
                side_effect=record("startup_cartero")), \
          patch("core.ring_export.refresh_all",
                side_effect=lambda *a, **kw: (calls.append("ring_refresh_all") or [])), \
@@ -320,7 +320,7 @@ def test_shell_startup_non_critical_failure_continues(reset_journal):
          patch("core.startup.startup_untracked_check"), \
          patch("core.startup.startup_commit_offer"), \
          patch("core.startup.startup_code_update_check"), \
-         patch("core.cartero.startup_cartero"), \
+         patch("core.cartero_invoke.startup_cartero"), \
          patch("orbit.run_dash"), \
          patch("core.shell.threading.Thread"):
         results = hooks.fire("shell_startup", verbosity="quiet")

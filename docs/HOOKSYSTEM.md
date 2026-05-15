@@ -153,7 +153,7 @@ Esta es la chain con **más actions** del sistema. Solo es trigger temporal: nin
 | 6 | `code_update_check` | `core/commit.py:499-622` | no | tty-only | Checkea si orbit repo tiene nuevos commits, ofrece pull |
 | 7 | `gsync_background` | `core/gsync.py:2829` | no | `applescript_writes: false` → DORMANT | Thread daemon |
 | 8 | `schedule_reminders` | `core/ring.py:442` | no | NO-OP | **Dead code**. Cuerpo unreachable (`return []` en línea 453). Llamada vestigial |
-| 9 | `cartero_startup` | `core/cartero.py:703` | no | falta `cartero.json` | Daemon de mail/Slack si está configurado |
+| 9 | `cartero_startup` | `core/cartero_invoke.py` → `satellites/cartero/daemon.py --startup` | no | falta `cartero.json` | Daemon de mail/Slack si está configurado |
 | 10 | `dash_render` | `core/shell.py:126-131` → `run_dash(silent=False)` | no | no | Updatea `panel.md`, `agenda.md`, `calendar.md` |
 | 11 | `dash_background_loop_start` | `core/shell.py:134-136` | no | no | Thread daemon: refresh dash cada 1h |
 
@@ -247,7 +247,7 @@ Estos no son "chains" en sentido estricto pero son automagia: corren sin que el 
 | Doctor thread | `core/doctor.py:681` | startup | hasta join (5s) o end-of-startup | sí (join) |
 | gsync thread | `core/gsync.py:2878` | startup + day-change | daemon, muere con shell | no (daemon=True) |
 | Dash refresh loop | `core/shell.py:135` | startup | hasta `_dash_stop.set()` o shell exit | parcial (se chequea solo al límite del intervalo de 1h) |
-| Cartero daemon | `core/cartero.py:672-696` | startup si configurado | double-fork → independiente del shell | sí (`_stop_background()`) |
+| Cartero daemon | `satellites/cartero/daemon.py::startup_cartero` (vía `core/cartero_invoke.py` por subprocess) | startup si configurado | double-fork → independiente del shell | sí (`_stop_background()`) |
 | Cloudsync subprocess | `core/cloudsync.py:132` | post-commit | detached (start_new_session=True) | no (fire & forget) |
 
 **Problemas conocidos:**

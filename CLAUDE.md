@@ -20,16 +20,19 @@ Principios de diseño:
     agenda_cmds.py        ← CRUD de las 4 citas (task, ms, ev, reminder)
     ring.py               ← parsing y helpers AppleScript-direct (legacy, gateado)
     ring_export.py        ← ring.json + invoke daemon (modelo declarativo v0.37)
+    cartero_invoke.py     ← subprocess shim al satélite cartero (sin imports cruzados)
     ics.py / ics_share.py ← emisión de buckets .ics que Calendar.app subscribe
     doctor.py             ← validación de sintaxis de ficheros
     shell.py              ← shell interactivo
     startup.py            ← prompts de arranque (untracked, commit, code update)
-  satellites/
-    ring-daemon/daemon.py ← EventKit upsert idempotente en Reminders.app (daemon externo)
     config.py             ← ORBIT_HOME, ORBIT_PROMPT, orbit.json
     log.py                ← logbook entries
     highlights.py         ← highlights CRUD
     project.py            ← gestión de proyectos
+  satellites/             ← daemons externos, invocados por subprocess; cero imports de core/
+    ring-daemon/daemon.py ← EventKit upsert idempotente en Reminders.app
+    cartero/daemon.py     ← notificador de mail/Slack (poll + globito macOS)
+    cartero/google_oauth.py ← OAuth helpers (Gmail), solo usados por cartero
   tests/                  ← pytest, ~1567 tests
 
 ~/🚀orbit-ws/             ← workspace de trabajo (privado)

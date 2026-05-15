@@ -1,4 +1,8 @@
-"""cartero — background mail/messaging notifier for Orbit.
+"""satellites/cartero/daemon.py — background mail/messaging notifier satellite.
+
+External daemon spawned by orbit via subprocess (see core/cartero_invoke.py).
+Reads workspace config from $ORBIT_HOME/orbit.json (`cartero` section) and
+federation list from $ORBIT_HOME/federation.json. Imports nothing from orbit.
 
 Polls Mail.app, Gmail (legacy) and/or Slack for unread messages and:
   - Updates a shared state file (ORBIT_HOME/.cartero-state.json) for
@@ -37,7 +41,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from core.config import ORBIT_HOME, _FEDERATED_SPACES
+# ── Workspace context (read from env + filesystem; no orbit imports) ──────
+
+ORBIT_HOME = Path(os.environ.get("ORBIT_HOME", ".")).expanduser().resolve()
+
+_FEDERATION_PATH = ORBIT_HOME / "federation.json"
+_FEDERATED_SPACES: list = []
+if _FEDERATION_PATH.exists():
+    try:
+        _FEDERATED_SPACES = json.loads(_FEDERATION_PATH.read_text()).get("federated", [])
+    except (json.JSONDecodeError, OSError):
+        pass
 
 # ── Paths ───────────────────────────────────────────────────────────────────
 
@@ -179,7 +193,7 @@ def _get_gmail_service():
 
     Adds gmail.readonly scope if needed.  Returns service or None.
     """
-    from core.google_oauth import CREDENTIALS_PATH, TOKEN_PATH, SCOPES as BASE_SCOPES
+    from google_oauth import CREDENTIALS_PATH, TOKEN_PATH, SCOPES as BASE_SCOPES
 
     all_scopes = list(BASE_SCOPES)
     if GMAIL_SCOPE not in all_scopes:
@@ -917,3 +931,37 @@ def run_mail(status: bool = False, stop: bool = False, start: bool = False,
             print()
 
     return 0
+
+
+# ── CLI entry point ────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(
+        prog="cartero",
+        description="Mail/Slack notifier satellite. Reads config from "
+                    "$ORBIT_HOME/orbit.json; federation from "
+                    "$ORBIT_HOME/federation.json.",
+    )
+    parser.add_argument("--status",  action="store_true",
+                        help="Show background process status")
+    parser.add_argument("--stop",    action="store_true",
+                        help="Stop background process")
+    parser.add_argument("--start",   action="store_true",
+                        help="Start background process")
+    parser.add_argument("--summary", action="store_true",
+                        help="Quick summary from cache (no network)")
+    parser.add_argument("--startup", action="store_true",
+                        help="Shell-startup hook: idempotent spawn + show "
+                             "initial mail/Slack status, including federated.")
+    args = parser.parse_args()
+
+    if args.startup:
+        startup_cartero()
+        sys.exit(0)
+    sys.exit(run_mail(
+        status=args.status,
+        stop=args.stop,
+        start=args.start,
+        summary=args.summary,
+    ))

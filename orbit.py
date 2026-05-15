@@ -1130,7 +1130,7 @@ def cmd_reorganize(args):
 
 
 def cmd_mail(args):
-    from core.cartero import run_mail
+    from core.cartero_invoke import run_mail
     return run_mail(
         status=getattr(args, "status", False),
         stop=getattr(args, "stop", False),

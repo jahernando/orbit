@@ -2,7 +2,7 @@
 
 Mapa de módulos del paquete y sus dependencias internas. Sirve para guiar la limpieza/simplificación del CLI sin perder de vista qué encaja con qué.
 
-Última auditoría: 2026-05-15 (post-Fase 1 simplificación + F1 satellites refactor: ring-daemon movido a `satellites/ring-daemon/daemon.py`). Total: 43 módulos en `core/` + `orbit.py` (CLI) + `satellites/ring-daemon/daemon.py` ≈ 22 850 líneas.
+Última auditoría: 2026-05-15 (post F1+F2+F3 satellites refactor: ring-daemon y cartero+google_oauth movidos a `satellites/`; orbit los invoca solo por subprocess vía `core/ring_export.invoke_daemon` y `core/cartero_invoke`). Total: 42 módulos en `core/` + `orbit.py` (CLI) + 2 satélites (`satellites/ring-daemon/daemon.py`, `satellites/cartero/{daemon,google_oauth}.py`).
 
 ---
 
@@ -52,7 +52,7 @@ graph TB
     end
 
     subgraph FEED [A · Feeds entrantes]
-        cartero["cartero · 958"]
+        cartero["satellites/cartero/daemon · 905"]
         email["email · 1098"]
         ics["ics · 771"]
         inbox["inbox · 290"]
@@ -79,7 +79,7 @@ graph TB
         ring_export["ring_export · 572"]
         ring["ring · 377 (helpers + dormant-flag path)"]
         daemon["satellites/ring-daemon/daemon · 288"]
-        google_oauth["google_oauth · 75 (OAuth helpers para cartero)"]
+        google_oauth["satellites/cartero/google_oauth · 73"]
     end
 
     subgraph VIEW [D · Vistas / dashboards]

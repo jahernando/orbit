@@ -48,9 +48,9 @@ Auditoría de `grep -hE "^(import|from)"` sobre `core/*.py` + `orbit.py`, filtra
 
 | Paquete | Subsistema | Usado en | Necesario para |
 |---------|-----------|----------|----------------|
-| `googleapiclient` | cartero (mail/Slack notifier, separado de orbit core) | `core/cartero.py`, `core/calendar_sync.py` | Captura Gmail vía API |
+| `googleapiclient` | cartero satellite | `satellites/cartero/daemon.py`, `satellites/cartero/google_oauth.py` | Captura Gmail vía API |
 | `google-auth-oauthlib` | cartero | idem | OAuth flow para Gmail |
-| `slack_sdk` | cartero | `core/cartero.py` | Notificaciones Slack |
+| `slack_sdk` | cartero satellite | `satellites/cartero/daemon.py` | Notificaciones Slack |
 
 Estos solo son necesarios si activas cartero (`orbit mail` en background). Orbit funciona sin ellos.
 
@@ -92,7 +92,7 @@ Estos solo son necesarios si activas cartero (`orbit mail` en background). Orbit
 |------|------|---------|
 | `ws` / `wks` (shell function) | `~/work/scripts/ws` | Lanzador de workspaces + gestor de `workspaces.json`. Memoria: `reference_ws_script`. |
 | `ws-label.py` | `label/ws-label.py` | Etiquetas flotantes de macOS Spaces. Memoria: `project_ws_label`. |
-| `cartero` (subsistema interno de orbit) | `core/cartero.py` | Notificador de mail/Slack en background. Requiere `googleapiclient` y/o `slack_sdk`. |
+| `cartero` (satellite externo) | `satellites/cartero/daemon.py` | Notificador de mail/Slack en background. Invocado por orbit vía `core/cartero_invoke.py` (subprocess only, cero imports cruzados). Requiere `googleapiclient` y/o `slack_sdk`. |
 
 ---
 

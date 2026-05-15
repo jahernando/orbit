@@ -140,7 +140,7 @@ def _action_code_update_check(ctx):
 
 def _action_cartero_startup(ctx):
     """Start the mail/Slack daemon if cartero.json is configured."""
-    from core.cartero import startup_cartero
+    from core.cartero_invoke import startup_cartero
     startup_cartero()
     return {"ok": True}
 
