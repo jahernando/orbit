@@ -49,28 +49,28 @@ def run_task_done(project: Optional[str], text: Optional[str]) -> int:
     if idx is None:
         return 1
 
-    task      = data["tasks"][idx]
-    task_desc = task["desc"]
-    done_date = date.today().isoformat()
-    task["status"] = "done"
+    selected = data["tasks"][idx]
+    task_desc = selected["desc"]
+
+    from core import api
+    try:
+        completed, next_task = api.complete_task(
+            project_dir.name,
+            orbit_id=selected.get("orbit_id"),
+            desc=selected["desc"],
+            date=selected.get("date"))
+    except ValueError as exc:
+        print(f"⚠️  {exc}")
+        return 1
 
     next_info = ""
-    next_task = None
-    if task.get("recur"):
-        next_due = _next_occurrence(task.get("date"), task["recur"], done_date)
-        until = task.get("until")
-        # Only create next occurrence if within until limit
-        if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-            next_info = f" (recur: {task['recur']}) — serie finalizada ({until})"
-        else:
-            next_task = {"status": "pending", "desc": task_desc,
-                          "date": next_due, "recur": task["recur"],
-                          "until": until, "ring": task.get("ring"),
-                          "notes": list(task.get("notes") or [])}
-            data["tasks"].append(next_task)
-            next_info = f" (recur: {task['recur']}) → próxima: {next_due}"
+    if next_task:
+        next_info = (f" (recur: {completed['recur']}) → próxima: "
+                     f"{next_task['date']}")
+    elif completed.get("recur"):
+        next_info = (f" (recur: {completed['recur']}) — serie finalizada "
+                     f"({completed.get('until')})")
 
-    _write_agenda(agenda_path, data)
     add_orbit_entry(project_dir, f"[completada] Tarea: {task_desc}{next_info}", "apunte")
     print(f"✓ [{project_dir.name}] [completada] {task_desc}{next_info}")
 
@@ -197,27 +197,28 @@ def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
     if idx is None:
         return 1
 
-    ms = data["milestones"][idx]
-    ms_desc = ms["desc"]
-    done_date = date.today().isoformat()
-    ms["status"] = "done"
+    selected = data["milestones"][idx]
+    ms_desc = selected["desc"]
+
+    from core import api
+    try:
+        completed, next_ms = api.complete_milestone(
+            project_dir.name,
+            orbit_id=selected.get("orbit_id"),
+            desc=selected["desc"],
+            date=selected.get("date"))
+    except ValueError as exc:
+        print(f"⚠️  {exc}")
+        return 1
 
     next_info = ""
-    next_ms = None
-    if ms.get("recur"):
-        next_due = _next_occurrence(ms.get("date"), ms["recur"], done_date)
-        until = ms.get("until")
-        if until and date.fromisoformat(next_due) > date.fromisoformat(until):
-            next_info = f" (recur: {ms['recur']}) — serie finalizada ({until})"
-        else:
-            next_ms = {"status": "pending", "desc": ms_desc,
-                       "date": next_due, "recur": ms["recur"],
-                       "until": until, "ring": ms.get("ring"),
-                       "notes": list(ms.get("notes") or [])}
-            data["milestones"].append(next_ms)
-            next_info = f" (recur: {ms['recur']}) → próxima: {next_due}"
+    if next_ms:
+        next_info = (f" (recur: {completed['recur']}) → próxima: "
+                     f"{next_ms['date']}")
+    elif completed.get("recur"):
+        next_info = (f" (recur: {completed['recur']}) — serie finalizada "
+                     f"({completed.get('until')})")
 
-    _write_agenda(agenda_path, data)
     add_orbit_entry(project_dir, f"[alcanzado] Hito: {ms_desc}{next_info}", "resultado")
     print(f"✓ [{project_dir.name}] [alcanzado] {ms_desc}{next_info}")
 

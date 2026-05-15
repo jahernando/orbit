@@ -22,11 +22,12 @@ mentioned) are tracked in ADR-032.
 """
 from __future__ import annotations
 
-from typing import Optional
+from datetime import date
+from typing import Optional, Tuple
 
 from core.project import _find_new_project
 from core.log import resolve_file
-from core.agenda.recurrence import _normalize_recur, is_valid_recur
+from core.agenda.recurrence import _normalize_recur, is_valid_recur, _next_occurrence
 from core.agenda.io import _read_agenda, _write_agenda, _valid_date, _valid_time
 from core.agenda.display import _AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX
 from core.agenda.lifecycle import _TYPE_CONFIG
@@ -207,3 +208,194 @@ def add_reminder(project: str, text: str, *,
                        end_date=None, notes_in=notes,
                        agenda=None, room=None)
     return _append_and_write("reminder", project_dir, item)
+
+
+# ── Item identification ────────────────────────────────────────────────
+
+def _find_matching(items: list, *, orbit_id: Optional[str],
+                   desc: Optional[str], date_val: Optional[str]) -> Optional[int]:
+    """Locate an item by orbit_id first, then by ``desc`` (+ optional ``date_val``).
+
+    Returns the index in ``items`` or None. Raises ``ValueError`` when
+    ``desc`` matches multiple items and ``date_val`` is not given.
+    """
+    if orbit_id:
+        for i, it in enumerate(items):
+            if it.get("orbit_id") == orbit_id:
+                return i
+        return None
+    if desc is None:
+        return None
+    matches = [i for i, it in enumerate(items)
+               if it.get("desc") == desc
+               and (date_val is None or it.get("date") == date_val)]
+    if len(matches) == 0:
+        return None
+    if len(matches) > 1:
+        raise ValueError(
+            f"ambiguous match: {len(matches)} items with desc={desc!r}"
+            + (f" date={date_val!r}" if date_val else ""))
+    return matches[0]
+
+
+# ── Complete (task / milestone) ────────────────────────────────────────
+
+def _complete_kind(kind: str, project: str, *,
+                   orbit_id: Optional[str] = None,
+                   desc: Optional[str] = None,
+                   date_val: Optional[str] = None) -> Tuple[dict, Optional[dict]]:
+    """Shared body of complete_task / complete_milestone."""
+    cfg = _TYPE_CONFIG[kind]
+    project_dir = _resolve_project_or_raise(project)
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    items = data[cfg["key"]]
+    idx = _find_matching(items, orbit_id=orbit_id, desc=desc, date_val=date_val)
+    if idx is None:
+        raise ValueError(f"{kind} not found in {project}")
+    item = items[idx]
+    item["status"] = "done"
+
+    next_item = None
+    if item.get("recur"):
+        done_iso = date.today().isoformat()
+        next_due = _next_occurrence(item.get("date"), item["recur"], done_iso)
+        until = item.get("until")
+        if not (until and date.fromisoformat(next_due) > date.fromisoformat(until)):
+            next_item = {"status": "pending", "desc": item["desc"],
+                         "date": next_due, "recur": item["recur"],
+                         "until": until, "ring": item.get("ring"),
+                         "notes": list(item.get("notes") or [])}
+            items.append(next_item)
+
+    _write_agenda(agenda_path, data)
+    return item, next_item
+
+
+def complete_task(project: str, *,
+                  orbit_id: Optional[str] = None,
+                  desc: Optional[str] = None,
+                  date: Optional[str] = None) -> Tuple[dict, Optional[dict]]:
+    """Mark a pending task as done. Returns ``(completed, next_or_None)``.
+
+    Identify the task by ``orbit_id`` (preferred) or by ``desc`` (with
+    optional ``date`` to disambiguate). For recurring tasks within their
+    ``until`` window, a fresh pending occurrence is appended and returned
+    as the second tuple element.
+    """
+    return _complete_kind("task", project, orbit_id=orbit_id,
+                          desc=desc, date_val=date)
+
+
+def complete_milestone(project: str, *,
+                       orbit_id: Optional[str] = None,
+                       desc: Optional[str] = None,
+                       date: Optional[str] = None) -> Tuple[dict, Optional[dict]]:
+    """Mark a pending milestone as reached. See :func:`complete_task`."""
+    return _complete_kind("milestone", project, orbit_id=orbit_id,
+                          desc=desc, date_val=date)
+
+
+# ── Drop (task / milestone / event / reminder) ─────────────────────────
+
+def _drop_kind(kind: str, project: str, *,
+               orbit_id: Optional[str] = None,
+               desc: Optional[str] = None,
+               date_val: Optional[str] = None,
+               drop_series: bool = False) -> Tuple[dict, Optional[dict]]:
+    """Shared body of drop_task / drop_milestone / drop_event / drop_reminder.
+
+    Returns ``(dropped_item, next_or_None)``. ``next`` is populated when
+    the item is recurring and ``drop_series=False`` and the series has
+    not yet exceeded its ``until`` window.
+    """
+    cfg = _TYPE_CONFIG[kind]
+    project_dir = _resolve_project_or_raise(project)
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    items = data[cfg["key"]]
+    idx = _find_matching(items, orbit_id=orbit_id, desc=desc, date_val=date_val)
+    if idx is None:
+        raise ValueError(f"{kind} not found in {project}")
+    item = items[idx]
+
+    # Reminder advance-in-place: if recurring and not drop_series and
+    # within `until`, do not cancel — just bump the date and return.
+    if (kind == "reminder" and item.get("recur") and not drop_series):
+        next_due = _next_occurrence(item.get("date"), item["recur"],
+                                    date.today().isoformat())
+        until = item.get("until")
+        if not (until and date.fromisoformat(next_due) > date.fromisoformat(until)):
+            item["date"] = next_due
+            item["cancelled"] = False
+            _write_agenda(agenda_path, data)
+            return item, None
+
+    # Mark cancelled / pop based on kind.
+    if cfg["drop_action"] == "cancel":
+        item["status"] = "cancelled"
+    elif cfg["drop_action"] == "pop":
+        items.pop(idx)
+    elif cfg["drop_action"] == "cancel_bool":
+        item["cancelled"] = True
+
+    # Advance recurrence (non-reminder kinds) if not dropping the series.
+    next_item = None
+    if item.get("recur") and not drop_series and kind != "reminder":
+        done_iso = date.today().isoformat()
+        next_due = _next_occurrence(item.get("date"), item["recur"], done_iso)
+        until = item.get("until")
+        if not (until and date.fromisoformat(next_due) > date.fromisoformat(until)):
+            next_item = {k: v for k, v in item.items()
+                         if k not in ("synced", "orbit_id")} if cfg.get("has_end") \
+                        else {"desc": item["desc"], "date": next_due,
+                              "recur": item["recur"], "until": until,
+                              "notes": list(item.get("notes") or [])}
+            if cfg["has_end"]:
+                next_item["date"] = next_due
+            else:
+                if cfg["has_status"]:
+                    next_item["status"] = "pending"
+                if cfg["has_ring"]:
+                    next_item["ring"] = item.get("ring")
+            items.append(next_item)
+
+    _write_agenda(agenda_path, data)
+    return item, next_item
+
+
+def drop_task(project: str, *,
+              orbit_id: Optional[str] = None,
+              desc: Optional[str] = None,
+              date: Optional[str] = None,
+              drop_series: bool = False) -> Tuple[dict, Optional[dict]]:
+    """Cancel a task. See :func:`_drop_kind`."""
+    return _drop_kind("task", project, orbit_id=orbit_id,
+                      desc=desc, date_val=date, drop_series=drop_series)
+
+
+def drop_milestone(project: str, *,
+                   orbit_id: Optional[str] = None,
+                   desc: Optional[str] = None,
+                   date: Optional[str] = None,
+                   drop_series: bool = False) -> Tuple[dict, Optional[dict]]:
+    return _drop_kind("milestone", project, orbit_id=orbit_id,
+                      desc=desc, date_val=date, drop_series=drop_series)
+
+
+def drop_event(project: str, *,
+               orbit_id: Optional[str] = None,
+               desc: Optional[str] = None,
+               date: Optional[str] = None,
+               drop_series: bool = False) -> Tuple[dict, Optional[dict]]:
+    return _drop_kind("event", project, orbit_id=orbit_id,
+                      desc=desc, date_val=date, drop_series=drop_series)
+
+
+def drop_reminder(project: str, *,
+                  orbit_id: Optional[str] = None,
+                  desc: Optional[str] = None,
+                  date: Optional[str] = None,
+                  drop_series: bool = False) -> Tuple[dict, Optional[dict]]:
+    return _drop_kind("reminder", project, orbit_id=orbit_id,
+                      desc=desc, date_val=date, drop_series=drop_series)
