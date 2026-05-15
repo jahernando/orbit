@@ -211,9 +211,9 @@ Cuatro fases en este orden. **Cada fase debe dejar `pytest` verde antes de pasar
 | **3 · Reemplazar internals con libs estándar** | `icalendar` (PyPI) para producción/parseo ICS — sustituye hand-rolled en `ics`, `ics_share`, partes de `gsync`, `email._parse_ics`. `python-dateutil.rrule` para recurrencia — sustituye lógica hand-rolled en `agenda_cmds` y `ring`. **Aquí cae también la partición de monstruos** (`agenda_cmds.py` → `agenda/io.py` + `agenda/recurrence.py` + `agenda/{task,ms,ev,reminder}.py`) cuando sea prerrequisito | **−800 a −1200 ℓ adicionales**; menos edge cases de timezones / RRULE serialization |
 | **4 · Simplificar API/CLI** | Convención `noun verb` por defecto (`orbit task add`, `orbit hl add`, `orbit cloud deliver`, `orbit ics share`). 3–4 atajos top-level por uso (`log`, `dash`, `commit`, `shell`). Seam estable `orbit/api.py`: funciones puras (`add_task(project, title, **kw) → Task`, etc.) que CLI, hooks y scripts externos llaman | `orbit.py` de 2296 ℓ → ~800 ℓ. CLI navegable por intuición, no por chuleta |
 
-### Decisión a documentar al llegar a Fase 3
+### Decisiones registradas en DECISIONS.md tras los cambios
 
-Añadir `icalendar` y `python-dateutil` lleva las dependencias pip de 2 a 4 (hoy: `markdown`, `pyobjc-framework-EventKit`). Trade-off consciente: ~1000 ℓ menos de código propio a cambio de 2 dependencias mantenidas por terceros. Registrar la decisión en `DECISIONS.md` cuando se adopte y actualizar `DEPENDENCIES.md` §3.
+- **Fase 3.A · icalendar adoptado** (2026-05-15, ADR-029): `icalendar` reemplaza la mecánica RFC 5545 hand-rolled en `ics`/`ics_share`/`email`. Bumpea deps pip de 2 a 3 (`+icalendar`, trae `python-dateutil` y `tzdata` como transitivas). Ahorro real: −110 ℓ netas + 17 tests de implementación. Cuando llegue 3.B, la dep `python-dateutil` ya está en el árbol; solo añadirá un `import` explícito.
 
 ### Orden táctico dentro de la Fase 1 (de menor superficie a mayor)
 
@@ -235,5 +235,17 @@ Añadir `icalendar` y `python-dateutil` lleva las dependencias pip de 2 a 4 (hoy
 | 2a | `calendar_sync.py` (~247 ℓ, mayormente dormante) | 247 ℓ | Partir: salvar OAuth helpers en `core/google_oauth.py` (~75 ℓ, cartero importa de ahí) + borrar resto + 3 clases de test (14 tests). Precondición original de "3 meses" acortada: el CLI llevaba dormante desde v0.33 (2026-05-12) y solo había 3 constantes consumidas | ✅ 2026-05-15 (−442 ℓ, 1553 tests) |
 | 2b | Scripts zombie de gsync | 270 ℓ | `scripts/diagnose_calendar_sync.py` + `scripts/try_update_calendar_event.py` rotos desde v0.38 (importan `core.gsync` borrado) | ✅ 2026-05-15 (−270 ℓ, suite verde) |
 | 3.1 | Cronograma como CLI `task crono` | +25/−54 ℓ orbit.py | Extraer helper `_add_crono_subparsers` (reusable). Montar `orbit task crono X` como forma canónica + `orbit crono X` como atajo. `cmd_task_new` delega a `cmd_crono` cuando `action=="crono"`. **Internals intactos** (test mocks, callers en agenda_view/panel/ics/doctor/commit no se tocan) | ✅ 2026-05-15 (1553 tests verde) |
-| 3.2 | Vínculo modelo agenda↔cronos | — | **Pendiente diseño**: cómo se vincula la task-padre en `agenda.md` con `cronos/<name>.md`. ¿Atributo `composite: <name>`? ¿Done cascading? Cronograma tiene scheduling engine + visualizaciones propias (1830 ℓ no son acreción) — la fusión es mayoritariamente de modelo y CLI, no de motor | pendiente |
-| 3.3 | Ejecución 3.2 + migración datos | — | Implementar el modelo decidido en 3.2. Posiblemente migrar cronogramas existentes en los workspaces para crear la task-padre faltante en `agenda.md` | pendiente |
+| 3.2 | Vínculo modelo agenda↔cronos | — | **Pospuesto al final del plan** (decisión 2026-05-15): es diseño adicional al modelo task, no limpieza — conviene resolverlo tras Fase 3 y Fase 4 con el seam `orbit/api.py` estabilizado. Decisiones abiertas: ¿atributo `composite: <name>`? ¿done cascading? | pospuesto al final |
+| 3.3 | Ejecución 3.2 + migración datos | — | Posiblemente migrar cronogramas existentes en los workspaces para crear la task-padre faltante en `agenda.md` | pospuesto al final |
+
+### Orden táctico dentro de la Fase 3
+
+| # | Bloque | Tamaño aprox. | Acción | Estado |
+|---|---|---|---|---|
+| A | `icalendar` (PyPI) reemplaza la mecánica RFC 5545 en `core/ics.py`, `core/ics_share.py`, `core/email._parse_ics` | 4 commits, −110 ℓ netas | Borrar 10 helpers RFC (`_escape`, `_fold`, `_fmt_dt_local`, `_fmt_date`, `_now_stamp`, `_alarm_block`, `_unfold`, `_unescape`, `_split_prop_line`, `_parse_dt`, `_parse_ics_dt`) y delegar a `icalendar.{Calendar,Event,Alarm}.to_ical()` / `Calendar.from_ical().walk("VEVENT")`. Firmas públicas mantenidas (callers en orbit.py/render.py/doctor.py no se enteran). Ver [ADR-029](DECISIONS.md#adr-029--migración-a-icalendar-pypi-para-mecánica-rfc-5545) | ✅ 2026-05-15 (commits `f63f7ac` + `5223dbd` + `40d4a93` + C4 docs, 1536 tests verde) |
+| B | `python-dateutil.rrule` reemplaza la recurrencia hand-rolled en `agenda_cmds` y `ring` | 200-400 ℓ estimadas | Independiente de cronograma. Dep `python-dateutil` ya está como transitiva de `icalendar` desde 3.A | pendiente |
+| C | Partir `core/agenda_cmds.py` (2245 ℓ) → subpaquete `core/agenda/{io,recurrence,task,ms,ev,reminder}.py` | refactor sin borrado | Parcialmente acoplado a cronograma 3.2 (campo `composite`) | pendiente |
+
+### Orden efectivo del plan tras la posposición de cronograma
+
+Decidido 2026-05-15: **3.A ✅ → 3.B → 3.C → 4.A → 4.B (básico) → 2.3.2 → 2.3.3 → 4.B (composite)**.

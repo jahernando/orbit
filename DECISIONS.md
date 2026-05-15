@@ -303,7 +303,7 @@ El comando **`orbit ics --diff`** renderiza in-memory y compara contra el mirror
 
 **Consecuencias**:
 - Inmediatas (Fase 2 sub-paso 3.1, commit `5828196`): el CLI ya expone ambas formas. Internals de `core/cronograma.py` intactos.
-- Pendientes (sub-paso 3.2): diseñar el vínculo modelo entre la task-padre en `agenda.md` y `cronos/<name>.md`. Decisiones abiertas: ¿atributo `composite: <name>` en la línea de task?, ¿done-cascading?, ¿`task crono add` crea ambos artefactos?, ¿`task crono drop` los borra a la vez? Salida natural: un futuro ADR-029 cuando esto se decida.
+- Pendientes (sub-paso 3.2): diseñar el vínculo modelo entre la task-padre en `agenda.md` y `cronos/<name>.md`. Decisiones abiertas: ¿atributo `composite: <name>` en la línea de task?, ¿done-cascading?, ¿`task crono add` crea ambos artefactos?, ¿`task crono drop` los borra a la vez? Salida natural: un futuro ADR cuando esto se decida.
 - Pendientes (sub-paso 3.3): ejecución del 3.2 + script one-shot de migración para crear la task-padre faltante en los cronogramas existentes de cada workspace.
 - Las menciones a "quinto tipo de cita" en CLAUDE.md y CHULETA.md deben repasarse cuando 3.2 cierre — ahora siguen ahí porque describen el comportamiento actual (cronograma sigue apareciendo en `.ics` con su propio bucket).
 
@@ -339,6 +339,38 @@ EventKit elegido frente a AppleScript: misma fiabilidad de notificaciones (Remin
 **Tradeoff considerado**: una lista única `Orbit Ring` para todos los workspaces (RING.md original, descartado en sesión 2026-05-14 a favor de una lista por workspace — coherente con el patrón existente y permite silenciar contextos completos en horarios específicos). AppleScript-write directo (rechazado — el camino dormante v0.29 ya falló por acoplamiento + osascript fragility).
 
 **Where lives**: `core/ring_export.py` (build + write + CLI), `orbit_ring_daemon.py` (standalone EventKit), `core/hooks_catalog.json` (acción `ring_refresh`), `core/doctor.py::_check_ring_health`, tests en `tests/test_ring_export.py`.
+
+---
+
+## ADR-029 — Migración a `icalendar` (PyPI) para mecánica RFC 5545
+**Estado**: VIGENTE (decisión 2026-05-15, Fase 3 sub-paso A del plan en `MODULES.md §5` / `ROADMAP.md §3`).
+
+**Contexto**: tres ficheros (`core/ics.py`, `core/ics_share.py`, `core/email.py`) implementaban su propia mecánica RFC 5545: escape de TEXT, line folding a 75 octetos UTF-8 conscientes, parser DTSTART/DTEND, VALARM TRIGGER decoding, RRULE handling, unfolding de continuation lines. ~280 ℓ de helpers de bajo nivel (`_escape`, `_fold`, `_fmt_dt_local`, `_fmt_date`, `_now_stamp`, `_alarm_block`, `_unfold`, `_unescape`, `_split_prop_line`, `_parse_dt`, `_parse_ics_dt`). El bulk del código no era acreción — era mecánica reinventada que cualquier librería madura cubre con más correctitud (TZID handling, parámetros raros, edge cases de escape en parámetros).
+
+**Decisión**: adoptar [`icalendar`](https://pypi.org/project/icalendar/) (PyPI, 7.x) como dependencia. Borrar los helpers RFC y delegar:
+- *Render*: `Event()` + `Alarm()` + `Calendar()` + `to_ical()` reemplazan `render_vevent` + `_calendar_wrapper` + helpers de format.
+- *Parse*: `Calendar.from_ical().walk("VEVENT")` reemplaza los parsers ad-hoc en los 3 ficheros.
+
+Las funciones públicas (`render_vevent`, `_calendar_wrapper`, `_parse_vevents`, `parse_first_vevent`, `_parse_ics`) **mantienen su firma externa** para no propagar el cambio fuera del paquete. Los consumers en `orbit.py`, `core/render.py`, `core/doctor.py` no se enteran.
+
+**Razón**:
+- *Correctitud*: edge cases RFC 5545 (TZID, escape de TEXT en parámetros, line folding multibyte, RRULE serialization) cubiertos por una librería testada por terceros.
+- *Mantenimiento*: ~280 ℓ menos de mecánica propia; cualquier bug futuro en parsing de invitaciones reales recae en upstream.
+- *Recalibración honesta de ahorro*: estimación inicial en `ROADMAP.md` (500-800 ℓ) era optimista — los ficheros tienen mucha lógica orbit (buckets, snapshots, conflict resolution, kind detection) que NO migra. Ahorro real medido: **~110 ℓ netas** en core + ~50 ℓ de tests de implementación borrados. Vale la pena igualmente por la correctitud, no por la cifra.
+
+**Lo que NO migra** (decisión deliberada):
+- Expansión per-ocurrencia en lugar de emitir RRULE en los `.ics` que orbit publica — ver [ADR-009](#adr-009--recurrencia-expandida-localmente-no-rrule-en-ics).
+- `_alarm_minutes` y `_item_uid` siguen siendo orbit-side: la mecánica de "ring → minutos" y la estabilidad de UIDs son contratos orbit, no RFC.
+- Floating-local time en DTSTART (sin TZID, sin Z) — ver [ADR-011](#adr-011--ics-floating-local-time-sin-tzid). `icalendar` respeta `datetime` naive.
+
+**Consecuencias**:
+- Dependencia nueva: `icalendar` añadida a `DEPENDENCIES.md §3` (sube de 2 a 3 deps externas en core). `icalendar` tiene a su vez `python-dateutil` y `tzdata` como dependencias transitivas; con eso queda preparado el terreno para Fase 3.B (sustituir hand-rolled recurrence con `python-dateutil.rrule`).
+- 1 byte-diff cosmético en el output: `VALARM TRIGGER` para 0-min alarmas emite `P0D` en lugar de `-PT0M` (RFC-equivalentes; Calendar.app / iOS Reminders los aceptan ambos por igual).
+- Tests de implementación borrados (no comportamiento): 9 en `test_ics.py` + 4 en `test_ics_share.py` + 4 en `test_email.py` = 17 tests del helper RFC. Suite 1553 → 1536 sin regresiones de comportamiento.
+
+**Tradeoff considerado**: mantener el código hand-rolled. Descartado: tres parsers RFC independientes en tres ficheros, cada uno con su propia idea de unfolding/escaping, era exactamente el tipo de deuda que el plan de simplificación busca acometer.
+
+**Where lives**: cambios en commits `f63f7ac` (`core/ics.py`), `5223dbd` (`core/ics_share.py`), `40d4a93` (`core/email.py`).
 
 ---
 

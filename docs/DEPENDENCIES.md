@@ -39,8 +39,9 @@ Auditoría de `grep -hE "^(import|from)"` sobre `core/*.py` + `orbit.py`, filtra
 |---------|---------|----------|-------------|
 | `markdown` | `core/render.py` | conversión MD → HTML | No fácilmente — es el motor del cloud render |
 | `pyobjc-framework-EventKit` | `orbit_ring_daemon.py` | EventKit (Reminders.app) API nativa para crear/borrar/actualizar reminders con alarmas | No fácilmente — `osascript` fue rechazado por unreliability. Si se quita, ring queda inoperativo |
+| `icalendar` | `core/ics.py`, `core/ics_share.py`, `core/email.py` | parser y serializador RFC 5545 (VEVENT/VALARM/VCALENDAR + escape + folding + DT parsing) | Posible volver al hand-rolled previo (~280 ℓ de helpers) si la dep se vuelve molesta — pero perdería correctitud en edge cases (TZID, parámetros raros). Adoptada en Fase 3.A, ver [ADR-029](../DECISIONS.md#adr-029) |
 
-**Dos dependencias externas en core.** El resto son stdlib.
+**Tres dependencias externas en core.** El resto son stdlib. `icalendar` arrastra `python-dateutil` y `tzdata` como transitivas — eso allana el camino para Fase 3.B (reemplazar la recurrencia hand-rolled con `dateutil.rrule`).
 
 ### Externos usados por subsistemas opcionales
 
