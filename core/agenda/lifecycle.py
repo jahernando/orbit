@@ -494,13 +494,63 @@ def _make_edit_occurrence(item, data_list, cfg, edits: dict,
 
 # ── Generic operations ────────────────────────────────────────────────────────
 
+def _translate_api_error(msg: str) -> str:
+    """Map an API ValueError string to the legacy CLI wording.
+
+    The API raises with short technical strings (``invalid date: 'foo'``);
+    the existing CLI tests and CHULETA examples expect longer Spanish
+    messages with the ``⚠️`` prefix and a usage hint. This translator
+    keeps backward-compatibility without forcing the API to carry CLI
+    wording.
+    """
+    import re as _re
+    if (m := _re.match(r"invalid date: '?(.+?)'?$", msg)):
+        return (f"⚠️  Fecha '{m.group(1)}' no reconocida. "
+                "Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+    if (m := _re.match(r"invalid end_date: '?(.+?)'?$", msg)):
+        return (f"⚠️  Fecha --end '{m.group(1)}' no reconocida. "
+                "Usa: YYYY-MM-DD, today, mañana, next monday, ...")
+    if (m := _re.match(r"invalid until: '?(.+?)'?$", msg)):
+        return f"⚠️  Fecha --until '{m.group(1)}' no reconocida."
+    if (m := _re.match(r"invalid recur: '?(.+?)'?$", msg)):
+        return (f"⚠️  Recurrencia '{m.group(1)}' no válida. "
+                "Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
+    if msg == "until requires recur":
+        return "Error: --until requiere --recur."
+    if msg == "ring requires date":
+        return "⚠️  --ring requiere --date."
+    if (m := _re.match(r"invalid ring: '?(.+?)'?$", msg)):
+        return (f"⚠️  Ring '{m.group(1)}' no válido. "
+                "Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM")
+    if msg == "time requires date":
+        return "⚠️  --time requiere --date."
+    if (m := _re.match(r"invalid time: '?(.+?)'?$", msg)):
+        return (f"⚠️  Hora '{m.group(1)}' no válida. "
+                "Usa: HH:MM o HH:MM-HH:MM (ej. 10:00, 10:00-12:30)")
+    if msg.startswith("project not found:"):
+        return msg  # _find_new_project already printed; this is rarely surfaced
+    # Fallback: pass through with prefix.
+    return f"⚠️  {msg}" if not msg.startswith("⚠️") else msg
+
+
 def _generic_add(type_name: str, project: str, text: str,
                  date_val=None, recur=None, until=None,
                  ring=None, time_val=None, desc=None,
                  end_date=None,
                  agenda: Optional[str] = None,
                  room: Optional[str] = None) -> int:
-    """Generic add for all 4 appointment types."""
+    """CLI wrapper around :mod:`core.api` ``add_*`` functions.
+
+    Handles the CLI-only concerns the API doesn't (Phase 4.B, ADR-032):
+      * Prompt for ring interactively when applicable.
+      * Past-date confirmation prompt.
+      * Print confirmation line.
+      * Schedule Mac reminder when firing today.
+      * Translate :class:`ValueError` from the API to legacy CLI error
+        wording with the ``⚠️`` prefix.
+    """
+    from core import api
+
     cfg = _TYPE_CONFIG[type_name]
     # Reject empty text — argparse leaves the positional as None when
     # omitted; without this the item would land in agenda.md as a
@@ -510,48 +560,59 @@ def _generic_add(type_name: str, project: str, text: str,
         print(f"⚠️  Falta el texto del {label}. Uso: orbit {type_name} add "
               f"<proyecto> \"<texto>\" ...")
         return 1
-    if recur:
-        recur = _normalize_recur(recur)
-    if cfg["has_end"] and end_date and not _valid_date(end_date):
-        print(f"⚠️  Fecha --end '{end_date}' no reconocida. Usa: YYYY-MM-DD, today, mañana, next monday, ...")
-        return 1
-    err = _validate_add_params(date_val, time_val, recur, until,
-                               ring if cfg["has_ring"] else None,
-                               time_format=cfg["time_format"])
-    if err:
-        print(err)
-        return 1
+
+    # Past-date confirmation (CLI-only, never raised by the API).
+    if date_val and _valid_date(date_val) and not recur:
+        if date.fromisoformat(date_val) < date.today() and sys.stdin.isatty():
+            print(f"⚠️  La fecha {date_val} está en el pasado.")
+            try:
+                resp = input("   ¿Continuar? [s/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                resp = ""
+            if resp not in ("s", "si", "sí", "y", "yes"):
+                print("Cancelado.")
+                return 1
+
     if cfg["has_ring"] and date_val and time_val and not ring:
         ring = _prompt_and_validate_ring()
 
-    project_dir = _find_new_project(project)
-    if project_dir is None:
+    notes_in = [desc] if desc else None
+
+    try:
+        if type_name == "task":
+            new_item = api.add_task(project=project, text=text,
+                                    date=date_val, time=time_val,
+                                    recur=recur, until=until,
+                                    ring=ring, notes=notes_in)
+        elif type_name == "milestone":
+            new_item = api.add_milestone(project=project, text=text,
+                                          date=date_val, time=time_val,
+                                          recur=recur, until=until,
+                                          ring=ring, notes=notes_in)
+        elif type_name == "event":
+            new_item = api.add_event(project=project, text=text,
+                                      date=date_val, time=time_val,
+                                      end_date=end_date,
+                                      recur=recur, until=until,
+                                      ring=ring, notes=notes_in,
+                                      agenda=agenda, room=room)
+        elif type_name == "reminder":
+            new_item = api.add_reminder(project=project, text=text,
+                                         date=date_val, time=time_val,
+                                         recur=recur, until=until,
+                                         notes=notes_in)
+        else:
+            return 1
+    except ValueError as exc:
+        # Translate API-level errors to the legacy CLI wording.
+        msg = _translate_api_error(str(exc))
+        print(msg)
         return 1
 
-    agenda_path = resolve_file(project_dir, "agenda")
-    data = _read_agenda(agenda_path)
-    notes = [desc] if desc else []
-    if agenda:
-        notes.append(f"{_AGENDA_NOTE_PREFIX}{agenda}")
-    if room:
-        notes.append(f"{_ROOM_NOTE_PREFIX}{room}")
-
-    # Build item dict
-    new_item = {"desc": text, "date": date_val, "recur": recur,
-                "until": until, "notes": notes}
-    if cfg["has_status"]:
-        new_item["status"] = "pending"
-    if cfg["has_ring"]:
-        new_item["ring"] = ring
-    new_item["time"] = time_val
-    if cfg["has_end"]:
-        new_item["end"] = end_date
-    if not cfg["has_status"] and not cfg["has_ring"]:
-        # Reminder: cancelled flag
-        new_item["cancelled"] = False
-
-    data.setdefault(cfg["key"], []).append(new_item)
-    _write_agenda(agenda_path, data)
+    # The api normalised recur and resolved the project; pick them up
+    # from the returned item so the print line below shows the same.
+    recur = new_item.get("recur")
+    project_dir = _find_new_project(project)
 
     # Print confirmation
     if type_name == "event":
