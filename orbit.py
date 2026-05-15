@@ -213,6 +213,14 @@ def _fix_argv(argv: list) -> list:
     if len(argv) >= 2 and argv[0] == "note" and argv[1] not in _NOTE_SUBCOMMANDS:
         argv = ["note", "create"] + argv[1:]
 
+    # Phase 4.A/4.B: expose `orbit ics share` and `orbit ics import` as
+    # canonical noun-verb form by rewriting them to the flat top-level
+    # commands `ics-share` / `ics-import`. Done here (not in argparse)
+    # because `ics` already has a positional `project nargs="?"` plus
+    # 5 flags, which can't combine with add_subparsers in argparse.
+    if len(argv) >= 2 and argv[0] == "ics" and argv[1] in ("share", "import"):
+        argv = [f"ics-{argv[1]}"] + argv[2:]
+
     fixed = []
     for token in argv:
         if token in _SINGLE_DASH_FIX:
