@@ -745,9 +745,24 @@ orbit doctor [<project>]        # revisa todos o un proyecto
 orbit doctor --fix [<project>]  # revisa y ofrece corregir
 ```
 
-- Valida logbook (fechas, tipos, emojis), agenda (marcadores, fechas, recurrencia, formato de eventos) y highlights (secciones, formato de items, links)
-- Se ejecuta automáticamente al iniciar la shell y antes de cada commit
-- Con `--fix`: muestra correcciones disponibles y permite aplicarlas interactivamente
+El doctor hace 3 tipos de check (mismo comando, salida segmentada):
+
+1. **Sintaxis por proyecto** — logbook (fechas, tipos, emojis), agenda (marcadores, recurrencia, eventos), highlights (secciones, items, links), cronogramas.
+2. **Refs por proyecto** — para cada link `[…](target)` en logbook + highlights, verifica que el target existe:
+   - `./cloud/...` → busca en `<workspace>/<proj>/cloud/...` (el symlink a cloud_root)
+   - `./notes/...` → busca en `<proj>/notes/...` (propia o symlink a externa)
+   - `/abs/path` o `~/path` → busca en el filesystem local
+   - Refs cross-project (`⚙️gestion/⚙️foo/...`) → busca en `ORBIT_HOME/...`
+   - URLs (`http://`, `mailto:`, `message://`, etc.) y anchors (`#sec`) se ignoran
+3. **Entorno (workspace)** — corre una sola vez por invocación:
+   - `orbit.json` existe, JSON válido, claves `cloud_root` y `types` presentes
+   - `cloud_root` apunta a un directorio existente y escribible
+   - `federation.json` (si existe) JSON válido y cada `federated[].path` existe
+   - Linked md externos: cada symlink en `notes/` apunta a un fichero real
+   - Ring: plist, TCC, ring.json freshness
+   - ICS: buckets bien configurados + frescura de los `.ics` en cloud
+
+Se ejecuta automáticamente al iniciar la shell y antes de cada commit. Con `--fix`: muestra correcciones disponibles y permite aplicarlas interactivamente.
 
 ### ring — alarmas vía Reminders.app (Orbit Ring)
 

@@ -13,7 +13,8 @@ from datetime import date
 from pathlib import Path
 
 from core.doctor import (
-    _check_logbook, _check_agenda, _check_highlights,
+    _check_logbook, _check_agenda, _check_highlights, _check_refs,
+    _check_orbit_json, _check_cloud_root, _check_federation,
     check_project, _apply_fix, Issue,
 )
 
@@ -331,6 +332,172 @@ class TestCheckHighlights:
         path = doctor_env["proj"] / "nonexistent.md"
         issues = _check_highlights("💻testproj", path)
         assert issues == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# _check_refs — broken cloud / note / local references
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestCheckRefs:
+
+    def test_url_refs_skipped(self, doctor_env):
+        proj = doctor_env["proj"]
+        log = proj / "testproj-logbook.md"
+        log.write_text(
+            "# Logbook\n\n"
+            "2026-01-01 📝 [doc](https://example.com/x.pdf) #apunte\n"
+            "2026-01-01 📝 [doc](http://example.com/x.pdf) #apunte\n"
+            "2026-01-01 ✉️ [mail](mailto:a@b.com) #apunte\n"
+            "2026-01-01 ✉️ [mail](message://%3Cx%40y%3E) #apunte\n"
+        )
+        assert _check_refs("💻testproj", proj, log) == []
+
+    def test_fragment_refs_skipped(self, doctor_env):
+        proj = doctor_env["proj"]
+        log = proj / "testproj-logbook.md"
+        log.write_text("# Logbook\n\n2026-01-01 📝 [Sección](#sec) #apunte\n")
+        assert _check_refs("💻testproj", proj, log) == []
+
+    def test_cloud_ref_missing(self, doctor_env):
+        proj = doctor_env["proj"]
+        log = proj / "testproj-logbook.md"
+        log.write_text(
+            "# Logbook\n\n"
+            "2026-01-01 📝 [doc](./cloud/logs/missing.pdf) #apunte\n"
+        )
+        issues = _check_refs("💻testproj", proj, log)
+        assert len(issues) == 1
+        assert "cloud" in issues[0].msg
+
+    def test_cloud_ref_present(self, doctor_env):
+        proj = doctor_env["proj"]
+        (proj / "cloud").mkdir()
+        (proj / "cloud" / "logs").mkdir()
+        (proj / "cloud" / "logs" / "real.pdf").write_text("x")
+        log = proj / "testproj-logbook.md"
+        log.write_text("# Logbook\n\n2026-01-01 📝 [doc](./cloud/logs/real.pdf) #apunte\n")
+        assert _check_refs("💻testproj", proj, log) == []
+
+    def test_note_ref_missing(self, doctor_env):
+        proj = doctor_env["proj"]
+        log = proj / "testproj-logbook.md"
+        log.write_text("# Logbook\n\n2026-01-01 📝 [nota](./notes/ghost.md) #apunte\n")
+        issues = _check_refs("💻testproj", proj, log)
+        assert len(issues) == 1
+        assert "note" in issues[0].msg
+
+    def test_note_ref_present(self, doctor_env):
+        proj = doctor_env["proj"]
+        (proj / "notes" / "n.md").write_text("# n")
+        log = proj / "testproj-logbook.md"
+        log.write_text("# Logbook\n\n2026-01-01 📝 [n](./notes/n.md) #apunte\n")
+        assert _check_refs("💻testproj", proj, log) == []
+
+    def test_local_abs_ref_missing(self, doctor_env):
+        proj = doctor_env["proj"]
+        log = proj / "testproj-logbook.md"
+        log.write_text("# Logbook\n\n2026-01-01 📝 [x](/tmp/nope-orbit-test.pdf) #apunte\n")
+        issues = _check_refs("💻testproj", proj, log)
+        assert len(issues) == 1
+        assert "local" in issues[0].msg
+
+    def test_filename_with_balanced_parens(self, doctor_env):
+        """Filenames like 'image (27).png' must be parsed correctly."""
+        proj = doctor_env["proj"]
+        (proj / "cloud").mkdir()
+        (proj / "cloud" / "logs").mkdir()
+        (proj / "cloud" / "logs" / "image (27).png").write_text("x")
+        log = proj / "testproj-logbook.md"
+        # The actual delivered filename uses %20 for spaces (encode_cloud_link)
+        log.write_text(
+            "# Logbook\n\n"
+            "2026-01-01 📝 [x](./cloud/logs/image%20(27).png) #apunte\n"
+        )
+        assert _check_refs("💻testproj", proj, log) == []
+
+    def test_cross_project_ref_resolves_via_orbit_home(self, doctor_env, tmp_path):
+        """Refs like ⚙️gestion/⚙️foo/x.md must resolve against ORBIT_HOME."""
+        proj = doctor_env["proj"]
+        # Sibling project
+        sib = tmp_path / "⚙️gestion" / "⚙️foo"
+        sib.mkdir(parents=True)
+        (sib / "foo-project.md").write_text("# foo")
+        log = proj / "testproj-logbook.md"
+        log.write_text(
+            "# Logbook\n\n"
+            "- [x] [⚙️foo](⚙️gestion/⚙️foo/foo-project.md)\n"
+        )
+        assert _check_refs("💻testproj", proj, log) == []
+
+    def test_only_last_max_lines_scanned(self, doctor_env):
+        proj = doctor_env["proj"]
+        log = proj / "testproj-logbook.md"
+        # 250 lines of valid content + 1 broken ref at top → not flagged with max_lines=200
+        old_broken = "2026-01-01 📝 [ghost](./notes/ghost.md) #apunte\n"
+        filler = "\n".join(["# header"] * 250) + "\n"
+        log.write_text("# Logbook\n\n" + old_broken + filler)
+        assert _check_refs("💻testproj", proj, log, max_lines=200) == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Environment checks (orbit.json, cloud_root, federation.json)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestEnvironmentChecks:
+
+    def test_orbit_json_missing(self, doctor_env, capsys):
+        _check_orbit_json()
+        out = capsys.readouterr().out
+        assert "orbit.json" in out and "no existe" in out
+
+    def test_orbit_json_invalid(self, doctor_env, capsys):
+        (doctor_env["proj"].parent.parent / "orbit.json").write_text("{not json")
+        _check_orbit_json()
+        out = capsys.readouterr().out
+        assert "JSON inválido" in out
+
+    def test_orbit_json_missing_keys(self, doctor_env, capsys):
+        import json as _json
+        (doctor_env["proj"].parent.parent / "orbit.json").write_text(_json.dumps({}))
+        _check_orbit_json()
+        out = capsys.readouterr().out
+        assert "cloud_root" in out and "types" in out
+
+    def test_orbit_json_ok(self, doctor_env, capsys):
+        import json as _json
+        (doctor_env["proj"].parent.parent / "orbit.json").write_text(
+            _json.dumps({"cloud_root": "/tmp", "types": {}})
+        )
+        _check_orbit_json()
+        assert capsys.readouterr().out == ""
+
+    def test_cloud_root_missing(self, doctor_env, capsys, tmp_path):
+        import json as _json
+        (tmp_path / "orbit.json").write_text(
+            _json.dumps({"cloud_root": "/path/does/not/exist/abc", "types": {}})
+        )
+        _check_cloud_root()
+        out = capsys.readouterr().out
+        assert "cloud_root" in out and "no existe" in out
+
+    def test_federation_invalid_json(self, doctor_env, capsys, tmp_path):
+        (tmp_path / "federation.json").write_text("{not json")
+        _check_federation()
+        out = capsys.readouterr().out
+        assert "federation.json" in out and "JSON inválido" in out
+
+    def test_federation_missing_path(self, doctor_env, capsys, tmp_path):
+        import json as _json
+        (tmp_path / "federation.json").write_text(_json.dumps({
+            "federated": [{"name": "ps", "path": "/does/not/exist/orbit-ps"}]
+        }))
+        _check_federation()
+        out = capsys.readouterr().out
+        assert "federation.json" in out and "ps" in out
+
+    def test_federation_absent_is_silent(self, doctor_env, capsys):
+        _check_federation()
+        assert capsys.readouterr().out == ""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

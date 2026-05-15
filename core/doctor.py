@@ -21,6 +21,117 @@ from core.agenda_cmds import (
 from core.highlights import SECTION_MAP
 
 
+# ── Environment checks (workspace-level, run once in run_doctor) ─────────────
+#
+# These verify the *environment* of the workspace itself — orbit.json,
+# cloud_root accessibility, federation.json targets — rather than per-project
+# content. They are useful especially after cloning the workspace to another
+# Mac, where paths may not resolve.
+#
+# Lives in doctor.py for now; if doctor is later split into sub-modules
+# (`doctor.project_syntax` / `doctor.refs` / `doctor.environment`), these are
+# the seed of `doctor.environment`. See project memory for the plan.
+
+def _check_orbit_json() -> None:
+    """Verify <ORBIT_HOME>/orbit.json exists, parses as JSON, has required keys.
+
+    Required keys: cloud_root, types. Silent when healthy.
+    """
+    import json as _json
+    from core.config import ORBIT_HOME
+
+    path = ORBIT_HOME / "orbit.json"
+    if not path.exists():
+        print(f"  ⚙️  orbit.json: no existe en {ORBIT_HOME}")
+        print(f"      → ejecuta `orbit setup` o crea el fichero manualmente.")
+        print()
+        return
+
+    try:
+        data = _json.loads(path.read_text())
+    except _json.JSONDecodeError as e:
+        print(f"  ⚙️  orbit.json: JSON inválido — {e}")
+        print(f"      → revisa la sintaxis: {path}")
+        print()
+        return
+
+    missing = [k for k in ("cloud_root", "types") if k not in data]
+    if missing:
+        print(f"  ⚙️  orbit.json: faltan claves obligatorias: {', '.join(missing)}")
+        print(f"      → añádelas a {path}.")
+        print()
+
+
+def _check_cloud_root() -> None:
+    """Verify cloud_root from orbit.json exists and is writable. Silent when OK."""
+    import os as _os
+    from core.config import ORBIT_HOME
+
+    cfg_path = ORBIT_HOME / "orbit.json"
+    if not cfg_path.exists():
+        return  # _check_orbit_json already complained.
+
+    try:
+        import json as _json
+        cr_raw = _json.loads(cfg_path.read_text()).get("cloud_root")
+    except (OSError, ValueError):
+        return  # ditto
+
+    if not cr_raw:
+        print(f"  ☁️  cloud_root: no configurado en orbit.json")
+        print()
+        return
+
+    cloud_root = Path(cr_raw).expanduser()
+    if not cloud_root.exists():
+        print(f"  ☁️  cloud_root: la ruta no existe — {cloud_root}")
+        print(f"      → monta la nube o ajusta `cloud_root` en orbit.json.")
+        print()
+        return
+    if not _os.access(cloud_root, _os.W_OK):
+        print(f"  ☁️  cloud_root: sin permiso de escritura — {cloud_root}")
+        print()
+
+
+def _check_federation() -> None:
+    """Verify federation.json (if present) points to existing workspaces."""
+    import json as _json
+    from core.config import ORBIT_HOME
+
+    fed_path = ORBIT_HOME / "federation.json"
+    if not fed_path.exists():
+        return  # Federation is optional.
+
+    try:
+        data = _json.loads(fed_path.read_text())
+    except _json.JSONDecodeError as e:
+        print(f"  🌐 federation.json: JSON inválido — {e}")
+        print()
+        return
+
+    spaces = data.get("federated") or []
+    if not isinstance(spaces, list):
+        print(f"  🌐 federation.json: `federated` debe ser una lista")
+        print()
+        return
+
+    missing = []
+    for s in spaces:
+        p = s.get("path") if isinstance(s, dict) else None
+        if not p:
+            continue
+        if not Path(p).expanduser().exists():
+            missing.append((s.get("name", "?"), p))
+
+    if missing:
+        print(f"  🌐 federation.json: {len(missing)} workspace"
+              f"{'s' if len(missing) != 1 else ''} federado{'s' if len(missing) != 1 else ''} con path inexistente:")
+        for name, p in missing:
+            print(f"      ⚠️  {name}: {p}")
+        print(f"      → ajusta `federated[].path` en {fed_path} o monta el destino.")
+        print()
+
+
 # ── Ring health check ─────────────────────────────────────────────────────────
 
 def _check_ring_health() -> None:
@@ -407,6 +518,105 @@ def _check_highlights(project_name: str, path: Path) -> list:
     return issues
 
 
+# ── File-reference validation ────────────────────────────────────────────────
+#
+# Scan logbook + highlights for markdown links and verify the target exists.
+# Three kinds of refs are checked (the rest — URLs, fragments — are skipped):
+#
+#   - **cloud**:  ./cloud/<subdir>/<file>  → must exist at
+#                 <project_dir>/cloud/<subdir>/<file> (resolves through the
+#                 cloud-root symlink set up by deliver.ensure_cloud_symlink).
+#   - **note**:   ./notes/<file>           → must exist at
+#                 <project_dir>/notes/<file> (own .md or symlink to externa).
+#   - **local**:  /abs/path or ~/path      → must exist on the local fs.
+#
+# Future reorganization: this lives in doctor.py for now; if we eventually
+# split doctor into sub-modules (`doctor.project_syntax` / `doctor.refs` /
+# `doctor.environment`), this is the natural seed of `doctor.refs`. See
+# project memory for the plan.
+
+# Allows one level of nested parens in the target — needed for filenames
+# like "image (27).png" that Apple Mail / iOS generate.
+_LINK_RE = re.compile(r"!?\[[^\]]*\]\(((?:[^()]|\([^()]*\))+)\)")
+
+# Any URI scheme (http:, https:, mailto:, message:, file:, etc.) — skip
+# from existence checks. RFC 3986: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+_URI_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
+
+
+def _check_refs(project_name: str, project_dir: Path, file_path: Path,
+                max_lines: int = 200) -> list:
+    """Validate markdown links in *file_path* (logbook or highlights).
+
+    Emits one Issue per broken reference. URLs (http/https/mailto) and
+    in-document anchors (`#...`) are skipped. Only the last *max_lines* lines
+    are scanned — matching `_check_logbook` to keep signal high on old entries.
+
+    Cross-project refs (e.g. `⚙️gestion/⚙️foo/foo-project.md` from
+    `clip --from`) resolve against ORBIT_HOME, not project_dir, so we fall
+    back to ORBIT_HOME if the path doesn't exist under the project.
+    """
+    if not file_path.exists():
+        return []
+
+    from urllib.parse import unquote
+    from core.config import ORBIT_HOME
+
+    issues: list = []
+    file_name = file_path.name
+    lines = file_path.read_text().splitlines()
+    start = max(0, len(lines) - max_lines)
+
+    for i in range(start, len(lines)):
+        line = lines[i]
+        for match in _LINK_RE.finditer(line):
+            target = match.group(1).strip()
+            if not target or target.startswith("#"):
+                continue
+            if _URI_SCHEME_RE.match(target):
+                continue
+
+            # Strip an in-target fragment like file.md#section
+            clean_target = target.split("#", 1)[0]
+            if not clean_target:
+                continue
+
+            # URL-decode (deliver.encode_cloud_link replaces spaces + @)
+            decoded = unquote(clean_target)
+
+            if decoded.startswith("/") or decoded.startswith("~"):
+                resolved = Path(decoded).expanduser()
+                kind = "local"
+            else:
+                # Relative path — strip leading ./
+                rel = decoded[2:] if decoded.startswith("./") else decoded
+                resolved = project_dir / rel
+                if rel.startswith("cloud/"):
+                    kind = "cloud"
+                elif rel.startswith("notes/"):
+                    kind = "note"
+                else:
+                    kind = "relative"
+                    # Cross-project refs resolve against ORBIT_HOME.
+                    if not resolved.exists():
+                        ws_resolved = ORBIT_HOME / rel
+                        if ws_resolved.exists():
+                            resolved = ws_resolved
+
+            if not resolved.exists():
+                if kind == "cloud":
+                    msg = f"Ref a cloud no existe: {target} (¿pendiente `orbit cloud sync`?)"
+                elif kind == "note":
+                    msg = f"Ref a note no existe: {target} (¿borrada o renombrada?)"
+                elif kind == "local":
+                    msg = f"Ref a fichero local no existe: {target}"
+                else:
+                    msg = f"Ref relativa no existe: {target}"
+                issues.append(Issue(project_name, file_name, i + 1, line, msg))
+
+    return issues
+
+
 # ── Main check function ──────────────────────────────────────────────────────
 
 def check_project(project_dir: Path, max_logbook_lines: int = 200) -> list:
@@ -422,6 +632,11 @@ def check_project(project_dir: Path, max_logbook_lines: int = 200) -> list:
 
     highlights = resolve_file(project_dir, "highlights")
     issues.extend(_check_highlights(name, highlights))
+
+    # Verify file refs (cloud + note + local) in logbook and highlights.
+    # max_lines mirrors _check_logbook so we don't blow up on old entries.
+    issues.extend(_check_refs(name, project_dir, logbook, max_lines=max_logbook_lines))
+    issues.extend(_check_refs(name, project_dir, highlights, max_lines=max_logbook_lines))
 
     # Check cronogramas
     cronos_dir = project_dir / "cronos"
@@ -546,6 +761,14 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
                 print()
     except Exception:
         pass
+
+    # Environment-level checks (workspace itself, not per-project).
+    # Useful after cloning to another Mac when paths may not resolve.
+    for fn in (_check_orbit_json, _check_cloud_root, _check_federation):
+        try:
+            fn()
+        except Exception:
+            pass
 
     # Check ring (Reminders.app projection): plist install, daemon TCC,
     # ring.json freshness. v0.35.
