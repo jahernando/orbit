@@ -214,9 +214,9 @@ def run_shell(editor: str = ""):
         pass
     readline.set_history_length(500)
 
-    COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "deliver", "recloud", "migrate",
+    COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "commit", "deliver",
                 "import", "ls", "log", "search", "open", "report", "agenda", "dash", "wks",
-                "gsync", "mail", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
+                "mail", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
 
     # Shell commands allowed to run from the Orbit REPL
     SHELL_COMMANDS = {"git", "cat", "head", "tail", "pwd", "echo"}

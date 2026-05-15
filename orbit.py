@@ -33,7 +33,6 @@ from core.ls import run_ls_files, run_ls_notes
 from core.history import log_history, run_history
 from core.claude import run_claude
 from core.deliver import run_deliver
-from core.recloud import run_recloud
 from core import hooks as _hooks
 
 # Load the hook system catalog (actions, chains, bindings) from
@@ -477,10 +476,6 @@ def cmd_cloud(args):
         return run_cloud_imgs(dry_run=getattr(args, "dry_run", False))
     print("Uso: orbit cloud imgs [--dry-run]")
     return 1
-
-
-def cmd_recloud(args):
-    return run_recloud(dry_run=args.dry_run)
 
 
 def cmd_commit(args):
@@ -2005,10 +2000,6 @@ def _build_parser():
     ci_p = cld_sub.add_parser("imgs", help="Collect images from _imgs/ and deliver to project cloud")
     ci_p.add_argument("--dry-run", action="store_true", help="Show what would be done without moving files")
 
-    # --- recloud ---
-    rcl_p = subparsers.add_parser("recloud", help="Migrate cloud links to use symlink")
-    rcl_p.add_argument("--dry-run", action="store_true", help="Show changes without applying")
-
     # --- commit ---
     cmt_p = subparsers.add_parser("commit", help="Git commit with confirmation")
     cmt_p.add_argument("message", nargs="?", default=None,
@@ -2160,7 +2151,7 @@ _COMMANDS = {
     "view": cmd_view_new,
     "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver,
     "clip": cmd_clip,
-    "cloud": cmd_cloud, "render": cmd_render, "recloud": cmd_recloud,
+    "cloud": cmd_cloud, "render": cmd_render,
     "log": cmd_log, "search": cmd_search,
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "project": cmd_project,
