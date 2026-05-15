@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core import ics_share
 from core.ics_share import (
-    parse_first_vevent, _parse_dt, _is_meeting_url, _strip_orbit_tag,
+    parse_first_vevent, _is_meeting_url, _strip_orbit_tag,
     _strip_orbit_summary_prefix, _props_to_orbit_item, _detect_kind,
     _next_occurrence_for_export, run_ics_share, run_ics_import,
 )
@@ -71,24 +71,6 @@ class TestIsMeetingUrl:
         assert not _is_meeting_url("https://example.com/page")
 
 
-class TestParseDt:
-    def test_all_day_date_value(self):
-        assert _parse_dt("20260515", is_date=True, tzid=None) == ("2026-05-15", None)
-
-    def test_floating_local(self):
-        assert _parse_dt("20260515T100000", is_date=False, tzid=None) == ("2026-05-15", "10:00")
-
-    def test_utc_z_suffix_converts_to_local(self):
-        # We can't assert exact local without knowing test runner's TZ, but
-        # we can assert the function doesn't crash and returns sensible shape.
-        d, t = _parse_dt("20260515T100000Z", is_date=False, tzid=None)
-        assert d.startswith("2026-05-")
-        assert t and ":" in t
-
-    def test_madrid_tzid_taken_as_floating(self):
-        assert _parse_dt("20260515T100000", is_date=False, tzid="Europe/Madrid") == ("2026-05-15", "10:00")
-
-
 # ── VEVENT parser ────────────────────────────────────────────────────────────
 
 class TestParseFirstVevent:
@@ -105,9 +87,11 @@ class TestParseFirstVevent:
         props, warnings = parse_first_vevent(ics)
         assert props is not None
         assert props["summary"] == "Test meeting"
-        assert props["dtstart"] == "20260515T100000"
-        assert props["dtend"] == "20260515T110000"
-        assert not props.get("dtstart_is_date")
+        assert props["start_date"] == "2026-05-15"
+        assert props["start_time"] == "10:00"
+        assert props["end_date"] == "2026-05-15"
+        assert props["end_time"] == "11:00"
+        assert not props.get("all_day")
         assert warnings == []
 
     def test_all_day_value_date(self):
@@ -119,8 +103,9 @@ class TestParseFirstVevent:
             "END:VEVENT\r\n"
         )
         props, warnings = parse_first_vevent(ics)
-        assert props["dtstart_is_date"] is True
-        assert props["dtstart"] == "20260515"
+        assert props["all_day"] is True
+        assert props["start_date"] == "2026-05-15"
+        assert props["start_time"] is None
 
     def test_rrule_warns(self):
         ics = (
@@ -221,10 +206,12 @@ class TestDetectKind:
 class TestPropsToOrbitItem:
     def _base_props(self, **over):
         p = {
-            "summary": "T",
-            "dtstart": "20260515T100000",
-            "dtend":   "20260515T100000",
-            "dtstart_is_date": False,
+            "summary":   "T",
+            "start_date": "2026-05-15",
+            "start_time": "10:00",
+            "end_date":   "2026-05-15",
+            "end_time":   "10:00",
+            "all_day":    False,
         }
         p.update(over)
         return p
@@ -239,13 +226,13 @@ class TestPropsToOrbitItem:
         assert len(item["orbit_id"]) == 8   # hex
 
     def test_event_with_range(self):
-        props = self._base_props(dtend="20260515T113000")
+        props = self._base_props(end_time="11:30")
         item, _ = _props_to_orbit_item(props, "event")
         assert item["time"] == "10:00-11:30"
 
     def test_event_all_day_single(self):
-        props = self._base_props(dtstart="20260515", dtend="20260516",
-                                 dtstart_is_date=True, dtend_is_date=True)
+        props = self._base_props(start_date="2026-05-15", end_date="2026-05-16",
+                                 start_time=None, end_time=None, all_day=True)
         item, _ = _props_to_orbit_item(props, "event")
         assert item["time"] is None
         # Single-day all-day: end-1 == start → no `end` set.
@@ -253,8 +240,8 @@ class TestPropsToOrbitItem:
 
     def test_event_all_day_multi(self):
         # DTEND is exclusive for VALUE=DATE; orbit's `end` is inclusive.
-        props = self._base_props(dtstart="20260515", dtend="20260518",
-                                 dtstart_is_date=True, dtend_is_date=True)
+        props = self._base_props(start_date="2026-05-15", end_date="2026-05-18",
+                                 start_time=None, end_time=None, all_day=True)
         item, _ = _props_to_orbit_item(props, "event")
         assert item["time"] is None
         assert item["end"] == "2026-05-17"
@@ -284,7 +271,7 @@ class TestPropsToOrbitItem:
         assert item["ring"] == "1h"
 
     def test_non_madrid_tz_warns(self):
-        props = self._base_props(dtstart_tzid="America/New_York")
+        props = self._base_props(tzid="America/New_York")
         _, warnings = _props_to_orbit_item(props, "event")
         assert any("TZID" in w for w in warnings)
 

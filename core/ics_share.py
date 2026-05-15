@@ -27,6 +27,8 @@ from datetime import date as _date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+from icalendar import Calendar
+
 from core.agenda_cmds import (
     _read_agenda, _write_agenda, _next_occurrence,
 )
@@ -217,154 +219,90 @@ def _read_clipboard() -> Optional[str]:
         return None
 
 
-def _unfold(text: str) -> str:
-    """RFC-5545 line unfolding: a CRLF followed by SP/HTAB is a continuation."""
-    return (text.replace("\r\n ", "").replace("\r\n\t", "")
-                .replace("\n ", "").replace("\n\t", ""))
+def _dt_to_iso(value, params) -> tuple[str, Optional[str], bool, Optional[str]]:
+    """Return ``(date_iso, time_iso, all_day, tzid)`` from an icalendar DT.
 
-
-def _unescape(s: str) -> str:
-    """Reverse of core.ics._escape (TEXT-type)."""
-    return (s.replace("\\n", "\n").replace("\\N", "\n")
-             .replace("\\,", ",").replace("\\;", ";")
-             .replace("\\\\", "\\"))
-
-
-def _split_prop_line(line: str) -> tuple[str, dict, str]:
-    """Split ``KEY[;param=val;…]:value`` → (key, params_dict, value)."""
-    if ":" not in line:
-        return ("", {}, "")
-    head, _, val = line.partition(":")
-    parts = head.split(";")
-    key = parts[0].upper()
-    params = {}
-    for p in parts[1:]:
-        if "=" in p:
-            pk, _, pv = p.partition("=")
-            params[pk.upper()] = pv
-    return (key, params, val)
+    ``value`` is the ``.dt`` of a ``vDDDTypes`` (``date`` or ``datetime``).
+    UTC datetimes are converted to local; aware non-UTC datetimes are
+    taken at face value (floating) and their TZID is reported back so
+    the caller can warn if it differs from the workspace zone.
+    """
+    if isinstance(value, datetime):
+        tzid = params.get("TZID") if params else None
+        if value.tzinfo is not None and value.tzinfo.utcoffset(value) == timedelta(0):
+            local = value.astimezone()
+            return (local.date().isoformat(), local.strftime("%H:%M"), False, tzid)
+        return (value.date().isoformat(), value.strftime("%H:%M"), False, tzid)
+    # plain ``date`` → all-day
+    return (value.isoformat(), None, True, None)
 
 
 def parse_first_vevent(ics_text: str) -> tuple[Optional[dict], list]:
-    """Parse the first VEVENT from .ics text.
+    """Parse the first VEVENT from .ics text via :mod:`icalendar`.
 
-    Returns (props, warnings):
-      ``props`` keys: ``uid``, ``summary``, ``description``, ``dtstart``,
-      ``dtend``, ``dtstart_is_date``, ``dtstart_tzid``, ``url``,
-      ``location``, ``rrule``, ``valarm_minutes``, ``x_orbit_kind``,
-      ``x_orbit_id``. Missing keys are absent.
-      ``warnings`` is a list of human-readable issues.
+    Returns ``(props, warnings)``. ``props`` keys (all optional):
+      ``uid``, ``summary``, ``description``, ``url``, ``location``,
+      ``start_date``, ``start_time``, ``end_date``, ``end_time``,
+      ``all_day``, ``tzid``, ``rrule``, ``valarm_minutes``,
+      ``x_orbit_kind``, ``x_orbit_id``.
     """
-    warnings = []
-    text = _unfold(ics_text)
-    lines = text.splitlines()
+    warnings: list = []
+    # icalendar requires a VCALENDAR wrapper; bare VEVENT fragments (e.g.
+    # pasted from a chat) are wrapped on the fly so they still parse.
+    text = ics_text
+    if "BEGIN:VCALENDAR" not in text.upper():
+        text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n" + text + "\r\nEND:VCALENDAR\r\n"
+    try:
+        cal = Calendar.from_ical(text)
+    except (ValueError, KeyError) as exc:
+        return (None, [f"No se pudo parsear la entrada como iCalendar: {exc}"])
 
-    # Find first VEVENT block.
-    in_event = False
-    in_alarm = False
-    vevent_lines = []
-    valarm_minutes = None
-    vevent_count = 0
-    for raw in lines:
-        line = raw.rstrip("\r")
-        if line == "BEGIN:VEVENT":
-            vevent_count += 1
-            if vevent_count == 1:
-                in_event = True
-            continue
-        if line == "END:VEVENT":
-            if in_event:
-                in_event = False
-            continue
-        if not in_event:
-            continue
-        if line == "BEGIN:VALARM":
-            in_alarm = True
-            continue
-        if line == "END:VALARM":
-            in_alarm = False
-            continue
-        if in_alarm:
-            # Capture TRIGGER:-PTxxM (or H/D).
-            if line.upper().startswith("TRIGGER"):
-                m = re.search(r"TRIGGER[^:]*:-?PT?(\d+)([MHD])?", line, re.IGNORECASE)
-                if m:
-                    n = int(m.group(1))
-                    unit = (m.group(2) or "M").upper()
-                    mins = n * (1 if unit == "M" else 60 if unit == "H" else 1440)
-                    valarm_minutes = mins
-            continue
-        vevent_lines.append(line)
-
-    if vevent_count == 0:
+    vevents = list(cal.walk("VEVENT"))
+    if not vevents:
         return (None, ["No se encontró ningún VEVENT en la entrada."])
-    if vevent_count > 1:
-        warnings.append(f"{vevent_count} VEVENTs en la entrada; importando solo el primero.")
+    if len(vevents) > 1:
+        warnings.append(f"{len(vevents)} VEVENTs en la entrada; importando solo el primero.")
 
+    vev = vevents[0]
     props: dict = {}
-    for line in vevent_lines:
-        key, params, val = _split_prop_line(line)
-        if not key:
+
+    for src, dst in (("summary", "summary"), ("description", "description"),
+                     ("uid", "uid"), ("url", "url"), ("location", "location"),
+                     ("x-orbit-kind", "x_orbit_kind"), ("x-orbit-id", "x_orbit_id")):
+        val = vev.get(src)
+        if val is not None:
+            props[dst] = str(val)
+
+    rrule = vev.get("rrule")
+    if rrule is not None:
+        props["rrule"] = rrule.to_ical().decode("utf-8")
+        warnings.append("RRULE detectada — importando solo la primera ocurrencia, sin la regla.")
+
+    dtstart = vev.get("dtstart")
+    if dtstart is not None:
+        d, t, all_day, tzid = _dt_to_iso(dtstart.dt, dict(dtstart.params))
+        props["start_date"] = d
+        props["start_time"] = t
+        props["all_day"] = all_day
+        if tzid:
+            props["tzid"] = tzid
+
+    dtend = vev.get("dtend")
+    if dtend is not None:
+        d, t, _, _ = _dt_to_iso(dtend.dt, dict(dtend.params))
+        props["end_date"] = d
+        props["end_time"] = t
+
+    for alarm in vev.walk("VALARM"):
+        trig = alarm.get("trigger")
+        if trig is None:
             continue
-        if key == "SUMMARY":
-            props["summary"] = _unescape(val)
-        elif key == "DESCRIPTION":
-            props["description"] = _unescape(val)
-        elif key == "DTSTART":
-            props["dtstart"] = val
-            props["dtstart_is_date"] = (params.get("VALUE") == "DATE")
-            props["dtstart_tzid"] = params.get("TZID")
-        elif key == "DTEND":
-            props["dtend"] = val
-            props["dtend_is_date"] = (params.get("VALUE") == "DATE")
-        elif key == "URL":
-            props["url"] = _unescape(val)
-        elif key == "LOCATION":
-            props["location"] = _unescape(val)
-        elif key == "RRULE":
-            props["rrule"] = val
-            warnings.append("RRULE detectada — importando solo la primera ocurrencia, sin la regla.")
-        elif key == "UID":
-            props["uid"] = val
-        elif key == "X-ORBIT-KIND":
-            props["x_orbit_kind"] = val
-        elif key == "X-ORBIT-ID":
-            props["x_orbit_id"] = val
+        td = trig.dt
+        if isinstance(td, timedelta):
+            props["valarm_minutes"] = abs(int(td.total_seconds() // 60))
+            break
 
-    if valarm_minutes is not None:
-        props["valarm_minutes"] = valarm_minutes
     return (props, warnings)
-
-
-def _parse_dt(val: str, is_date: bool, tzid: Optional[str]) -> tuple[str, Optional[str]]:
-    """Convert ``DTSTART``/``DTEND`` value to (date_iso, time_iso_or_None).
-
-    ``is_date`` True → all-day → (YYYY-MM-DD, None).
-    Otherwise YYYYMMDDTHHMMSS[Z] → (YYYY-MM-DD, HH:MM). UTC ('Z') is
-    converted to local; other TZIDs are taken at face value (floating).
-    """
-    if is_date or "T" not in val:
-        # YYYYMMDD → YYYY-MM-DD
-        v = val.rstrip("Z")[:8]
-        return (f"{v[:4]}-{v[4:6]}-{v[6:8]}", None)
-    # Has a time part.
-    is_utc = val.endswith("Z")
-    body = val.rstrip("Z")
-    d, _, t = body.partition("T")
-    iso_date = f"{d[:4]}-{d[4:6]}-{d[6:8]}"
-    hh = t[:2]; mm = t[2:4]
-    if is_utc:
-        # Convert UTC → local via datetime arithmetic.
-        try:
-            dt_utc = datetime(int(d[:4]), int(d[4:6]), int(d[6:8]),
-                              int(hh), int(mm))
-            offset = datetime.now() - datetime.utcnow()
-            dt_local = dt_utc + timedelta(seconds=round(offset.total_seconds()))
-            iso_date = dt_local.strftime("%Y-%m-%d")
-            return (iso_date, dt_local.strftime("%H:%M"))
-        except ValueError:
-            pass
-    return (iso_date, f"{hh}:{mm}")
 
 
 def _is_meeting_url(s: str) -> bool:
@@ -427,21 +365,16 @@ def _props_to_orbit_item(props: dict, kind: str) -> tuple[dict, list]:
     if props.get("x_orbit_kind"):
         emoji = _KIND_EMOJI.get(kind, "")
         summary = _strip_orbit_summary_prefix(summary, emoji)
-    dtstart = props.get("dtstart") or ""
-    dtend   = props.get("dtend") or ""
-    is_date = bool(props.get("dtstart_is_date"))
-    tzid    = props.get("dtstart_tzid")
+    is_date = bool(props.get("all_day"))
+    tzid    = props.get("tzid")
 
     if tzid and tzid not in ("Europe/Madrid",):
         warnings.append(f"TZID={tzid} no es Europe/Madrid; hora interpretada como floating local.")
 
-    date_iso, time_iso = _parse_dt(dtstart, is_date, tzid)
-
-    end_date_iso = None
-    end_time_iso = None
-    if dtend:
-        end_is_date = bool(props.get("dtend_is_date"))
-        end_date_iso, end_time_iso = _parse_dt(dtend, end_is_date, tzid)
+    date_iso = props.get("start_date") or ""
+    time_iso = props.get("start_time")
+    end_date_iso = props.get("end_date")
+    end_time_iso = props.get("end_time")
 
     # Build the time string per kind.
     item: dict = {
