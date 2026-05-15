@@ -138,19 +138,19 @@ def test_cloud_sync_status_check_delegates():
 
 
 def test_untracked_check_delegates():
-    with patch("core.commit.startup_untracked_check") as h:
+    with patch("core.startup.startup_untracked_check") as h:
         shell._action_untracked_check(None)
     h.assert_called_once()
 
 
 def test_commit_offer_delegates():
-    with patch("core.commit.startup_commit_offer") as h:
+    with patch("core.startup.startup_commit_offer") as h:
         shell._action_commit_offer(None)
     h.assert_called_once()
 
 
 def test_code_update_check_delegates():
-    with patch("core.commit.startup_code_update_check") as h:
+    with patch("core.startup.startup_code_update_check") as h:
         shell._action_code_update_check(None)
     h.assert_called_once()
 
@@ -277,11 +277,11 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
                side_effect=record("startup_advance_past_recurring")), \
          patch("core.cloudsync.startup_cloud_check",
                side_effect=record("startup_cloud_check")), \
-         patch("core.commit.startup_untracked_check",
+         patch("core.startup.startup_untracked_check",
                side_effect=record("startup_untracked_check")), \
-         patch("core.commit.startup_commit_offer",
+         patch("core.startup.startup_commit_offer",
                side_effect=record("startup_commit_offer")), \
-         patch("core.commit.startup_code_update_check",
+         patch("core.startup.startup_code_update_check",
                side_effect=record("startup_code_update_check")), \
          patch("core.gsync.gsync_background",
                side_effect=record("gsync_background")), \
@@ -332,9 +332,9 @@ def test_shell_startup_non_critical_failure_continues(reset_journal):
          patch("core.agenda_cmds.startup_advance_past_recurring",
                side_effect=RuntimeError("boom")), \
          patch("core.cloudsync.startup_cloud_check") as cloud, \
-         patch("core.commit.startup_untracked_check"), \
-         patch("core.commit.startup_commit_offer"), \
-         patch("core.commit.startup_code_update_check"), \
+         patch("core.startup.startup_untracked_check"), \
+         patch("core.startup.startup_commit_offer"), \
+         patch("core.startup.startup_code_update_check"), \
          patch("core.gsync.gsync_background"), \
          patch("core.cartero.startup_cartero"), \
          patch("orbit.run_dash"), \

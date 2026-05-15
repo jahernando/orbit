@@ -118,14 +118,14 @@ def _action_cloud_sync_status_check(ctx):
 
 def _action_untracked_check(ctx):
     """Stage tracked + prompt to add untracked (tty-only)."""
-    from core.commit import startup_untracked_check
+    from core.startup import startup_untracked_check
     startup_untracked_check()
     return {"ok": True}
 
 
 def _action_commit_offer(ctx):
     """Show uncommitted changes and offer commit + push (tty-only)."""
-    from core.commit import startup_commit_offer
+    from core.startup import startup_commit_offer
     startup_commit_offer()
     print()
     return {"ok": True}
@@ -133,7 +133,7 @@ def _action_commit_offer(ctx):
 
 def _action_code_update_check(ctx):
     """Check upstream of orbit code repo and offer pull (tty-only)."""
-    from core.commit import startup_code_update_check
+    from core.startup import startup_code_update_check
     startup_code_update_check()
     return {"ok": True}
 
@@ -194,7 +194,7 @@ def _run_startup():
 
 def _run_shutdown():
     """Refresh dash files + offer to commit + push pending changes before exiting the shell."""
-    from core.commit import startup_untracked_check, startup_commit_offer
+    from core.startup import startup_untracked_check, startup_commit_offer
     print()
     # Refresh panel.md and agenda.md so they're up-to-date for commit & cloud render
     try:

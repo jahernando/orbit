@@ -104,7 +104,8 @@ graph TB
         dateparse["dateparse"]
         opn["open"]
         hooks["hooks · 464"]
-        commit["commit · 707"]
+        commit["commit · 481"]
+        startup["startup · 251 (carved from commit)"]
         shell["shell · 346"]
         claude["claude · 148"]
         clip["clip · 195"]
@@ -227,5 +228,5 @@ Añadir `icalendar` y `python-dateutil` lleva las dependencias pip de 2 a 4 (hoy
 | 2a | `ring.schedule_new_format_reminders` (no-op) + 2 helpers huérfanos + tests | ~250 | Borrar | ✅ 2026-05-15 (−252 ℓ, 1839 tests) |
 | 2b | Resto de `ring.py` (path AppleScript-direct) | ~200 | **Bloqueado por gsync** — `DORMANT.md`: borrar gsync primero | depende de paso 5 |
 | 3 | `migrate` (548) `tracked_migrate` (179) `importer` (478) + CLI wiring + 4 tests | ~1325 | Borrar | ✅ 2026-05-15 (−1323 ℓ, 1835 tests) |
-| 4 | `commit.py` (lógica de hooks) | extraer ~300 | Mover a `hooks.py`, dejar `commit.py` ≤400 ℓ | pendiente |
+| 4 | `commit.py` carve-out de `startup_*` | extraer 226 | Nuevo `core/startup.py`. (Las 5 hook actions se quedan; revisitar tras paso 5) | ✅ 2026-05-15 (commit.py 707→481, suite verde) |
 | 5 | `gsync.py` paths dormantes | hasta −2000 | Auditar caller-by-caller, borrar lo no alcanzable | pendiente |
