@@ -485,24 +485,6 @@ class TestExtractUrls:
         assert urls == ["https://meet.google.com/abc-defg-hij"]
 
 
-class TestParseIcsDt:
-    def test_full_utc(self):
-        from core.email import _parse_ics_dt
-        assert _parse_ics_dt("20300508T120000Z") == ("2030-05-08", "12:00")
-
-    def test_full_local(self):
-        from core.email import _parse_ics_dt
-        assert _parse_ics_dt("20300508T120000") == ("2030-05-08", "12:00")
-
-    def test_date_only(self):
-        from core.email import _parse_ics_dt
-        assert _parse_ics_dt("20300508") == ("2030-05-08", None)
-
-    def test_empty(self):
-        from core.email import _parse_ics_dt
-        assert _parse_ics_dt("") == (None, None)
-
-
 class TestParseIcs:
     def test_full_event(self):
         from core.email import _parse_ics

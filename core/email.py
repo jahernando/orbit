@@ -20,10 +20,12 @@ import re
 import subprocess
 import sys
 import unicodedata
-from datetime import date as _date
+from datetime import date as _date, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Optional
+
+from icalendar import Calendar
 
 from core.config import ORBIT_HOME
 from core.log import add_orbit_entry, find_project
@@ -694,67 +696,62 @@ def _extract_urls(text: str, patterns: list) -> list:
     return seen
 
 
-def _parse_ics_dt(value: str) -> tuple:
-    """Return (date_str, time_str) from an ICS DTSTART/DTEND value.
+def _dt_split(value) -> tuple:
+    """Return (date_iso, time_iso) from an icalendar DT value.
 
-    ICS formats:
-      - 20260508T120000Z       → ("2026-05-08", "12:00") [UTC, kept as-is]
-      - 20260508T120000        → ("2026-05-08", "12:00") [floating local]
-      - 20260508               → ("2026-05-08", None)    [date-only]
+    Times are kept *literal* — UTC offset is dropped without conversion,
+    matching the previous behaviour. Calendar invitations typically carry
+    DTSTART in the local zone of the organiser; converting to the
+    recipient's TZ was never the contract here.
     """
-    if not value:
-        return (None, None)
-    v = value.strip().rstrip("Z")
-    m = re.match(r"^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?", v)
-    if not m:
-        return (None, None)
-    y, mo, d, h, mi = m.groups()
-    date_s = f"{y}-{mo}-{d}"
-    time_s = f"{h}:{mi}" if h and mi else None
-    return (date_s, time_s)
+    if isinstance(value, datetime):
+        return (value.date().isoformat(), value.strftime("%H:%M"))
+    return (value.isoformat(), None)
 
 
 def _parse_ics(ics_text: str) -> Optional[dict]:
-    """Minimalist ICS parser. Returns dict with title/date/time/end/url/description.
+    """Parse the first VEVENT of an ICS blob.
 
-    Only handles the first VEVENT block. No recurrence, no timezone conversion
-    (DTSTART times are kept literal — UTC marker stripped, no offset applied).
+    Returns ``{title, date, time, end_date, end_time, url, location}`` or
+    ``None`` on empty/garbage input. No recurrence, no timezone
+    conversion — UTC times are recorded as-is.
     """
     if not ics_text:
         return None
-    m = re.search(r"BEGIN:VEVENT(.+?)END:VEVENT", ics_text, re.DOTALL | re.IGNORECASE)
-    if not m:
+    # Tolerate bare-VEVENT fragments (some clients strip the wrapper).
+    text = ics_text
+    if "BEGIN:VCALENDAR" not in text.upper():
+        text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n" + text + "\r\nEND:VCALENDAR\r\n"
+    try:
+        cal = Calendar.from_ical(text)
+    except (ValueError, KeyError):
         return None
-    block = m.group(1)
-    # Unfold continuation lines (RFC 5545: a line starting with WS continues prev)
-    block = re.sub(r"\r?\n[ \t]", "", block)
 
-    def field(name):
-        rx = re.compile(rf"^{name}(?:;[^:\r\n]*)?:(.+)$",
-                        re.MULTILINE | re.IGNORECASE)
-        match = rx.search(block)
-        return match.group(1).strip() if match else None
+    vevents = list(cal.walk("VEVENT"))
+    if not vevents:
+        return None
+    vev = vevents[0]
 
-    dtstart = field("DTSTART")
-    dtend   = field("DTEND")
-    s_date, s_time = _parse_ics_dt(dtstart)
-    e_date, e_time = _parse_ics_dt(dtend)
+    summary = vev.get("summary")
+    title = str(summary) if summary is not None else None
 
-    summary = field("SUMMARY") or ""
-    # ICS escapes \, → ',' and \n → newline. Reverse minimal subset.
-    summary = summary.replace("\\,", ",").replace("\\;", ";")
+    s_date = s_time = e_date = e_time = None
+    if (dt := vev.get("dtstart")) is not None:
+        s_date, s_time = _dt_split(dt.dt)
+    if (dt := vev.get("dtend")) is not None:
+        e_date, e_time = _dt_split(dt.dt)
 
-    url = field("URL")
-    location = field("LOCATION")
+    url = vev.get("url")
+    location = vev.get("location")
 
     return {
-        "title":    summary or None,
+        "title":    title or None,
         "date":     s_date,
         "time":     s_time,
         "end_date": e_date if e_date and e_date != s_date else None,
         "end_time": e_time,
-        "url":      url,
-        "location": location,
+        "url":      str(url) if url is not None else None,
+        "location": str(location) if location is not None else None,
     }
 
 
