@@ -1330,163 +1330,14 @@ def cmd_ls(args):
 
 
 
-def _add_log_args(p):
-    """Add --log, --log-entry, and --to arguments to a parser."""
-    p.add_argument("--log", default=None, metavar="PROJECT",
-                   help="Log output to a project's logbook (default: mission)")
-    p.add_argument("--log-entry", dest="log_entry", default="apunte",
-                   choices=VALID_TYPES, metavar="TYPE",
-                   help="Entry type for --log (default: apunte)")
-    p.add_argument("--append", dest="append_note", default=None, metavar="PROJ:NOTA",
-                   help="Append output to a note (e.g. --append catedra:calibracion)")
-
-
-class _OrbitParser(argparse.ArgumentParser):
-    """ArgumentParser that shows a friendlier error message."""
-
-    def error(self, message):
-        # For invalid command choices, suggest closest match
-        import re
-        m = re.search(r"invalid choice: '(\w+)'", message)
-        if m:
-            from difflib import get_close_matches
-            bad = m.group(1)
-            # Extract valid choices from the message
-            choices_m = re.search(r"choose from (.+)\)", message)
-            if choices_m:
-                choices = [c.strip().strip("'") for c in choices_m.group(1).split(",")]
-                close = get_close_matches(bad, choices, n=1, cutoff=0.5)
-                if close:
-                    sys.stderr.write(f"⚠️  Comando '{bad}' no reconocido. ¿Quisiste decir '{close[0]}'?\n")
-                    sys.exit(2)
-        sys.stderr.write(f"⚠️  No pude ejecutar el comando: {message}\n")
-        self.print_usage(sys.stderr)
-        sys.exit(2)
-
-    def add_subparsers(self, **kwargs):
-        kwargs.setdefault("parser_class", _OrbitParser)
-        return super().add_subparsers(**kwargs)
-
-
-# ── Argument helpers (reduce repetition in _build_parser) ────────────────────
-
-def _add_project_text(p, project_required=True):
-    """Add project + text positional args (used by all appointment subcommands)."""
-    if project_required:
-        p.add_argument("project", help="Project name (partial match)")
-    else:
-        p.add_argument("project", nargs="?", default=None,
-                       help="Project name (partial match; omit for interactive)")
-    p.add_argument("text", nargs="?", default=None, help="Text or partial match")
-
-
-def _add_add_args(p, date_required=False, time_required=False, has_ring=True):
-    """Add common args for 'add' subcommands (date, recur, until, time, desc, ring)."""
-    p.add_argument("--date", required=date_required, default=None, help="Date: YYYY-MM-DD, today, tomorrow...")
-    p.add_argument("--recur", default=None, help="Recurrence: daily, weekly, monthly, weekdays, ...")
-    p.add_argument("--until", default=None, help="End date for recurrence YYYY-MM-DD")
-    p.add_argument("--time", required=time_required, default=None, help="Time HH:MM")
-    p.add_argument("--desc", default=None, help="Description (links, notes)")
-    if has_ring:
-        p.add_argument("--ring", default=None, help="Reminder: 1d, 2h, HH:MM, YYYY-MM-DD HH:MM")
-
-
-def _add_edit_args(p, has_end=False, has_end_time=False):
-    """Add common args for 'edit' subcommands (new_text, new_date, new_recur, etc.)."""
-    p.add_argument("--text", dest="new_text", default=None, help="New description")
-    p.add_argument("--date", dest="new_date", default=None, help="New date (or 'none')")
-    p.add_argument("--recur", dest="new_recur", default=None, help="New recurrence (or 'none')")
-    p.add_argument("--until", dest="new_until", default=None, help="End date (or 'none')")
-    p.add_argument("--ring", dest="new_ring", default=None, help="New ring (or 'none')")
-    p.add_argument("--time", dest="new_time", default=None, help="New time HH:MM (or 'none')")
-    p.add_argument("--desc", dest="new_desc", default=None, help="New description (or 'none')")
-    if has_end:
-        p.add_argument("--end", "--end-date", dest="new_end", default=None, help="End date or 'none'")
-    if has_end_time:
-        p.add_argument("--end-time", dest="new_end_time", default=None, help="End time HH:MM")
-    p.add_argument("--force", action="store_true", help="Skip prompt; safe default = occurrence")
-    p.add_argument("-o", dest="occurrence", action="store_true", help="Edit this occurrence only")
-    p.add_argument("-s", dest="series", action="store_true", help="Edit the entire series")
-
-
-def _add_drop_args(p):
-    """Add common args for 'drop' subcommands (force, -o, -s)."""
-    p.add_argument("--force", action="store_true", help="Skip confirmation")
-    p.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only")
-    p.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
-
-
-def _add_crono_subparsers(sub):
-    """Add the 9 crono subcommands to a parser's add_subparsers() object.
-
-    Used twice: once under top-level `crono` and once under `task crono`.
-    The shared dispatcher reads either `action` or `crono_action` to find
-    the chosen subcommand.
-    """
-    cr_add = sub.add_parser("add", help="Crear cronograma")
-    cr_add.add_argument("project", help="Project name")
-    cr_add.add_argument("name", help="Cronograma name")
-
-    cr_show = sub.add_parser("show", help="Mostrar cronograma con fechas calculadas")
-    cr_show.add_argument("project", help="Project name")
-    cr_show.add_argument("name", help="Cronograma name (partial match)")
-    cr_show.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
-    _add_log_args(cr_show)
-
-    cr_check = sub.add_parser("check", help="Validar cronograma (doctor)")
-    cr_check.add_argument("project", help="Project name")
-    cr_check.add_argument("name", help="Cronograma name (partial match)")
-
-    cr_list = sub.add_parser("list", help="Listar cronogramas del proyecto")
-    cr_list.add_argument("project", help="Project name")
-    cr_list.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
-    _add_log_args(cr_list)
-
-    cr_edit = sub.add_parser("edit", help="Abrir cronograma en el editor")
-    cr_edit.add_argument("project", help="Project name")
-    cr_edit.add_argument("name", help="Cronograma name (partial match)")
-    cr_edit.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
-                         help="Editor (default: configured editor)")
-
-    cr_done = sub.add_parser("done", help="Marcar tarea de cronograma como completada")
-    cr_done.add_argument("project", help="Project name")
-    cr_done.add_argument("name", help="Cronograma name")
-    cr_done.add_argument("index", nargs="?", default=None,
-                         help="Task index, partial text, or omit for interactive")
-
-    cr_reindex = sub.add_parser("reindex", help="Renumerar índices del cronograma")
-    cr_reindex.add_argument("project", help="Project name")
-    cr_reindex.add_argument("name", help="Cronograma name (partial match)")
-
-    cr_gantt = sub.add_parser("gantt", help="Visualizar cronograma como Gantt")
-    cr_gantt.add_argument("project", help="Project name")
-    cr_gantt.add_argument("name", help="Cronograma name (partial match)")
-    cr_gantt_mode = cr_gantt.add_mutually_exclusive_group()
-    cr_gantt_mode.add_argument("--progress", action="store_true",
-                               help="Forzar vista de progreso (barras + checkboxes)")
-    cr_gantt_mode.add_argument("--timeline", action="store_true",
-                               help="Forzar vista temporal (Gantt con eje de fechas)")
-    cr_gantt.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
-    _add_log_args(cr_gantt)
-
-    cr_mermaid = sub.add_parser("mermaid",
-                                help="Embeber visualización (gantt/tabla) en el crono md")
-    cr_mermaid.add_argument("project", help="Project name")
-    cr_mermaid.add_argument("name", help="Cronograma name (partial match)")
-    cr_mermaid.add_argument("--table", action="store_true",
-                            help="Tabla markdown (renderer-agnóstico, sin Mermaid)")
-
-
-def _add_fed_args(p):
-    """Add --no-fed flag to disable federated workspace reading."""
-    p.add_argument("--no-fed", action="store_true",
-                   help="No incluir espacios federados")
-
-
-def _add_output_args(p):
-    """Add --open [EDITOR], --log, --log-entry, --append args."""
-    p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
-                   help="Open in editor (optionally specify editor name)")
+# The argparse helpers and _OrbitParser live in core/parsers/_helpers.py
+# since Phase 4.B step 4 (ADR-032). Re-imported here so any external
+# code that still grabs them from `orbit` keeps working.
+from core.parsers._helpers import (
+    _OrbitParser,
+    _add_log_args, _add_project_text, _add_add_args, _add_edit_args,
+    _add_drop_args, _add_crono_subparsers, _add_fed_args, _add_output_args,
+)
 
 
 def _build_parser():
@@ -1876,104 +1727,14 @@ def _build_parser():
     archive_p.add_argument("--notes", action="store_true",
                            help="Only archive stale notes")
 
-    # --- task (add/done/cancel/edit/list on agenda.md) ---
-    tsknew_p   = subparsers.add_parser("task", help="Task commands: add, done, cancel, edit, list")
-    tsknew_sub = tsknew_p.add_subparsers(dest="action")
-
-    tn_add = tsknew_sub.add_parser("add", help="Add a task")
-    _add_project_text(tn_add, project_required=True)
-    _add_add_args(tn_add)
-
-    tn_done = tsknew_sub.add_parser("done", help="Complete a pending task")
-    _add_project_text(tn_done, project_required=False)
-
-    tn_drop = tsknew_sub.add_parser("drop", help="Cancel a pending task")
-    _add_project_text(tn_drop, project_required=False)
-    _add_drop_args(tn_drop)
-
-    tn_edit = tsknew_sub.add_parser("edit", help="Edit a pending task")
-    _add_project_text(tn_edit, project_required=False)
-    _add_edit_args(tn_edit)
-
-    tn_log = tsknew_sub.add_parser("log", help="Create logbook entry from a task")
-    _add_project_text(tn_log, project_required=False)
-
-    # composite task = cronograma. Decided 2026-05-15: cronograma is a
-    # composite task. The flat `crono X` top-level remains as a daily-use
-    # alias of `task crono X`.
-    tn_crono = tsknew_sub.add_parser("crono",
-                                     help="Composite task (cronograma): nested tasks with deps")
-    _add_crono_subparsers(tn_crono.add_subparsers(dest="crono_action"))
-
-    # --- ms ---
-    ms_p   = subparsers.add_parser("ms", help="Milestone commands (agenda.md)")
-    ms_sub = ms_p.add_subparsers(dest="action")
-
-    ms_add = ms_sub.add_parser("add", help="Add a milestone")
-    _add_project_text(ms_add, project_required=True)
-    _add_add_args(ms_add)
-
-    ms_done = ms_sub.add_parser("done", help="Mark milestone as reached")
-    _add_project_text(ms_done, project_required=False)
-
-    ms_drop = ms_sub.add_parser("drop", help="Cancel a milestone")
-    _add_project_text(ms_drop, project_required=False)
-    _add_drop_args(ms_drop)
-
-    ms_edit = ms_sub.add_parser("edit", help="Edit a milestone")
-    _add_project_text(ms_edit, project_required=False)
-    _add_edit_args(ms_edit)
-
-    ms_log = ms_sub.add_parser("log", help="Create logbook entry from a milestone")
-    _add_project_text(ms_log, project_required=False)
-
-    # --- ev ---
-    ev_p   = subparsers.add_parser("ev", help="Event commands (agenda.md)")
-    ev_sub = ev_p.add_subparsers(dest="action")
-
-    ev_add = ev_sub.add_parser("add", help="Add an event")
-    _add_project_text(ev_add, project_required=True)
-    _add_add_args(ev_add, date_required=True)
-    ev_add.add_argument("--end", "--end-date", default=None, help="End date YYYY-MM-DD")
-    ev_add.add_argument("--end-time", default=None, dest="end_time", help="End time HH:MM")
-    ev_add.add_argument("--agenda", default=None, metavar="URL",
-                        help="Agenda/indico URL (📋 note under event)")
-    ev_add.add_argument("--room", default=None, metavar="URL",
-                        help="Room URL: zoom, meet, teams (🚪 note under event)")
-
-    ev_drop = ev_sub.add_parser("drop", help="Remove an event")
-    _add_project_text(ev_drop, project_required=False)
-    _add_drop_args(ev_drop)
-
-    ev_edit = ev_sub.add_parser("edit", help="Edit an event")
-    _add_project_text(ev_edit, project_required=False)
-    _add_edit_args(ev_edit, has_end=True, has_end_time=True)
-    ev_edit.add_argument("--agenda", dest="new_agenda", default=None, metavar="URL|none",
-                         help="New agenda URL (or 'none' to remove)")
-    ev_edit.add_argument("--room", dest="new_room", default=None, metavar="URL|none",
-                         help="New room URL (or 'none' to remove)")
-
-    ev_log = ev_sub.add_parser("log", help="Create logbook entry from an event")
-    _add_project_text(ev_log, project_required=False)
-
-    # --- reminder ---
-    rem_p   = subparsers.add_parser("reminder", aliases=["rem"], help="Reminder commands (agenda.md 💬)")
-    rem_sub = rem_p.add_subparsers(dest="action")
-
-    rem_add = rem_sub.add_parser("add", help="Add a reminder")
-    _add_project_text(rem_add, project_required=True)
-    _add_add_args(rem_add, date_required=True, time_required=True, has_ring=False)
-
-    rem_drop = rem_sub.add_parser("drop", help="Remove a reminder")
-    _add_project_text(rem_drop, project_required=False)
-    _add_drop_args(rem_drop)
-
-    rem_edit = rem_sub.add_parser("edit", help="Edit a reminder")
-    _add_project_text(rem_edit, project_required=False)
-    _add_edit_args(rem_edit)
-
-    rem_log = rem_sub.add_parser("log", help="Create logbook entry from a reminder")
-    _add_project_text(rem_log, project_required=False)
+    # The four-appointment subparsers live in core/parsers/agenda.py
+    # since Phase 4.B step 4 (ADR-032). Order preserved by calling each
+    # registrar individually.
+    from core.parsers import agenda as _agenda_parsers
+    _agenda_parsers.register_task(subparsers)
+    _agenda_parsers.register_ms(subparsers)
+    _agenda_parsers.register_ev(subparsers)
+    _agenda_parsers.register_reminder(subparsers)
 
     # --- hl ---
     hl_p   = subparsers.add_parser("hl", help="Highlights commands (highlights.md)")
