@@ -1028,11 +1028,22 @@ def cmd_untrack(args):
 
 
 def cmd_tracked(args):
-    """Dispatcher for ``orbit tracked {list,migrate}``."""
+    """Dispatcher for ``orbit tracked {add,drop,list}``.
+
+    ``add`` and ``drop`` delegate to the same backends as the top-level
+    ``orbit track`` / ``orbit untrack`` shortcuts; they exist so the
+    canonical form is the noun-verb one.
+    """
     from core.tracked import load_registry, check_status
     from core.config import iter_project_dirs
 
     action = getattr(args, "action", None) or "list"
+
+    if action == "add":
+        return cmd_track(args)
+    if action == "drop":
+        return cmd_untrack(args)
+
     project_arg = getattr(args, "project", None)
 
     def _resolve_projects():
@@ -1736,22 +1747,41 @@ def _build_parser():
         help="Unload and remove the launchd plist")
 
     # --- track (externa: symlink notes/<basename> → fullpath) ---
+    # The canonical form is `orbit tracked {add,drop,list}` (noun-verb,
+    # consistent with `task`, `hl`, `note`, `cloud`, etc.). `orbit track`
+    # and `orbit untrack` are kept as top-level shortcuts for the
+    # frequent track/untrack-from-anywhere flows — same pattern as
+    # `deliver` ↔ `cloud deliver` and `crono` ↔ `task crono`.
+
+    def _add_track_args(p):
+        """Args shared by `orbit track` and `orbit tracked add`."""
+        p.add_argument("project", help="Project name (partial match)")
+        p.add_argument("file", metavar="FULLPATH",
+                       help="External .md file to track (full path)")
+
+    def _add_untrack_args(p):
+        """Args shared by `orbit untrack` and `orbit tracked drop`."""
+        p.add_argument("project", help="Project name (partial match)")
+        p.add_argument("name", help="Filename in notes/ (e.g. DECISIONS.md)")
+
     track_p = subparsers.add_parser("track",
-        help="Track an external .md file as externa: notes/<basename> → fullpath (symlink)")
-    track_p.add_argument("project", help="Project name (partial match)")
-    track_p.add_argument("file",    metavar="FULLPATH",
-                         help="External .md file to track (full path)")
+        help="Atajo para `orbit tracked add` — registra un .md externo como nota del proyecto")
+    _add_track_args(track_p)
 
-    # --- untrack ---
     untr_p = subparsers.add_parser("untrack",
-        help="Untrack an externa: removes the symlink, source untouched")
-    untr_p.add_argument("project", help="Project name (partial match)")
-    untr_p.add_argument("name", help="Filename in notes/ (e.g. DECISIONS.md)")
+        help="Atajo para `orbit tracked drop` — quita el symlink, fuente intacta")
+    _add_untrack_args(untr_p)
 
-    # --- tracked (list / migrate) ---
+    # --- tracked (canonical noun-verb form) ---
     tr_p   = subparsers.add_parser("tracked",
                                     help="Manage tracked external markdown files")
     tr_sub = tr_p.add_subparsers(dest="action")
+
+    tr_add = tr_sub.add_parser("add", help="Track an external .md file (canonical form of `orbit track`)")
+    _add_track_args(tr_add)
+
+    tr_drop = tr_sub.add_parser("drop", help="Untrack an externa (canonical form of `orbit untrack`)")
+    _add_untrack_args(tr_drop)
 
     tr_list = tr_sub.add_parser("list", help="List tracked files (optionally for one project)")
     tr_list.add_argument("project", nargs="?", default=None,
