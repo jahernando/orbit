@@ -237,20 +237,22 @@ orbit clip catedra notes/result.md                      # enlace a un fichero
 orbit clip catedra notes/tramos.md --from complementos  # enlace relativo entre proyectos
 ```
 
-### Cronogramas
+### Cronogramas (task compuesta)
 
 ```bash
-orbit crono add     <project> "<name>"              # crear cronograma
-orbit crono show    <project> "<name>" [--open]     # mostrar con fechas calculadas
-orbit crono edit    <project> "<name>"              # abrir en editor
-orbit crono gantt   <project> "<name>" [--open]     # visualizar progreso o timeline
-orbit crono done    <project> "<name>" [index|text] # marcar tarea (interactivo sin args)
-orbit crono check   <project> "<name>"              # validar
-orbit crono reindex <project> "<name>"              # renumerar indices
-orbit crono list    <project> [--open]              # listar cronogramas
+orbit task crono add     <project> "<name>"              # crear cronograma
+orbit task crono show    <project> "<name>" [--open]     # mostrar con fechas calculadas
+orbit task crono edit    <project> "<name>"              # abrir en editor
+orbit task crono gantt   <project> "<name>" [--open]     # visualizar progreso o timeline
+orbit task crono done    <project> "<name>" [index|text] # marcar tarea (interactivo sin args)
+orbit task crono check   <project> "<name>"              # validar
+orbit task crono reindex <project> "<name>"              # renumerar indices
+orbit task crono list    <project> [--open]              # listar cronogramas
+
+orbit crono <sub> ...                                    # atajo top-level (uso diario)
 ```
 
-Tareas anidadas con dependencias y duracion. Fichero: `cronos/crono-<nombre>.md`.
+Conceptualmente: una task-compuesta (extension del sistema task). Tareas anidadas con dependencias y duracion. Fichero: `cronos/crono-<nombre>.md`.
 Soporta tabs/2-space/4-space, herencia de `after:` en padres, modo DAG (sin fechas).
 Metadato `deadline: YYYY-MM-DD` activa seguimiento de ritmo y avisos.
 Progreso y deadline visibles en `orbit panel`; completados se ocultan automaticamente.

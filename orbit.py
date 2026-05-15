@@ -497,6 +497,7 @@ def cmd_task_new(args):
     if action == "drop":   return run_task_drop(**_drop_args(args))
     if action == "edit":   return run_task_edit(**_edit_args(args))
     if action == "log":    return run_task_log(project=_ga(args, "project"), text=_ga(args, "text"))
+    if action == "crono":  return cmd_crono(args)
     return 1
 
 
@@ -1171,13 +1172,18 @@ def cmd_doctor(args):
 
 
 def cmd_crono(args):
-    """Cronograma subcommand dispatcher."""
+    """Cronograma subcommand dispatcher.
+
+    Reachable as `orbit crono X` (top-level alias) or `orbit task crono X`
+    (the canonical noun-verb form). The two paths use different argparse
+    dests (`action` vs `crono_action`), so read both.
+    """
     from core.cronograma import (
         run_crono_add, run_crono_show, run_crono_check,
         run_crono_list, run_crono_done, run_crono_gantt,
         run_crono_edit, run_crono_reindex, run_crono_mermaid,
     )
-    action = _ga(args, "action")
+    action = _ga(args, "crono_action") or _ga(args, "action")
     if action == "add":
         return run_crono_add(project=args.project, name=args.name)
     if action == "show":
@@ -1389,6 +1395,67 @@ def _add_drop_args(p):
     p.add_argument("--force", action="store_true", help="Skip confirmation")
     p.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only")
     p.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
+
+
+def _add_crono_subparsers(sub):
+    """Add the 9 crono subcommands to a parser's add_subparsers() object.
+
+    Used twice: once under top-level `crono` and once under `task crono`.
+    The shared dispatcher reads either `action` or `crono_action` to find
+    the chosen subcommand.
+    """
+    cr_add = sub.add_parser("add", help="Crear cronograma")
+    cr_add.add_argument("project", help="Project name")
+    cr_add.add_argument("name", help="Cronograma name")
+
+    cr_show = sub.add_parser("show", help="Mostrar cronograma con fechas calculadas")
+    cr_show.add_argument("project", help="Project name")
+    cr_show.add_argument("name", help="Cronograma name (partial match)")
+    cr_show.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
+    _add_log_args(cr_show)
+
+    cr_check = sub.add_parser("check", help="Validar cronograma (doctor)")
+    cr_check.add_argument("project", help="Project name")
+    cr_check.add_argument("name", help="Cronograma name (partial match)")
+
+    cr_list = sub.add_parser("list", help="Listar cronogramas del proyecto")
+    cr_list.add_argument("project", help="Project name")
+    cr_list.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
+    _add_log_args(cr_list)
+
+    cr_edit = sub.add_parser("edit", help="Abrir cronograma en el editor")
+    cr_edit.add_argument("project", help="Project name")
+    cr_edit.add_argument("name", help="Cronograma name (partial match)")
+    cr_edit.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                         help="Editor (default: configured editor)")
+
+    cr_done = sub.add_parser("done", help="Marcar tarea de cronograma como completada")
+    cr_done.add_argument("project", help="Project name")
+    cr_done.add_argument("name", help="Cronograma name")
+    cr_done.add_argument("index", nargs="?", default=None,
+                         help="Task index, partial text, or omit for interactive")
+
+    cr_reindex = sub.add_parser("reindex", help="Renumerar índices del cronograma")
+    cr_reindex.add_argument("project", help="Project name")
+    cr_reindex.add_argument("name", help="Cronograma name (partial match)")
+
+    cr_gantt = sub.add_parser("gantt", help="Visualizar cronograma como Gantt")
+    cr_gantt.add_argument("project", help="Project name")
+    cr_gantt.add_argument("name", help="Cronograma name (partial match)")
+    cr_gantt_mode = cr_gantt.add_mutually_exclusive_group()
+    cr_gantt_mode.add_argument("--progress", action="store_true",
+                               help="Forzar vista de progreso (barras + checkboxes)")
+    cr_gantt_mode.add_argument("--timeline", action="store_true",
+                               help="Forzar vista temporal (Gantt con eje de fechas)")
+    cr_gantt.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
+    _add_log_args(cr_gantt)
+
+    cr_mermaid = sub.add_parser("mermaid",
+                                help="Embeber visualización (gantt/tabla) en el crono md")
+    cr_mermaid.add_argument("project", help="Project name")
+    cr_mermaid.add_argument("name", help="Cronograma name (partial match)")
+    cr_mermaid.add_argument("--table", action="store_true",
+                            help="Tabla markdown (renderer-agnóstico, sin Mermaid)")
 
 
 def _add_fed_args(p):
@@ -1793,6 +1860,13 @@ def _build_parser():
     tn_log = tsknew_sub.add_parser("log", help="Create logbook entry from a task")
     _add_project_text(tn_log, project_required=False)
 
+    # composite task = cronograma. Decided 2026-05-15: cronograma is a
+    # composite task. The flat `crono X` top-level remains as a daily-use
+    # alias of `task crono X`.
+    tn_crono = tsknew_sub.add_parser("crono",
+                                     help="Composite task (cronograma): nested tasks with deps")
+    _add_crono_subparsers(tn_crono.add_subparsers(dest="crono_action"))
+
     # --- ms ---
     ms_p   = subparsers.add_parser("ms", help="Milestone commands (agenda.md)")
     ms_sub = ms_p.add_subparsers(dest="action")
@@ -2083,62 +2157,9 @@ def _build_parser():
                                       help="Ask Claude about Orbit usage")
     claude_p.add_argument("question", nargs="+", help="Your question about Orbit")
 
-    # --- crono ---
-    crono_p = subparsers.add_parser("crono", help="Cronogramas: tareas anidadas con dependencias")
-    crono_sub = crono_p.add_subparsers(dest="action")
-
-    cr_add = crono_sub.add_parser("add", help="Crear cronograma")
-    cr_add.add_argument("project", help="Project name")
-    cr_add.add_argument("name", help="Cronograma name")
-
-    cr_show = crono_sub.add_parser("show", help="Mostrar cronograma con fechas calculadas")
-    cr_show.add_argument("project", help="Project name")
-    cr_show.add_argument("name", help="Cronograma name (partial match)")
-    cr_show.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
-    _add_log_args(cr_show)
-
-    cr_check = crono_sub.add_parser("check", help="Validar cronograma (doctor)")
-    cr_check.add_argument("project", help="Project name")
-    cr_check.add_argument("name", help="Cronograma name (partial match)")
-
-    cr_list = crono_sub.add_parser("list", help="Listar cronogramas del proyecto")
-    cr_list.add_argument("project", help="Project name")
-    cr_list.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
-    _add_log_args(cr_list)
-
-    cr_edit = crono_sub.add_parser("edit", help="Abrir cronograma en el editor")
-    cr_edit.add_argument("project", help="Project name")
-    cr_edit.add_argument("name", help="Cronograma name (partial match)")
-    cr_edit.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
-                         help="Editor (default: configured editor)")
-
-    cr_done = crono_sub.add_parser("done", help="Marcar tarea de cronograma como completada")
-    cr_done.add_argument("project", help="Project name")
-    cr_done.add_argument("name", help="Cronograma name")
-    cr_done.add_argument("index", nargs="?", default=None,
-                         help="Task index, partial text, or omit for interactive")
-
-    cr_reindex = crono_sub.add_parser("reindex", help="Renumerar índices del cronograma")
-    cr_reindex.add_argument("project", help="Project name")
-    cr_reindex.add_argument("name", help="Cronograma name (partial match)")
-
-    cr_gantt = crono_sub.add_parser("gantt", help="Visualizar cronograma como Gantt")
-    cr_gantt.add_argument("project", help="Project name")
-    cr_gantt.add_argument("name", help="Cronograma name (partial match)")
-    cr_gantt_mode = cr_gantt.add_mutually_exclusive_group()
-    cr_gantt_mode.add_argument("--progress", action="store_true",
-                               help="Forzar vista de progreso (barras + checkboxes)")
-    cr_gantt_mode.add_argument("--timeline", action="store_true",
-                               help="Forzar vista temporal (Gantt con eje de fechas)")
-    cr_gantt.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
-    _add_log_args(cr_gantt)
-
-    cr_mermaid = crono_sub.add_parser("mermaid",
-                                       help="Embeber visualización (gantt/tabla) en el crono md")
-    cr_mermaid.add_argument("project", help="Project name")
-    cr_mermaid.add_argument("name", help="Cronograma name (partial match)")
-    cr_mermaid.add_argument("--table", action="store_true",
-                             help="Tabla markdown (renderer-agnóstico, sin Mermaid)")
+    # --- crono (mounted both as top-level `crono X` and under `task crono X`) ---
+    crono_p = subparsers.add_parser("crono", help="Cronogramas: tareas anidadas con dependencias (alias of `task crono`)")
+    _add_crono_subparsers(crono_p.add_subparsers(dest="action"))
 
     # --- undo ---
     subparsers.add_parser("undo", help="Undo the last operation")

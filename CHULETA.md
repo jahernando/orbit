@@ -298,19 +298,21 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 
 ---
 
-## crono — cronogramas
+## crono — cronogramas (task compuesta)
 
-Cronogramas: tareas anidadas con dependencias y duración temporal. Se almacenan en `cronos/crono-<nombre>.md` dentro del proyecto, enlazados desde `## 📊 Cronogramas` en agenda.md.
+Cronogramas: tareas anidadas con dependencias y duración temporal. Conceptualmente son una **task-compuesta** (extensión del sistema task). Se almacenan en `cronos/crono-<nombre>.md` dentro del proyecto, enlazados desde `## 📊 Cronogramas` en agenda.md.
 
 ```bash
-orbit crono add     <project> "<name>"                    # crear cronograma
-orbit crono show    <project> "<name>" [--open]           # mostrar con fechas calculadas
-orbit crono edit    <project> "<name>" [--open [EDITOR]]  # abrir en editor
-orbit crono check   <project> "<name>"                    # validar (doctor)
-orbit crono list    <project> [--open]                    # listar cronogramas del proyecto
-orbit crono done    <project> "<name>" [<index|texto>]    # marcar tarea como completada
-orbit crono reindex <project> "<name>"                    # renumerar índices automáticamente
-orbit crono gantt   <project> "<name>" [--open]           # visualizar como Gantt
+orbit task crono add     <project> "<name>"                    # crear cronograma
+orbit task crono show    <project> "<name>" [--open]           # mostrar con fechas calculadas
+orbit task crono edit    <project> "<name>" [--open [EDITOR]]  # abrir en editor
+orbit task crono check   <project> "<name>"                    # validar (doctor)
+orbit task crono list    <project> [--open]                    # listar cronogramas del proyecto
+orbit task crono done    <project> "<name>" [<index|texto>]    # marcar tarea como completada
+orbit task crono reindex <project> "<name>"                    # renumerar índices automáticamente
+orbit task crono gantt   <project> "<name>" [--open]           # visualizar como Gantt
+
+orbit crono <sub> ...                                          # atajo top-level (uso diario)
 ```
 
 - `done` sin argumento: selección interactiva de tareas pendientes
