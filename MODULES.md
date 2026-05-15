@@ -248,6 +248,13 @@ Cuatro fases en este orden. **Cada fase debe dejar `pytest` verde antes de pasar
 | B | `python-dateutil` reemplaza la aritmética manual de `_next_occurrence` en `core/agenda_cmds.py` | 1 commit, −13 ℓ netas | `relativedelta(months=N)` para `monthly`/`every-N-months` (clamp natural). `rrule(DAILY, byweekday=MO..FR)` para `weekdays`. `rrule(MONTHLY, byweekday=X, bysetpos=±1)` para `first-X`/`last-X`. Firma `_next_occurrence(due, recur, done)` mantenida — 6 callers externos (ring, ring_export, agenda_view, ics, ics_share) intactos. Ver [ADR-030](DECISIONS.md#adr-030--migración-a-python-dateutil-para-la-mecánica-de-recurrencia) | ✅ 2026-05-15 (commit `e130c38`, 1536 tests verde) |
 | C | Partir `core/agenda_cmds.py` (2202 ℓ) en subpaquete `core/agenda/` | 1 commit, +176 ℓ totales | 6 módulos (recurrence 140 + io 405 + display 212 + lifecycle 844 + runners 567 + startup 118) + `__init__.py` re-exporting + shim de 28 ℓ en `core/agenda_cmds.py`. Ningún caller externo modificado (la única limpieza colateral es `email.py` que importaba `resolve_file` de paso por agenda_cmds). El acoplamiento con cronograma 2.3.2 se difiere — partir con `composite=None` placeholder. Ver [ADR-031](DECISIONS.md#adr-031--partir-coreagenda_cmdspy-en-subpaquete-coreagenda) | ✅ 2026-05-15 (commit `1db9fba`, 1536 tests verde) |
 
+### Orden táctico dentro de la Fase 4
+
+| # | Bloque | Tamaño aprox. | Acción | Estado |
+|---|---|---|---|---|
+| A | Convención `noun verb` para el resto del CLI | 1 commit, +30 ℓ argparse | Promover `tracked add` / `tracked drop` a forma canónica + mantener `track` / `untrack` como atajos top-level (helpers `_add_track_args` / `_add_untrack_args` evitan duplicar la declaración). Patrón consolidado tras 2.1 (`cloud deliver`) y 2.3.1 (`task crono`). **`ics share` / `ics import` NO migrado**: argparse no combina positional `nargs="?"` + 5 flags + `add_subparsers` sin romper UX o introducir preprocesado frágil. Se difiere a 4.B donde el seam puede preprocesar sin tocar argparse | ✅ 2026-05-15 (commit `e46931f`, 1536 tests verde) |
+| B | Seam estable `orbit/api.py` | refactor mayor | Funciones puras `add_task` / `add_event` / `add_milestone` / `add_reminder` que CLI + hooks + scripts externos llaman. `orbit.py` baja de ~2200 a ~800 ℓ. `add_task_composite` espera a 2.3.2 | pendiente |
+
 ### Orden efectivo del plan tras la posposición de cronograma
 
-Decidido 2026-05-15: **3.A ✅ → 3.B ✅ → 3.C ✅ → 4.A → 4.B (básico) → 2.3.2 → 2.3.3 → 4.B (composite)**.
+Decidido 2026-05-15: **3.A ✅ → 3.B ✅ → 3.C ✅ → 4.A ✅ → 4.B (básico) → 2.3.2 → 2.3.3 → 4.B (composite)**.

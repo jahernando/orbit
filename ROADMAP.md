@@ -101,19 +101,19 @@ generador HTML, integración con `orbit` CLI y test).
 
 ## 4. Fase 4 del plan de simplificación · Simplificar API/CLI
 
-**Estado**: pendiente. Algunas piezas ya parcialmente iniciadas en Fase 2 (cluster cloud, task crono).
+**Estado**: 4.A ✅ cerrada 2026-05-15. 4.B pendiente.
 
-**Objetivo**: `orbit.py` de ~2200 ℓ → ~800 ℓ. CLI navegable por intuición, no por chuleta.
+**Objetivo**: `orbit.py` de ~2200 ℓ → ~800 ℓ a través del seam `orbit/api.py`. CLI navegable por intuición, no por chuleta.
 
 **Piezas**:
 
-- **4.A · Convención `noun verb` para el resto del CLI**. Ya iniciada: `orbit cloud {deliver,sync,imgs}` (Fase 2.1) y `orbit task crono <sub>` (Fase 2.3.1). Aplicar al resto donde tenga sentido: `orbit ics share`, `orbit hl add`, etc. Mantener atajos top-level para los verbos de uso diario (`log`, `dash`, `commit`, `shell`). Independiente de cronograma.
+- **4.A · Convención `noun verb` ✅** (commit `e46931f`, 2026-05-15). Tras Fase 2 (`orbit cloud {deliver,sync,imgs}`, `orbit task crono <sub>`) y 4.A (`orbit tracked {add,drop,list}`), el patrón está aplicado donde encajaba. Atajos top-level mantenidos para uso diario: `deliver`, `crono`, `track`, `untrack`, `log`, `dash`, `commit`, `shell`. **No aplicado a `ics`** por conflicto técnico de argparse (positional `project nargs="?"` + 5 flags + add_subparsers no combinan sin romper la UX actual de `orbit ics <project>`); `ics-share`/`ics-import` se mantienen flat. Decisión registrada en el commit.
 
-- **4.B · Seam estable `orbit/api.py`** con funciones puras (`add_task(project, title, **kw) → Task`, `add_event(...)`, `add_milestone(...)`, etc.) que CLI, hooks y scripts externos llaman. Independiente para las 4 citas básicas. `add_task_composite(...)` queda para cuando 3.2 cierre.
+- **4.B · Seam estable `orbit/api.py`** con funciones puras (`add_task(project, title, **kw) → Task`, `add_event(...)`, `add_milestone(...)`, etc.) que CLI, hooks y scripts externos llaman. Independiente para las 4 citas básicas. `add_task_composite(...)` queda para cuando 2.3.2 cierre. Aprovechar el seam para revisitar `ics` con subcomandos sin romper UX (preprocesado controlado en el seam, no en argparse).
 
-**Pendiente cronograma (sub-pasos 3.2/3.3)**: ver [ADR-028](DECISIONS.md#adr-028--cronograma-como-task-compuesta-extensi%C3%B3n-del-sistema-task) y `MODULES.md §5` (orden táctico Fase 2). Diseño del vínculo `agenda.md ↔ cronos/`, done-cascading y migración de datos en ambos workspaces. No bloquea 3.A, 3.B, 4.A ni la mitad básica de 4.B.
+**Pendiente cronograma (sub-pasos 2.3.2/2.3.3)**: ver [ADR-028](DECISIONS.md#adr-028--cronograma-como-task-compuesta-extensión-del-sistema-task) y `MODULES.md §5`. Diseño del vínculo `agenda.md ↔ cronos/`, done-cascading y migración de datos en ambos workspaces. Pospuesto al final del plan (después de 4.B).
 
-**Estimación**: 4.A ~1-2 días, 4.B ~2-3 días (el seam requiere refactor de dispatchers en `orbit.py`).
+**Estimación restante**: 4.B ~2-3 días.
 
 ---
 

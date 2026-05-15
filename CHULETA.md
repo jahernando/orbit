@@ -204,14 +204,16 @@ orbit untrack <project> <name>                     # quitar externa, source inta
 Casos: `DECISIONS.md` de tu repo público, draft compartido en Drive de la USC, plan vivo de otro proyecto. **Markdown que vive fuera de orbit-ws, lo quieres a mano en Obsidian y publicado al cloud, sin duplicar la verdad**.
 
 ```bash
-orbit track <project> <fullpath>           # crear externa
-orbit untrack <project> <name>             # quitar (source intacto)
-
+orbit tracked add  <project> <fullpath>    # crear externa (canónico)
+orbit tracked drop <project> <name>        # quitar (canónico)
 orbit tracked list [<project>]             # listar externas con status
-orbit tracked migrate [<project>] [--dry-run]   # one-shot v0.34 → v0.36
+
+# atajos top-level equivalentes (uso diario):
+orbit track   <project> <fullpath>         # = orbit tracked add
+orbit untrack <project> <name>             # = orbit tracked drop
 ```
 
-UX de `track` con eco de confirmación:
+UX de `track` / `tracked add` con eco de confirmación:
 
 ```
 $ orbit track orbit /Users/hernando/orbit/DECISIONS.md
@@ -226,7 +228,6 @@ $ orbit track orbit /Users/hernando/orbit/DECISIONS.md
 - **Render HTML al cloud**: para cada externa, render lee el fuente al momento, lo convierte a HTML y lo escribe en `cloud/notes/`. Si el fuente no es accesible, usa el último mirror cacheado en `.cache/notes/<proj>/` (gitignored).
 - **Doctor**: chequea que cada symlink existe y su target es legible. Si no, reporta `broken_link` / `missing_link` / `not_link` y sugiere `untrack` o `retrack`.
 - **Cross-links**: si DECISIONS.md tiene `[RING](RING.md)`, el link resuelve si RING.md también está tracked (siblings en `notes/`). Si no, queda roto silenciosamente en cloud HTML — render emite warning.
-- **Migración v0.34 → v0.36**: `orbit tracked migrate` borra las copias congeladas de `notes/`, crea los symlinks y reescribe el registry. Aborta si una copia diverge del fuente (resolución manual).
 - **Sección "🔄 Tracked"** automática en project.md HTML listando las externas con link al HTML y al fuente.
 - Diseño completo en `DECISIONS.md` ADR-026 (supersedes ADR-024).
 
