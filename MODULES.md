@@ -17,7 +17,7 @@ graph TB
         LOG <-. email .-> AG
     end
 
-    HELP[Helpers<br/>cartero · inbox · importer]
+    HELP[Helpers<br/>cartero · inbox]
     AGG[Agregación de proyectos<br/>panel · agenda_view · search · ls · stats]
     SAFE[Persistencia segura<br/>render HTML · deliver cloud · ics buckets · ring · git]
 
@@ -43,7 +43,6 @@ graph TB
         MAIL[Mail.app · Outlook · .eml]
         SLACK[Slack]
         ICSIN[.ics externo]
-        ENEX[.enex Evernote]
     end
     subgraph EXT_OUT [Sinks externos]
         CALSUB[(Apple Calendar<br/>read-only subscriber)]
@@ -57,7 +56,6 @@ graph TB
         email["email · 1098"]
         ics["ics · 771"]
         inbox["inbox · 290"]
-        importer["importer · 478"]
     end
 
     subgraph TRUTH [B · md = verdad]
@@ -99,7 +97,6 @@ graph TB
         stats["stats · 468"]
         doctor["doctor · 758"]
         reorganize["reorganize · 344"]
-        migrate["migrate · 548"]
     end
 
     subgraph FOUND [F · Foundation]
@@ -119,12 +116,10 @@ graph TB
     MAIL --> cartero --> PROMPT
     SLACK --> cartero
     MAIL --> email
-    ENEX --> importer
     ICSIN --> ics
 
     email --> log
     email --> agenda_cmds
-    importer --> notes
     inbox --> log
     ics --> agenda_cmds
 
@@ -193,8 +188,8 @@ graph TB
 | Cronograma (Gantt + dependencias) | `cronograma` (1830) + `crono` CLI | ¿Fusionar con agenda, dejar aparte, congelar? |
 | Captura rápida en `inbox.md` | `inbox` (290) | Encaja en (1) como input ligero. |
 | Hooks + commit | `hooks` (464) + `commit` (707) + `hooks_catalog.json` | Foundation transversal que dispara los emisores. |
-| Migraciones legacy | `migrate` (548) `tracked_migrate` (179) `reorganize` (344) `tracked` (209) | Auditar qué sigue vivo. |
-| Importador Evernote | `importer` (478) | ¿Sigue usándose? |
+| Migraciones legacy | ~~`migrate` `tracked_migrate`~~ ✅ borrados (2026-05-15); quedan `reorganize` (344) `tracked` (209) | Auditar qué sigue vivo. |
+| ~~Importador Evernote~~ | ~~`importer` (478)~~ | ✅ borrado (2026-05-15) |
 | Meta CLI | `doctor` (758) `undo` (187) `history` (106) `setup` (298) `claude` (148) `clip` (195) `shell` (346) | Foundation, simplificable. |
 
 ---
@@ -231,6 +226,6 @@ Añadir `icalendar` y `python-dateutil` lleva las dependencias pip de 2 a 4 (hoy
 | 1 | `reminders.py` (+ `tests/test_reminders.py`) | 190 + 318 | Borrar | ✅ 2026-05-15 (−508 ℓ, 1847 tests) |
 | 2a | `ring.schedule_new_format_reminders` (no-op) + 2 helpers huérfanos + tests | ~250 | Borrar | ✅ 2026-05-15 (−252 ℓ, 1839 tests) |
 | 2b | Resto de `ring.py` (path AppleScript-direct) | ~200 | **Bloqueado por gsync** — `DORMANT.md`: borrar gsync primero | depende de paso 5 |
-| 3 | `migrate` `tracked_migrate` `importer` | ~1200 | Mover a `scripts/` o borrar | pendiente |
+| 3 | `migrate` (548) `tracked_migrate` (179) `importer` (478) + CLI wiring + 4 tests | ~1325 | Borrar | ✅ 2026-05-15 (−1323 ℓ, 1835 tests) |
 | 4 | `commit.py` (lógica de hooks) | extraer ~300 | Mover a `hooks.py`, dejar `commit.py` ≤400 ℓ | pendiente |
 | 5 | `gsync.py` paths dormantes | hasta −2000 | Auditar caller-by-caller, borrar lo no alcanzable | pendiente |

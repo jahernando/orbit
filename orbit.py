@@ -11,7 +11,6 @@ from core.search import run_search
 from core.stats import run_report
 from core.project import (run_project_create, run_project_list,
                           run_project_status, run_project_edit, run_project_drop)
-from core.importer import run_import
 from core.open import open_file, capture_output, open_cmd_output, log_cmd_output, default_editor
 from core.dateparse import parse_date
 from core.agenda_cmds import (
@@ -26,7 +25,6 @@ from core.highlights import (
 from core.project_view import run_new_view, run_new_open
 from core.notes import run_note_create, run_note_open, run_note_list, run_note_drop
 from core.commit import run_commit
-from core.migrate import run_migrate, run_migrate_all
 from core.agenda_view import run_agenda, run_cal
 from core.ls import run_ls_files, run_ls_notes
 # gsync CLI removed in v0.33 (DORMANT.md). core.gsync still imported
@@ -612,24 +610,6 @@ def cmd_project(args):
     return 1
 
 
-def cmd_import(args):
-    return run_import(enex_path=args.file, project=args.project)
-
-
-def cmd_migrate(args):
-    dry_run = getattr(args, "dry_run", False)
-    force   = getattr(args, "force",   False)
-    name    = getattr(args, "name", None)
-    if not name:
-        print("Error: especifica un nombre de proyecto o 'all' para migrar todos.")
-        print("  orbit migrate phd-martin [--dry-run]")
-        print("  orbit migrate all        [--dry-run] [--force]")
-        return 1
-    if name == "all":
-        return run_migrate_all(dry_run=dry_run, force=force)
-    return run_migrate(name, dry_run=dry_run, force=force)
-
-
 def cmd_help(args):
     import subprocess
     from core.config import ORBIT_CODE
@@ -1077,10 +1057,6 @@ def cmd_tracked(args):
         if not any_shown:
             print("Sin ficheros tracked.")
         return 0
-
-    if action == "migrate":
-        from core.tracked_migrate import migrate_all
-        return migrate_all(_resolve_projects(), dry_run=getattr(args, "dry_run", False))
 
     print(f"Acción desconocida: {action}")
     return 2
@@ -1714,13 +1690,6 @@ def _build_parser():
     tr_list.add_argument("project", nargs="?", default=None,
                           help="Project name (partial match). Omit to list all.")
 
-    tr_mig = tr_sub.add_parser("migrate",
-        help="One-shot: convert v0.34 tracked copies into v0.36 symlinks")
-    tr_mig.add_argument("project", nargs="?", default=None,
-                          help="Project name (partial match). Omit for all.")
-    tr_mig.add_argument("--dry-run", action="store_true", dest="dry_run",
-                          help="Show what would be migrated without applying")
-
     # --- ics-share (export a single cita as .ics) ---
     icss_p = subparsers.add_parser("ics-share",
         help="Export one cita (project + orbit-id or desc) to a single-VEVENT .ics for email/Slack")
@@ -2093,21 +2062,6 @@ def _build_parser():
     prt_drop = prt_sub.add_parser("drop", help="Remove a project type")
     prt_drop.add_argument("name", help="Type name to remove")
 
-    # --- migrate ---
-    mig_p = subparsers.add_parser("migrate",
-                                  help="Migrate old-format projects to new format")
-    mig_p.add_argument("name", nargs="?", default=None,
-                        help="Project name (partial match), or 'all' to migrate everything")
-    mig_p.add_argument("--dry-run", action="store_true", dest="dry_run",
-                        help="Preview migration without writing files")
-    mig_p.add_argument("--force",   action="store_true",
-                        help="Skip confirmation prompt")
-
-    # --- import ---
-    imp_p = subparsers.add_parser("import", help="Import an Evernote .enex note into a project")
-    imp_p.add_argument("--file",    required=True, help="Path to the .enex file")
-    imp_p.add_argument("--project", required=True, help="Target project (partial name match)")
-
     # --- history ---
     hist_p = subparsers.add_parser("history",
                                     help="Show command history for a day or period")
@@ -2209,8 +2163,7 @@ _COMMANDS = {
     "cloud": cmd_cloud, "render": cmd_render, "recloud": cmd_recloud,
     "log": cmd_log, "search": cmd_search,
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
-    "import": cmd_import,
-    "project": cmd_project, "migrate": cmd_migrate,
+    "project": cmd_project,
     "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "untrack": cmd_untrack, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "ring": cmd_ring,
