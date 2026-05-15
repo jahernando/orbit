@@ -471,10 +471,15 @@ def cmd_deliver(args):
 def cmd_cloud(args):
     """Cloud subcommand dispatcher."""
     action = _ga(args, "action")
+    if action == "deliver":
+        return run_deliver(project=args.project, file=args.file)
+    if action == "sync":
+        from core.cloudsync import sync_all_to_cloud
+        return sync_all_to_cloud(dry_run=getattr(args, "dry_run", False))
     if action == "imgs":
         from core.cloud_imgs import run_cloud_imgs
         return run_cloud_imgs(dry_run=getattr(args, "dry_run", False))
-    print("Uso: orbit cloud imgs [--dry-run]")
+    print("Uso: orbit cloud {deliver,sync,imgs} ...")
     return 1
 
 
@@ -1988,14 +1993,21 @@ def _build_parser():
     rnd_p.add_argument("--check", action="store_true", help="Check cloud sync status")
     _hooks.add_chain_flags(rnd_p, "render")
 
-    # --- deliver ---
-    dlv_p = subparsers.add_parser("deliver", help="Deliver file to cloud (copy + clipboard)")
+    # --- deliver (top-level alias of `cloud deliver`, kept for daily use) ---
+    dlv_p = subparsers.add_parser("deliver", help="Deliver file to cloud (alias of `cloud deliver`)")
     dlv_p.add_argument("project", help="Project name (partial match)")
     dlv_p.add_argument("file",    help="File path to deliver")
 
-    # --- cloud ---
-    cld_p   = subparsers.add_parser("cloud", help="Cloud operations: imgs")
+    # --- cloud {deliver,sync,imgs} ---
+    cld_p   = subparsers.add_parser("cloud", help="Cloud operations: deliver, sync, imgs")
     cld_sub = cld_p.add_subparsers(dest="action")
+
+    cdv_p = cld_sub.add_parser("deliver", help="Copy file to project cloud directory (clipboard cloud path)")
+    cdv_p.add_argument("project", help="Project name (partial match)")
+    cdv_p.add_argument("file",    help="File path to deliver")
+
+    csy_p = cld_sub.add_parser("sync", help="Sync all project markdown to cloud as HTML")
+    csy_p.add_argument("--dry-run", action="store_true", help="Show what would be synced without writing")
 
     ci_p = cld_sub.add_parser("imgs", help="Collect images from _imgs/ and deliver to project cloud")
     ci_p.add_argument("--dry-run", action="store_true", help="Show what would be done without moving files")
