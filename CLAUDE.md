@@ -93,7 +93,7 @@ Una sola dirección: orbit es source-of-truth, los backends consumen.
 
 ### v0.37.0 (2026-05-14) — Ring desacoplado: ring.json + daemon EventKit + launchd
 
-Sustituto del backend `reminders_backend: "reminders"` dormante de v0.29. Cierra las fases B–F de [RING.md](RING.md) (la fase A — mirror `.ics` + diff — ya estaba). [ADR-027](DECISIONS.md).
+Sustituto del backend `reminders_backend: "reminders"` dormante de v0.29. Cierra las fases B–F de [RING.md](docs/RING.md) (la fase A — mirror `.ics` + diff — ya estaba). [ADR-027](DECISIONS.md).
 
 **Arquitectura declarativa**:
 ```
@@ -171,7 +171,7 @@ GitHub Actions workflow en `.github/workflows/tests.yml`. Ejecuta `pytest -q` en
 Resumen muy breve de las últimas versiones; detalle completo en [CHANGELOG.md](CHANGELOG.md).
 
 - **v0.36.0** (2026-05-14) — Notes propia/externa con symlinks relativos. Reemplaza el modelo tracked v0.34 (ADR-026 deroga ADR-024). `core/tracked.py` reescrito (~80 LOC), nuevo `note --from <path>`.
-- **v0.35** (2026-05-14, sin tag) — Hook system shipped. F1-F7 migration: 17 acciones declarativas en `core/hooks_catalog.json`, modelo trigger → chain → [pre, core, post]. Doc en [HOOKSYSTEM.md](HOOKSYSTEM.md).
+- **v0.35** (2026-05-14, sin tag) — Hook system shipped. F1-F7 migration: 17 acciones declarativas en `core/hooks_catalog.json`, modelo trigger → chain → [pre, core, post]. Doc en [HOOKSYSTEM.md](docs/HOOKSYSTEM.md).
 - **v0.34.0** (2026-05-13) — Tracked external files (predecesor de v0.36, derogado) + mirror local de `.ics` con `orbit ics --diff` (ADR-025).
 - **v0.33.0** (2026-05-12) — AppleScript-write a Calendar dormante; `.ics`-only ya validado.
 - **v0.32.0** (2026-05-12) — Export iCalendar y subscripciones Calendar.app.

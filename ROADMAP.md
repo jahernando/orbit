@@ -1,7 +1,7 @@
 # ROADMAP.md — trabajo comprometido pendiente
 
 Este fichero lista trabajo **decidido pero no empezado** o **en pausa
-deliberada**. A diferencia de [IDEAS.md](IDEAS.md) (ideas sin decidir),
+deliberada**. A diferencia de [IDEAS.md](docs/IDEAS.md) (ideas sin decidir),
 las entradas aquí ya tienen luz verde para implementarse — solo falta
 acometerlas.
 
@@ -128,5 +128,5 @@ generador HTML, integración con `orbit` CLI y test).
 - Cuando una entrada se completa, se mueve la nota a la sección
   correspondiente de [CLAUDE.md](CLAUDE.md) ("Estado actual") y se borra
   de aquí.
-- Si una entrada se abandona, se mueve a [IDEAS.md](IDEAS.md) con
+- Si una entrada se abandona, se mueve a [IDEAS.md](docs/IDEAS.md) con
   comentario explicando por qué no se hizo.
