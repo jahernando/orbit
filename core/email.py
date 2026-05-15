@@ -988,9 +988,10 @@ def _propose_event(proposal: dict) -> Optional[dict]:
 def _create_event_from_proposal(project_dir: Path, proposal: dict) -> int:
     """Call run_ev_add with the first room/agenda; append extras directly."""
     from core.agenda_cmds import (
-        run_ev_add, _read_agenda, _write_agenda, resolve_file,
+        run_ev_add, _read_agenda, _write_agenda,
         _AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX, _EMAIL_NOTE_PREFIX,
     )
+    from core.log import resolve_file
 
     rooms = proposal.get("rooms") or []
     agendas = proposal.get("agendas") or []
