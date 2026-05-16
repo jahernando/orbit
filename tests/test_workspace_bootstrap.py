@@ -32,6 +32,7 @@ def test_bootstrap_creates_when_missing(fake_ws):
     assert "📋secretary/agenda-next.md" in content
     assert "📋secretary/calendar.md" in content
     assert "📋secretary/projects.md" in content
+    assert "📋secretary/report-summary.md" in content
 
 
 def test_bootstrap_falls_back_to_dir_name_when_no_config(fake_ws):

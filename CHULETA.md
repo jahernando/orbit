@@ -897,6 +897,17 @@ orbit panel --open code           # abre en VS Code
 - `cal --open`   → `📋secretary/calendar.md`
 - El resto → `cmd.md`
 
+`orbit dash` regenera además `📋secretary/{projects,report-summary}.md`
+(tabla de proyectos del workspace + `report --summary` de los últimos N
+días). Ventanas configurables en `orbit.json`:
+
+```json
+"secretary": {
+  "agenda_days": 14,   // ventana de agenda-next, [1, 90]
+  "report_days": 14    // ventana de report-summary, [1, 365]
+}
+```
+
 Estos ficheros se pueden fijar en Obsidian (pin tab) para tener un dashboard permanente.
 
 Sin especificar editor, se usa el editor por defecto (en orden de prioridad):

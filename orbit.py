@@ -808,18 +808,20 @@ def run_dash(silent: bool = False):
     from views.secretary import agenda_next as sec_agenda
     from views.secretary import calendar as sec_calendar
     from views.secretary import projects as sec_projects
+    from views.secretary import report_summary as sec_report
 
     SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
+    sec_projects.generate(SECRETARY_DIR / "projects.md")
     sec_panel.generate(SECRETARY_DIR / "panel.md")
     sec_agenda.generate(SECRETARY_DIR / "agenda-next.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
-    sec_projects.generate(SECRETARY_DIR / "projects.md")
+    sec_report.generate(SECRETARY_DIR / "report-summary.md")
 
     # Touch stamp so background dash in other shells skips redundant refreshes
     (ORBIT_DIR / ".dash-stamp").touch()
 
     if not silent:
-        print("  ✓ dash actualizado (📋secretary/{panel,agenda-next,calendar,projects}.md)")
+        print("  ✓ dash actualizado (📋secretary/{projects,panel,agenda-next,calendar,report-summary}.md)")
 
     return 0
 
