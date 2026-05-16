@@ -145,8 +145,12 @@ def _action_cartero_startup(ctx):
     return {"ok": True}
 
 
-def _action_dash_render(ctx):
-    """Regenerate panel.md / agenda.md / calendar.md + emit .ics.
+def _action_secretary_refresh(ctx):
+    """Regenerate the secretary viewers: panel + agenda-next + calendar + projects.
+
+    Salida local únicamente — los .md viven en `📋secretary/`. La
+    proyección a HTML (cloud) es trabajo del action `render_to_cloud`,
+    y los .ics son del action `ics_emit_workspace` (ambos en commit_post).
 
     `silent` flag in ctx (default False) skips the leading print() separator
     and runs run_dash silently — used by `day_open` chain at midnight.

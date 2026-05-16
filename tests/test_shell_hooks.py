@@ -9,7 +9,7 @@ cover:
   - Each action wrapper routes to its underlying helper.
   - doctor_startup handles the three branches (still alive, clean, has issues).
   - advance_overdue_recurring prints only when there are advances.
-  - dash_render swallows exceptions cleanly.
+  - secretary_refresh swallows exceptions cleanly.
 """
 import threading
 from types import SimpleNamespace
@@ -43,7 +43,7 @@ def test_shell_start_chain_registered():
         "code_update_check",
         "cartero_startup",
         "ring_refresh",
-        "dash_render",
+        "secretary_refresh",
         "dash_background_loop_start",
     ]
 
@@ -57,7 +57,7 @@ def test_shell_actions_all_registered():
         "doctor_startup", "advance_overdue_recurring", "cloud_sync_status_check",
         "untracked_check", "commit_offer", "code_update_check",
         "cartero_startup", "ring_refresh",
-        "dash_render", "dash_background_loop_start",
+        "secretary_refresh", "dash_background_loop_start",
     ):
         assert name in hooks.ACTIONS, f"Missing: {name}"
         assert hooks.ACTIONS[name].critical is False, name
@@ -160,18 +160,18 @@ def test_cartero_startup_delegates():
     h.assert_called_once()
 
 
-# ── dash_render — exception swallowing ───────────────────────────────────────
+# ── secretary_refresh — exception swallowing ────────────────────────────────
 
-def test_dash_render_success():
+def test_secretary_refresh_success():
     with patch("orbit.run_dash") as h:
-        result = shell._action_dash_render(None)
+        result = shell._action_secretary_refresh(None)
     h.assert_called_once_with(silent=False)
     assert result["ok"] is True
 
 
-def test_dash_render_swallows_exception():
+def test_secretary_refresh_swallows_exception():
     with patch("orbit.run_dash", side_effect=RuntimeError("boom")):
-        result = shell._action_dash_render(None)
+        result = shell._action_secretary_refresh(None)
     assert result["ok"] is False
     assert "RuntimeError" in result["msg"]
 
@@ -202,7 +202,7 @@ def test_day_open_chain_registered():
     assert chain.trigger_type == "temporal"
     assert chain.post == [
         "advance_overdue_recurring",
-        "dash_render",
+        "secretary_refresh",
     ]
 
 
@@ -210,18 +210,18 @@ def test_day_changed_trigger_bound():
     assert hooks.BINDINGS["day_changed"] == "day_open"
 
 
-def test_dash_render_silent_via_ctx(capsys):
+def test_secretary_refresh_silent_via_ctx(capsys):
     with patch("orbit.run_dash") as h:
-        shell._action_dash_render({"silent": True})
+        shell._action_secretary_refresh({"silent": True})
     h.assert_called_once_with(silent=True)
     out = capsys.readouterr().out
     # No leading print() separator when silent
     assert out == ""
 
 
-def test_dash_render_non_silent_default(capsys):
+def test_secretary_refresh_non_silent_default(capsys):
     with patch("orbit.run_dash") as h:
-        shell._action_dash_render(None)
+        shell._action_secretary_refresh(None)
     h.assert_called_once_with(silent=False)
     # Leading print() separator emits a newline
     assert capsys.readouterr().out == "\n"
@@ -236,7 +236,7 @@ def test_day_open_fires_all_actions(reset_journal):
 
     assert [r.action for r in results] == [
         "advance_overdue_recurring",
-        "dash_render",
+        "secretary_refresh",
     ]
     assert all(r.ok for r in results)
     dash.assert_called_once_with(silent=True)
@@ -304,7 +304,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
         "code_update_check",
         "cartero_startup",
         "ring_refresh",
-        "dash_render",
+        "secretary_refresh",
         "dash_background_loop_start",
     ]
 

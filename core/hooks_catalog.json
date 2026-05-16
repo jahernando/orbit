@@ -56,9 +56,9 @@
       "fn": "_action_cartero_startup",
       "critical": false
     },
-    "dash_render": {
+    "secretary_refresh": {
       "module": "core.shell",
-      "fn": "_action_dash_render",
+      "fn": "_action_secretary_refresh",
       "critical": false
     },
     "dash_background_loop_start": {
@@ -101,7 +101,7 @@
         "code_update_check",
         "cartero_startup",
         "ring_refresh",
-        "dash_render",
+        "secretary_refresh",
         "dash_background_loop_start"
       ]
     },
@@ -109,7 +109,7 @@
       "trigger_type": "temporal",
       "post": [
         "advance_overdue_recurring",
-        "dash_render"
+        "secretary_refresh"
       ]
     }
   },
