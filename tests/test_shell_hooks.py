@@ -38,8 +38,7 @@ def test_shell_start_chain_registered():
         "doctor_startup",
         "advance_overdue_recurring",
         "cloud_sync_status_check",
-        "untracked_check",
-        "commit_offer",
+        "save_offer",
         "code_update_check",
         "cartero_startup",
         "ring_refresh",
@@ -55,7 +54,7 @@ def test_shell_startup_trigger_bound():
 def test_shell_actions_all_registered():
     for name in (
         "doctor_startup", "advance_overdue_recurring", "cloud_sync_status_check",
-        "untracked_check", "commit_offer", "code_update_check",
+        "save_offer", "code_update_check",
         "cartero_startup", "ring_refresh",
         "secretary_refresh", "dash_background_loop_start",
     ):
@@ -136,16 +135,13 @@ def test_cloud_sync_status_check_delegates():
     h.assert_called_once()
 
 
-def test_untracked_check_delegates():
-    with patch("core.startup.startup_untracked_check") as h:
-        shell._action_untracked_check(None)
-    h.assert_called_once()
-
-
-def test_commit_offer_delegates():
-    with patch("core.startup.startup_commit_offer") as h:
-        shell._action_commit_offer(None)
-    h.assert_called_once()
+def test_save_offer_delegates_to_both_helpers():
+    """save_offer = untracked_check + commit_offer consolidados."""
+    with patch("core.startup.startup_untracked_check") as untr, \
+         patch("core.startup.startup_commit_offer") as commit:
+        shell._action_save_offer(None)
+    untr.assert_called_once()
+    commit.assert_called_once()
 
 
 def test_code_update_check_delegates():
@@ -299,8 +295,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
         "doctor_startup",
         "advance_overdue_recurring",
         "cloud_sync_status_check",
-        "untracked_check",
-        "commit_offer",
+        "save_offer",
         "code_update_check",
         "cartero_startup",
         "ring_refresh",

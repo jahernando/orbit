@@ -116,16 +116,16 @@ def _action_cloud_sync_status_check(ctx):
     return {"ok": True}
 
 
-def _action_untracked_check(ctx):
-    """Stage tracked + prompt to add untracked (tty-only)."""
-    from core.startup import startup_untracked_check
+def _action_save_offer(ctx):
+    """Stage tracked + prompt untracked + offer save (tty-only).
+
+    Consolidación 2026-05-16 de las dos actions previas
+    (`untracked_check` + `commit_offer`) en un solo bloque conceptual
+    "save". El usuario las pensaba como un único paso del startup
+    ("¿quieres guardar?") por lo que tiene sentido un único action.
+    """
+    from core.startup import startup_untracked_check, startup_commit_offer
     startup_untracked_check()
-    return {"ok": True}
-
-
-def _action_commit_offer(ctx):
-    """Show uncommitted changes and offer commit + push (tty-only)."""
-    from core.startup import startup_commit_offer
     startup_commit_offer()
     print()
     return {"ok": True}
