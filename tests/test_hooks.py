@@ -445,7 +445,7 @@ def test_bootstrap_loads_non_critical_flag():
     # Verify default critical=False round-trips correctly through bootstrap.
     hooks.bootstrap()
     assert hooks.ACTIONS["cloud_imgs_process"].critical is False
-    assert hooks.ACTIONS["render_changed_background"].critical is False
+    assert hooks.ACTIONS["render_to_cloud"].critical is False
 
 
 def test_bootstrap_is_idempotent():

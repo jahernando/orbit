@@ -16,9 +16,9 @@
       "fn": "_action_doctor_check_save",
       "critical": true
     },
-    "render_changed_background": {
+    "render_to_cloud": {
       "module": "views.render.render",
-      "fn": "_action_render_changed_background",
+      "fn": "_action_render_to_cloud",
       "critical": false
     },
     "doctor_startup": {
@@ -88,7 +88,7 @@
     },
     "commit_post": {
       "trigger_type": "explicit",
-      "post": ["render_changed_background", "ics_emit_workspace", "ring_refresh"]
+      "post": ["render_to_cloud", "ics_emit_workspace", "ring_refresh"]
     },
     "shell_start": {
       "trigger_type": "temporal",

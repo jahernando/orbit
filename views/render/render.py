@@ -529,7 +529,7 @@ def _committed_md_files() -> list:
 def render_changed_to_cloud() -> int:
     """Render .md cambiados al cloud + dashboard + write status.
 
-    Llamada por el hook `render_changed_background` tras cada save y
+    Llamada por el hook `render_to_cloud` tras cada save y
     por `cmd_render` desde el CLI. Devuelve número de ficheros rendered.
     """
     from core.cloudsync import _write_sync_status
@@ -582,12 +582,14 @@ def render_all_to_cloud(dry_run: bool = False) -> int:
     return n
 
 
-def _action_render_changed_background(ctx):
+def _action_render_to_cloud(ctx):
     """Post-action de save: lanza render→cloud en subprocess.
 
-    Antes era `_action_cloudsync_push_background` en core/commit.py
-    (módulo `core.commit`). Movida a views/render/ en 2026-05-16 para
-    que el chain commit_post diga lo que hace: renderizar al cloud.
+    Antes era `_action_cloudsync_push_background` en core/commit.py,
+    luego `_action_render_changed_background` (2026-05-16 fase B).
+    Renombrado a `render_to_cloud` 2026-05-16 para alinear con la
+    matriz de viewers (secretary/render/ics/ring son building blocks
+    reutilizables con nombres simétricos).
     """
     try:
         render_changed_to_cloud_background()

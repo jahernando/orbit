@@ -1,13 +1,13 @@
 """Tests for F2: commit_pre / commit_post chain registration + action wrappers.
 
 The action wrappers viven across core/commit.py (cloud_imgs, cronograma)
-y views/render/render.py (render_changed_background). Estos tests cubren:
+y views/render/render.py (render_to_cloud). Estos tests cubren:
   - Ambos chains registrados con sus actions en el orden correcto.
   - Cada action wrapper devuelve el shape ok/msg documentado bajo éxito
     y fallo del helper subyacente.
 
 v0.36: tracked_files_refresh action removed (propia/externa model, no refresh).
-2026-05-16 fase B: cloudsync_push_background → render_changed_background
+2026-05-16 fase B: cloudsync_push_background → render_to_cloud
 (módulo trasladado a views/render/render.py).
 """
 from types import SimpleNamespace
@@ -47,7 +47,7 @@ def test_commit_post_chain_registered():
     assert chain is not None
     assert chain.trigger_type == "explicit"
     assert chain.pre == []
-    assert chain.post == ["render_changed_background", "ics_emit_workspace", "ring_refresh"]
+    assert chain.post == ["render_to_cloud", "ics_emit_workspace", "ring_refresh"]
 
 
 def test_commit_pre_and_post_bound():
@@ -61,7 +61,7 @@ def test_commit_action_criticality():
     # aborta la chain y por tanto el save. Las demás son non-critical.
     assert hooks.ACTIONS["doctor_check_save"].critical is True
     for name in ("cloud_imgs_process", "cronograma_log_completed",
-                 "render_changed_background", "ring_refresh"):
+                 "render_to_cloud", "ring_refresh"):
         assert hooks.ACTIONS[name].critical is False, name
 
 
@@ -109,20 +109,20 @@ def test_cronograma_log_some(capsys):
     assert "2 tareas de cronograma" in out
 
 
-# ── render_changed_background ────────────────────────────────────────────────
+# ── render_to_cloud ────────────────────────────────────────────────
 
-def test_render_changed_background_launches(capsys):
+def test_render_to_cloud_launches(capsys):
     with patch("views.render.render.render_changed_to_cloud_background") as bg:
-        result = render._action_render_changed_background(None)
+        result = render._action_render_to_cloud(None)
     assert result == {"ok": True, "msg": "launched"}
     bg.assert_called_once()
     assert "Render al cloud" in capsys.readouterr().out
 
 
-def test_render_changed_background_failure():
+def test_render_to_cloud_failure():
     with patch("views.render.render.render_changed_to_cloud_background",
                side_effect=RuntimeError("boom")):
-        result = render._action_render_changed_background(None)
+        result = render._action_render_to_cloud(None)
     assert result["ok"] is False
     assert "RuntimeError" in result["msg"]
 
