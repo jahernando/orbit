@@ -826,6 +826,24 @@ def run_dash(silent: bool = False):
     return 0
 
 
+_DASH_COALESCE_SECONDS = 10.0
+
+
+def _run_dash_coalesced() -> None:
+    """Refresca dash en silencio, coalescido por .dash-stamp.
+
+    Si el stamp es más reciente que _DASH_COALESCE_SECONDS, no hace nada
+    — varias mutaciones seguidas (p.ej. ráfaga de `log`) colapsan en un
+    único refresh. Pensado para llamarse desde un daemon thread tras
+    comandos en _DASH_TRIGGERS.
+    """
+    import time
+    stamp = ORBIT_DIR / ".dash-stamp"
+    if stamp.exists() and time.time() - stamp.stat().st_mtime < _DASH_COALESCE_SECONDS:
+        return
+    run_dash(silent=True)
+
+
 def cmd_dash(args):
     """CLI `orbit dash`: refresca secretary localmente Y regenera .ics en cloud.
 
@@ -2002,9 +2020,11 @@ _COMMANDS = {
 }
 
 
-# Commands that modify agenda state → trigger silent dash refresh
+# Commands that mutate state secretary reads → trigger silent, coalesced
+# dash refresh in a daemon thread. Citas → panel/agenda/calendar.
+# log/hl → report-summary (logbook + highlights). project → projects.md.
 _DASH_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
-                  "ics-import", "email"}
+                  "ics-import", "email", "log", "hl", "project"}
 
 
 def run_command(argv: list) -> int:
@@ -2019,15 +2039,12 @@ def run_command(argv: list) -> int:
         return 0
     if args.command in _COMMANDS:
         result = _COMMANDS[args.command](args) or 0
-        # Refresh dash in background after state-changing commands. If
-        # the command targeted a specific project, pass it as hint so
-        # the .ics regen rewrites only that project's per-project file
-        # (workspace buckets always rebuild).
+        # Refresh dash in background after state-changing commands.
+        # Coalesced via .dash-stamp so bursts collapse into one refresh
+        # (see _run_dash_coalesced). .ics regen lives in commit_post, not here.
         if args.command in _DASH_TRIGGERS and result == 0:
             import threading
-            hint = getattr(args, "project", None)
-            threading.Thread(target=run_dash, args=(True, hint),
-                             daemon=True).start()
+            threading.Thread(target=_run_dash_coalesced, daemon=True).start()
         return result
     if args.command == "shell":
         run_shell(editor=_editor_from_args(args))
