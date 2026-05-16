@@ -68,7 +68,7 @@ def test_shell_actions_all_registered():
 def test_doctor_startup_still_running(capsys):
     fake_thread = MagicMock()
     fake_thread.is_alive.return_value = True
-    with patch("core.doctor.doctor_background",
+    with patch("views.doctor.doctor.doctor_background",
                return_value=(fake_thread, [])):
         result = shell._action_doctor_startup(None)
     assert result == {"ok": True, "msg": "still running"}
@@ -78,7 +78,7 @@ def test_doctor_startup_still_running(capsys):
 def test_doctor_startup_clean():
     fake_thread = MagicMock()
     fake_thread.is_alive.return_value = False
-    with patch("core.doctor.doctor_background",
+    with patch("views.doctor.doctor.doctor_background",
                return_value=(fake_thread, [])):
         result = shell._action_doctor_startup(None)
     assert result == {"ok": True, "msg": "clean"}
@@ -95,9 +95,9 @@ def test_doctor_startup_with_issues(capsys):
         fix=lambda: None, project="p", file="agenda.md",
         line_num=11, msg="fixable", line="raw text",
     )
-    with patch("core.doctor.doctor_background",
+    with patch("views.doctor.doctor.doctor_background",
                return_value=(fake_thread, [issue_unfix, issue_fix])), \
-         patch("core.doctor._interactive_fix") as fix:
+         patch("views.doctor.doctor._interactive_fix") as fix:
         result = shell._action_doctor_startup(None)
     fix.assert_called_once()
     assert result["ok"] is True
@@ -261,7 +261,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
             return None
         return fn
 
-    with patch("core.doctor.doctor_background", side_effect=record("doctor_background")), \
+    with patch("views.doctor.doctor.doctor_background", side_effect=record("doctor_background")), \
          patch("core.agenda_cmds.startup_advance_past_recurring",
                side_effect=record("startup_advance_past_recurring")), \
          patch("core.cloudsync.startup_cloud_check",
@@ -313,7 +313,7 @@ def test_shell_startup_non_critical_failure_continues(reset_journal):
     """If one action errors, the rest still run."""
     fake_thread = MagicMock()
     fake_thread.is_alive.return_value = False
-    with patch("core.doctor.doctor_background", return_value=(fake_thread, [])), \
+    with patch("views.doctor.doctor.doctor_background", return_value=(fake_thread, [])), \
          patch("core.agenda_cmds.startup_advance_past_recurring",
                side_effect=RuntimeError("boom")), \
          patch("core.cloudsync.startup_cloud_check") as cloud, \

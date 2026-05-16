@@ -45,7 +45,7 @@ No es un dormant "detrás de flag" — el código fue **eliminado** del repo. Si
 1. `git show v0.34.0:core/tracked.py > core/tracked.py` (restaurar fichero).
 2. `git show v0.34.0:core/commit.py` — recuperar `_action_tracked_files_refresh` y reinstalarla.
 3. `git show v0.34.0:core/hooks_catalog.json` — restaurar la entrada `tracked_files_refresh` (critical=True) en `actions` y en `commit_pre.pre`.
-4. Restaurar `core/doctor.py:check_tracked` (versión con `iter_tracked` + `check_entry`).
+4. Restaurar `views/doctor/doctor.py:check_tracked` (versión con `iter_tracked` + `check_entry`).
 5. Restaurar `tests/test_tracked.py` con los 16 tests de v0.34.
 6. Adaptar `core/notes.py:run_note_create` y `core/highlights.py:run_hl_add` para llamar al viejo `register` en vez del nuevo `track`.
 

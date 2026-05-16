@@ -64,7 +64,7 @@ def _dash_background_loop():
 
 def _action_doctor_startup(ctx):
     """Background doctor check + interactive fix prompt."""
-    from core.doctor import doctor_background
+    from views.doctor.doctor import doctor_background
     doctor_thread, doctor_issues = doctor_background()
     doctor_thread.join(timeout=5)
 
@@ -87,7 +87,7 @@ def _action_doctor_startup(ctx):
         print(f"        │ {line_preview}")
     print()
     if fixable:
-        from core.doctor import _interactive_fix
+        from views.doctor.doctor import _interactive_fix
         _interactive_fix(fixable)
         print()
     if unfixable:

@@ -194,22 +194,7 @@ def _check_ring_health() -> None:
         print()
 
 
-# ── Issue dataclass ───────────────────────────────────────────────────────────
-
-class Issue:
-    __slots__ = ("project", "file", "line_num", "line", "msg", "fix")
-
-    def __init__(self, project: str, file: str, line_num: int,
-                 line: str, msg: str, fix: Optional[str] = None):
-        self.project  = project
-        self.file     = file
-        self.line_num = line_num
-        self.line     = line
-        self.msg      = msg
-        self.fix      = fix   # suggested fixed line, or None
-
-    def __repr__(self):
-        return f"[{self.project}] {self.file}:{self.line_num} — {self.msg}"
+from core.types import Issue  # noqa: E402  (Issue lives in core/types.py)
 
 
 # ── Logbook validation ────────────────────────────────────────────────────────

@@ -543,7 +543,7 @@ def _topo_sort_indices(tasks: list, deps: dict) -> list:
 
 def _check_cronograma(project_name: str, path: Path) -> list:
     """Validate a cronograma file. Returns list of Issue objects."""
-    from core.doctor import Issue
+    from core.types import Issue
 
     issues = []
     fname = path.name

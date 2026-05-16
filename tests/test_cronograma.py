@@ -852,7 +852,7 @@ class TestMetadata:
 
 class TestDoctorIntegration:
     def test_doctor_finds_cronograma_issues(self, projects_dir):
-        from core.doctor import check_project
+        from views.doctor.doctor import check_project
         proj = _make_project(projects_dir)
         _write_crono(proj, "bad", """\
             # Cronograma: Bad
@@ -864,7 +864,7 @@ class TestDoctorIntegration:
         assert len(crono_issues) > 0
 
     def test_doctor_clean_with_valid_cronograma(self, projects_dir):
-        from core.doctor import check_project
+        from views.doctor.doctor import check_project
         proj = _make_project(projects_dir)
         _write_crono(proj, "good", """\
             # Cronograma: Good

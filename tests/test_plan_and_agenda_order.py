@@ -236,7 +236,7 @@ class TestDoctorZeroPadding:
         return {"proj": proj}
 
     def test_detects_non_padded_month(self, doctor_env):
-        from core.doctor import _check_agenda
+        from views.doctor.doctor import _check_agenda
         path = doctor_env["proj"] / "testproj-agenda.md"
         path.write_text(
             "# Agenda\n\n"
@@ -247,7 +247,7 @@ class TestDoctorZeroPadding:
         assert any("zero-padding" in i.msg for i in issues)
 
     def test_detects_non_padded_day(self, doctor_env):
-        from core.doctor import _check_agenda
+        from views.doctor.doctor import _check_agenda
         path = doctor_env["proj"] / "testproj-agenda.md"
         path.write_text(
             "# Agenda\n\n"
@@ -258,7 +258,7 @@ class TestDoctorZeroPadding:
         assert any("zero-padding" in i.msg for i in issues)
 
     def test_fix_pads_correctly(self, doctor_env):
-        from core.doctor import _check_agenda
+        from views.doctor.doctor import _check_agenda
         path = doctor_env["proj"] / "testproj-agenda.md"
         path.write_text(
             "# Agenda\n\n"
@@ -271,7 +271,7 @@ class TestDoctorZeroPadding:
         assert "(2026-03-05)" in padding_issues[0].fix
 
     def test_correctly_padded_date_no_issue(self, doctor_env):
-        from core.doctor import _check_agenda
+        from views.doctor.doctor import _check_agenda
         path = doctor_env["proj"] / "testproj-agenda.md"
         path.write_text(
             "# Agenda\n\n"

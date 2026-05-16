@@ -127,7 +127,7 @@ Lo que efectivamente shipping difiere del plan original en estos puntos:
 - **Hooks**: el catálogo (`core/hooks_catalog.json`) gana la acción `ring_refresh` añadida al chain `commit_post` y a `shell_start`. El hook compone el behavior; no se tocó `core/shell.py` ni `core/commit.py` directamente.
 - **`pyobjc-framework-EventKit`** añadido como dependencia en [DEPENDENCIES.md](DEPENDENCIES.md).
 - **launchd plist** con `WatchPaths` por workspace + `StartCalendarInterval` 00:05 (no 00:00 para no chocar con backups y cron jobs comunes).
-- **Doctor check**: `core/doctor.py::_check_ring_health` reporta plist no instalado / TCC denied / ring.json viejo.
+- **Doctor check**: `views/doctor/doctor.py::_check_ring_health` reporta plist no instalado / TCC denied / ring.json viejo.
 
 ## Plan de implementación original — fases B a F (referencia histórica)
 
@@ -200,7 +200,7 @@ store.saveReminder_commit_error_(reminder, True, None)
 
 | Cambios | Archivos |
 |---|---|
-| `orbit doctor` chequea: plist cargado, último `last_applied` vs ahora, count `ring.json` vs Reminders.app | `core/doctor.py` |
+| `orbit doctor` chequea: plist cargado, último `last_applied` vs ahora, count `ring.json` vs Reminders.app | `views/doctor/doctor.py` |
 | `orbit ring status` enriquecido con la misma info | `core/ring_export.py` |
 
 ## Estimación

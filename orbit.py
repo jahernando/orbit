@@ -1184,7 +1184,7 @@ def cmd_claude(args):
 
 
 def cmd_doctor(args):
-    from core.doctor import run_doctor
+    from views.doctor.doctor import run_doctor
     return run_doctor(
         project=getattr(args, "project", None),
         fix=getattr(args, "fix", False),

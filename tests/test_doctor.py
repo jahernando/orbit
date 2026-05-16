@@ -12,7 +12,7 @@ import pytest
 from datetime import date
 from pathlib import Path
 
-from core.doctor import (
+from views.doctor.doctor import (
     _check_logbook, _check_agenda, _check_highlights, _check_refs,
     _check_orbit_json, _check_cloud_root, _check_federation,
     check_project, _apply_fix, Issue,

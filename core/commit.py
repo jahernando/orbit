@@ -349,7 +349,7 @@ def run_commit(message: Optional[str] = None,
 
     # Doctor check (interactive — stays inline).
     try:
-        from core.doctor import check_all_projects
+        from views.doctor.doctor import check_all_projects
         issues = check_all_projects()
         if issues:
             print(f"  🏥 Doctor: {len(issues)} problema{'s' if len(issues) != 1 else ''} en las agendas:")

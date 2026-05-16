@@ -144,8 +144,8 @@ Esta es la chain con **más actions** del sistema. Solo es trigger temporal: nin
 
 | # | Action | File:Line | Crítica | Desactivable | Notas |
 |---|--------|-----------|---------|--------------|-------|
-| 1 | `doctor_check_background` | `core/doctor.py:665, 681` | no | no | Thread daemon, 5s timeout. Muestra fixable/unfixable |
-| 1b | `doctor_interactive_fix` | `core/doctor.py:79-80` | no | tty-only | Si hay fixables y tty, ofrece fix |
+| 1 | `doctor_check_background` | `views/doctor/doctor.py` | no | no | Thread daemon, 5s timeout. Muestra fixable/unfixable |
+| 1b | `doctor_interactive_fix` | `views/doctor/doctor.py` | no | tty-only | Si hay fixables y tty, ofrece fix |
 | 2 | `advance_overdue_recurring` | `core/agenda_cmds.py:2126` | no | no | Modifica `agenda.md` en disco sin pedir confirmación |
 | 3 | `cloud_sync_status_check` | `core/cloudsync.py:159` | no | no | Lee `.cloud-sync.json`, avisa si último sync falló |
 | 4 | `untracked_check` | `core/commit.py:626-633` | no | tty-only | Pregunta add/ignore |
@@ -244,7 +244,7 @@ Estos no son "chains" en sentido estricto pero son automagia: corren sin que el 
 
 | Daemon | File:Line | Trigger | Lifetime | Shutdown limpio |
 |--------|-----------|---------|----------|-----------------|
-| Doctor thread | `core/doctor.py:681` | startup | hasta join (5s) o end-of-startup | sí (join) |
+| Doctor thread | `views/doctor/doctor.py` | startup | hasta join (5s) o end-of-startup | sí (join) |
 | gsync thread | `core/gsync.py:2878` | startup + day-change | daemon, muere con shell | no (daemon=True) |
 | Dash refresh loop | `core/shell.py:135` | startup | hasta `_dash_stop.set()` o shell exit | parcial (se chequea solo al límite del intervalo de 1h) |
 | Cartero daemon | `satellites/cartero/daemon.py::startup_cartero` (vía `core/cartero_invoke.py` por subprocess) | startup si configurado | double-fork → independiente del shell | sí (`_stop_background()`) |
