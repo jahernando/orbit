@@ -486,6 +486,50 @@ La firma `_next_occurrence(due, recur, done_date) → str` se mantiene; los 6 ca
 
 ---
 
+## ADR-033 — Separación `core/` (writers) vs `views/` (readers)
+**Estado**: VIGENTE (decisión 2026-05-16, refactor en 4 commits independientes).
+
+**Contexto**: tras los refactors previos (satellites/, link/import, doctor 3-way) `core/` acumulaba 42 módulos mezclando dos roles muy distintos: los **writers de la verdad** (mutan `agenda.md`, `*-project.md`, `log`, `notes`, `inbox`, `registry`, `orbit.json`) y los **readers que producen artefactos derivados** (consumen la verdad y emiten HTML, `.ics`, `ring.json`, reports de doctor). El usuario lo expresó como dificultad para "seguir la lógica de inferencia": al abrir `core/` no era posible distinguir de un vistazo qué módulos pueden mutar el estado y cuáles sólo lo leen.
+
+La alternativa considerada — mantener todo en `core/` y documentar el rol en MODULES.md — se descartó porque la documentación deriva del árbol, no al revés: si la estructura lo hace explícito, no hace falta acordarse de leer una tabla.
+
+**Decisión**: extraer cuatro readers a un paquete hermano `views/`, con un subpaquete por extensión:
+
+```
+views/
+  render/render.py + orbit.css   (era core/render.py)
+  doctor/doctor.py               (era core/doctor.py)
+  cal/ics.py + cal/share.py      (era core/{ics,ics_share}.py)
+  ring/export.py + ring/parse.py (era core/{ring_export,ring}.py)
+```
+
+Regla unidireccional: **`core/` no importa de `views/` en top-level**. Los imports lazy (dentro de cuerpos de función) son aceptables para hook actions, wrappers cloud, checks pre-commit, scheduling legacy y el seam API. La regla queda escrita en [RULES.md](RULES.md).
+
+Los **tipos compartidos** entre los dos lados (e.g. la dataclass `Issue` usada por `views.doctor` y `core.cronograma`) viven en `core/types.py`, no en `views/`, para evitar aristas conceptuales.
+
+**Razón**:
+- *Esquema mental*: al abrir el repo, `core/` es ahora "writers + infra" y `views/` es "readers que proyectan a artefacto". El árbol responde a la pregunta de un vistazo.
+- *Paralelismo con satellites/*: mismo patrón estructural (subpaquete por unidad funcional). El proyecto ya tiene dos hermanos a `core/` (`satellites/` desde 2026-05-15, `views/` desde 2026-05-16) con reglas de acoplamiento explícitas.
+- *Lazy aceptable*: la prohibición pura "core no importa views jamás" obligaría a hookificar los pocos sites legítimos sin valor real. Aceptar el lazy es pragmático y suficiente para que el árbol cuente la historia.
+
+**Lo que NO se hizo** (deuda explícita):
+- *Mover viewers de shell* (`panel`, `agenda_view`, `project_view`, `stats`, `search`, `list_entries`, `ls`) a `views/`. Producen salida al shell, no artefacto en cloud; quedan en `core/`.
+- *Hookificar los 8-10 sites lazy `core → views`*. Cada uno tiene una razón legítima (orquestación, no eventos asíncronos). La regla acepta el lazy.
+- *Colapsar `views/render/render.py` y `views/doctor/doctor.py` a planos `views/render.py` y `views/doctor.py`*. Hoy el subpaquete es innecesario (1 .py dentro); el plan es que `doctor` se parta en sub-doctores (log/agenda/ficheros/sistema) y entonces el subpaquete se justifica.
+- *Satélite del render*. Considerado y descartado en la auditoría: render lee mucha estructura del workspace y no es un daemon — encaja como reader, no como satélite.
+
+**Consecuencias**:
+- 4 commits atómicos: `ec6a624` (render F1), `ce48e72` (doctor F2 + Issue → core/types.py), `55c5ec2` (cal F3), `e81b103` (ring F4).
+- Suite invariante: 1541 passed, 1 skipped en cada fase.
+- Net del repo: 0 líneas borradas o añadidas (sólo `git mv` + renombre de imports). La ganancia es de claridad, no de capacidad.
+- Hook catalog: 2 acciones renombran su `"module"`: `ics_emit_workspace` (a `views.render.render`) y `ring_refresh` (a `views.ring.export`).
+
+**Tradeoff considerado**: la división writers/readers no es única — también cabría "puro vs side-effect", o "interno vs API". Se eligió writers/readers porque captura la intuición del usuario ("la verdad" vs "lo que se deriva de ella") y se mapea a un test sencillo: ¿este módulo cambia `.md`/`.json` del workspace? Si sí → core. Si no, y sólo emite → views.
+
+**Where lives**: `views/{render,doctor,cal,ring}/`, `core/types.py`, [RULES.md](RULES.md), `core/hooks_catalog.json`. Memoria viva en `project_orbit_views` (snapshot 2026-05-16).
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

@@ -16,28 +16,33 @@ Principios de diseño:
 ```
 ~/orbit/                  ← este repo (código público)
   orbit.py                ← CLI principal y dispatchers
-  core/
+  core/                   ← writers de la verdad + infra
     agenda_cmds.py        ← CRUD de las 4 citas (task, ms, ev, reminder)
-    ring.py               ← parsing y helpers AppleScript-direct (legacy, gateado)
-    ring_export.py        ← ring.json + invoke daemon (modelo declarativo v0.37)
     cartero_invoke.py     ← subprocess shim al satélite cartero (sin imports cruzados)
-    ics.py / ics_share.py ← emisión de buckets .ics que Calendar.app subscribe
-    doctor.py             ← validación de sintaxis de ficheros
     shell.py              ← shell interactivo
     startup.py            ← prompts de arranque (untracked, commit, code update)
     config.py             ← ORBIT_HOME, ORBIT_PROMPT, orbit.json
     log.py                ← logbook entries
     highlights.py         ← highlights CRUD
     project.py            ← gestión de proyectos
+    types.py              ← dataclasses compartidas entre core/ y views/ (Issue, …)
+  views/                  ← readers de la verdad → artefactos derivados (regla en RULES.md)
+    render/render.py      ← MD → HTML en cloud_root (+ orbit.css)
+    doctor/doctor.py      ← validación de sintaxis / refs / entorno
+    cal/ics.py + share.py ← emisión de buckets .ics que Calendar.app subscribe
+    ring/export.py        ← ring.json + invoke daemon (modelo declarativo v0.37)
+    ring/parse.py         ← parsing y helpers AppleScript-direct (legacy, gateado)
   satellites/             ← daemons externos, invocados por subprocess; cero imports de core/
     ring-daemon/daemon.py ← EventKit upsert idempotente en Reminders.app
     cartero/daemon.py     ← notificador de mail/Slack (poll + globito macOS)
     cartero/google_oauth.py ← OAuth helpers (Gmail), solo usados por cartero
-  tests/                  ← pytest, ~1567 tests
+  tests/                  ← pytest, ~1541 tests
 
 ~/🚀orbit-ws/             ← workspace de trabajo (privado)
 ~/🌿orbit-ps/             ← workspace personal (privado)
 ```
+
+Reglas e invariantes del sistema en [RULES.md](RULES.md); decisiones arquitectónicas con su razonamiento en [DECISIONS.md](DECISIONS.md).
 
 ## Las 4 citas (appointments)
 
