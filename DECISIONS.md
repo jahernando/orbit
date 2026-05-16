@@ -654,6 +654,7 @@ Además, tras añadir el viewer `report_summary` (que lee logbook + highlights),
 - *Caché de `project_data` para optimizar secretary con filtro*: rechazado por complejidad (cache invalidation) sin evidencia de coste. Reabrir si los logbooks crecen.
 - *Generar un `report-summary-<proj>.md` por proyecto*: rechazado — añade ficheros sin caso de uso claro hoy.
 - *Stamps separados ics-stamp / ring-stamp*: rechazado — sin evidencia de thrash; añadir si aparece.
+- *Doctor en el wrap (cita / log / hl / project)*: rechazado. El caso de "fichero externo missing" ya lo captura el writer (`core/tracked.py::track` lanza `FileNotFoundError`; `hl add --track` y `note --from/--track` lo gestionan con `print + return 1`). El caso de "drift posterior" (target movido/borrado fuera de orbit) no es una mutación CLI → el wrap no se dispararía aunque corriera doctor; está cubierto por `commit_pre` (bloquea `save`) y `shell_start` (prompt interactivo). Además doctor escanea todos los proyectos (caro) y prints async desde un daemon thread interferirían con la prompt. Reabrir si aparece un caso real no cubierto por las dos redes existentes.
 
 **Where lives**: `orbit.py::_run_full_refresh_coalesced`, `orbit.py::_run_dash_coalesced`, `orbit.py::_CITA_TRIGGERS` ⊂ `_DASH_TRIGGERS`, dispatch en `run_command`. Tests en `tests/test_dash_coalesce.py`. Commits relevantes: `397fe1a` (fix + dash debounce + log/hl/project), el commit que añade el full-refresh wrap.
 
