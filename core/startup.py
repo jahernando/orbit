@@ -208,7 +208,7 @@ def startup_commit_offer() -> None:
         return
 
     n = len(status)
-    print(f"  📌 {n} fichero{'s' if n != 1 else ''} modificado{'s' if n != 1 else ''} sin commit")
+    print(f"  📌 {n} fichero{'s' if n != 1 else ''} modificado{'s' if n != 1 else ''} sin save")
     for code, path in status[:5]:
         print(f"      {code:<2}  {path}")
     if n > 5:
@@ -222,7 +222,7 @@ def startup_commit_offer() -> None:
         return
 
     try:
-        prompt = "  ¿Commit + push?" if can_push else "  ¿Commit?"
+        prompt = "  ¿Save + push?" if can_push else "  ¿Save?"
         raw = input(f"{prompt} [mensaje / Enter=\"{default_msg}\" / n]: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
@@ -235,10 +235,10 @@ def startup_commit_offer() -> None:
 
     rc = _git_commit(msg)
     if rc != 0:
-        print("  ✗ Error al hacer el commit.")
+        print("  ✗ Error al hacer el save.")
         return
 
-    print(f"  ✓ Commit: \"{msg}\"")
+    print(f"  ✓ Save: \"{msg}\"")
 
     from core.cloudsync import sync_to_cloud_background
     sync_to_cloud_background()

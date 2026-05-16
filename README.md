@@ -260,12 +260,12 @@ Progreso y deadline visibles en `orbit panel`; completados se ocultan automatica
 ### Render — vista HTML para móvil
 
 ```bash
-orbit render                  # renderiza cambios del último commit
+orbit render                  # renderiza cambios del último save
 orbit render catedra          # renderiza un proyecto completo
 orbit render --full           # renderiza todo (primera vez)
 ```
 
-Tras cada `commit`, Orbit renderiza los `.md` modificados a HTML y los copia al cloud (OneDrive/Google Drive). Desde el móvil/tablet, abre `index.html` en la app de cloud para navegar proyectos, agendas, logbooks y notas — con soporte LaTeX (KaTeX).
+Tras cada `save`, Orbit renderiza los `.md` modificados a HTML y los copia al cloud (OneDrive/Google Drive). Desde el móvil/tablet, abre `index.html` en la app de cloud para navegar proyectos, agendas, logbooks y notas — con soporte LaTeX (KaTeX).
 
 ### Deliver — entregar ficheros a la nube
 
@@ -293,7 +293,7 @@ orbit archive [project] [--months N] [--dry-run] [--force]
                                    # --agenda --logbook --notes para filtrar
 orbit ics --workspace              # regenera los .ics del workspace (Calendar.app se suscribe)
 orbit ics --validate               # dry-run: cuenta VEVENTs por bucket sin escribir
-orbit commit ["mensaje"]           # commit + push interactivo
+orbit save ["mensaje"]             # save + push interactivo (alias: commit)
 ```
 
 ### Documentacion

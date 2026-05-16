@@ -1,9 +1,12 @@
-"""commit.py — git commit with auto-message and interactive confirmation.
+"""commit.py — workflow de cierre (`orbit save`).
 
-  commit ["<message>"]
+  save ["<message>"]
 
-Without message: prompted interactively. Empty input → Orbit generates one.
-Shows changed files and asks for confirmation before executing.
+Hace doctor + git commit + post-chain (cloudsync/render, ring_refresh).
+Sin mensaje: lo pregunta interactivamente; Enter → Orbit genera uno.
+Muestra ficheros cambiados y pide confirmación antes de ejecutar.
+
+Alias legacy: `orbit commit` sigue funcionando.
 """
 import subprocess
 import sys
@@ -339,7 +342,7 @@ def run_commit(message: Optional[str] = None,
 
     status = _git_status()
     if not status:
-        print("Sin cambios para commitear.")
+        print("Sin cambios para save.")
         return 0
 
     # Pre-chain: cloud_imgs, cronograma.
@@ -360,12 +363,12 @@ def run_commit(message: Optional[str] = None,
             print()
             if sys.stdin.isatty():
                 try:
-                    ans = input("¿Continuar con el commit? [s/N]: ").strip().lower()
+                    ans = input("¿Continuar con el save? [s/N]: ").strip().lower()
                 except (EOFError, KeyboardInterrupt):
                     print()
                     return 1
                 if ans not in ("s", "si", "sí", "y", "yes"):
-                    print("Commit cancelado. Ejecuta `orbit doctor --fix` para corregir.")
+                    print("Save cancelado. Ejecuta `orbit doctor --fix` para corregir.")
                     return 0
             else:
                 print("⚠️  Hay problemas en las agendas. Ejecuta `orbit doctor --fix`.")
@@ -385,7 +388,7 @@ def run_commit(message: Optional[str] = None,
         default_msg = f"sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         if sys.stdin.isatty():
             try:
-                raw = input(f"Mensaje del commit [Enter=\"{default_msg}\"]: ").strip()
+                raw = input(f"Mensaje del save [Enter=\"{default_msg}\"]: ").strip()
             except (EOFError, KeyboardInterrupt):
                 print()
                 return 1
@@ -398,21 +401,21 @@ def run_commit(message: Optional[str] = None,
     # Confirm
     if sys.stdin.isatty():
         try:
-            ans = input("\n¿Confirmar commit? [S/n]: ").strip().lower()
+            ans = input("\n¿Confirmar save? [S/n]: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()
             return 1
         if ans not in ("", "s", "si", "sí", "y", "yes"):
-            print("Commit cancelado.")
+            print("Save cancelado.")
             return 0
 
     rc = _git_commit(final_msg)
     if rc == 0:
-        print("\n✓ Commit realizado.")
+        print("\n✓ Save realizado.")
         # Post-chain: cloudsync push.
         _hooks.fire("commit_post", skip_actions=skip_actions, verbosity="quiet")
     else:
-        print("\n✗ Error al hacer el commit.")
+        print("\n✗ Error al hacer el save.")
     return rc
 
 

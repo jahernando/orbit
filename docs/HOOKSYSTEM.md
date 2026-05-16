@@ -56,7 +56,7 @@ trigger → chain (named) → [pre_actions] → [core_action?] → [post_actions
 | Nivel | Cómo | Ejemplo |
 |-------|------|---------|
 | 1. Desactivar binding | Config `orbit.json`: `"bindings": {"startup": null}` | "No quiero que startup dispare nada" |
-| 2. Saltar action en chain | Flag CLI: `orbit commit --no-render --no-sync` | "Solo commitear esta vez" |
+| 2. Saltar action en chain | Flag CLI: `orbit save --no-render --no-sync` | "Solo save esta vez, sin proyectar" |
 | 3. Kill switch global de action | Config: `"actions": {"render_changed": "off"}` | "Nunca renderices, dispare quien dispare" |
 
 Más: `--dry-run` en cualquier chain enumera lo que correría sin ejecutar.
@@ -76,9 +76,9 @@ Una action que falla en **pre crítico** debe abortar la chain (la condición de
 
 > Estado tomado del código en `~/orbit` el 2026-05-14. Cuando el código cambie, actualizar esta sección.
 
-## 6.1. Trigger: `orbit commit` (explicit)
+## 6.1. Trigger: `orbit save` (explicit; alias `orbit commit`)
 
-**Chain implícita: `commit`** — entrada `core/commit.py:272` (`run_commit`)
+**Chain implícita: `commit`** (nombre interno preservado) — entrada `core/commit.py` (`run_commit`)
 
 ### Pre-actions
 

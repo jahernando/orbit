@@ -8,8 +8,8 @@ orbit shell        # equivalente explícito
 orbit claude       # abre Claude Code en el directorio Orbit
 ```
 
-Al entrar: `¡Hola! ¡Bienvenido!` + startup (doctor, untracked, commit+push, gsync)
-Al salir: `exit`/`quit` (directo) o `end` (ofrece commit+push antes de salir)
+Al entrar: `¡Hola! ¡Bienvenido!` + startup (doctor, untracked, save+push, gsync)
+Al salir: `exit`/`quit` (directo) o `end` (ofrece save+push antes de salir)
 
 ---
 
@@ -324,7 +324,7 @@ orbit crono <sub> ...                                          # atajo top-level
 - `done` sin argumento: selección interactiva de tareas pendientes
 - `done` con texto parcial: busca por índice o título
 - `done` registra la completación en el logbook del proyecto (`📊crono] idx título #apunte`)
-- Las tareas completadas manualmente en Obsidian (clic en checkbox) se detectan y registran automáticamente al hacer `commit`
+- Las tareas completadas manualmente en Obsidian (clic en checkbox) se detectan y registran automáticamente al hacer `save`
 - `gantt`: auto-detecta modo DAG (progreso) o con fechas (timeline)
 - `gantt --progress`: fuerza vista de progreso (barras + checkboxes)
 - `gantt --timeline`: fuerza vista temporal (eje de fechas)
@@ -529,17 +529,19 @@ orbit report --summary [logbook|agenda|highlights|all] [--date D] [--from D] [--
 
 ## Servicios externos
 
-> Orbit gestiona estas conexiones automáticamente (al arrancar, al operar sobre citas, al commitear). Los comandos siguientes permiten interactuar manualmente.
+> Orbit gestiona estas conexiones automáticamente (al arrancar, al operar sobre citas, al hacer save). Los comandos siguientes permiten interactuar manualmente.
 
-### Git — versionado
+### Git — versionado (workflow `save`)
 
 ```bash
-orbit commit ["<mensaje>"]
+orbit save ["<mensaje>"]
 ```
+
+Alias legacy: `orbit commit` sigue funcionando.
 
 - Sin mensaje: pide interactivamente; intro vacío → genera mensaje automático
 - Muestra ficheros modificados y pide `[S/n]` antes de ejecutar
-- Ejecuta doctor pre-check: valida agendas/logbooks antes de commitear
+- Ejecuta doctor pre-check: valida agendas/logbooks antes del save
 - Ejecuta reconciliación gsync: detecta renombramientos de citas en el markdown y migra IDs de Google
 - Push al remoto: `orbit_push` desde la terminal del sistema (fuera de la shell)
 
@@ -559,7 +561,7 @@ orbit ics --workspace                      # regenera todos los .ics en cloud_ro
 orbit ics --validate                       # dry-run: cuenta VEVENTs por bucket, sin escribir
 ```
 
-**Auto-regen**: cualquier mutación CLI sobre task/ms/ev/reminder/crono dispara `run_dash` en background, que llama `write_workspace(project_filter=<proj>)` — el `.ics` se actualiza solo. Igual `orbit commit`, `orbit render`, `orbit dash`.
+**Auto-regen**: cualquier mutación CLI sobre task/ms/ev/reminder/crono dispara `run_dash` en background, que llama `write_workspace(project_filter=<proj>)` — el `.ics` se actualiza solo. Igual `orbit save`, `orbit render`, `orbit dash`.
 
 **Topología** (en `cloud_root/calendar/`, configurable en `ics_buckets`):
 
@@ -608,7 +610,7 @@ Default si no defines `ics_buckets`: `agenda=task+rem`, `events=ev+ms+crono`. Ca
 
 **orbit-id visible**: cada VEVENT lleva `[orbit:xxxxxxxx]` al final de `DESCRIPTION` (visible en Calendar.app/iOS) + `X-ORBIT-ID` custom prop + UID `<orbit_id>@orbit`. Si ves un evento "raro" en Calendar.app, el orbit-id en la descripción te permite localizar la cita en `agenda.md` rápido.
 
-**Propagación a Calendar.app**: `orbit render` (que corre tras cada commit) regenera todos los `.ics` y lanza un `tell application "Calendar" to reload calendars` AppleScript (read-only) para forzar refresh inmediato. Latencia de Mac → ~2 s. iPhone hereda vía iCloud al ritmo de iCloud (5-15 min).
+**Propagación a Calendar.app**: `orbit render` (que corre tras cada save) regenera todos los `.ics` y lanza un `tell application "Calendar" to reload calendars` AppleScript (read-only) para forzar refresh inmediato. Latencia de Mac → ~2 s. iPhone hereda vía iCloud al ritmo de iCloud (5-15 min).
 
 **Snapshot diff**: cada `.ics` se guarda con un `.ics.snapshot` paralelo (versión anterior). `write_workspace` reporta cuántas citas se añadieron/modificaron/eliminaron desde el último render — útil para auditar drift sin abrir Calendar.app.
 
@@ -638,7 +640,7 @@ orbit ics-import <proj> --clipboard      # lee del portapapeles (pbpaste)
 ### Cloud (OneDrive/Google Drive) — render y cloud
 
 ```bash
-orbit render                          # renderiza ficheros del último commit
+orbit render                          # renderiza ficheros del último save
 orbit render <project>                # renderiza un proyecto completo
 orbit render --full                   # renderiza todos los proyectos
 
@@ -652,7 +654,7 @@ orbit deliver <project> <file>        # alias top-level de `cloud deliver`
 - Convierte ficheros `.md` de cada proyecto a `.html` en el directorio cloud
 - Genera `index.html` con dashboard de proyectos
 - Incluye soporte KaTeX para ecuaciones LaTeX (`$...$` y `$$...$$`)
-- `cloud sync` se ejecuta automáticamente en background tras cada `commit`; el verbo manual sirve para forzar o auditar con `--dry-run`
+- `cloud sync` se ejecuta automáticamente en background tras cada `save`; el verbo manual sirve para forzar o auditar con `--dry-run`
 - `deliver` también disponible como `--deliver` en `log` y `hl add`
 - Estructura cloud: `cloud_root/{tipo}/{proyecto}/cloud/{logs,hls,imgs,...}/`
 - `cloud_root` se configura en `orbit.json`; cada proyecto tiene un link `[cloud]` en `project.md`
@@ -734,7 +736,7 @@ orbit history --from D --to D          # rango
 orbit history --open                   # abrir en editor
 ```
 
-- Registra automáticamente los comandos que modifican estado (log, task, ms, ev, note, commit, hl, project...)
+- Registra automáticamente los comandos que modifican estado (log, task, ms, ev, note, save, hl, project...)
 - No registra comandos de solo lectura (agenda, report, view, ls, doctor, search, history, open)
 - Fichero: `history.md` en la raíz de Orbit
 
@@ -762,7 +764,7 @@ El doctor hace 3 tipos de check (mismo comando, salida segmentada):
    - Ring: plist, TCC, ring.json freshness
    - ICS: buckets bien configurados + frescura de los `.ics` en cloud
 
-Se ejecuta automáticamente al iniciar la shell y antes de cada commit. Con `--fix`: muestra correcciones disponibles y permite aplicarlas interactivamente.
+Se ejecuta automáticamente al iniciar la shell y antes de cada save. Con `--fix`: muestra correcciones disponibles y permite aplicarlas interactivamente.
 
 ### ring — alarmas vía Reminders.app (Orbit Ring)
 
@@ -778,7 +780,7 @@ Modelo declarativo: `agenda.md` (verdad) → `<ws>/.reminders/ring.json` (ventan
 
 Triggers automáticos (vía hook system):
 - `shell_start` → refresca al arrancar `orbit shell`
-- `commit_post` → refresca tras cada `orbit commit`
+- `commit_post` → refresca tras cada `orbit save` (nombre interno del chain mantiene `commit_post`)
 - `launchctl WatchPaths` (si has hecho `orbit ring install`) → cualquier escritura del `ring.json` dispara el daemon
 - `StartCalendarInterval` 00:05 (vía launchd) → sweep nocturno
 
@@ -837,8 +839,8 @@ Al entrar en `orbit shell`:
 
 1. **Doctor** — valida la integridad de logbook, agenda y highlights; ofrece corregir errores
 2. **Ficheros sin trackear** en `🚀proyectos/` — ofrece añadirlos a git
-3. **Cambios sin commit** — ofrece hacer commit + push (mensaje por defecto: `sync YYYY-MM-DD`)
-4. **gsync** en background + **recordatorios** — sincroniza con Google y programa los recordatorios del día (tras commit)
+3. **Cambios sin save** — ofrece hacer save + push (mensaje por defecto: `sync YYYY-MM-DD`)
+4. **gsync** en background + **recordatorios** — sincroniza con Google y programa los recordatorios del día (tras save)
 5. **Cartero** — lanza el proceso background de correo si hay configuración en `orbit.json`
 
 ---

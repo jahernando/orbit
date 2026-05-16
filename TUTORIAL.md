@@ -126,7 +126,7 @@ Durante el día
 Al final del día
 ────────────────
   report today              # resumen de actividad del día
-  commit                    # guardar cambios en git
+  save                      # guarda y proyecta (alias: commit)
 ```
 
 ---
@@ -368,7 +368,7 @@ Lunes por la tarde
 ──────────────────
   report today                     # ¿qué se ha hecho hoy?
   report --log mission             # guardar en logbook de mission
-  commit                           # guardar cambios en git
+  save                             # guarda y proyecta
 
 Viernes por la tarde
 ────────────────────
@@ -376,7 +376,7 @@ Viernes por la tarde
   report --from monday --to friday # informe semanal
   report --from monday --to friday --log mission
   hl add mission "Buena semana: calibración avanzada, pendiente topo" --type evals
-  commit
+  save
 ```
 
 ---
@@ -431,7 +431,7 @@ Lo que pasa:
 Después, cualquier edición:
 
 - **En Obsidian** sobre la externa → se escribe en el fuente directamente. Sin refresh, sin abort, sin frontmatter.
-- **Render HTML al cloud** (`orbit render` o `commit`) lee el fuente en ese momento. Si no es accesible (disco desmontado, fuente borrada), usa el último mirror cacheado en `.cache/notes/<proj>/` y emite warning.
+- **Render HTML al cloud** (`orbit render` o `save`) lee el fuente en ese momento. Si no es accesible (disco desmontado, fuente borrada), usa el último mirror cacheado en `.cache/notes/<proj>/` y emite warning.
 
 Gestión:
 
@@ -586,21 +586,23 @@ help tutorial --open       # abre TUTORIAL.md en el editor
 
 ## 14. Servicios externos y mantenimiento
 
-Orbit gestiona automáticamente la conexión con servicios externos: sincroniza citas con Google, versiona con git, renderiza a cloud y programa notificaciones en el Mac. No necesitas pensar en ello durante el día — Orbit se encarga al arrancar la shell, al operar sobre citas y al hacer commit.
+Orbit gestiona automáticamente la conexión con servicios externos: sincroniza citas con Google, versiona con git, renderiza a cloud y programa notificaciones en el Mac. No necesitas pensar en ello durante el día — Orbit se encarga al arrancar la shell, al operar sobre citas y al hacer save.
 
 Los comandos de esta sección son para **configurar** los servicios la primera vez o para **diagnosticar** si algo no funciona.
 
 ### Git — versionado y backup
 
-Al hacer `commit`, Orbit valida los ficheros (doctor), reconcilia los IDs de Google y guarda en git. Es lo único que haces manualmente:
+Al hacer `save`, Orbit valida los ficheros (doctor), reconcilia los IDs de Google y guarda en git. Es lo único que haces manualmente:
 
 ```bash
-commit                     # muestra cambios, pide confirmación, genera mensaje
-commit "feat: calibración validada"   # con mensaje directo
+save                       # muestra cambios, pide confirmación, genera mensaje
+save "feat: calibración validada"   # con mensaje directo
 undo                       # deshacer la última operación de Orbit
 ```
 
-Para hacer push al remoto, usa `orbit_push` desde la terminal del sistema (fuera de la shell). Si hay cambios sin commit, hace commit primero.
+Alias legacy: `commit` sigue funcionando.
+
+Para hacer push al remoto, usa `orbit_push` desde la terminal del sistema (fuera de la shell). Si hay cambios sin save, hace save primero.
 
 ### Reorganizar tareas (`reorganize`)
 
@@ -648,7 +650,7 @@ Desde v0.33 orbit emite ficheros `.ics` al cloud y Calendar.app se suscribe a su
 
 **Propagación a iPhone/iPad**: ve a `icloud.com/calendar` web, sidebar → click derecho en `Calendarios` → `Nueva suscripción` → pega el mismo URL. Aparecerá automáticamente en todos tus Apple devices.
 
-**Auto-regen**: cualquier mutación CLI (`task add`, `ev edit`, `ms done`, `crono done`, ...) dispara una reescritura del `.ics` en background. Igual `orbit commit`, `orbit render`, `orbit dash`. Si necesitas forzar manualmente:
+**Auto-regen**: cualquier mutación CLI (`task add`, `ev edit`, `ms done`, `crono done`, ...) dispara una reescritura del `.ics` en background. Igual `orbit save`, `orbit render`, `orbit dash`. Si necesitas forzar manualmente:
 
 ```bash
 orbit ics --workspace             # regenera todos los .ics
@@ -664,7 +666,7 @@ Orbit es la fuente de verdad. Calendar.app es sólo render: para reorganizar tar
 
 ### Cloud (OneDrive/Google Drive)
 
-Tras cada `commit`, Orbit renderiza los markdown a HTML y los copia al cloud automáticamente. Puedes consultar proyectos, agendas y logbooks desde el móvil abriendo `index.html` en la app de cloud.
+Tras cada `save`, Orbit renderiza los markdown a HTML y los copia al cloud automáticamente. Puedes consultar proyectos, agendas y logbooks desde el móvil abriendo `index.html` en la app de cloud.
 
 **Configuración**: `"cloud_root"` en `orbit.json` apunta al directorio del servicio de nube.
 
@@ -724,7 +726,7 @@ mail --start               # arranca el background
 
 ### Doctor y archive — mantenimiento interno
 
-Doctor valida la sintaxis de los ficheros y se ejecuta automáticamente al arrancar y antes de cada commit. Solo lo ejecutas manualmente si quieres revisar o corregir:
+Doctor valida la sintaxis de los ficheros y se ejecuta automáticamente al arrancar y antes de cada save. Solo lo ejecutas manualmente si quieres revisar o corregir:
 
 ```bash
 doctor                     # valida logbook, agenda y highlights

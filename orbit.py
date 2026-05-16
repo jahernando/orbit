@@ -1902,10 +1902,11 @@ def _build_parser():
     ci_p = cld_sub.add_parser("imgs", help="Collect images from _imgs/ and deliver to project cloud")
     ci_p.add_argument("--dry-run", action="store_true", help="Show what would be done without moving files")
 
-    # --- commit ---
-    cmt_p = subparsers.add_parser("commit", help="Git commit with confirmation")
+    # --- save (alias legacy: commit) ---
+    cmt_p = subparsers.add_parser("save", aliases=["commit"],
+        help="Cierra el trabajo: doctor + git commit + proyecta a cloud/calendars/reminders. Alias: commit.")
     cmt_p.add_argument("message", nargs="?", default=None,
-                       help="Commit message (prompted if omitted; auto-generated on empty input)")
+                       help="Mensaje del save (se pregunta si se omite; auto-generado si Enter)")
     _hooks.add_chain_flags(cmt_p, "commit_pre", "commit_post")
 
     # --- project ---
@@ -1998,7 +1999,7 @@ _COMMANDS = {
     "task": cmd_task_new,
     "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
     "view": cmd_view_new,
-    "note": cmd_note, "commit": cmd_commit, "deliver": cmd_deliver,
+    "note": cmd_note, "save": cmd_commit, "commit": cmd_commit, "deliver": cmd_deliver,
     "clip": cmd_clip,
     "cloud": cmd_cloud, "render": cmd_render,
     "log": cmd_log, "search": cmd_search,
