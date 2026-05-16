@@ -437,11 +437,10 @@ def test_bootstrap_loads_default_catalog():
 
 
 def test_bootstrap_loads_non_critical_flag():
-    # v0.36: catalog has no critical actions. Verify default flag value
-    # round-trips correctly through bootstrap.
+    # Verify default critical=False round-trips correctly through bootstrap.
     hooks.bootstrap()
     assert hooks.ACTIONS["cloud_imgs_process"].critical is False
-    assert hooks.ACTIONS["cloudsync_push_background"].critical is False
+    assert hooks.ACTIONS["render_changed_background"].critical is False
 
 
 def test_bootstrap_is_idempotent():

@@ -304,17 +304,6 @@ def _action_cronograma_log_completed(ctx):
     return {"ok": True, "msg": f"{n} logged"}
 
 
-def _action_cloudsync_push_background(ctx):
-    """Detached subprocess that syncs HTML to cloud after commit."""
-    try:
-        from core.cloudsync import sync_to_cloud_background
-        sync_to_cloud_background()
-        print("  ☁️  Sincronización al cloud en background.")
-        return {"ok": True, "msg": "launched"}
-    except Exception as e:
-        return {"ok": False, "msg": f"{type(e).__name__}: {e}"}
-
-
 # Chain composition and bindings live in core/hooks_catalog.json — loaded once
 # by hooks.bootstrap() at orbit startup. This module only defines the action
 # fns; the catalog references them by module.fn.

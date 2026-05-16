@@ -103,17 +103,15 @@ Una action que falla en **pre crítico** debe abortar la chain (la condición de
 
 | # | Action | File:Line | Crítica | Desactivable | Notas |
 |---|--------|-----------|---------|--------------|-------|
-| 10 | `cloudsync_push_background` | `core/commit.py:422-424` → `core/cloudsync.py:117` | no | no | `subprocess.Popen` detached. Verificar si invoca render dentro |
+| 10 | `render_changed_background` | `views/render/render.py::_action_render_changed_background` | no | `--no-render-changed-background` | `subprocess.Popen` detached. Lanza `render_changed_to_cloud` (render HTML cambiados + dashboard + write `.cloud-sync.json`). Renombrada desde `cloudsync_push_background` el 2026-05-16 (fase B) |
 
 **Problemas conocidos:**
 - (3), (4) tienen `try/except` que tragan errores sin reportar.
-- (7), (8) están dormantes pero siguen siendo invocadas — overhead inútil en cada commit.
-- (5) aborta antes que (6), así que el usuario ve error de tracked antes que avisos de doctor.
-- ¿(10) llama a render internamente? Verificar en `cloudsync.py:117`.
+- (7), (8) están dormantes pero siguen siendo invocadas — overhead inútil en cada save.
 
 ---
 
-## 6.2. Trigger: `orbit render` (explicit) + post-commit implícito (vía cloudsync)
+## 6.2. Trigger: `orbit render` (explicit) + post-save implícito (vía render_changed_background)
 
 **Chain: `render`** — entrada `views/render/render.py` (`render_changed`)
 

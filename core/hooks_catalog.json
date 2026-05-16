@@ -16,9 +16,9 @@
       "fn": "_action_doctor_check_save",
       "critical": true
     },
-    "cloudsync_push_background": {
-      "module": "core.commit",
-      "fn": "_action_cloudsync_push_background",
+    "render_changed_background": {
+      "module": "views.render.render",
+      "fn": "_action_render_changed_background",
       "critical": false
     },
     "doctor_startup": {
@@ -88,7 +88,7 @@
     },
     "commit_post": {
       "trigger_type": "explicit",
-      "post": ["cloudsync_push_background", "ring_refresh"]
+      "post": ["render_changed_background", "ring_refresh"]
     },
     "shell_start": {
       "trigger_type": "temporal",

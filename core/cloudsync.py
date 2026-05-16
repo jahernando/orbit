@@ -1,7 +1,10 @@
-"""cloudsync.py — sync project files to cloud as HTML.
+"""cloudsync.py — estado del último render-to-cloud + health checks.
 
-After a git commit, renders changed .md files to HTML and copies them
-to the cloud directory for reading from mobile devices.
+El flujo "render → cloud_root" vive en views/render/render.py
+(`render_changed_to_cloud` y compañía). Este módulo se queda con la
+parte de status-reporting: escribir `.cloud-sync.json` cuando termina
+una pasada, leerlo en startup, y un check on-demand que compara mtimes
+md vs html.
 
 Cloud structure:
   cloud_root/index.html                          ← project dashboard
@@ -12,50 +15,14 @@ Cloud structure:
 """
 
 import json
-import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from core.config import ORBIT_HOME, get_type_emojis, iter_project_dirs
+from core.config import ORBIT_HOME, iter_project_dirs
 from core.deliver import _find_cloud_root
 
 _SYNC_STATUS_FILE = ORBIT_HOME / ".cloud-sync.json"
-
-
-def _committed_files() -> list:
-    """Return list of file paths changed in the last commit."""
-    try:
-        result = subprocess.run(
-            ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
-            capture_output=True, text=True, cwd=ORBIT_HOME,
-        )
-        if result.returncode != 0:
-            return []
-        return [p.strip() for p in result.stdout.splitlines() if p.strip()]
-    except FileNotFoundError:
-        return []
-
-
-def _is_project_file(rel_path: str) -> bool:
-    """Check if a relative path is inside a type/project directory."""
-    parts = Path(rel_path).parts
-    if len(parts) < 2:
-        return False
-    type_emojis = get_type_emojis()
-    return any(parts[0].startswith(e) for e in type_emojis)
-
-
-def _sync_file(src: Path, dest: Path) -> bool:
-    """Copy src to dest if src is newer or dest doesn't exist.
-
-    Returns True if the file was copied.
-    """
-    if dest.exists() and dest.stat().st_mtime >= src.stat().st_mtime:
-        return False
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(str(src), str(dest))
-    return True
 
 
 def _write_sync_status(rendered: int, error: str = "") -> None:
@@ -91,67 +58,6 @@ def _read_sync_status() -> dict:
         return json.loads(_SYNC_STATUS_FILE.read_text())
     except (OSError, json.JSONDecodeError):
         return {}
-
-
-def sync_to_cloud() -> int:
-    """Render recently committed .md files to HTML in cloud.
-
-    Returns the number of files rendered.
-    """
-    from views.render.render import render_changed, _render_dashboard
-    cloud_root = _find_cloud_root()
-    if not cloud_root:
-        _write_sync_status(0, error="cloud_root no encontrado")
-        return 0
-
-    try:
-        n = render_changed(cloud_root)
-        _render_dashboard(cloud_root)
-        _write_sync_status(n)
-        return n
-    except Exception as e:
-        _write_sync_status(0, error=str(e))
-        raise
-
-
-def sync_to_cloud_background() -> None:
-    """Run sync_to_cloud in a background subprocess (fire & forget)."""
-    import os
-    import sys
-    from core.config import ORBIT_CODE
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(ORBIT_CODE) + os.pathsep + env.get("PYTHONPATH", "")
-    # Wrap in try/except so errors are captured in .cloud-sync.json
-    cmd = (
-        "try:\n"
-        "    from core.cloudsync import sync_to_cloud; sync_to_cloud()\n"
-        "except Exception as e:\n"
-        "    from core.cloudsync import _write_sync_status; "
-        "_write_sync_status(0, error=str(e))\n"
-    )
-    subprocess.Popen(
-        [sys.executable, "-c", cmd],
-        cwd=str(ORBIT_HOME),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=env,
-        start_new_session=True,
-    )
-
-
-def sync_all_to_cloud(dry_run: bool = False) -> int:
-    """Render all .md project files to HTML in cloud (initial full sync).
-
-    Returns the number of files rendered.
-    """
-    from views.render.render import render_all, _render_dashboard
-    cloud_root = _find_cloud_root()
-    if not cloud_root:
-        return 0
-
-    n = render_all(cloud_root)
-    _render_dashboard(cloud_root)
-    return n
 
 
 # ── Cloud check ──────────────────────────────────────────────────────────────

@@ -711,3 +711,82 @@ def _committed_md_files() -> list:
                 if p.strip().endswith(".md")]
     except FileNotFoundError:
         return []
+
+
+# ── Render-to-cloud workflow ─────────────────────────────────────────────────
+#
+# Funciones que orquestan el flujo completo "render → cloud_root":
+# render_changed/render_all + dashboard + escritura de status. Antes vivían
+# en core/cloudsync.py con el nombre "sync_*"; el nombre era engañoso porque
+# no sincronizan con el cliente cloud (OneDrive/Drive lo hace solo cuando
+# detecta cambios en cloud_root). Movidas aquí en 2026-05-16 (fase B).
+
+def render_changed_to_cloud() -> int:
+    """Render .md cambiados al cloud + dashboard + write status.
+
+    Llamada por el hook `render_changed_background` tras cada save y
+    por `cmd_render` desde el CLI. Devuelve número de ficheros rendered.
+    """
+    from core.cloudsync import _write_sync_status
+    cloud_root = _find_cloud_root()
+    if not cloud_root:
+        _write_sync_status(0, error="cloud_root no encontrado")
+        return 0
+    try:
+        n = render_changed(cloud_root)
+        _render_dashboard(cloud_root)
+        _write_sync_status(n)
+        return n
+    except Exception as e:
+        _write_sync_status(0, error=str(e))
+        raise
+
+
+def render_changed_to_cloud_background() -> None:
+    """Lanza render_changed_to_cloud en un subprocess (fire & forget)."""
+    import os
+    import sys
+    from core.config import ORBIT_CODE
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ORBIT_CODE) + os.pathsep + env.get("PYTHONPATH", "")
+    cmd = (
+        "try:\n"
+        "    from views.render.render import render_changed_to_cloud\n"
+        "    render_changed_to_cloud()\n"
+        "except Exception as e:\n"
+        "    from core.cloudsync import _write_sync_status\n"
+        "    _write_sync_status(0, error=str(e))\n"
+    )
+    subprocess.Popen(
+        [sys.executable, "-c", cmd],
+        cwd=str(ORBIT_HOME),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+        start_new_session=True,
+    )
+
+
+def render_all_to_cloud(dry_run: bool = False) -> int:
+    """Render todos los proyectos al cloud + dashboard. Sin status write."""
+    cloud_root = _find_cloud_root()
+    if not cloud_root:
+        return 0
+    n = render_all(cloud_root)
+    _render_dashboard(cloud_root)
+    return n
+
+
+def _action_render_changed_background(ctx):
+    """Post-action de save: lanza render→cloud en subprocess.
+
+    Antes era `_action_cloudsync_push_background` en core/commit.py
+    (módulo `core.commit`). Movida a views/render/ en 2026-05-16 para
+    que el chain commit_post diga lo que hace: renderizar al cloud.
+    """
+    try:
+        render_changed_to_cloud_background()
+        print("  ☁️  Render al cloud en background.")
+        return {"ok": True, "msg": "launched"}
+    except Exception as e:
+        return {"ok": False, "msg": f"{type(e).__name__}: {e}"}

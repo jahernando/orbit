@@ -240,8 +240,8 @@ def startup_commit_offer() -> None:
 
     print(f"  ✓ Save: \"{msg}\"")
 
-    from core.cloudsync import sync_to_cloud_background
-    sync_to_cloud_background()
+    from views.render.render import render_changed_to_cloud_background
+    render_changed_to_cloud_background()
 
     if can_push:
         rc = _git_push()

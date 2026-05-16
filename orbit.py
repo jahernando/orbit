@@ -483,8 +483,8 @@ def cmd_cloud(args):
     if action == "deliver":
         return run_deliver(project=args.project, file=args.file)
     if action == "sync":
-        from core.cloudsync import sync_all_to_cloud
-        return sync_all_to_cloud(dry_run=getattr(args, "dry_run", False))
+        from views.render.render import render_all_to_cloud
+        return render_all_to_cloud(dry_run=getattr(args, "dry_run", False))
     if action == "imgs":
         from core.cloud_imgs import run_cloud_imgs
         return run_cloud_imgs(dry_run=getattr(args, "dry_run", False))

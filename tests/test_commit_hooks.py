@@ -1,12 +1,14 @@
 """Tests for F2: commit_pre / commit_post chain registration + action wrappers.
 
-The wrappers in core/commit.py adapt orbit helpers (cloud_imgs, cronograma,
-gsync, cloudsync) into the hook registry. These tests cover:
-  - Both chains are registered with the expected actions in the right order.
-  - Each action wrapper returns the documented ok/msg shape under both success
-    and failure of its underlying helper.
+The action wrappers viven across core/commit.py (cloud_imgs, cronograma)
+y views/render/render.py (render_changed_background). Estos tests cubren:
+  - Ambos chains registrados con sus actions en el orden correcto.
+  - Cada action wrapper devuelve el shape ok/msg documentado bajo éxito
+    y fallo del helper subyacente.
 
 v0.36: tracked_files_refresh action removed (propia/externa model, no refresh).
+2026-05-16 fase B: cloudsync_push_background → render_changed_background
+(módulo trasladado a views/render/render.py).
 """
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -15,6 +17,7 @@ import pytest
 
 # Importing core.commit registers the actions/chains at module load.
 from core import commit, hooks
+from views.render import render
 
 
 @pytest.fixture
@@ -44,7 +47,7 @@ def test_commit_post_chain_registered():
     assert chain is not None
     assert chain.trigger_type == "explicit"
     assert chain.pre == []
-    assert chain.post == ["cloudsync_push_background", "ring_refresh"]
+    assert chain.post == ["render_changed_background", "ring_refresh"]
 
 
 def test_commit_pre_and_post_bound():
@@ -58,7 +61,7 @@ def test_commit_action_criticality():
     # aborta la chain y por tanto el save. Las demás son non-critical.
     assert hooks.ACTIONS["doctor_check_save"].critical is True
     for name in ("cloud_imgs_process", "cronograma_log_completed",
-                 "cloudsync_push_background", "ring_refresh"):
+                 "render_changed_background", "ring_refresh"):
         assert hooks.ACTIONS[name].critical is False, name
 
 
@@ -106,20 +109,20 @@ def test_cronograma_log_some(capsys):
     assert "2 tareas de cronograma" in out
 
 
-# ── cloudsync_push_background ────────────────────────────────────────────────
+# ── render_changed_background ────────────────────────────────────────────────
 
-def test_cloudsync_push_launches(capsys):
-    with patch("core.cloudsync.sync_to_cloud_background") as sync:
-        result = commit._action_cloudsync_push_background(None)
+def test_render_changed_background_launches(capsys):
+    with patch("views.render.render.render_changed_to_cloud_background") as bg:
+        result = render._action_render_changed_background(None)
     assert result == {"ok": True, "msg": "launched"}
-    sync.assert_called_once()
-    assert "Sincronización al cloud" in capsys.readouterr().out
+    bg.assert_called_once()
+    assert "Render al cloud" in capsys.readouterr().out
 
 
-def test_cloudsync_push_failure():
-    with patch("core.cloudsync.sync_to_cloud_background",
+def test_render_changed_background_failure():
+    with patch("views.render.render.render_changed_to_cloud_background",
                side_effect=RuntimeError("boom")):
-        result = commit._action_cloudsync_push_background(None)
+        result = render._action_render_changed_background(None)
     assert result["ok"] is False
     assert "RuntimeError" in result["msg"]
 
