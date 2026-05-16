@@ -300,7 +300,7 @@ from core import hooks as _hooks
 
 def _run_startup():
     """Execute the `shell_start` chain. See HOOKSYSTEM.md §6.3 for the action list."""
-    _hooks.fire("shell_startup", verbosity="quiet")
+    _hooks.fire("shell_startup", verbosity="pretty")
     print()
 
 
@@ -366,7 +366,7 @@ def run_shell(editor: str = ""):
         if _date.today() != shell_start_date:
             print()
             print("☀️ Nuevo día. Avanzando recurrentes...")
-            _hooks.fire("day_changed", ctx={"silent": True}, verbosity="quiet")
+            _hooks.fire("day_changed", ctx={"silent": True}, verbosity="pretty")
             print()
             shell_start_date = _date.today()
 

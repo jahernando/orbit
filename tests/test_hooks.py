@@ -567,6 +567,171 @@ def test_cli_flag_propagates_to_fire_skip_actions(empty_orbit_json, tmp_journal)
     assert calls == ["b"]
 
 
+# ── Pretty mode: emoji + label + banner ─────────────────────────────────────
+
+def test_register_action_stores_emoji_and_label():
+    register_action("foo", lambda ctx: None, emoji="🌟", label="Foo step")
+    a = hooks.ACTIONS["foo"]
+    assert a.emoji == "🌟"
+    assert a.label == "Foo step"
+
+
+def test_register_action_label_defaults_to_name():
+    register_action("bar", lambda ctx: None)
+    assert hooks.ACTIONS["bar"].label == "bar"
+
+
+def test_register_chain_stores_title():
+    register_chain("ch", trigger_type="explicit", title="Mi chain")
+    assert hooks.CHAINS["ch"].title == "Mi chain"
+
+
+def test_pretty_prints_chain_banner(empty_orbit_json, tmp_journal, capsys):
+    register_action("a", lambda ctx: {"ok": True}, emoji="🌟", label="Test")
+    register_chain("c", trigger_type="explicit", post=["a"], title="Demo chain")
+    bind("t", "c")
+    fire("t", verbosity="pretty")
+    out = capsys.readouterr().out
+    assert "━━━ Demo chain ━━━" in out
+    assert "🌟 Test" in out
+    assert "✓" in out
+
+
+def test_pretty_chain_banner_falls_back_to_name(empty_orbit_json, tmp_journal, capsys):
+    register_action("a", lambda ctx: None)
+    register_chain("c", trigger_type="explicit", post=["a"])  # no title
+    bind("t", "c")
+    fire("t", verbosity="pretty")
+    out = capsys.readouterr().out
+    assert "━━━ c ━━━" in out
+
+
+def test_pretty_print_ok_uses_msg_as_suffix(empty_orbit_json, tmp_journal, capsys):
+    register_action("a",
+                    lambda ctx: {"ok": True, "msg": "12 items"},
+                    emoji="🔔", label="Ring")
+    register_chain("c", trigger_type="explicit", post=["a"], title="X")
+    bind("t", "c")
+    fire("t", verbosity="pretty")
+    out = capsys.readouterr().out
+    assert "✓ 🔔 Ring" in out
+    assert "12 items" in out
+
+
+def test_pretty_print_failure(empty_orbit_json, tmp_journal, capsys):
+    register_action("a",
+                    lambda ctx: {"ok": False, "msg": "cloud_root missing"},
+                    emoji="☁️", label="Render")
+    register_chain("c", trigger_type="explicit", post=["a"], title="X")
+    bind("t", "c")
+    fire("t", verbosity="pretty")
+    out = capsys.readouterr().out
+    assert "✗" in out
+    assert "Render" in out
+    assert "cloud_root missing" in out
+
+
+def test_pretty_injects_silent_into_ctx(empty_orbit_json, tmp_journal):
+    """En modo pretty, las acciones deben recibir ctx con silent=True
+    para suprimir prints duplicados (e.g. secretary_refresh)."""
+    seen = []
+    register_action("a", lambda ctx: seen.append(ctx))
+    register_chain("c", trigger_type="explicit", post=["a"])
+    bind("t", "c")
+    fire("t", verbosity="pretty")
+    assert seen == [{"silent": True}]
+
+
+def test_pretty_does_not_overwrite_existing_silent_in_ctx(empty_orbit_json, tmp_journal):
+    """Si el caller ya pasó ctx={'silent': False}, respetar su valor."""
+    seen = []
+    register_action("a", lambda ctx: seen.append(ctx))
+    register_chain("c", trigger_type="explicit", post=["a"])
+    bind("t", "c")
+    fire("t", ctx={"silent": False}, verbosity="pretty")
+    assert seen == [{"silent": False}]
+
+
+def test_pretty_merges_silent_into_existing_ctx(empty_orbit_json, tmp_journal):
+    """Ctx existente sin silent se enriquece con silent=True."""
+    seen = []
+    register_action("a", lambda ctx: seen.append(ctx))
+    register_chain("c", trigger_type="explicit", post=["a"])
+    bind("t", "c")
+    fire("t", ctx={"foo": "bar"}, verbosity="pretty")
+    assert seen == [{"foo": "bar", "silent": True}]
+
+
+def test_quiet_mode_unchanged_by_pretty_addition(empty_orbit_json, tmp_journal, capsys):
+    """Modo quiet sigue siendo silent on success — no toca pretty."""
+    register_action("a", lambda ctx: {"ok": True, "msg": "done"})
+    register_chain("c", trigger_type="explicit", post=["a"])
+    bind("t", "c")
+    fire("t", verbosity="quiet")
+    out = capsys.readouterr().out
+    assert out == ""  # nada se imprime en quiet on success
+
+
+def test_pretty_skipped_action_shows_warning(empty_orbit_json, tmp_journal, capsys):
+    """Si una action está skipped por config/dry-run, modo pretty muestra ⚠."""
+    register_action("a", lambda ctx: None, emoji="🌟", label="Test")
+    register_chain("c", trigger_type="explicit", post=["a"])
+    bind("t", "c")
+    fire("t", skip_actions=["a"], verbosity="pretty")
+    out = capsys.readouterr().out
+    assert "⚠" in out
+    assert "🌟 Test" in out
+    assert "skipped" in out
+
+
+# ── Bootstrap loads display fields from JSON ────────────────────────────────
+
+def test_bootstrap_loads_display_emoji_label(tmp_path):
+    catalog = {
+        "actions": {
+            "my_action": {
+                "module": "core.commit",
+                "fn": "_action_cloud_imgs_process",
+                "display": {"emoji": "🌟", "label": "My Step"},
+            }
+        },
+        "chains": {
+            "my_chain": {
+                "trigger_type": "explicit",
+                "post": ["my_action"],
+                "display": {"title": "My Chain"},
+            }
+        },
+        "bindings": {"my_trigger": "my_chain"},
+    }
+    catalog_path = tmp_path / "c.json"
+    catalog_path.write_text(json.dumps(catalog))
+    hooks.bootstrap(catalog_path)
+    assert hooks.ACTIONS["my_action"].emoji == "🌟"
+    assert hooks.ACTIONS["my_action"].label == "My Step"
+    assert hooks.CHAINS["my_chain"].title == "My Chain"
+
+
+def test_bootstrap_missing_display_block_uses_defaults(tmp_path):
+    """Action/chain sin bloque display: campos vacíos (label cae a name)."""
+    catalog = {
+        "actions": {
+            "no_display": {
+                "module": "core.commit", "fn": "_action_cloud_imgs_process",
+            }
+        },
+        "chains": {"no_display_chain": {"trigger_type": "explicit",
+                                          "post": ["no_display"]}},
+        "bindings": {"t": "no_display_chain"},
+    }
+    catalog_path = tmp_path / "c.json"
+    catalog_path.write_text(json.dumps(catalog))
+    hooks.bootstrap(catalog_path)
+    assert hooks.ACTIONS["no_display"].emoji == ""
+    assert hooks.ACTIONS["no_display"].label == "no_display"
+    assert hooks.CHAINS["no_display_chain"].title == "no_display_chain"
+
+
 def test_bootstrap_clears_existing_state(tmp_path):
     """A second bootstrap with a different catalog replaces, doesn't merge."""
     register_action("stale_action", lambda ctx: None)

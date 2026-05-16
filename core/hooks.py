@@ -33,7 +33,7 @@ from typing import Any, Callable, Literal, Optional
 from core.config import ORBIT_HOME, _load_orbit_json
 
 TriggerType = Literal["explicit", "reactive", "temporal"]
-VerbosityLevel = Literal["quiet", "normal", "verbose"]
+VerbosityLevel = Literal["quiet", "normal", "verbose", "pretty"]
 
 JOURNAL_PATH = ORBIT_HOME / ".journal.jsonl"
 JOURNAL_MAX_BYTES = 10 * 1024 * 1024  # 10MB rotation threshold
@@ -61,6 +61,8 @@ class Action:
     critical: bool = False
     cli_flag: str = ""
     disable_config_key: str = ""
+    emoji: str = ""        # pretty mode: emoji column
+    label: str = ""        # pretty mode: label column (defaults to name if empty)
 
 
 @dataclass
@@ -71,6 +73,7 @@ class Chain:
     core: Optional[str] = None
     post: list = field(default_factory=list)
     cli_verb: str = ""
+    title: str = ""        # pretty mode: banner title (defaults to name if empty)
 
 
 # Module-level registries. Owning modules call register_action / register_chain
@@ -84,7 +87,8 @@ BINDINGS: dict = {}
 
 def register_action(name: str, fn: Callable[..., Any], *,
                     critical: bool = False, cli_flag: str = "",
-                    disable_config_key: str = "") -> None:
+                    disable_config_key: str = "",
+                    emoji: str = "", label: str = "") -> None:
     """Register an action. Overwriting an existing name is allowed (tests do it)."""
     if not cli_flag:
         cli_flag = "--no-" + name.replace("_", "-")
@@ -92,17 +96,20 @@ def register_action(name: str, fn: Callable[..., Any], *,
         disable_config_key = name
     ACTIONS[name] = Action(name=name, fn=fn, critical=critical,
                            cli_flag=cli_flag,
-                           disable_config_key=disable_config_key)
+                           disable_config_key=disable_config_key,
+                           emoji=emoji, label=label or name)
 
 
 def register_chain(name: str, *, trigger_type: TriggerType,
                    pre: Optional[list] = None,
                    core: Optional[str] = None,
                    post: Optional[list] = None,
-                   cli_verb: str = "") -> None:
+                   cli_verb: str = "",
+                   title: str = "") -> None:
     CHAINS[name] = Chain(name=name, trigger_type=trigger_type,
                          pre=list(pre or []), core=core,
-                         post=list(post or []), cli_verb=cli_verb)
+                         post=list(post or []), cli_verb=cli_verb,
+                         title=title or name)
 
 
 def bind(trigger: str, chain_name: str) -> None:
@@ -157,10 +164,16 @@ def _resolve_chain(trigger: str, hooks_cfg: dict) -> Optional[Chain]:
 
 # ── Output ────────────────────────────────────────────────────────────────────
 
+_PRETTY_LABEL_WIDTH = 16  # padding del label para alinear columnas
+
+
 def _print_action(result: HookResult, verbosity: VerbosityLevel = "normal") -> None:
     if verbosity == "quiet":
         if result.ok or result.skipped:
             return
+    if verbosity == "pretty":
+        _print_action_pretty(result)
+        return
     if result.skipped:
         line = f"⚠ {result.action}: skipped ({result.skip_reason})"
     elif result.ok:
@@ -172,6 +185,33 @@ def _print_action(result: HookResult, verbosity: VerbosityLevel = "normal") -> N
     print(f"  {line}")
     if verbosity == "verbose" and result.data is not None:
         print(f"    data: {result.data!r}")
+
+
+def _print_action_pretty(result: HookResult) -> None:
+    """Pretty mode: '  ✓ {emoji} {label:width}  {msg}'.
+
+    Skips silenced 'ok' results without msg if you'd rather hide no-op steps;
+    here we print them anyway so every step in the chain is visible (the
+    user asked for a "checklist" effect).
+    """
+    action = ACTIONS.get(result.action)
+    emoji = action.emoji if action and action.emoji else "·"
+    label = action.label if action and action.label else result.action
+    label_pad = label.ljust(_PRETTY_LABEL_WIDTH)
+
+    if result.skipped:
+        # skipped por config / --no-flag / dry-run / not-registered
+        glyph = "⚠"
+        suffix = f"skipped · {result.skip_reason}" if result.skip_reason else "skipped"
+    elif result.ok:
+        glyph = "✓"
+        suffix = result.msg or ""
+    else:
+        glyph = "✗"
+        suffix = result.msg or "failed"
+
+    line = f"  {glyph} {emoji} {label_pad}{suffix}".rstrip()
+    print(line)
 
 
 # ── Journal ───────────────────────────────────────────────────────────────────
@@ -229,7 +269,19 @@ def fire(trigger: str, ctx: Any = None, *,
     if chain is None:
         return []
 
-    if verbosity != "quiet" and chain.trigger_type != "explicit":
+    if verbosity == "pretty":
+        title = chain.title or chain.name
+        print(f"━━━ {title} ━━━")
+        # En modo pretty inyectamos ctx["silent"]=True para que las
+        # acciones que tienen ruta "noisy success" (p.ej. secretary_refresh
+        # llama a run_dash que imprime su línea) se silencien y dejen
+        # que el runner pinte la línea uniforme. Las acciones que NO leen
+        # ctx["silent"] siguen imprimiendo (interactivas: doctor, save_offer).
+        if ctx is None:
+            ctx = {"silent": True}
+        elif isinstance(ctx, dict) and "silent" not in ctx:
+            ctx = {**ctx, "silent": True}
+    elif verbosity != "quiet" and chain.trigger_type != "explicit":
         print(f"[trigger={trigger}] {chain.name}:")
 
     action_names = []
@@ -432,14 +484,18 @@ def bootstrap(catalog_path: Optional[Path] = None) -> bool:
     for name, spec in data.get("actions", {}).items():
         module = importlib.import_module(spec["module"])
         fn = getattr(module, spec["fn"])
+        display = spec.get("display", {}) or {}
         register_action(
             name, fn,
             critical=spec.get("critical", False),
             cli_flag=spec.get("cli_flag", ""),
             disable_config_key=spec.get("disable_config_key", ""),
+            emoji=display.get("emoji", ""),
+            label=display.get("label", ""),
         )
 
     for name, spec in data.get("chains", {}).items():
+        display = spec.get("display", {}) or {}
         register_chain(
             name,
             trigger_type=spec["trigger_type"],
@@ -447,6 +503,7 @@ def bootstrap(catalog_path: Optional[Path] = None) -> bool:
             core=spec.get("core"),
             post=spec.get("post", []),
             cli_verb=spec.get("cli_verb", ""),
+            title=display.get("title", ""),
         )
 
     for trigger, chain_name in data.get("bindings", {}).items():

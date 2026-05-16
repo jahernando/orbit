@@ -4,67 +4,80 @@
     "cloud_imgs_process": {
       "module": "core.commit",
       "fn": "_action_cloud_imgs_process",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "🖼", "label": "Cloud imgs" }
     },
     "cronograma_log_completed": {
       "module": "core.commit",
       "fn": "_action_cronograma_log_completed",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "📊", "label": "Cronograma" }
     },
     "doctor_check_save": {
       "module": "views.doctor.doctor",
       "fn": "_action_doctor_check_save",
-      "critical": true
+      "critical": true,
+      "display": { "emoji": "🏥", "label": "Doctor" }
     },
     "render_to_cloud": {
       "module": "views.render.render",
       "fn": "_action_render_to_cloud",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "☁️", "label": "Render" }
     },
     "doctor_startup": {
       "module": "core.shell",
       "fn": "_action_doctor_startup",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "🏥", "label": "Doctor" }
     },
     "advance_overdue_recurring": {
       "module": "core.shell",
       "fn": "_action_advance_overdue_recurring",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "⏩", "label": "Push-forward" }
     },
     "render_status_check": {
       "module": "views.render.render",
       "fn": "_action_render_status_check",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "☁️", "label": "Render status" }
     },
     "save_offer": {
       "module": "core.shell",
       "fn": "_action_save_offer",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "💾", "label": "Save offer" }
     },
     "code_update_check": {
       "module": "core.shell",
       "fn": "_action_code_update_check",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "🔄", "label": "Code update" }
     },
     "secretary_refresh": {
       "module": "core.shell",
       "fn": "_action_secretary_refresh",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "📋", "label": "Secretary" }
     },
     "daemons_startup": {
       "module": "core.shell",
       "fn": "_action_daemons_startup",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "🚀", "label": "Daemons" }
     },
     "ics_emit_workspace": {
       "module": "views.render.render",
       "fn": "_action_ics_emit_workspace",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "📅", "label": "Calendar (.ics)" }
     },
     "ring_refresh": {
       "module": "views.ring.export",
       "fn": "_action_ring_refresh",
-      "critical": false
+      "critical": false,
+      "display": { "emoji": "🔔", "label": "Ring" }
     }
   },
   "chains": {
@@ -74,7 +87,8 @@
         "cloud_imgs_process",
         "cronograma_log_completed",
         "doctor_check_save"
-      ]
+      ],
+      "display": { "title": "Save · pre-checks" }
     },
     "commit_post": {
       "trigger_type": "explicit",
@@ -83,7 +97,8 @@
         "ring_refresh",
         "ics_emit_workspace",
         "render_to_cloud"
-      ]
+      ],
+      "display": { "title": "Save · publicar" }
     },
     "shell_start": {
       "trigger_type": "temporal",
@@ -96,14 +111,16 @@
         "secretary_refresh",
         "daemons_startup",
         "render_status_check"
-      ]
+      ],
+      "display": { "title": "Orbit shell · arranque" }
     },
     "day_open": {
       "trigger_type": "temporal",
       "post": [
         "advance_overdue_recurring",
         "secretary_refresh"
-      ]
+      ],
+      "display": { "title": "Nuevo día" }
     }
   },
   "bindings": {

@@ -335,7 +335,7 @@ def run_commit(message: Optional[str] = None,
         return 0
 
     # Pre-chain: cloud_imgs, cronograma.
-    pre_results = _hooks.fire("commit_pre", skip_actions=skip_actions, verbosity="quiet")
+    pre_results = _hooks.fire("commit_pre", skip_actions=skip_actions, verbosity="pretty")
     if _chain_aborted(pre_results):
         return 1
 
@@ -377,7 +377,7 @@ def run_commit(message: Optional[str] = None,
     if rc == 0:
         print("\n✓ Save realizado.")
         # Post-chain: cloudsync push.
-        _hooks.fire("commit_post", skip_actions=skip_actions, verbosity="quiet")
+        _hooks.fire("commit_post", skip_actions=skip_actions, verbosity="pretty")
     else:
         print("\n✗ Error al hacer el save.")
     return rc
