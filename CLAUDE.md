@@ -98,76 +98,53 @@ Una sola dirección: orbit es source-of-truth, los backends consumen.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.37.0, 2026-05-14)
+## Estado actual (v0.38.0, 2026-05-16)
 
-### v0.37.0 (2026-05-14) — Ring desacoplado: ring.json + daemon EventKit + launchd
+Pulido arquitectónico mayor — 5 ADRs nuevos, separación core/views/, save flow unificado, secretary como tercera familia (junto a cartero y ring-daemon), wrap CLI completo, watchdog daemon, modo pretty para hooks.
 
-Sustituto del backend `reminders_backend: "reminders"` dormante de v0.29. Cierra las fases B–F de [RING.md](docs/RING.md) (la fase A — mirror `.ics` + diff — ya estaba). [ADR-027](DECISIONS.md).
+### Tres ejes principales
 
-**Arquitectura declarativa**:
-```
-agenda.md (verdad)
-   │
-   ▼
-orbit ring refresh / hook commit_post / hook shell_start
-   │
-   ▼
-<workspace>/.reminders/ring.json   (gitignored, ventana rolling 7 días)
-   │  (launchd WatchPaths o hook dispara el daemon)
-   ▼
-satellites/ring-daemon/daemon.py   (EventKit/PyObjC, NO AppleScript)
-   │
-   ▼
-Reminders.app — lista por workspace (default: nombre del directorio del workspace)
-   │  (iCloud sync gratis)
-   ▼
-iPhone / iPad
-```
+**1. Separación `core/` vs `views/`** ([ADR-033](DECISIONS.md#adr-033--separación-core-writers-vs-views-readers))
+`render`, `doctor`, `ics`, `ring` salen de `core/` a `views/{render,doctor,cal,ring}/`. Writers (core) escriben la verdad; viewers (views) leen y proyectan derivados. Regla: core no importa views salvo lazy. Más [ADR-034](DECISIONS.md#adr-034--save-como-verbo-de-cierre--chain-commit_post-unificado): `save` como verbo primario (alias legacy `commit`); chains `commit_pre`/`commit_post` con todas las acciones declarativas.
 
-**Decisiones clave** (diff respecto a RING.md original):
+**2. Secretary + dashboard cloud unificado** ([ADR-035](DECISIONS.md#adr-035--viewssecretary-como-viewers-del-workspace--dashboard-cloud-unificado))
+Nuevo `views/secretary/` con 5 viewers puros (panel, agenda-next, calendar, projects, report-summary). Outputs en `📋secretary/*.md`. Front-page del workspace: `workspace.md` estático (bootstrappeado por `orbit setup`). En cloud: `workspace.md → workspace.html` + `index.html` stub redirect (auto-open del browser preservado).
 
-- **Una lista por workspace** (`workspace_root.name`, e.g. `🚀orbit-ws`, `🌿orbit-ps`), no una única `Orbit Ring`. Coherente con "una vida = una lista" preexistente; permite silenciar contextos enteros.
-- **EventKit/PyObjC**, no AppleScript: misma fiabilidad de Reminders.app (es el framework subyacente), sin timeouts de `osascript`, sin necesidad de app abierta, API estructurada testeable.
-- **Items con orbit-tag únicamente**: el daemon **nunca** toca reminders sin `[orbit:xxx]` en notes. Items manuales del usuario en la misma lista están a salvo. Dedup defensivo si aparecen duplicados con mismo orbit_id.
-- **Identidad por ocurrencia recurrente**: `<base_id>-<YYYY-MM-DD>`. Cada ocurrencia es un EKReminder distinto; `task done` regenera la siguiente ocurrencia y el próximo sweep limpia la vieja.
-
-**Config en `orbit.json` del workspace**:
+Config en `<workspace>/orbit.json`:
 ```json
-"ring": {
-  "enabled": true,           // false → vacía la lista del workspace (sweep)
-  "days":    7,              // ventana rolling, clamped a [1, 30]
-  "list":    "🚀orbit-ws"    // default = workspace_root.name
-}
+"secretary": { "agenda_days": 14, "report_days": 14 }
 ```
 
-**Componentes nuevos**:
-- `views/ring/export.py` (~300 LOC): `build_payload`, `write_payload`, `refresh_all`, `invoke_daemon`, `run_ring_refresh/status/install/uninstall`, `_action_ring_refresh`, `_load_ring_config`.
-- `satellites/ring-daemon/daemon.py` (~200 LOC, standalone): EventKit upsert idempotente, dedup, agrupación por lista, manejo de TCC permission denied. Movido a `satellites/` en F1 del refactor 2026-05-15.
-- `core/hooks_catalog.json`: nueva acción `ring_refresh` añadida a `commit_post.post` y `shell_start.post`.
-- `views/doctor/doctor.py::_check_ring_health`: avisa de plist no instalado, TCC denied en stderr log reciente, ring.json viejo (>24h).
-- `views/ring/parse.py` antiguo queda **dormante** (la API `schedule_new_format_reminders` ya estaba marcada como deprecada; ahora aún más).
+**3. Wrap CLI + watchdog + pretty hooks** ([ADR-036](DECISIONS.md#adr-036--wrap-de-refresh-tras-mutación-cli-matriz-por-comando-sin-render) + [ADR-037](DECISIONS.md#adr-037--watchdog-doctor--full-refresh-periódico-tras-edición-externa))
 
-**CLI**:
-```
-orbit ring refresh [--no-daemon]   # regenera ring.json en todos los workspaces y aplica
-orbit ring status                  # ring.json por workspace + estado del plist
-orbit ring install                 # ~/Library/LaunchAgents/com.orbit.ring-daemon.plist
-orbit ring uninstall               # descarga y elimina
+Matriz tras mutación CLI:
+- Citas (task/ms/ev/rem/crono/ics-import/email) → dash (coalescido 10s) + ring + ics(project_filter)
+- log/hl/project → solo dash
+- Render reservado para `save` (commit_post)
+
+Watchdog daemon: cada tick (defecto 60min, configurable) → doctor primero; si issues → `.doctor-pending` + congelar derivados; si limpio → `_run_full_refresh_coalesced`. REPL surface el aviso al siguiente input. Config:
+```json
+"watchdog": { "enabled": true, "interval_minutes": 60 }
 ```
 
-**Triggers automáticos**:
-- `shell_start` (acción `ring_refresh`)
-- `commit_post` (acción `ring_refresh`)
-- `launchctl WatchPaths` sobre cada `ring.json` → daemon (si instalado)
-- `StartCalendarInterval` 00:05 → sweep nocturno (si instalado)
+Modo pretty para chains: banner + tick + emoji + label + msg uniforme. Ejemplo:
+```
+━━━ Save · publicar ━━━
+  ✓ 📋 Secretary       5 viewers
+  ✓ 🔔 Ring            12 items
+  ✓ 📅 Calendar (.ics) 8 buckets · 23 .ics
+  ✓ ☁️ Render          29 .md → .html
+```
 
-**Caveat TCC**: primera vez tras `orbit ring install`, macOS bloquea EventKit hasta que el usuario autorice el binario Python en *System Settings → Privacy & Security → Reminders*. Doctor lo detecta leyendo `~/Library/Logs/orbit/ring-daemon.stderr.log`.
+### Otros cambios en v0.38
 
-**Tests**: `tests/test_ring_export.py` (45 tests). Suite: 1874 pass, 4 skipped.
+- **gsync borrado**: `gsync.py` + `calsync.py` (3673 ℓ AppleScript-write) eliminados tras 2 semanas de validación del modelo .ics. Cierra [ADR-018](DECISIONS.md#adr-018--sincronización-con-calendarapp-vía-ics-no-applescript-write).
+- **Phase 3 + 4 del plan de simplificación**: `icalendar` lib (ADR-029), `python-dateutil` (ADR-030), `core/agenda/` subpaquete (ADR-031), seam `core/api.py` con funciones puras (ADR-032), noun-verb convention.
+- **Satellites**: `ring-daemon` y `cartero` movidos a `orbit/satellites/`, uno por workspace.
+- **link/import** como verbos primarios (alias de track/deliver).
+- **Doctor 3-way model**: sintaxis + refs + entorno.
 
-**Migración**: las 3 listas obsoletas (`Orbit`, `🚀 orbit-ws` con espacio, `🌿 orbit-ps` con espacio) y `Orbit Ring` (modelo único original) borradas tras validación. Las listas nuevas son `🚀orbit-ws` y `🌿orbit-ps` (sin espacio).
-
-**Dependencia nueva**: `pyobjc-framework-EventKit` (registrada en `DEPENDENCIES.md`).
+Para detalle de cada commit ver [CHANGELOG.md](CHANGELOG.md).
 
 
 ## CI (2026-05-14)
@@ -179,6 +156,7 @@ GitHub Actions workflow en `.github/workflows/tests.yml`. Ejecuta `pytest -q` en
 
 Resumen muy breve de las últimas versiones; detalle completo en [CHANGELOG.md](CHANGELOG.md).
 
+- **v0.37.0** (2026-05-14) — Ring desacoplado: `ring.json` (gitignored, ventana rolling 7d) + daemon EventKit/PyObjC en `satellites/ring-daemon/` + launchd. Una lista Reminders.app por workspace; identidad por ocurrencia recurrente `<base_id>-<YYYY-MM-DD>`. ADR-027.
 - **v0.36.0** (2026-05-14) — Notes propia/externa con symlinks relativos. Reemplaza el modelo tracked v0.34 (ADR-026 deroga ADR-024). `core/tracked.py` reescrito (~80 LOC), nuevo `note --from <path>`.
 - **v0.35** (2026-05-14, sin tag) — Hook system shipped. F1-F7 migration: 17 acciones declarativas en `core/hooks_catalog.json`, modelo trigger → chain → [pre, core, post]. Doc en [HOOKSYSTEM.md](docs/HOOKSYSTEM.md).
 - **v0.34.0** (2026-05-13) — Tracked external files (predecesor de v0.36, derogado) + mirror local de `.ics` con `orbit ics --diff` (ADR-025).

@@ -1,12 +1,137 @@
 # CHANGELOG.md — Historial detallado de orbit
 
-Detalle de cada versión publicada (v0.19 → v0.36). La versión **actual** se
+Detalle de cada versión publicada (v0.19 → v0.38). La versión **actual** se
 describe en [CLAUDE.md](CLAUDE.md) bajo "Estado actual"; cuando deja de ser
 actual, su entrada se mueve aquí.
 
 Más reciente arriba. Para decisiones de arquitectura (no historial de cambios)
 ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 [DORMANT.md](DORMANT.md).
+
+---
+
+### v0.38.0 (2026-05-16) — Views architecture · save verb · secretary · wrap · watchdog
+
+Bloque grande de pulido arquitectónico (74 commits desde v0.37, 5 ADRs nuevos). Tres ejes:
+
+**1. Separación `core/` (writers) vs `views/` (readers) — [ADR-033](DECISIONS.md#adr-033--separación-core-writers-vs-views-readers)**
+
+`render`, `doctor`, `ics`/`ics_share`, `ring`/`ring_export` salen de `core/` a `views/{render,doctor,cal,ring}/`. La verdad la escriben los writers; los derivados (HTML, validación, .ics, ring.json) los proyectan los viewers. Regla: `core/` no importa `views/` salvo lazy. Cuatro fases (`ec6a624`, `ce48e72`, `55c5ec2`, `e81b103`). Más [ADR-034](DECISIONS.md#adr-034--save-como-verbo-de-cierre--chain-commit_post-unificado) — `save` como verbo primario (alias legacy `commit`), `commit_pre`/`commit_post` chains con todas las acciones declarativas en `hooks_catalog.json`.
+
+**2. Secretary + dashboard cloud unificado — [ADR-035](DECISIONS.md#adr-035--viewssecretary-como-viewers-del-workspace--dashboard-cloud-unificado)**
+
+Nuevo `views/secretary/` con viewers puros del workspace (panel, agenda-next, calendar, projects, report-summary). Outputs en `📋secretary/*.md`. Front-page del workspace: `workspace.md` estático (bootstrappeado por `orbit setup`). En cloud: `workspace.md → workspace.html` + `index.html` como stub redirect (auto-open del browser preservado) + `📋secretary/*.html`. Eliminadas 230 ℓ de `render.py` (rendered dashboards ad-hoc duplicados).
+
+Config nueva en `<workspace>/orbit.json`:
+```json
+"secretary": { "agenda_days": 14, "report_days": 14 }
+```
+
+**3. Wrap CLI + watchdog + pretty hooks — [ADR-036](DECISIONS.md#adr-036--wrap-de-refresh-tras-mutación-cli-matriz-por-comando-sin-render) + [ADR-037](DECISIONS.md#adr-037--watchdog-doctor--full-refresh-periódico-tras-edición-externa)**
+
+Matriz por tipo de comando tras mutación CLI:
+- Citas (`task`/`ms`/`ev`/`rem`/`crono`/`ics-import`/`email`) → dash (coalescido) + ring + ics(project_filter)
+- log/hl/project → solo dash
+- Render reservado para `save` (commit_post)
+
+Bug histórico fixado: `_DASH_TRIGGERS` spawneaba threads que morían silenciosamente con `TypeError` por una `args=(True, hint)` obsoleta. Llevaba meses sin funcionar; el chain `commit_post` cubría el caso porque save = refresh completo. Helper `_run_full_refresh_coalesced` + `_run_dash_coalesced` (stamp <10s) sustituyen el patrón.
+
+**Watchdog** (`core/shell.py`, ex `_dash_background_loop`): cada tick (defecto 60min, configurable) corre `doctor` primero. Si encuentra issues, escribe `.doctor-pending` y **no regenera derivados** (panel/agenda/ics/ring se congelan en su última versión limpia); el REPL prompt lo surface al siguiente input — una vez por sesión. Si limpio, `_run_full_refresh_coalesced`. Config:
+```json
+"watchdog": { "enabled": true, "interval_minutes": 60 }
+```
+
+**Modo pretty para hooks chains**: `shell_start`, `day_open`, `commit_pre`, `commit_post` ahora pintan en formato uniforme (banner + tick + emoji + label + msg). Catálogo de display per action/chain en `hooks_catalog.json`. Ejemplo:
+```
+━━━ Save · publicar ━━━
+  ✓ 📋 Secretary       5 viewers
+  ✓ 🔔 Ring            12 items
+  ✓ 📅 Calendar (.ics) 8 buckets · 23 .ics
+  ✓ ☁️ Render          29 .md → .html
+```
+
+**Simplificación (Phase 3 + 4 del plan, ya cerradas)**:
+- Phase 3: `icalendar` (PyPI) para mecánica RFC 5545 ([ADR-029](DECISIONS.md#adr-029--migración-a-icalendar-pypi-para-mecánica-rfc-5545)), `python-dateutil` para recurrencia ([ADR-030](DECISIONS.md#adr-030--migración-a-python-dateutil-para-la-mecánica-de-recurrencia)), `core/agenda_cmds.py` partido en subpaquete `core/agenda/` ([ADR-031](DECISIONS.md#adr-031--partir-coreagenda_cmdspy-en-subpaquete-coreagenda)). Ahorro: −123 ℓ netas en mecánica.
+- Phase 4: noun-verb convention (`orbit cloud {deliver,sync,imgs}`, `orbit tracked {add,drop,list}`), seam `core/api.py` con funciones puras + split parcial de `_build_parser` ([ADR-032](DECISIONS.md#adr-032--seam-coreapi--split-parcial-de-_build_parser)).
+
+**Satellites consolidados**: `ring-daemon` y `cartero` movidos a `orbit/satellites/`, uno por workspace, cero imports cruzados con `core/`.
+
+**link/import como verbos primarios** (alias de track/deliver).
+
+**Limpieza**: borrados `gsync.py` + `calsync.py` (3673 ℓ AppleScript-write a Calendar, dormante desde v0.33; cierre de [ADR-018](DECISIONS.md#adr-018--sincronización-con-calendarapp-vía-ics-no-applescript-write)). Borrados también `recloud.py`, `core/reminders.py` dormant, una decena de one-shot migrations completadas.
+
+**Doctor 3-way model**: sintaxis (existente) + refs (verifica que `[…](target)` existen) + entorno (cloud_root, federation, ring health, ics frescura).
+
+**CI**: GitHub Actions workflow en `.github/workflows/tests.yml`, `pytest -q` en cada push/PR a `main`. 1594 tests, 1 skipped — 100% pasable en Linux (los stubs autouse de `conftest.py` neutralizan AppleScript/EventKit).
+
+**Tests**: ~1594 (de ~989 en v0.36).
+
+---
+
+### v0.37.0 (2026-05-14) — Ring desacoplado: ring.json + daemon EventKit + launchd
+
+Sustituto del backend `reminders_backend: "reminders"` dormante de v0.29. Cierra las fases B–F de [RING.md](docs/RING.md) (la fase A — mirror `.ics` + diff — ya estaba). [ADR-027](DECISIONS.md#adr-027--ring-desacoplado-ringjson--daemon-eventkit--launchd).
+
+**Arquitectura declarativa**:
+```
+agenda.md (verdad)
+   │
+   ▼
+orbit ring refresh / hook commit_post / hook shell_start
+   │
+   ▼
+<workspace>/.reminders/ring.json   (gitignored, ventana rolling 7 días)
+   │  (launchd WatchPaths o hook dispara el daemon)
+   ▼
+satellites/ring-daemon/daemon.py   (EventKit/PyObjC, NO AppleScript)
+   │
+   ▼
+Reminders.app — lista por workspace (default: nombre del directorio del workspace)
+   │  (iCloud sync gratis)
+   ▼
+iPhone / iPad
+```
+
+**Decisiones clave** (diff respecto a RING.md original):
+
+- **Una lista por workspace** (`workspace_root.name`, e.g. `🚀orbit-ws`, `🌿orbit-ps`), no una única `Orbit Ring`. Coherente con "una vida = una lista" preexistente; permite silenciar contextos enteros.
+- **EventKit/PyObjC**, no AppleScript: misma fiabilidad de Reminders.app (es el framework subyacente), sin timeouts de `osascript`, sin necesidad de app abierta, API estructurada testeable.
+- **Items con orbit-tag únicamente**: el daemon **nunca** toca reminders sin `[orbit:xxx]` en notes. Items manuales del usuario en la misma lista están a salvo. Dedup defensivo si aparecen duplicados con mismo orbit_id.
+- **Identidad por ocurrencia recurrente**: `<base_id>-<YYYY-MM-DD>`. Cada ocurrencia es un EKReminder distinto; `task done` regenera la siguiente ocurrencia y el próximo sweep limpia la vieja.
+
+**Config en `orbit.json` del workspace**:
+```json
+"ring": {
+  "enabled": true,
+  "days":    7,
+  "list":    "🚀orbit-ws"
+}
+```
+
+**Componentes nuevos**:
+- `core/ring_export.py` (~300 LOC; pasa a `views/ring/` en v0.38 con ADR-033): `build_payload`, `write_payload`, `refresh_all`, `invoke_daemon`, `run_ring_refresh/status/install/uninstall`, `_action_ring_refresh`, `_load_ring_config`.
+- `orbit_ring_daemon.py` (~200 LOC, standalone; pasa a `satellites/ring-daemon/` en v0.38): EventKit upsert idempotente, dedup, agrupación por lista, manejo de TCC permission denied.
+- `core/hooks_catalog.json`: acción `ring_refresh` añadida a `commit_post.post` y `shell_start.post`.
+- `core/doctor.py::_check_ring_health`: avisa de plist no instalado, TCC denied en stderr log reciente, ring.json viejo (>24h).
+
+**CLI**:
+```
+orbit ring refresh [--no-daemon]
+orbit ring status
+orbit ring install
+orbit ring uninstall
+```
+
+**Triggers automáticos**:
+- `shell_start` + `commit_post` (acción `ring_refresh`)
+- `launchctl WatchPaths` sobre cada `ring.json` → daemon (si instalado)
+- `StartCalendarInterval` 00:05 → sweep nocturno (si instalado)
+
+**Caveat TCC**: primera vez tras `orbit ring install`, macOS bloquea EventKit hasta autorización en *System Settings → Privacy & Security → Reminders*. Doctor lo detecta.
+
+**Tests**: `tests/test_ring_export.py` (45 tests). Suite: 1874 pass, 4 skipped.
+
+**Dependencia nueva**: `pyobjc-framework-EventKit`.
 
 ---
 
