@@ -310,7 +310,7 @@ def _action_ics_emit_workspace(ctx):
     if cloud_root is None:
         return {"ok": True, "msg": "no cloud_root", "data": None}
     try:
-        from core.ics import write_workspace
+        from views.cal.ics import write_workspace
         write_workspace(cloud_root)
         return {"ok": True, "msg": "emitted"}
     except Exception as exc:

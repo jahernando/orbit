@@ -12,10 +12,10 @@ Two entry points for sharing citas with the outside world:
   cita. RRULE is ignored (only the master occurrence is imported);
   multi-VEVENT files emit a warning and import only the first.
 
-The render path reuses :func:`core.ics.render_vevent` and
-:func:`core.ics._calendar_wrapper`; the parse path is a small custom
+The render path reuses :func:`views.cal.ics.render_vevent` and
+:func:`views.cal.ics._calendar_wrapper`; the parse path is a small custom
 RFC-5545 reader tailored to our import needs (we keep parameter info
-that :func:`core.ics._parse_vevents` discards, e.g. ``VALUE=DATE``).
+that :func:`views.cal.ics._parse_vevents` discards, e.g. ``VALUE=DATE``).
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from icalendar import Calendar
 from core.agenda_cmds import (
     _read_agenda, _write_agenda, _next_occurrence,
 )
-from core.ics import (
+from views.cal.ics import (
     render_vevent, _calendar_wrapper, _KIND_EMOJI, write_workspace,
 )
 

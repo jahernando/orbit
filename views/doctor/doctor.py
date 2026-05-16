@@ -701,7 +701,7 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     # Check ics_buckets config (v0.32): every kind must appear in exactly
     # one bucket. Buckets surface as .ics files in cloud/calendar/.
     try:
-        from core.ics import get_buckets, validate_buckets
+        from views.cal.ics import get_buckets, validate_buckets
         errs = validate_buckets(get_buckets())
         if errs:
             print(f"  📅 ics_buckets: {len(errs)} problema{'s' if len(errs) != 1 else ''}:")
@@ -719,7 +719,7 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     try:
         import time
         from core.deliver import _find_cloud_root
-        from core.ics import get_buckets
+        from views.cal.ics import get_buckets
         cloud_root = _find_cloud_root()
         if cloud_root:
             cal_dir = cloud_root / "calendar"

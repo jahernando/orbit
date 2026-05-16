@@ -1,11 +1,11 @@
-"""Tests for core.ics — iCalendar serializer + bucket router + snapshot diff."""
+"""Tests for views.cal.ics — iCalendar serializer + bucket router + snapshot diff."""
 
 from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
-from core import ics
+from views.cal import ics
 
 
 # ── UID stability ────────────────────────────────────────────────────────────
@@ -309,7 +309,7 @@ class TestWriteWorkspace:
             "2026-06-01 — E [orbit:cafebabe]\n\n"
         )
         # Block calendar reload (would need Calendar.app).
-        monkeypatch.setattr("core.ics._calendar_app_running", lambda: False)
+        monkeypatch.setattr("views.cal.ics._calendar_app_running", lambda: False)
         cloud = orbit_env["tmp"] / "cloud"
         cloud.mkdir()
         n = ics.write_workspace(cloud)
@@ -332,9 +332,9 @@ class TestWriteWorkspace:
         assert (local / "agenda.ics").read_text() == (cal_dir / "agenda.ics").read_text()
 
     def test_aborts_on_invalid_buckets(self, orbit_env, monkeypatch, capsys):
-        monkeypatch.setattr("core.ics._calendar_app_running", lambda: False)
+        monkeypatch.setattr("views.cal.ics._calendar_app_running", lambda: False)
         # Inject a broken config.
-        monkeypatch.setattr("core.ics.get_buckets",
+        monkeypatch.setattr("views.cal.ics.get_buckets",
                             lambda: {"agenda": ["task", "bogus"]})
         cloud = orbit_env["tmp"] / "cloud"
         cloud.mkdir()
@@ -355,7 +355,7 @@ class TestDiffWorkspace:
             "## ✅ Tareas\n"
             "- [ ] T (2026-05-15) [orbit:abc12345]\n\n"
         )
-        monkeypatch.setattr("core.ics._calendar_app_running", lambda: False)
+        monkeypatch.setattr("views.cal.ics._calendar_app_running", lambda: False)
         cloud = orbit_env["tmp"] / "cloud"
         cloud.mkdir()
         ics.write_workspace(cloud)

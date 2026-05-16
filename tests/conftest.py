@@ -35,8 +35,8 @@ def _isolate_external_side_effects(request, monkeypatch):
     """
     if "uses_osa" not in request.keywords:
         try:
-            import core.ics
-            monkeypatch.setattr(core.ics, "_osa", lambda *a, **k: None)
+            import views.cal.ics as _cal_ics
+            monkeypatch.setattr(_cal_ics, "_osa", lambda *a, **k: None)
         except ImportError:
             pass
     if "uses_osa" not in request.keywords:

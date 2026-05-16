@@ -127,8 +127,8 @@ Una action que falla en **pre crítico** debe abortar la chain (la condición de
 
 | # | Action | File:Line | Crítica | Desactivable | Notas |
 |---|--------|-----------|---------|--------------|-------|
-| 2 | `ics_emit_workspace` | `views/render/render.py` → `core/ics.py` | no | no | Llamado en CADA render, no condicional |
-| 3 | `calendar_app_reload` | `core/ics.py:671` → `_trigger_calendar_reload` | no | si Calendar.app cerrado | AppleScript best-effort, fail silencioso |
+| 2 | `ics_emit_workspace` | `views/render/render.py` → `views/cal/ics.py` | no | no | Llamado en CADA render, no condicional |
+| 3 | `calendar_app_reload` | `views/cal/ics.py` → `_trigger_calendar_reload` | no | si Calendar.app cerrado | AppleScript best-effort, fail silencioso |
 
 **Problemas conocidos:**
 - (2) corre incondicionalmente aunque no haya cambios reales en `.ics` — el dedup vive *dentro* de `write_workspace`.

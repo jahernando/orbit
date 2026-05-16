@@ -839,7 +839,7 @@ def run_dash(silent: bool = False, project_hint: Optional[str] = None):
     # inside write_workspace.
     try:
         from core.deliver import _find_cloud_root
-        from core.ics import write_workspace
+        from views.cal.ics import write_workspace
         cr = _find_cloud_root()
         if cr:
             with capture_output() as _buf:
@@ -883,7 +883,7 @@ def cmd_report(args):
 
 def cmd_ics(args):
     from pathlib import Path
-    from core.ics import render_project, render_bucket, get_buckets, write_workspace
+    from views.cal.ics import render_project, render_bucket, get_buckets, write_workspace
     from core.deliver import _find_cloud_root
     from core.config import ORBIT_HOME
 
@@ -891,7 +891,7 @@ def cmd_ics(args):
     diff = getattr(args, "diff", False)
 
     if diff:
-        from core.ics import diff_workspace, _local_mirror_dir
+        from views.cal.ics import diff_workspace, _local_mirror_dir
         mirror = _local_mirror_dir()
         if not mirror.exists():
             print(f"  ℹ️  No hay mirror local todavía ({mirror}). Ejecuta `orbit ics --workspace` para crear uno.")
@@ -1084,7 +1084,7 @@ def cmd_tracked(args):
 
 
 def cmd_ics_share(args):
-    from core.ics_share import run_ics_share
+    from views.cal.share import run_ics_share
     return run_ics_share(
         project=getattr(args, "project", None),
         orbit_id=getattr(args, "orbit_id", None),
@@ -1094,7 +1094,7 @@ def cmd_ics_share(args):
 
 
 def cmd_ics_import(args):
-    from core.ics_share import run_ics_import
+    from views.cal.share import run_ics_import
     return run_ics_import(
         project=getattr(args, "project", None),
         path=getattr(args, "path", None),

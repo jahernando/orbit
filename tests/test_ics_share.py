@@ -1,11 +1,11 @@
-"""Tests for core/ics_share.py — export and import of single-VEVENT .ics."""
+"""Tests for views/cal/share.py — export and import of single-VEVENT .ics."""
 from __future__ import annotations
 
 import pytest
 from pathlib import Path
 
-from core import ics_share
-from core.ics_share import (
+from views.cal import share as ics_share
+from views.cal.share import (
     parse_first_vevent, _is_meeting_url, _strip_orbit_tag,
     _strip_orbit_summary_prefix, _props_to_orbit_item, _detect_kind,
     _next_occurrence_for_export, run_ics_share, run_ics_import,
@@ -290,7 +290,7 @@ class TestNextOccurrenceForExport:
             @classmethod
             def today(cls):
                 return date(2026, 5, 20)
-        monkeypatch.setattr("core.ics_share._date", FakeDate)
+        monkeypatch.setattr("views.cal.share._date", FakeDate)
         item = {"date": "2026-05-15", "recur": "weekly"}
         out = _next_occurrence_for_export(item)
         # next weekly after 2026-05-15 ≥ today (2026-05-20) is 2026-05-22.
@@ -302,7 +302,7 @@ class TestNextOccurrenceForExport:
             @classmethod
             def today(cls):
                 return date(2027, 1, 1)
-        monkeypatch.setattr("core.ics_share._date", FakeDate)
+        monkeypatch.setattr("views.cal.share._date", FakeDate)
         item = {"date": "2026-05-15", "recur": "weekly", "until": "2026-06-01"}
         assert _next_occurrence_for_export(item) is None
 
@@ -318,8 +318,8 @@ class TestShareAndImportRoundTrip:
     def _stub_project(self, tmp_path, monkeypatch):
         proj = tmp_path / "💻testproj"
         proj.mkdir()
-        monkeypatch.setattr("core.ics_share.find_project", lambda name: proj)
-        monkeypatch.setattr("core.ics_share.resolve_file",
+        monkeypatch.setattr("views.cal.share.find_project", lambda name: proj)
+        monkeypatch.setattr("views.cal.share.resolve_file",
                              lambda pd, kind: pd / f"{pd.name}-agenda.md")
         return proj
 
@@ -352,7 +352,7 @@ class TestShareAndImportRoundTrip:
         # Suppress interactive confirm prompt.
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
         # Skip ics regen on import (no cloud_root in tmp).
-        monkeypatch.setattr("core.ics_share.write_workspace",
+        monkeypatch.setattr("views.cal.share.write_workspace",
                              lambda root, project_filter=None: 0)
         monkeypatch.setattr("core.deliver._find_cloud_root", lambda: None)
 
@@ -388,11 +388,11 @@ class TestShareAndImportRoundTrip:
         proj2.mkdir()
         agenda2 = proj2 / f"{proj2.name}-agenda.md"
         agenda2.write_text("# Agenda\n\n## 📅 Eventos\n\n")
-        monkeypatch.setattr("core.ics_share.find_project", lambda name: proj2)
-        monkeypatch.setattr("core.ics_share.resolve_file",
+        monkeypatch.setattr("views.cal.share.find_project", lambda name: proj2)
+        monkeypatch.setattr("views.cal.share.resolve_file",
                              lambda pd, kind: agenda2)
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-        monkeypatch.setattr("core.ics_share.write_workspace",
+        monkeypatch.setattr("views.cal.share.write_workspace",
                              lambda root, project_filter=None: 0)
         monkeypatch.setattr("core.deliver._find_cloud_root", lambda: None)
 
