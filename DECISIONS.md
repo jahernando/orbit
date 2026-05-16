@@ -530,6 +530,96 @@ Los **tipos compartidos** entre los dos lados (e.g. la dataclass `Issue` usada p
 
 ---
 
+## ADR-034 — `save` como verbo de cierre + chain commit_post unificado
+**Estado**: VIGENTE (decisión 2026-05-16, 4 commits: `e162257`, `7f49ef2`, `01b09a6`, `f0c6af8`).
+
+**Contexto**: el comando `orbit commit` arrastraba significado git ("git commit con extras") que ya no capturaba lo que la operación hace: validar (doctor) + versionar (git commit) + proyectar (cloud HTML + .ics + Reminders.app). El nombre engañaba y, a la vez, el flujo interno escondía la mitad de las cosas: doctor estaba inline en `run_commit`, render era side-effect de `cloudsync_push_background`, ICS estaba tres niveles bajo el commit_post chain (vía `after_render`). El chain visible en `hooks_catalog.json` no contaba la historia real de lo que pasa al cerrar el trabajo.
+
+**Decisión**: dos cosas combinadas.
+
+1. **Rename público a `save`**:
+   - `orbit save` es el verbo canónico; `orbit commit` queda como alias legacy (patrón ya usado en `link/track`, `import/deliver`).
+   - Strings UI ("Mensaje del save", "Confirmar save?", "Save realizado", "sin save"), shell COMMANDS, docs (CHULETA/TUTORIAL/README/HOOKSYSTEM) actualizados.
+   - **Internos intactos**: `run_commit`, `cmd_commit`, hook chains `commit_pre/post/offer`, `_git_commit()` se mantienen — el blame/log de git histórico habla de "commit", y el git real sigue siendo git commit.
+
+2. **Limpieza del chain en 3 sub-fases (A, B, C)**:
+   - **A** — Doctor declarativo: `_action_doctor_check_save` en `views/doctor/doctor.py`, crítica en `commit_pre.pre`. El usuario rechaza interactivamente → action devuelve `ok=False` + critical=True → `_chain_aborted` aborta el save. En no-tty: warning + continúa. Borrado del bloque inline en `run_commit` (~25 ℓ).
+   - **B** — Render como post-action propia: `cloudsync_push_background` → `render_changed_background` (módulo `views.render.render`). Las funciones `sync_to_*` salen de `core/cloudsync.py` y pasan a `views/render/render.py` con nombre claro (`render_changed_to_cloud*`, `render_all_to_cloud`). `cloudsync.py` queda con sólo los status helpers (`_write/_read_sync_status`, `startup_cloud_check`, `check_cloud_sync`).
+   - **C** — ICS a `commit_post` directo: `ics_emit_workspace` sube de `after_render` (chain eliminado) a `commit_post.post`. `render_changed`/`render_all` ya no disparan ningún chain. `_action_ics_emit_workspace` resuelve `cloud_root` por sí mismo si no viene en ctx. **Cambio observable**: `orbit render` manual ya no regenera los `.ics`; usar `orbit ics --workspace` aparte.
+
+Estado final del chain:
+```
+fire("commit_pre"):  cloud_imgs_process · cronograma_log_completed · doctor_check_save (CRITICAL)
+[git commit]
+fire("commit_post"): render_changed_background · ics_emit_workspace · ring_refresh
+```
+
+**Razón**:
+- *Save captura mejor "guardar el estado"*. La metáfora editorial (Ctrl+S) es universal; "commit" arrastra jerga git que no captura el workflow.
+- *Cada acción visible y skippeable*. `orbit save --help` expone `--no-doctor-check-save`, `--no-render-changed-background`, etc. — gratis vía `add_chain_flags`. Antes, las acciones sepultadas no se podían saltar.
+- *El catálogo cuenta la historia*. Quien lee `hooks_catalog.json` ve las 3 pre + 3 post sin tener que escarbar en `run_commit` ni en `cloudsync.py` para descubrir qué pasa de verdad.
+- *Internos vs UX separados*. Renombrar sólo la cara visible (fase F1 público) deja el `git log/blame` legible — los commits históricos hablan de "commit" porque hablaban de git commit; la fase F2 (rename interno) queda opcional para más adelante.
+
+**Lo que NO se hizo** (deuda explícita):
+- F2 interno: `run_commit→run_save`, `cmd_commit→cmd_save`, chains `commit_pre/post/offer→save_pre/post/offer`. Coste alto (bindings legacy en hooks_catalog para no romper `orbit.json` del usuario), valor bajo (sólo cosmético en código). Aplazado sin compromiso.
+- Mover `cloudsync.py` entero a `views/render/`: el módulo se quedó con utilidades de status + check. Aceptable.
+
+**Consecuencias**:
+- Cambio menor de exit code: cancelar save por rechazo del doctor devolvía exit 0 (no-error); ahora exit 1 (chain abortado). Coherente con "el usuario abortó a propósito".
+- Mensaje cambia: `Sincronización al cloud en background` → `Render al cloud en background`.
+- `orbit render` manual emite un mensaje informativo ("`.ics` no regenerados — `orbit ics --workspace` si los necesitas").
+
+**Tradeoff considerado**: la opción C ("dejar `after_render` chain con ICS, sólo añadir a commit_post") fue descartada por **doble ejecución** — la action correría dos veces tras un save (una desde el subprocess de render, otra desde el shell principal). Eliminar `after_render` es lo correcto.
+
+**Where lives**: `core/hooks_catalog.json` (`commit_pre.pre` + `commit_post.post`), `core/commit.py::run_commit`, `views/doctor/doctor.py::_action_doctor_check_save`, `views/render/render.py::{render_changed_to_cloud*, _action_render_changed_background, _action_ics_emit_workspace}`, `orbit.py::cmd_commit` (alias `save`/`commit`). Memoria viva en `project_orbit_save` (si se crea) y notas en `project_orbit_next_session`.
+
+---
+
+## ADR-035 — `views/secretary/` como viewers del workspace + dashboard cloud unificado
+**Estado**: VIGENTE (decisión 2026-05-16, 7 commits: `ad2e30f`, `5e79069`, `c7400e2`, `7a21dde`, `a826313`, `44b60e3`, `9e63d8d`).
+
+**Contexto**: tras introducir [ADR-033](#adr-033--separación-core-writers-vs-views-readers), `views/` ya tenía render, doctor, cal y ring. Faltaba un sitio coherente para los viewers que regeneran el dashboard del workspace (panel del día, agenda próxima, calendar, lista de proyectos): vivían inline en `orbit.py::run_dash`, mezclados con la orquestación, y emitían sus `.md` a la raíz del workspace con el nombre `agenda.md` — chocando con `{proj}-agenda.md` (la verdad escrita por el usuario en Obsidian). Y a la vez, `render.py` generaba en cloud **otro** dashboard ad-hoc (`index.html`, `proyectos.html`, `agenda.html`) con lógica paralela al que vivía localmente.
+
+**Decisión**: introducir el concepto **secretary** como tercera familia (junto a `cartero` y `ring-daemon`), con dos cosas combinadas.
+
+1. **`views/secretary/` con viewers puros** (regla "secretary = viewer puro"; sin orquestación, sin daemons, sin side-effects fuera del path de salida):
+   - `panel.py`, `agenda_next.py`, `calendar.py`, `projects.py`, cada uno con `generate(out_path)`.
+   - Outputs en `📋secretary/{panel,agenda-next,calendar,projects}.md` dentro del workspace. Rename `agenda.md → agenda-next.md` para resolver la colisión nominal con `{proj}-agenda.md`.
+   - `projects.py` (nuevo): tabla markdown por tipo con Proyecto · Prio · Estado · Descripción (extraída de `## Estado actual` del project.md) · Secciones.
+   - `run_dash` re-cableado: orquesta los 4 viewers, sin lógica inline.
+
+2. **Front-page del workspace**: `workspace.md` estático en la raíz del workspace, escrito por el usuario (descripción libre) con links al dashboard. Análogo a `{proj}-project.md` por proyecto. Lo bootstrappea `bootstrap_workspace_md()` desde `orbit setup` con un template básico; no sobreescribe si ya existe.
+
+3. **Dashboard cloud unificado (fase E2)**: render lee de secretary como fuente única.
+   - `workspace.md` → `cloud_root/index.html` (front-page del cloud).
+   - `📋secretary/*.md` → `cloud_root/📋secretary/*.html`.
+   - **Eliminadas** `render_index`, `render_proyectos`, `render_agenda` y `_render_dashboard` (~230 ℓ borradas) — su lógica vivía duplicada en secretary; cloud y local comparten ahora la misma fuente, sólo cambia el formato.
+
+**Razón**:
+- *Una sola fuente de verdad-derivada*. Antes la lista de proyectos vivía dos veces (`render_proyectos` para cloud y `secretary/projects` para local) con lógica paralela. Tras E2, vive una vez en `secretary/projects.py`; el cloud sólo proyecta a HTML.
+- *Resolución de la colisión `agenda.md`*. El derivado del workspace y la verdad de proyecto compartían nombre — fuente real de confusión. `agenda-next.md` (en `📋secretary/`) las distingue.
+- *workspace.md como front-page de autor*. Análogo al `{proj}-project.md`: descripción + links. Editable por el usuario, no sobrescrito por bootstrap; render lo proyecta a `index.html` del cloud.
+- *Coherencia con la metáfora oficinista*. cartero + ring-daemon + secretary cubren los tres roles auxiliares (mensajería + alarmas + dashboard).
+
+**Lo que NO se hizo** (deuda o decisiones aplazadas):
+- *Daemon background que regenere secretary periódicamente*. Hoy `dash_background_loop_start` está vivo pero sin actualizar al nuevo modelo — decisión pendiente (incondicional cada hora vs sólo si hay cambios; ver próxima sesión).
+- *Más viewers en secretary* (agenda-today, today-log, start-projects, log-summary). El usuario los esbozó como dirección futura; por ahora `panel.md` consolida los tres primeros. Dividir cuando el uso lo pida.
+- *Secretary no orquesta ni lanza otros satélites*. Regla acordada; aplazada la discusión sobre si secretary "lanza" cartero/ring (probablemente no — rompería el concepto de viewer puro).
+- *Borrado de `panel.md`/`agenda.md`/`calendar.md` legacy en raíz*: se hizo manualmente tras E2 (no automático en código). Coherente con "no migración automática del histórico".
+
+**Consecuencias**:
+- Cambio observable: `orbit render` manual ya no regenera `.ics`; el dashboard del cloud ahora vive en `📋secretary/*.html` con `index.html` viniendo de `workspace.md`.
+- Acción manual ejecutada al cierre: `bootstrap_workspace_md()` invocado one-shot en orbit-ws y orbit-ps; `git rm` de los .md viejos en orbit-ws (staged para el próximo save).
+- −197 ℓ netas en `render.py` por la unificación E2.
+
+**Tradeoff considerado**:
+- *E1 (mantener ambos paralelos)*: cloud generaría `index.html`/`proyectos.html`/`agenda.html` ad-hoc + también `📋secretary/*.html`. Duplicación sin valor. Rechazado.
+- *E3 (no llevar secretary a cloud)*: workspace.md y secretary/*.md sólo en local. Rompe la metáfora del front-page (`workspace.md` invisible para el móvil). Rechazado.
+
+**Where lives**: `views/secretary/{panel,agenda_next,calendar,projects}.py`, `core/setup.py::bootstrap_workspace_md`, `views/render/render.py::render_workspace_dashboard`, `orbit.py::run_dash` (orquestador), `orbit.py::SECRETARY_DIR` (constante). Memoria viva en `project_orbit_secretary` (snapshot 2026-05-16).
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:
