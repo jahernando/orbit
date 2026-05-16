@@ -20,6 +20,38 @@ _DEFAULT_TYPES = {
 }
 
 
+_WORKSPACE_MD_TEMPLATE = """\
+# {emoji} {space}
+
+> Descripción del workspace.
+> Edita este fichero para añadir contexto, prioridades, anotaciones.
+
+## 📋 Dashboard
+
+- [📊 Panel del día](📋secretary/panel.md)
+- [📅 Agenda próxima](📋secretary/agenda-next.md)
+- [🗓 Calendar 3 meses](📋secretary/calendar.md)
+- [📂 Proyectos](📋secretary/projects.md)
+"""
+
+
+def bootstrap_workspace_md() -> bool:
+    """Crea workspace.md (estático) en ORBIT_HOME si no existe.
+
+    Lee emoji y space de orbit.json (si existe). Si workspace.md ya
+    existe, no lo sobreescribe — es un fichero que el usuario edita.
+    Returns True si lo creó, False si ya existía.
+    """
+    ws_md = ORBIT_HOME / "workspace.md"
+    if ws_md.exists():
+        return False
+    cfg = _load_existing()
+    emoji = cfg.get("emoji", "🚀")
+    space = cfg.get("space", ORBIT_HOME.name)
+    ws_md.write_text(_WORKSPACE_MD_TEMPLATE.format(emoji=emoji, space=space))
+    return True
+
+
 def _load_existing() -> dict:
     """Load existing orbit.json or return empty dict."""
     if _ORBIT_JSON.exists():
@@ -294,5 +326,9 @@ def run_setup() -> int:
             json.dumps({"federated": federation}, indent=2, ensure_ascii=False) + "\n"
         )
         print(f"✅ Federación guardada en {_FEDERATION_JSON.name}")
+
+    # Bootstrap workspace.md (estático) if it doesn't exist yet
+    if bootstrap_workspace_md():
+        print(f"✅ workspace.md creado (descripción + links al dashboard)")
 
     return 0
