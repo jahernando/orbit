@@ -138,13 +138,6 @@ def _action_code_update_check(ctx):
     return {"ok": True}
 
 
-def _action_cartero_startup(ctx):
-    """Start the mail/Slack daemon if cartero.json is configured."""
-    from core.cartero_invoke import startup_cartero
-    startup_cartero()
-    return {"ok": True}
-
-
 def _action_secretary_refresh(ctx):
     """Regenerate the secretary viewers: panel + agenda-next + calendar + projects.
 
@@ -166,12 +159,23 @@ def _action_secretary_refresh(ctx):
         return {"ok": False, "msg": f"{type(e).__name__}: {e}"}
 
 
-def _action_dash_background_loop_start(ctx):
-    """Spawn the hourly dash refresh daemon (polls _dash_stop every 5s)."""
+def _action_daemons_startup(ctx):
+    """Arranca los daemons del workspace: cartero (mail/Slack) + dash background loop.
+
+    Consolidación 2026-05-16 de `cartero_startup` + `dash_background_loop_start`.
+    Son daemons ortogonales (mail/Slack notifier vs hourly secretary refresh)
+    pero conceptualmente forman un único grupo "spawn workspace daemons".
+
+    Cartero es no-op si no hay `cartero.json` configurado. El dash loop
+    poll _dash_stop cada 5s y se termina limpiamente en _run_shutdown.
+    """
+    from core.cartero_invoke import startup_cartero
+    startup_cartero()
+
     _dash_stop.clear()
     t = threading.Thread(target=_dash_background_loop, daemon=True)
     t.start()
-    return {"ok": True, "msg": "daemon started"}
+    return {"ok": True, "msg": "daemons started"}
 
 
 # Chain composition and bindings live in core/hooks_catalog.json — loaded once

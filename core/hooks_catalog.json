@@ -46,19 +46,14 @@
       "fn": "_action_code_update_check",
       "critical": false
     },
-    "cartero_startup": {
-      "module": "core.shell",
-      "fn": "_action_cartero_startup",
-      "critical": false
-    },
     "secretary_refresh": {
       "module": "core.shell",
       "fn": "_action_secretary_refresh",
       "critical": false
     },
-    "dash_background_loop_start": {
+    "daemons_startup": {
       "module": "core.shell",
-      "fn": "_action_dash_background_loop_start",
+      "fn": "_action_daemons_startup",
       "critical": false
     },
     "ics_emit_workspace": {
@@ -93,10 +88,9 @@
         "cloud_sync_status_check",
         "save_offer",
         "code_update_check",
-        "cartero_startup",
         "ring_refresh",
         "secretary_refresh",
-        "dash_background_loop_start"
+        "daemons_startup"
       ]
     },
     "day_open": {

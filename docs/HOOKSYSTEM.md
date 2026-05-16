@@ -144,9 +144,8 @@ Esta es la chain con **más actions** del sistema. Solo es trigger temporal: nin
 | 6 | `code_update_check` | `core/commit.py:499-622` | no | tty-only | Checkea si orbit repo tiene nuevos commits, ofrece pull |
 | 7 | `gsync_background` | `core/gsync.py:2829` | no | `applescript_writes: false` → DORMANT | Thread daemon |
 | 8 | `schedule_reminders` | `views/ring/parse.py` | no | NO-OP | **Dead code**. Cuerpo unreachable (`return []`). Llamada vestigial |
-| 9 | `cartero_startup` | `core/cartero_invoke.py` → `satellites/cartero/daemon.py --startup` | no | falta `cartero.json` | Daemon de mail/Slack si está configurado |
+| 9+11 | `daemons_startup` | `core/shell.py:_action_daemons_startup` → `startup_cartero` + thread loop | no | cartero es no-op si falta `cartero.json` | Consolidación 2026-05-16 de `cartero_startup` + `dash_background_loop_start`. Arranca daemon de mail/Slack y el thread de refresh hourly de secretary. |
 | 10 | `secretary_refresh` | `core/shell.py:_action_secretary_refresh` → `run_dash(silent=False)` | no | no | Regenera `📋secretary/{panel,agenda-next,calendar,projects}.md` (renombrado de `dash_render` en 2026-05-16) |
-| 11 | `dash_background_loop_start` | `core/shell.py:134-136` | no | no | Thread daemon: refresh dash cada 1h |
 
 **Problemas conocidos:**
 - (1) puede seguir corriendo cuando startup termina ("Doctor aún revisando…").

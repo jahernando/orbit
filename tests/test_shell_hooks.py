@@ -40,10 +40,9 @@ def test_shell_start_chain_registered():
         "cloud_sync_status_check",
         "save_offer",
         "code_update_check",
-        "cartero_startup",
         "ring_refresh",
         "secretary_refresh",
-        "dash_background_loop_start",
+        "daemons_startup",
     ]
 
 
@@ -55,8 +54,8 @@ def test_shell_actions_all_registered():
     for name in (
         "doctor_startup", "advance_overdue_recurring", "cloud_sync_status_check",
         "save_offer", "code_update_check",
-        "cartero_startup", "ring_refresh",
-        "secretary_refresh", "dash_background_loop_start",
+        "ring_refresh",
+        "secretary_refresh", "daemons_startup",
     ):
         assert name in hooks.ACTIONS, f"Missing: {name}"
         assert hooks.ACTIONS[name].critical is False, name
@@ -150,12 +149,6 @@ def test_code_update_check_delegates():
     h.assert_called_once()
 
 
-def test_cartero_startup_delegates():
-    with patch("core.cartero_invoke.startup_cartero") as h:
-        shell._action_cartero_startup(None)
-    h.assert_called_once()
-
-
 # ── secretary_refresh — exception swallowing ────────────────────────────────
 
 def test_secretary_refresh_success():
@@ -172,20 +165,22 @@ def test_secretary_refresh_swallows_exception():
     assert "RuntimeError" in result["msg"]
 
 
-# ── dash_background_loop_start ───────────────────────────────────────────────
+# ── daemons_startup ───────────────────────────────────────────────────────────
 
-def test_dash_background_loop_start_spawns_daemon():
-    """Verify a daemon thread is started. We immediately stop it to avoid leaks."""
+def test_daemons_startup_spawns_cartero_and_dash_thread():
+    """daemons_startup = cartero (delegated) + dash background loop thread."""
     shell._dash_stop.set()  # ensure the loop exits on first wait()
     try:
-        with patch("core.shell.threading.Thread") as MockThread:
+        with patch("core.cartero_invoke.startup_cartero") as cartero, \
+             patch("core.shell.threading.Thread") as MockThread:
             instance = MockThread.return_value
-            result = shell._action_dash_background_loop_start(None)
+            result = shell._action_daemons_startup(None)
+        cartero.assert_called_once()
         MockThread.assert_called_once()
         kwargs = MockThread.call_args.kwargs
         assert kwargs["daemon"] is True
         instance.start.assert_called_once()
-        assert result == {"ok": True, "msg": "daemon started"}
+        assert result == {"ok": True, "msg": "daemons started"}
     finally:
         shell._dash_stop.clear()
 
@@ -285,9 +280,9 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
         "startup_untracked_check",
         "startup_commit_offer",
         "startup_code_update_check",
-        "startup_cartero",
         "ring_refresh_all",
         "run_dash",
+        "startup_cartero",
         "dash_daemon_thread",
     ]
     assert all(r.ok for r in results)
@@ -297,10 +292,9 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
         "cloud_sync_status_check",
         "save_offer",
         "code_update_check",
-        "cartero_startup",
         "ring_refresh",
         "secretary_refresh",
-        "dash_background_loop_start",
+        "daemons_startup",
     ]
 
 
