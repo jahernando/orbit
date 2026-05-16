@@ -806,11 +806,13 @@ def run_dash(silent: bool = False, project_hint: Optional[str] = None):
     from views.secretary import panel as sec_panel
     from views.secretary import agenda_next as sec_agenda
     from views.secretary import calendar as sec_calendar
+    from views.secretary import projects as sec_projects
 
     SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
     sec_panel.generate(SECRETARY_DIR / "panel.md")
     sec_agenda.generate(SECRETARY_DIR / "agenda-next.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
+    sec_projects.generate(SECRETARY_DIR / "projects.md")
 
     # Touch stamp so background dash in other shells skips redundant refreshes
     (ORBIT_DIR / ".dash-stamp").touch()
@@ -830,7 +832,7 @@ def run_dash(silent: bool = False, project_hint: Optional[str] = None):
         pass
 
     if not silent:
-        print("  ✓ dash actualizado (📋secretary/{panel,agenda-next,calendar}.md)")
+        print("  ✓ dash actualizado (📋secretary/{panel,agenda-next,calendar,projects}.md)")
 
     return 0
 
@@ -1487,7 +1489,7 @@ def _build_parser():
     _add_fed_args(pan_p)
 
     # --- dash ---
-    subparsers.add_parser("dash", help="Refresh dashboard: 📋secretary/{panel,agenda-next,calendar}.md")
+    subparsers.add_parser("dash", help="Refresh dashboard: 📋secretary/{panel,agenda-next,calendar,projects}.md")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")
