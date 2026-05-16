@@ -660,6 +660,45 @@ Además, tras añadir el viewer `report_summary` (que lee logbook + highlights),
 
 ---
 
+## ADR-037 — Watchdog: doctor + full-refresh periódico tras edición externa
+**Estado**: VIGENTE (decisión 2026-05-16 PM, extiende [ADR-036](#adr-036--wrap-de-refresh-tras-mutación-cli-matriz-por-comando-sin-render)).
+
+**Contexto**: el wrap de [ADR-036](#adr-036--wrap-de-refresh-tras-mutación-cli-matriz-por-comando-sin-render) solo se dispara tras mutaciones CLI. Pero el usuario edita habitualmente `agenda.md`, `logbook.md` y `highlights.md` directamente en Obsidian o un editor externo. Esos cambios no pasan por ningún comando orbit → ningún derivado se entera (dash, ics, ring quedan stale hasta el siguiente save o shell start). El hourly background loop preexistente (`_dash_background_loop`) sólo regeneraba dash; era además vulnerable a propagar drift (si la edición externa rompía la sintaxis, panel/agenda-next/ics emitían basura silenciosa).
+
+**Decisión**: rebautizar el daemon background como **watchdog** y darle dos responsabilidades nuevas:
+
+1. **Doctor pre-check**. Cada tick empieza por `check_all_projects()`. Si hay issues, **no regenera derivados** (los derivados se congelan en su última versión limpia) y escribe un marker `.doctor-pending` (timestamp + count). El REPL prompt lo surface al siguiente input — una sola vez por sesión — con un aviso de una línea: `🏥 Doctor (HH:MM): N problemas detectados — ejecuta doctor`.
+
+2. **Full refresh**, no sólo dash. Cuando el tick corre limpio, llama a `orbit._run_full_refresh_coalesced()` (mismo helper que [ADR-036](#adr-036--wrap-de-refresh-tras-mutación-cli-matriz-por-comando-sin-render): dash + ring + ics). Render sigue reservado para `save`.
+
+3. **Configurable**. `<workspace>/orbit.json → "watchdog": {"enabled": true, "interval_minutes": 60}` (clamp `[5, 1440]`). `enabled=false` → el thread retorna inmediatamente.
+
+**Ciclo de vida del `.doctor-pending`**:
+- Escrito por watchdog tick cuando detecta issues.
+- Surface en el REPL: una vez por sesión (flag en memoria), no borra el fichero.
+- Borrado por watchdog tick cuando corre limpio (auto-clear cuando el usuario arregla y el siguiente tick lo confirma).
+
+**Razón**:
+- *Catch-early*. La edición externa es justo el punto donde más probable es introducir drift sintáctico; ahí tiene más valor un check.
+- *No propagar basura*. Si `agenda.md` tiene una línea rota, panel/ics/ring quedan en su versión limpia anterior — mejor que reflejar el error en los derivados sin avisar.
+- *UX limpia*. Daemon thread no imprime a stdout (intercala con prompt); en su lugar deja un marker y el REPL lo surface al input — sin interrumpir typing.
+- *Surfacing una vez por sesión*. Evita spam si el usuario tarda en arreglar; el siguiente shell start vuelve a verlo (el `_action_doctor_startup` síncrono ya lo cubre).
+- *Configurable*. Permite desactivar (sesiones largas sin edición externa) o ajustar el periodo (5 min para flujos intensivos, 1440 para "una vez al día").
+
+**Coherencia con [ADR-036](#adr-036--wrap-de-refresh-tras-mutación-cli-matriz-por-comando-sin-render)**:
+- Wrap CLI y watchdog comparten el mismo helper `_run_full_refresh_coalesced` → un solo punto de mantenimiento del orden dash → ring → ics.
+- Ambos respetan la regla "render solo en save".
+- El stamp `.dash-stamp` coalesce los dos caminos: si el wrap CLI acaba de correr, el watchdog skipea (vía coalescencia interna de `_run_dash_coalesced`).
+
+**Trade-offs considerados**:
+- *Print directo a stderr desde el daemon*: rechazado por UX (intercala con prompt).
+- *Notificación macOS (osascript)*: rechazado por dependencia de OS-specific tooling y porque el aviso pre-prompt cubre el caso bien.
+- *Eliminar el watchdog* (la nota previa en memoria lo cuestionaba): rechazado tras este upgrade — ahora cubre un caso real (edición externa) que ni shell_start ni day_open ni save cubren entre eventos.
+
+**Where lives**: `core/shell.py::_load_watchdog_config`, `_watchdog_tick`, `_watchdog_loop`, `_maybe_show_doctor_pending`, `_DOCTOR_PENDING`. Spawn desde `_action_daemons_startup` (chain `shell_start`). Tests en `tests/test_watchdog.py` (18 tests).
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

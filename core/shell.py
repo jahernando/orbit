@@ -8,52 +8,170 @@ Startup flow:
   5. gsync in background (fire & forget) + schedule reminders
 """
 
+import json
 import readline
 import shlex
 import sys
 import threading
-from datetime import date as _date
+from datetime import date as _date, datetime as _datetime
 from pathlib import Path
 
 from core.config import ORBIT_HOME as ORBIT_DIR, ORBIT_CODE, ORBIT_PROMPT
 
 
-# ── Background dash refresh ─────────────────────────────────────────────────
+# ── Watchdog: periodic refresh + doctor pre-check ───────────────────────────
+#
+# Captura drift introducido por ediciones manuales de .md (en Obsidian o
+# editor externo) entre comandos CLI de orbit. Cada tick:
+#   1. Doctor sobre el workspace.
+#   2. Si hay issues → escribe .doctor-pending (la prompt lo surface);
+#      NO regenera derivados (panel/agenda/ics/ring) para no propagar basura.
+#   3. Si limpio → _run_full_refresh_coalesced (dash + ring + ics) y borra
+#      .doctor-pending si existía.
+#
+# Configurable en `<workspace>/orbit.json` → "watchdog":
+#   { "enabled": true, "interval_minutes": 60 }   // clamped [5, 1440]
 
 _dash_stop = threading.Event()
 
-DASH_INTERVAL = 3600  # seconds (1 hour) — refresh cadence
+_WATCHDOG_DEFAULT_ENABLED = True
+_WATCHDOG_DEFAULT_INTERVAL_MIN = 60
+_WATCHDOG_MIN_MIN, _WATCHDOG_MAX_MIN = 5, 1440
 _DASH_STOP_POLL = 5   # seconds — shutdown latency
+
 _DASH_STAMP = ORBIT_DIR / ".dash-stamp"
+_DOCTOR_PENDING = ORBIT_DIR / ".doctor-pending"
 
 
-def _dash_background_loop():
-    """Refresh dash files every DASH_INTERVAL in background.
+def _load_watchdog_config(workspace_root: Path) -> dict:
+    """Read <workspace>/orbit.json → 'watchdog' section.
+
+    Defaults: enabled=True, interval_minutes=60. The 'interval_minutes'
+    value is clamped to [_WATCHDOG_MIN_MIN, _WATCHDOG_MAX_MIN]; bad types
+    or out-of-range fall back silently.
+    """
+    cfg = {
+        "enabled": _WATCHDOG_DEFAULT_ENABLED,
+        "interval_minutes": _WATCHDOG_DEFAULT_INTERVAL_MIN,
+    }
+    path = workspace_root / "orbit.json"
+    if not path.exists():
+        return cfg
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return cfg
+    user = data.get("watchdog")
+    if not isinstance(user, dict):
+        return cfg
+    if "enabled" in user:
+        cfg["enabled"] = bool(user["enabled"])
+    if "interval_minutes" in user:
+        try:
+            v = int(user["interval_minutes"])
+            if _WATCHDOG_MIN_MIN <= v <= _WATCHDOG_MAX_MIN:
+                cfg["interval_minutes"] = v
+        except (TypeError, ValueError):
+            pass
+    return cfg
+
+
+def _write_doctor_pending(issue_count: int) -> None:
+    """Write .doctor-pending JSON marker for the REPL prompt to surface."""
+    payload = {
+        "timestamp": _datetime.now().strftime("%H:%M"),
+        "count":     issue_count,
+    }
+    try:
+        tmp = _DOCTOR_PENDING.with_suffix(".pending.tmp")
+        tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+        tmp.replace(_DOCTOR_PENDING)
+    except OSError:
+        pass
+
+
+def _clear_doctor_pending() -> None:
+    """Remove .doctor-pending if it exists (no-op otherwise)."""
+    try:
+        _DOCTOR_PENDING.unlink()
+    except (FileNotFoundError, OSError):
+        pass
+
+
+def _watchdog_tick() -> dict:
+    """One iteration of the watchdog. Testable in isolation.
+
+    Returns a status dict so tests can assert behavior:
+      {"status": "issues", "count": N}  — doctor found problems
+      {"status": "clean"}                — doctor clean, full refresh ran
+      {"status": "error", "msg": "..."}  — doctor itself threw
+    """
+    try:
+        from views.doctor.doctor import check_all_projects
+        issues = check_all_projects()
+    except Exception as exc:
+        return {"status": "error", "msg": f"{type(exc).__name__}: {exc}"}
+
+    if issues:
+        _write_doctor_pending(len(issues))
+        return {"status": "issues", "count": len(issues)}
+
+    _clear_doctor_pending()
+    try:
+        from orbit import _run_full_refresh_coalesced
+        _run_full_refresh_coalesced()
+    except Exception:
+        pass
+    return {"status": "clean"}
+
+
+def _watchdog_loop():
+    """Background daemon thread: tick every `interval_minutes` (from config).
 
     Polls _dash_stop every _DASH_STOP_POLL seconds so shell exit terminates
-    the daemon promptly (otherwise it would linger up to DASH_INTERVAL).
-    Uses a timestamp file so multiple shells don't duplicate work.
+    promptly (otherwise daemon could linger up to one interval). Returns
+    immediately if watchdog is disabled in config.
     """
     import time
-    last_refresh = time.time()
+    cfg = _load_watchdog_config(ORBIT_DIR)
+    if not cfg["enabled"]:
+        return
+    interval_seconds = cfg["interval_minutes"] * 60
+    last_tick = time.time()
     while True:
-        # Wait briefly; if stop signal arrives, return immediately.
         if _dash_stop.wait(_DASH_STOP_POLL):
             return
-        if time.time() - last_refresh < DASH_INTERVAL:
+        if time.time() - last_tick < interval_seconds:
             continue
-        try:
-            if _DASH_STAMP.exists():
-                age = time.time() - _DASH_STAMP.stat().st_mtime
-                if age < DASH_INTERVAL * 0.9:
-                    last_refresh = time.time()
-                    continue
-            from orbit import run_dash
-            run_dash(silent=True)
-            _DASH_STAMP.touch()
-            last_refresh = time.time()
-        except Exception:
-            pass
+        _watchdog_tick()  # internal try/except absorbs errors
+        last_tick = time.time()
+
+
+# REPL session state for one-shot doctor pending notification.
+_doctor_pending_shown = False
+
+
+def _maybe_show_doctor_pending() -> None:
+    """Si .doctor-pending existe y aún no se mostró en esta sesión, print 1 línea.
+
+    No borra el fichero — persiste hasta que el watchdog corra limpio o
+    el usuario ejecute `doctor` (que limpia el state al arreglar).
+    """
+    global _doctor_pending_shown
+    if _doctor_pending_shown:
+        return
+    if not _DOCTOR_PENDING.exists():
+        return
+    try:
+        data = json.loads(_DOCTOR_PENDING.read_text())
+        ts = data.get("timestamp", "?")
+        n = data.get("count", "?")
+        plural = "s" if isinstance(n, int) and n != 1 else ""
+        print(f"  🏥 Doctor ({ts}): {n} problema{plural} detectado{plural} "
+              f"— ejecuta `doctor`")
+        _doctor_pending_shown = True
+    except (json.JSONDecodeError, OSError):
+        pass
 
 
 # ── Shell-start hook actions (chain `shell_start`) ────────────────────────────
@@ -153,20 +271,22 @@ def _action_secretary_refresh(ctx):
 
 
 def _action_daemons_startup(ctx):
-    """Arranca los daemons del workspace: cartero (mail/Slack) + dash background loop.
+    """Arranca los daemons del workspace: cartero (mail/Slack) + watchdog loop.
 
-    Consolidación 2026-05-16 de `cartero_startup` + `dash_background_loop_start`.
-    Son daemons ortogonales (mail/Slack notifier vs hourly secretary refresh)
+    Consolidación 2026-05-16 de `cartero_startup` + `dash_background_loop_start`,
+    luego renombrado a watchdog (doctor + full-refresh) en 2026-05-16 PM.
+    Son daemons ortogonales (mail/Slack notifier vs periodic doctor+refresh)
     pero conceptualmente forman un único grupo "spawn workspace daemons".
 
-    Cartero es no-op si no hay `cartero.json` configurado. El dash loop
+    Cartero es no-op si no hay `cartero.json` configurado. El watchdog
     poll _dash_stop cada 5s y se termina limpiamente en _run_shutdown.
+    Si watchdog está disabled en orbit.json, el thread retorna inmediatamente.
     """
     from core.cartero_invoke import startup_cartero
     startup_cartero()
 
     _dash_stop.clear()
-    t = threading.Thread(target=_dash_background_loop, daemon=True)
+    t = threading.Thread(target=_watchdog_loop, daemon=True)
     t.start()
     return {"ok": True, "msg": "daemons started"}
 
@@ -249,6 +369,9 @@ def run_shell(editor: str = ""):
             _hooks.fire("day_changed", ctx={"silent": True}, verbosity="quiet")
             print()
             shell_start_date = _date.today()
+
+        # Watchdog deferred notification (one-shot per session).
+        _maybe_show_doctor_pending()
 
         try:
             line = input(f"{ORBIT_PROMPT} ").strip()

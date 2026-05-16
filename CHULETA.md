@@ -764,7 +764,32 @@ El doctor hace 3 tipos de check (mismo comando, salida segmentada):
    - Ring: plist, TCC, ring.json freshness
    - ICS: buckets bien configurados + frescura de los `.ics` en cloud
 
-Se ejecuta automáticamente al iniciar la shell y antes de cada save. Con `--fix`: muestra correcciones disponibles y permite aplicarlas interactivamente.
+Se ejecuta automáticamente al iniciar la shell, antes de cada save **y periódicamente en background por el watchdog** (ver más abajo). Con `--fix`: muestra correcciones disponibles y permite aplicarlas interactivamente.
+
+### watchdog — pre-check + refresh periódico
+
+Daemon background que arranca al abrir la shell. Cada `interval_minutes` (defecto 60):
+
+1. Corre `doctor` sobre el workspace.
+2. **Si hay issues** → escribe `.doctor-pending` (marker) y NO regenera derivados (panel/agenda-next/calendar/projects/report-summary, .ics, ring.json se congelan en su última versión limpia). El prompt del REPL muestra al siguiente input — una sola vez por sesión:
+
+   ```
+   🏥 Doctor (14:30): 3 problemas detectados — ejecuta `doctor`
+   ```
+
+3. **Si limpio** → `_run_full_refresh_coalesced` (dash + ring + ics) y borra el `.doctor-pending` si existía.
+
+Propósito: capturar drift introducido por edición externa (Obsidian, editor) entre comandos orbit. Sin watchdog, el `.ics` y Reminders.app no se enterarían de un `agenda.md` editado a mano hasta el siguiente `save`.
+
+Config en `<workspace>/orbit.json` (clamp `[5, 1440]` minutos):
+```json
+"watchdog": {
+  "enabled": true,
+  "interval_minutes": 60
+}
+```
+
+Para desactivarlo: `"enabled": false`.
 
 ### ring — alarmas vía Reminders.app (Orbit Ring)
 
