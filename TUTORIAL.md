@@ -79,7 +79,7 @@ panel                      # panel del día
 panel week                 # panel semanal
 panel month                # panel mensual
 panel --from monday --to friday   # rango personalizado
-panel --open               # escribe a panel.md y abre en editor (fijable en Obsidian)
+panel --open               # escribe a 📋secretary/panel.md y abre en editor (fijable en Obsidian)
 ```
 
 Secciones del panel:
@@ -96,14 +96,14 @@ La agenda muestra tareas pendientes y vencidas, eventos, hitos y recordatorios.
 agenda                     # agenda de hoy
 agenda week                # agenda de la semana
 agenda month               # agenda del mes
-agenda --open              # escribe a agenda.md y abre en editor (fijable en Obsidian)
+agenda --open              # escribe a 📋secretary/agenda-next.md y abre en editor (fijable en Obsidian)
 agenda --date 2026-03      # agenda de un mes concreto
 agenda --from monday --to friday   # rango personalizado
 agenda --dated             # solo tareas/hitos con fecha
 agenda --order date        # agrupa por día con horas
 ```
 
-Con `--open`, tanto panel como agenda escriben a ficheros fijos (`panel.md`, `agenda.md`) que puedes fijar como pestañas en Obsidian. Cada vez que ejecutas el comando, el fichero se actualiza.
+Con `--open`, tanto panel como agenda escriben a ficheros fijos dentro de `📋secretary/` (`panel.md`, `agenda-next.md`) que puedes fijar como pestañas en Obsidian. Cada vez que ejecutas el comando, el fichero se actualiza.
 
 ### Flujo típico del día
 
@@ -111,8 +111,8 @@ Con `--open`, tanto panel como agenda escriben a ficheros fijos (`panel.md`, `ag
 Por la mañana
 ──────────────
 orbit
-  panel --open              # abre panel.md: ¿qué proyectos son prioritarios?
-  agenda --open             # abre agenda.md: ¿qué citas hay hoy?
+  panel --open              # abre 📋secretary/panel.md: ¿qué proyectos son prioritarios?
+  agenda --open             # abre 📋secretary/agenda-next.md: ¿qué citas hay hoy?
   note mission "notas-día"  # (opcional) nota temporal para apuntes sueltos
 
 Durante el día
@@ -361,8 +361,8 @@ orbit
   hl add next-kr "Resolución validada a 511 keV" --type results
 
   # Refrescar durante el día:
-  panel                            # actualiza panel.md: nueva actividad
-  agenda                           # actualiza agenda.md: tareas completadas
+  panel                            # actualiza 📋secretary/panel.md: nueva actividad
+  agenda                           # actualiza 📋secretary/agenda-next.md: tareas completadas
 
 Lunes por la tarde
 ──────────────────

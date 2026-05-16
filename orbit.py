@@ -584,6 +584,8 @@ def cmd_reminder(args):
 
 from core.config import ORBIT_HOME as ORBIT_DIR
 
+SECRETARY_DIR = ORBIT_DIR / "📋secretary"
+
 
 def cmd_project(args):
     sub = getattr(args, "action", None)
@@ -689,7 +691,7 @@ def cmd_agenda(args):
         include_federated=not getattr(args, "no_fed", False),
     )
     return _handle_output(args, fn, "agenda",
-                          open_file_path=ORBIT_DIR / "agenda.md")
+                          open_file_path=SECRETARY_DIR / "agenda-next.md")
 
 
 _MONTH_MAP = {
@@ -770,7 +772,7 @@ def cmd_cal(args):
         markdown=bool(to_file),
     )
     return _handle_output(args, fn, "cal",
-                          open_file_path=ORBIT_DIR / "calendar.md")
+                          open_file_path=SECRETARY_DIR / "calendar.md")
 
 
 _REPORT_PERIODS = {
@@ -783,20 +785,20 @@ _REPORT_PERIODS = {
 
 def cmd_panel(args):
     from core.panel import run_panel
-    from core.config import ORBIT_HOME
     period = getattr(args, "period", None)
     fn = lambda: run_panel(period=period,
                            include_federated=not getattr(args, "no_fed", False),
                            date_from=_d(getattr(args, "date_from", None)),
                            date_to=_d(getattr(args, "date_to", None)))
     return _handle_output(args, fn, "panel",
-                          open_file_path=ORBIT_HOME / "panel.md")
+                          open_file_path=SECRETARY_DIR / "panel.md")
 
 
 def run_dash(silent: bool = False, project_hint: Optional[str] = None):
-    """Refresh panel.md, agenda.md (2 weeks), calendar.md (3 months).
+    """Refresh los viewers de secretary: panel + agenda-next + calendar.
 
-    Orquesta los viewers de secretary; cada uno escribe su .md.
+    Orquesta los viewers de secretary; cada uno escribe su .md dentro de
+    `📋secretary/` en la raíz del workspace.
     silent=True suppresses all terminal output (used in background refresh and shutdown).
     project_hint: if set, the .ics regeneration only rewrites that project's
     per-project file (workspace bucket aggregators are always rebuilt).
@@ -805,9 +807,10 @@ def run_dash(silent: bool = False, project_hint: Optional[str] = None):
     from views.secretary import agenda_next as sec_agenda
     from views.secretary import calendar as sec_calendar
 
-    sec_panel.generate(ORBIT_DIR / "panel.md")
-    sec_agenda.generate(ORBIT_DIR / "agenda.md")
-    sec_calendar.generate(ORBIT_DIR / "calendar.md")
+    SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
+    sec_panel.generate(SECRETARY_DIR / "panel.md")
+    sec_agenda.generate(SECRETARY_DIR / "agenda-next.md")
+    sec_calendar.generate(SECRETARY_DIR / "calendar.md")
 
     # Touch stamp so background dash in other shells skips redundant refreshes
     (ORBIT_DIR / ".dash-stamp").touch()
@@ -827,7 +830,7 @@ def run_dash(silent: bool = False, project_hint: Optional[str] = None):
         pass
 
     if not silent:
-        print("  ✓ dash actualizado (panel.md + agenda.md + calendar.md)")
+        print("  ✓ dash actualizado (📋secretary/{panel,agenda-next,calendar}.md)")
 
     return 0
 
@@ -1484,7 +1487,7 @@ def _build_parser():
     _add_fed_args(pan_p)
 
     # --- dash ---
-    subparsers.add_parser("dash", help="Refresh dashboard: panel.md + agenda.md (2 weeks) + calendar")
+    subparsers.add_parser("dash", help="Refresh dashboard: 📋secretary/{panel,agenda-next,calendar}.md")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")
