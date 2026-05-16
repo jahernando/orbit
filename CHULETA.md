@@ -561,7 +561,7 @@ orbit ics --workspace                      # regenera todos los .ics en cloud_ro
 orbit ics --validate                       # dry-run: cuenta VEVENTs por bucket, sin escribir
 ```
 
-**Auto-regen**: cualquier mutación CLI sobre task/ms/ev/reminder/crono dispara `run_dash` en background, que llama `write_workspace(project_filter=<proj>)` — el `.ics` se actualiza solo. Igual `orbit save`, `orbit render`, `orbit dash`.
+**Auto-regen**: cualquier mutación CLI sobre task/ms/ev/reminder/crono/ics-import/email dispara en background un thread daemon que ejecuta `dash` (coalescido) + `ring.refresh_all()` + `write_workspace(project_filter=<proj>)` — `.ics` y Reminders.app se actualizan solos sin esperar a `save`. Mutaciones de `log`/`hl`/`project` disparan solo dash (no afectan a citas). Render a HTML se reserva para `save` (commit_post).
 
 **Topología** (en `cloud_root/calendar/`, configurable en `ics_buckets`):
 

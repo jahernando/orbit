@@ -844,6 +844,36 @@ def _run_dash_coalesced() -> None:
     run_dash(silent=True)
 
 
+def _run_full_refresh_coalesced(project_hint=None) -> None:
+    """Tras mutación de cita: dash (coalescido) + ring + ics(filter).
+
+    Replica en bg el orden del chain `commit_post` (secretary → ring →
+    ics) sin render, que se reserva para save. Cada paso fail-isolated:
+    un fallo en dash no impide ring, etc. project_hint se propaga solo
+    a ics (único writer con per-project artifacts); dash y ring no
+    soportan filtro útil (artefactos workspace-agregados).
+    """
+    try:
+        _run_dash_coalesced()
+    except Exception:
+        pass
+
+    try:
+        from views.ring.export import _action_ring_refresh
+        _action_ring_refresh(None)
+    except Exception:
+        pass
+
+    try:
+        from core.deliver import _find_cloud_root
+        from views.cal.ics import write_workspace
+        cr = _find_cloud_root()
+        if cr is not None:
+            write_workspace(cr, project_filter=project_hint)
+    except Exception:
+        pass
+
+
 def cmd_dash(args):
     """CLI `orbit dash`: refresca secretary localmente Y regenera .ics en cloud.
 
@@ -2021,10 +2051,15 @@ _COMMANDS = {
 
 
 # Commands that mutate state secretary reads → trigger silent, coalesced
-# dash refresh in a daemon thread. Citas → panel/agenda/calendar.
-# log/hl → report-summary (logbook + highlights). project → projects.md.
-_DASH_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
-                  "ics-import", "email", "log", "hl", "project"}
+# refresh in a daemon thread.
+#
+#   _CITA_TRIGGERS  → dash + ring + ics  (mutación de citas: agenda
+#                     publicada cambia en Calendar.app y Reminders.app).
+#   resto en _DASH_TRIGGERS → solo dash  (log/hl/project no afectan ics
+#                     ni ring, sólo a los viewers markdown).
+_CITA_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
+                  "ics-import", "email"}
+_DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project"}
 
 
 def run_command(argv: list) -> int:
@@ -2039,12 +2074,20 @@ def run_command(argv: list) -> int:
         return 0
     if args.command in _COMMANDS:
         result = _COMMANDS[args.command](args) or 0
-        # Refresh dash in background after state-changing commands.
-        # Coalesced via .dash-stamp so bursts collapse into one refresh
-        # (see _run_dash_coalesced). .ics regen lives in commit_post, not here.
+        # Refresh in background after state-changing commands.
+        # Citas → dash + ring + ics(project_filter); resto → solo dash.
+        # Coalesced via .dash-stamp; ics/ring corren cada vez (idempotent
+        # + barato comparado con dash). Render se reserva para commit_post.
         if args.command in _DASH_TRIGGERS and result == 0:
             import threading
-            threading.Thread(target=_run_dash_coalesced, daemon=True).start()
+            if args.command in _CITA_TRIGGERS:
+                hint = getattr(args, "project", None)
+                threading.Thread(target=_run_full_refresh_coalesced,
+                                 kwargs={"project_hint": hint},
+                                 daemon=True).start()
+            else:
+                threading.Thread(target=_run_dash_coalesced,
+                                 daemon=True).start()
         return result
     if args.command == "shell":
         run_shell(editor=_editor_from_args(args))

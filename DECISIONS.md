@@ -149,13 +149,10 @@ Solo en `.ics`. `agenda.md` no contiene este dato.
 ---
 
 ## ADR-017 — Auto-magia tras mutaciones CLI
-**Estado**: VIGENTE
-**Decisión**: tras cualquier `task add`, `ev edit`, `ms done`, `email <proj>`, `ics-import`, etc., orbit dispara en background:
-1. `run_dash` → regenera `panel.md`, `agenda.md`, `calendar.md`
-2. `write_workspace(project_filter=<proj>)` → regenera los `.ics` del workspace
-3. Eventualmente, post-commit, `render_changed` → HTML al cloud + reload de Calendar.app
+**Estado**: VIGENTE — refinado por [ADR-036](#adr-036--wrap-de-refresh-tras-mutación-cli-matriz-por-comando-sin-render).
+**Decisión**: tras cualquier `task add`, `ev edit`, `ms done`, `email <proj>`, `ics-import`, etc., orbit dispara en background un wrap que regenera secretary + ring + ics (con filtro por proyecto cuando aplica). Render a HTML se reserva para `save` (commit_post). Detalle de la matriz por comando y diseño del wrap en ADR-036.
 
-**Trigger central**: `orbit.py:_DASH_TRIGGERS`.
+**Trigger central**: `orbit.py:_DASH_TRIGGERS` + `_CITA_TRIGGERS`.
 **Consecuencias**: experiencia "todo se actualiza solo"; debugging más opaco si algo falla (mitigado parcialmente con doctor + ics --validate).
 
 ---
@@ -617,6 +614,48 @@ fire("commit_post"): render_changed_background · ics_emit_workspace · ring_ref
 - *E3 (no llevar secretary a cloud)*: workspace.md y secretary/*.md sólo en local. Rompe la metáfora del front-page (`workspace.md` invisible para el móvil). Rechazado.
 
 **Where lives**: `views/secretary/{panel,agenda_next,calendar,projects}.py`, `core/setup.py::bootstrap_workspace_md`, `views/render/render.py::render_workspace_dashboard`, `orbit.py::run_dash` (orquestador), `orbit.py::SECRETARY_DIR` (constante). Memoria viva en `project_orbit_secretary` (snapshot 2026-05-16).
+
+---
+
+## ADR-036 — Wrap de refresh tras mutación CLI: matriz por comando, sin render
+**Estado**: VIGENTE (decisión 2026-05-16, refina [ADR-017](#adr-017--auto-magia-tras-mutaciones-cli)).
+
+**Contexto**: tras [ADR-035](#adr-035--viewssecretary-como-viewers-del-workspace--dashboard-cloud-unificado), `run_dash` quedó atómico (5 viewers, sin .ics ni render dentro). El wrap que disparaba `run_dash` en bg tras mutaciones CLI (`_DASH_TRIGGERS` en `orbit.py`) tenía dos problemas:
+1. **Bug latente**: pasaba `args=(True, hint)` a `run_dash(silent)` → TypeError silencioso en el thread daemon. El refresh post-mutación llevaba meses sin funcionar; pasaba desapercibido porque el chain `commit_post` (save) hacía el trabajo completo.
+2. **Cobertura incompleta**: aunque funcionara, solo refrescaba dash. Tras `task add` con `--time --ring`, Calendar.app y Reminders.app quedaban stale hasta el siguiente save.
+
+Además, tras añadir el viewer `report_summary` (que lee logbook + highlights), `log` y `hl` necesitaban disparar refresh — antes no estaban en `_DASH_TRIGGERS`.
+
+**Decisión**: el wrap post-mutación se estructura en una matriz por tipo de comando, sin render. Render es caro (HTML + KaTeX + Mermaid para todos los .md tocados) y solo se justifica en el momento de cierre (`save`).
+
+| Trigger | Mutaciones | Acciones en bg |
+|---|---|---|
+| `_CITA_TRIGGERS` | `task`, `ms`, `ev`, `reminder`/`rem`, `crono`, `ics-import`, `email` | dash (coalescido) + `ring.refresh_all()` + `ics.write_workspace(project_filter=<proj>)` |
+| `_DASH_TRIGGERS \ _CITA_TRIGGERS` | `log`, `hl`, `project` | dash (coalescido) |
+
+**Por qué `project_filter` solo en ics**:
+- `ics.write_workspace` genera **un .ics por proyecto** además de los buckets workspace-level. Con filtro, evita reescribir N-1 .ics inalterados. Ahorro real de escritura.
+- `secretary` y `ring` producen artefactos workspace-agregados (1 fichero por viewer / 1 `ring.json`). El filtro no ahorraría nada: hay que reescanear todos los proyectos para reconstruir el agregado. Caché de `project_data` entre runs se aplazó como deuda — añadirlo cuando el coste duela en uso real, no preventivamente.
+
+**Coalescencia**:
+- `dash` coalesce por `.dash-stamp` con ventana `_DASH_COALESCE_SECONDS = 10`. Bursts (p.ej. varios `log` seguidos) colapsan en un refresh.
+- `ics` y `ring` corren cada vez (más baratos individualmente, idempotentes en sus consumidores: bucket .ics se reescribe igual, daemon EventKit upsertea idempotente). Si aparece thrash observable, evaluar payload-diff en `ring.refresh` para no tocar mtime → no spawnea daemon (opción B discutida); no implementado hoy.
+
+**Fail-isolation**: cada paso del wrap (`_run_full_refresh_coalesced`) try/except independiente. Un fallo en dash no impide ring; un fallo en ring no impide ics. Excepciones absorbidas silenciosamente — el thread es daemon y un print interferiría con la prompt del usuario. Estrategia futura si los fallos silenciosos molestan: notification queue + flush al siguiente prompt.
+
+**Por qué render queda fuera del wrap**:
+- Coste: render escribe HTML por cada .md del workspace (~docenas o más). KaTeX + Mermaid amplifican.
+- Valor marginal del cloud mid-session: el HTML en cloud sirve para consulta móvil — no necesita refresh instantáneo tras cada `task add` local.
+- Acoplamiento con commit: render lógicamente cierra la cadena "guardar trabajo + publicar"; es coherente que viva en `commit_post`.
+- Aceptable si más adelante se quiere "publish on demand" → `orbit render` manual ya existe.
+
+**Trade-offs considerados**:
+- *Render también en wrap*: rechazado por coste/valor (justificado arriba).
+- *Caché de `project_data` para optimizar secretary con filtro*: rechazado por complejidad (cache invalidation) sin evidencia de coste. Reabrir si los logbooks crecen.
+- *Generar un `report-summary-<proj>.md` por proyecto*: rechazado — añade ficheros sin caso de uso claro hoy.
+- *Stamps separados ics-stamp / ring-stamp*: rechazado — sin evidencia de thrash; añadir si aparece.
+
+**Where lives**: `orbit.py::_run_full_refresh_coalesced`, `orbit.py::_run_dash_coalesced`, `orbit.py::_CITA_TRIGGERS` ⊂ `_DASH_TRIGGERS`, dispatch en `run_command`. Tests en `tests/test_dash_coalesce.py`. Commits relevantes: `397fe1a` (fix + dash debounce + log/hl/project), el commit que añade el full-refresh wrap.
 
 ---
 
