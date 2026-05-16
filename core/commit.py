@@ -350,31 +350,6 @@ def run_commit(message: Optional[str] = None,
     if _chain_aborted(pre_results):
         return 1
 
-    # Doctor check (interactive — stays inline).
-    try:
-        from views.doctor.doctor import check_all_projects
-        issues = check_all_projects()
-        if issues:
-            print(f"  🏥 Doctor: {len(issues)} problema{'s' if len(issues) != 1 else ''} en las agendas:")
-            for issue in issues:
-                preview = issue.line.strip()[:60]
-                print(f"    ⚠️  [{issue.project}] {issue.file}:{issue.line_num} — {issue.msg}")
-                print(f"        │ {preview}")
-            print()
-            if sys.stdin.isatty():
-                try:
-                    ans = input("¿Continuar con el save? [s/N]: ").strip().lower()
-                except (EOFError, KeyboardInterrupt):
-                    print()
-                    return 1
-                if ans not in ("s", "si", "sí", "y", "yes"):
-                    print("Save cancelado. Ejecuta `orbit doctor --fix` para corregir.")
-                    return 0
-            else:
-                print("⚠️  Hay problemas en las agendas. Ejecuta `orbit doctor --fix`.")
-    except ImportError:
-        pass
-
     # Show changed files
     print("\nFicheros modificados:")
     for code, path in status:

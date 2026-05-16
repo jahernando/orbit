@@ -11,6 +11,11 @@
       "fn": "_action_cronograma_log_completed",
       "critical": false
     },
+    "doctor_check_save": {
+      "module": "views.doctor.doctor",
+      "fn": "_action_doctor_check_save",
+      "critical": true
+    },
     "cloudsync_push_background": {
       "module": "core.commit",
       "fn": "_action_cloudsync_push_background",
@@ -77,7 +82,8 @@
       "trigger_type": "explicit",
       "pre": [
         "cloud_imgs_process",
-        "cronograma_log_completed"
+        "cronograma_log_completed",
+        "doctor_check_save"
       ]
     },
     "commit_post": {

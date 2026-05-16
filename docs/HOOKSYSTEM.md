@@ -89,7 +89,7 @@ Una action que falla en **pre crítico** debe abortar la chain (la condición de
 | 3 | `cloud_imgs_process` | `core/commit.py:287-293` | no | no | Try/except silencioso. Re-stagea logbook si hay cambios |
 | 4 | `cronograma_log_completed` | `core/commit.py:297-303` | no | no | Try/except silencioso |
 | 5 | **`tracked_files_refresh`** | `core/commit.py:308-334` | **sí** | no | v0.34.0. **Aborta commit si dest_tampered o conflicts**. Llama `core/tracked.py:269` |
-| 6 | `doctor_check_all_projects` | `core/commit.py:339` | no | interactivo `[s/N]` | Pre-check, pregunta si continuar |
+| 6 | `doctor_check_save` | `views/doctor/doctor.py::_action_doctor_check_save` | **sí** | `--no-doctor-check-save` o `[s/N]` interactivo | Acción declarativa desde 2026-05-16. Aborta save si el usuario rechaza tras ver issues. No-tty: warning sin abortar |
 | 7 | `gsync_reconcile_renames` | `core/commit.py:~360` | no | `applescript_writes: false` (default) → DORMANT | Patch loop bug v0.29.8 resuelto via `_canonical_storage_key` |
 | 8 | `gsync_check_drift` | `core/commit.py:~370` | no | DORMANT | Warns post-sync deltas |
 

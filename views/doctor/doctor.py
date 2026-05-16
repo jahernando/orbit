@@ -907,3 +907,42 @@ def doctor_background():
     t = threading.Thread(target=_do_check, daemon=True)
     t.start()
     return t, results
+
+
+# ── Save pre-action ──────────────────────────────────────────────────────────
+
+def _action_doctor_check_save(ctx):
+    """Pre-action en `commit_pre`: valida agendas/logbooks antes del save.
+
+    Crítica: si hay issues y el usuario rechaza continuar, devuelve
+    ok=False → `_chain_aborted` aborta el save. En modo no-tty sólo
+    imprime warning y deja pasar (no rompe scripts no-interactivos).
+    """
+    import sys
+
+    issues = check_all_projects()
+    if not issues:
+        return {"ok": True, "msg": "clean"}
+
+    print(f"  🏥 Doctor: {len(issues)} problema{'s' if len(issues) != 1 else ''} en las agendas:")
+    for issue in issues:
+        preview = issue.line.strip()[:60]
+        print(f"    ⚠️  [{issue.project}] {issue.file}:{issue.line_num} — {issue.msg}")
+        print(f"        │ {preview}")
+    print()
+
+    if not sys.stdin.isatty():
+        print("⚠️  Hay problemas en las agendas. Ejecuta `orbit doctor --fix`.")
+        return {"ok": True, "msg": f"{len(issues)} issues (no-tty: continuing)"}
+
+    try:
+        ans = input("¿Continuar con el save? [s/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return {"ok": False, "msg": "interrupted"}
+
+    if ans not in ("s", "si", "sí", "y", "yes"):
+        print("Save cancelado. Ejecuta `orbit doctor --fix` para corregir.")
+        return {"ok": False, "msg": "user cancelled"}
+
+    return {"ok": True, "msg": f"{len(issues)} issues, user continued"}

@@ -33,6 +33,7 @@ def test_commit_pre_chain_registered():
     assert chain.pre == [
         "cloud_imgs_process",
         "cronograma_log_completed",
+        "doctor_check_save",
     ]
     assert chain.core is None
     assert chain.post == []
@@ -51,11 +52,13 @@ def test_commit_pre_and_post_bound():
     assert hooks.BINDINGS["commit_post"] == "commit_post"
 
 
-def test_all_commit_actions_are_non_critical():
-    # v0.36: no critical actions in commit chains (tracked_files_refresh
-    # was the only one and is now gone).
+def test_commit_action_criticality():
+    # doctor_check_save (post-A 2026-05-16) es la única action crítica
+    # del commit_pre — si el usuario rechaza tras ver issues del doctor,
+    # aborta la chain y por tanto el save. Las demás son non-critical.
+    assert hooks.ACTIONS["doctor_check_save"].critical is True
     for name in ("cloud_imgs_process", "cronograma_log_completed",
-                 "cloudsync_push_background"):
+                 "cloudsync_push_background", "ring_refresh"):
         assert hooks.ACTIONS[name].critical is False, name
 
 
@@ -125,12 +128,14 @@ def test_cloudsync_push_failure():
 
 def test_commit_pre_continues_when_clean(reset_journal):
     with patch("core.cloud_imgs.check_pending_imgs", return_value=0), \
-         patch("core.cronograma.log_crono_completions", return_value=0):
+         patch("core.cronograma.log_crono_completions", return_value=0), \
+         patch("views.doctor.doctor.check_all_projects", return_value=[]):
         results = hooks.fire("commit_pre", verbosity="quiet")
 
     actions_run = [r.action for r in results]
     assert actions_run == [
         "cloud_imgs_process",
         "cronograma_log_completed",
+        "doctor_check_save",
     ]
     assert all(r.ok for r in results)
