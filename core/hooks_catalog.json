@@ -78,19 +78,24 @@
     },
     "commit_post": {
       "trigger_type": "explicit",
-      "post": ["render_to_cloud", "ics_emit_workspace", "ring_refresh"]
+      "post": [
+        "secretary_refresh",
+        "ring_refresh",
+        "ics_emit_workspace",
+        "render_to_cloud"
+      ]
     },
     "shell_start": {
       "trigger_type": "temporal",
       "post": [
         "doctor_startup",
-        "advance_overdue_recurring",
-        "render_status_check",
         "save_offer",
         "code_update_check",
+        "advance_overdue_recurring",
         "ring_refresh",
         "secretary_refresh",
-        "daemons_startup"
+        "daemons_startup",
+        "render_status_check"
       ]
     },
     "day_open": {

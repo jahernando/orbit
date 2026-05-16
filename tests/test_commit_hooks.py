@@ -47,7 +47,12 @@ def test_commit_post_chain_registered():
     assert chain is not None
     assert chain.trigger_type == "explicit"
     assert chain.pre == []
-    assert chain.post == ["render_to_cloud", "ics_emit_workspace", "ring_refresh"]
+    assert chain.post == [
+        "secretary_refresh",
+        "ring_refresh",
+        "ics_emit_workspace",
+        "render_to_cloud",
+    ]
 
 
 def test_commit_pre_and_post_bound():

@@ -36,13 +36,13 @@ def test_shell_start_chain_registered():
     assert chain.core is None
     assert chain.post == [
         "doctor_startup",
-        "advance_overdue_recurring",
-        "render_status_check",
         "save_offer",
         "code_update_check",
+        "advance_overdue_recurring",
         "ring_refresh",
         "secretary_refresh",
         "daemons_startup",
+        "render_status_check",
     ]
 
 
@@ -276,26 +276,26 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
 
     assert calls == [
         "doctor_background",
-        "startup_advance_past_recurring",
-        "startup_render_status_check",
         "startup_untracked_check",
         "startup_commit_offer",
         "startup_code_update_check",
+        "startup_advance_past_recurring",
         "ring_refresh_all",
         "run_dash",
         "startup_cartero",
         "dash_daemon_thread",
+        "startup_render_status_check",
     ]
     assert all(r.ok for r in results)
     assert [r.action for r in results] == [
         "doctor_startup",
-        "advance_overdue_recurring",
-        "render_status_check",
         "save_offer",
         "code_update_check",
+        "advance_overdue_recurring",
         "ring_refresh",
         "secretary_refresh",
         "daemons_startup",
+        "render_status_check",
     ]
 
 
