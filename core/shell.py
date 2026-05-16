@@ -109,13 +109,6 @@ def _action_advance_overdue_recurring(ctx):
     return {"ok": True, "msg": f"{len(adv)} advanced"}
 
 
-def _action_cloud_sync_status_check(ctx):
-    """Warn if last background cloud sync failed (reads .cloud-sync.json)."""
-    from core.cloudsync import startup_cloud_check
-    startup_cloud_check()
-    return {"ok": True}
-
-
 def _action_save_offer(ctx):
     """Stage tracked + prompt untracked + offer save (tty-only).
 

@@ -37,7 +37,7 @@ def test_shell_start_chain_registered():
     assert chain.post == [
         "doctor_startup",
         "advance_overdue_recurring",
-        "cloud_sync_status_check",
+        "render_status_check",
         "save_offer",
         "code_update_check",
         "ring_refresh",
@@ -52,7 +52,7 @@ def test_shell_startup_trigger_bound():
 
 def test_shell_actions_all_registered():
     for name in (
-        "doctor_startup", "advance_overdue_recurring", "cloud_sync_status_check",
+        "doctor_startup", "advance_overdue_recurring", "render_status_check",
         "save_offer", "code_update_check",
         "ring_refresh",
         "secretary_refresh", "daemons_startup",
@@ -128,9 +128,10 @@ def test_advance_overdue_recurring_some(capsys):
 
 # ── Trivial wrappers (delegate to helper) ────────────────────────────────────
 
-def test_cloud_sync_status_check_delegates():
-    with patch("core.cloudsync.startup_cloud_check") as h:
-        shell._action_cloud_sync_status_check(None)
+def test_render_status_check_delegates():
+    from views.render import render
+    with patch("views.render.render.startup_render_status_check") as h:
+        render._action_render_status_check(None)
     h.assert_called_once()
 
 
@@ -255,8 +256,8 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
     with patch("views.doctor.doctor.doctor_background", side_effect=record("doctor_background")), \
          patch("core.agenda_cmds.startup_advance_past_recurring",
                side_effect=record("startup_advance_past_recurring")), \
-         patch("core.cloudsync.startup_cloud_check",
-               side_effect=record("startup_cloud_check")), \
+         patch("views.render.render.startup_render_status_check",
+               side_effect=record("startup_render_status_check")), \
          patch("core.startup.startup_untracked_check",
                side_effect=record("startup_untracked_check")), \
          patch("core.startup.startup_commit_offer",
@@ -276,7 +277,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
     assert calls == [
         "doctor_background",
         "startup_advance_past_recurring",
-        "startup_cloud_check",
+        "startup_render_status_check",
         "startup_untracked_check",
         "startup_commit_offer",
         "startup_code_update_check",
@@ -289,7 +290,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
     assert [r.action for r in results] == [
         "doctor_startup",
         "advance_overdue_recurring",
-        "cloud_sync_status_check",
+        "render_status_check",
         "save_offer",
         "code_update_check",
         "ring_refresh",
@@ -305,7 +306,7 @@ def test_shell_startup_non_critical_failure_continues(reset_journal):
     with patch("views.doctor.doctor.doctor_background", return_value=(fake_thread, [])), \
          patch("core.agenda_cmds.startup_advance_past_recurring",
                side_effect=RuntimeError("boom")), \
-         patch("core.cloudsync.startup_cloud_check") as cloud, \
+         patch("views.render.render.startup_render_status_check") as status, \
          patch("core.startup.startup_untracked_check"), \
          patch("core.startup.startup_commit_offer"), \
          patch("core.startup.startup_code_update_check"), \
@@ -318,5 +319,5 @@ def test_shell_startup_non_critical_failure_continues(reset_journal):
     failed = [r for r in results if not r.ok]
     assert len(failed) == 1
     assert failed[0].action == "advance_overdue_recurring"
-    # But cloud_sync_status_check still ran (chain didn't abort)
-    cloud.assert_called_once()
+    # But render_status_check still ran (chain didn't abort)
+    status.assert_called_once()

@@ -139,7 +139,7 @@ Esta es la chain con **más actions** del sistema. Solo es trigger temporal: nin
 | 1 | `doctor_check_background` | `views/doctor/doctor.py` | no | no | Thread daemon, 5s timeout. Muestra fixable/unfixable |
 | 1b | `doctor_interactive_fix` | `views/doctor/doctor.py` | no | tty-only | Si hay fixables y tty, ofrece fix |
 | 2 | `advance_overdue_recurring` | `core/agenda_cmds.py:2126` | no | no | Modifica `agenda.md` en disco sin pedir confirmación |
-| 3 | `cloud_sync_status_check` | `core/cloudsync.py:159` | no | no | Lee `.cloud-sync.json`, avisa si último sync falló |
+| 3 | `render_status_check` | `views/render/render.py::startup_render_status_check` | no | no | Lee `.cloud-sync.json`, avisa si último render al cloud falló (renombrado de `cloud_sync_status_check` 2026-05-16; movido a views/render/ porque el "sync" que reporta es el render) |
 | 4-5 | `save_offer` | `core/shell.py:_action_save_offer` → `startup_untracked_check` + `startup_commit_offer` | no | tty-only | Consolidación 2026-05-16 de las dos actions previas (`untracked_check` + `commit_offer`). Stage tracked, pregunta add/ignore, ofrece commit+push si hay cambios. |
 | 6 | `code_update_check` | `core/commit.py:499-622` | no | tty-only | Checkea si orbit repo tiene nuevos commits, ofrece pull |
 | 7 | `gsync_background` | `core/gsync.py:2829` | no | `applescript_writes: false` → DORMANT | Thread daemon |
@@ -238,7 +238,7 @@ Estos no son "chains" en sentido estricto pero son automagia: corren sin que el 
 | gsync thread | `core/gsync.py:2878` | startup + day-change | daemon, muere con shell | no (daemon=True) |
 | Dash refresh loop | `core/shell.py:135` | startup | hasta `_dash_stop.set()` o shell exit | parcial (se chequea solo al límite del intervalo de 1h) |
 | Cartero daemon | `satellites/cartero/daemon.py::startup_cartero` (vía `core/cartero_invoke.py` por subprocess) | startup si configurado | double-fork → independiente del shell | sí (`_stop_background()`) |
-| Cloudsync subprocess | `core/cloudsync.py:132` | post-commit | detached (start_new_session=True) | no (fire & forget) |
+| Render subprocess | `views/render/render.py::render_changed_to_cloud_background` | post-commit | detached (start_new_session=True) | no (fire & forget) |
 
 **Problemas conocidos:**
 - Solo Cartero tiene shutdown limpio.

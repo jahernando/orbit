@@ -7,10 +7,11 @@ Converts markdown files to standalone HTML with:
   - Internal .md links rewritten to .html
 """
 
+import json
 import re
 import shutil
 import subprocess
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -460,7 +461,6 @@ def run_render(project: Optional[str] = None, full: bool = False,
     Para refrescar los .ics manualmente: `orbit ics --workspace`.
     """
     if check:
-        from core.cloudsync import check_cloud_sync
         return check_cloud_sync()
 
     cloud_root = _find_cloud_root()
@@ -532,7 +532,6 @@ def render_changed_to_cloud() -> int:
     Llamada por el hook `render_to_cloud` tras cada save y
     por `cmd_render` desde el CLI. Devuelve número de ficheros rendered.
     """
-    from core.cloudsync import _write_sync_status
     cloud_root = _find_cloud_root()
     if not cloud_root:
         _write_sync_status(0, error="cloud_root no encontrado")
@@ -559,7 +558,7 @@ def render_changed_to_cloud_background() -> None:
         "    from views.render.render import render_changed_to_cloud\n"
         "    render_changed_to_cloud()\n"
         "except Exception as e:\n"
-        "    from core.cloudsync import _write_sync_status\n"
+        "    from views.render.render import _write_sync_status\n"
         "    _write_sync_status(0, error=str(e))\n"
     )
     subprocess.Popen(
@@ -597,3 +596,142 @@ def _action_render_to_cloud(ctx):
         return {"ok": True, "msg": "launched"}
     except Exception as e:
         return {"ok": False, "msg": f"{type(e).__name__}: {e}"}
+
+
+# ── Sync status (last render result) ─────────────────────────────────────────
+#
+# Antes vivía en core/cloudsync.py (separación heredada de cuando había
+# un "cloud sync" real con AppleScript). En 2026-05-16 se fundió aquí
+# porque todo lo que hacía era escribir/leer el resultado del último
+# render. Naming actualizado: cloud_sync_status_check → render_status_check.
+
+_SYNC_STATUS_FILE = ORBIT_HOME / ".cloud-sync.json"
+
+
+def _write_sync_status(rendered: int, error: str = "") -> None:
+    """Write sync result to .cloud-sync.json for startup verification."""
+    commit = ""
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, cwd=ORBIT_HOME,
+        )
+        if r.returncode == 0:
+            commit = r.stdout.strip()
+    except FileNotFoundError:
+        pass
+
+    status = {
+        "time": datetime.now().isoformat(timespec="seconds"),
+        "commit": commit,
+        "rendered": rendered,
+        "ok": not error,
+    }
+    if error:
+        status["error"] = error
+    try:
+        _SYNC_STATUS_FILE.write_text(json.dumps(status, ensure_ascii=False))
+    except OSError:
+        pass
+
+
+def _read_sync_status() -> dict:
+    """Read last sync status. Returns {} if not available."""
+    try:
+        return json.loads(_SYNC_STATUS_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def startup_render_status_check() -> None:
+    """Check last background render status and warn if it failed."""
+    status = _read_sync_status()
+    if not status:
+        return
+    if status.get("ok"):
+        return
+    error = status.get("error", "desconocido")
+    commit = status.get("commit", "?")
+    time = status.get("time", "?")
+    print(f"  ⚠️  El último render al cloud falló ({time}, commit {commit})")
+    print(f"      Error: {error}")
+    print(f"      Ejecuta 'render --full' para re-sincronizar.")
+    print()
+
+
+def check_cloud_sync() -> int:
+    """Compare source .md mtimes vs cloud .html — report stale files.
+
+    Returns 0 if all up to date, 1 if stale files found.
+    """
+    cloud_root = _find_cloud_root()
+    if not cloud_root:
+        return 1
+
+    stale = []
+    missing = []
+    ok = 0
+
+    for project_dir in iter_project_dirs():
+        if not _is_new_project(project_dir):
+            continue
+        cloud_dir = _project_cloud_dir(project_dir, cloud_root)
+        if not cloud_dir:
+            continue
+
+        md_files = list(project_dir.glob("*.md"))
+        notes_dir = project_dir / "notes"
+        if notes_dir.is_dir():
+            md_files.extend(notes_dir.rglob("*.md"))
+
+        for src in md_files:
+            rel = src.relative_to(project_dir)
+            dest = cloud_dir / rel.with_suffix(".html")
+            if not dest.exists():
+                missing.append((project_dir.name, rel))
+            elif dest.stat().st_mtime < src.stat().st_mtime:
+                stale.append((project_dir.name, rel))
+            else:
+                ok += 1
+
+    # Show last sync status
+    status = _read_sync_status()
+    if status:
+        flag = "✓" if status.get("ok") else "✗"
+        print(f"  Último sync: {flag} {status.get('time', '?')} "
+              f"(commit {status.get('commit', '?')}, "
+              f"{status.get('rendered', 0)} renderizados)")
+
+    if not stale and not missing:
+        print(f"  ☁️  Cloud al día — {ok} ficheros OK")
+        return 0
+
+    if stale:
+        print(f"\n  ⚠️  {len(stale)} fichero{'s' if len(stale) != 1 else ''} desactualizado{'s' if len(stale) != 1 else ''}:")
+        for proj, rel in stale[:10]:
+            print(f"      {proj}/{rel}")
+        if len(stale) > 10:
+            print(f"      ... y {len(stale) - 10} más")
+
+    if missing:
+        print(f"\n  ❌ {len(missing)} fichero{'s' if len(missing) != 1 else ''} sin HTML en cloud:")
+        for proj, rel in missing[:10]:
+            print(f"      {proj}/{rel}")
+        if len(missing) > 10:
+            print(f"      ... y {len(missing) - 10} más")
+
+    print(f"\n  Ejecuta 'render --full' para re-sincronizar.")
+    return 1
+
+
+def _action_render_status_check(ctx):
+    """Read .cloud-sync.json, warn si el último render al cloud falló.
+
+    Heredero de `cloud_sync_status_check` (vivía en core/shell.py + helper
+    en core/cloudsync.py). Renombrado y movido a views/render/ en
+    2026-05-16 porque el "sync" que reportaba era el render: nada que
+    ver con cloud-sync genérico, simplemente el último resultado del
+    subprocess de render lanzado por commit_post.
+    """
+    startup_render_status_check()
+    return {"ok": True}
