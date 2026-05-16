@@ -794,14 +794,15 @@ def cmd_panel(args):
                           open_file_path=SECRETARY_DIR / "panel.md")
 
 
-def run_dash(silent: bool = False, project_hint: Optional[str] = None):
-    """Refresh los viewers de secretary: panel + agenda-next + calendar.
+def run_dash(silent: bool = False):
+    """Refresh los viewers de secretary: panel + agenda-next + calendar + projects.
 
     Orquesta los viewers de secretary; cada uno escribe su .md dentro de
-    `📋secretary/` en la raíz del workspace.
+    `📋secretary/` en la raíz del workspace. Salida local únicamente — la
+    proyección a HTML en cloud es trabajo de `render` (commit_post), y la
+    regeneración de .ics es trabajo de `ics_emit_workspace` (commit_post).
+
     silent=True suppresses all terminal output (used in background refresh and shutdown).
-    project_hint: if set, the .ics regeneration only rewrites that project's
-    per-project file (workspace bucket aggregators are always rebuilt).
     """
     from views.secretary import panel as sec_panel
     from views.secretary import agenda_next as sec_agenda
@@ -817,20 +818,6 @@ def run_dash(silent: bool = False, project_hint: Optional[str] = None):
     # Touch stamp so background dash in other shells skips redundant refreshes
     (ORBIT_DIR / ".dash-stamp").touch()
 
-    # Regenerate workspace .ics files so subscribed calendars see the
-    # change without waiting for the next commit. Best-effort; failures
-    # don't block dash. The reload-calendars AppleScript is fired from
-    # inside write_workspace.
-    try:
-        from core.deliver import _find_cloud_root
-        from views.cal.ics import write_workspace
-        cr = _find_cloud_root()
-        if cr:
-            with capture_output() as _buf:
-                write_workspace(cr, project_filter=project_hint)
-    except Exception:
-        pass
-
     if not silent:
         print("  ✓ dash actualizado (📋secretary/{panel,agenda-next,calendar,projects}.md)")
 
@@ -838,7 +825,23 @@ def run_dash(silent: bool = False, project_hint: Optional[str] = None):
 
 
 def cmd_dash(args):
-    return run_dash(silent=False)
+    """CLI `orbit dash`: refresca secretary localmente Y regenera .ics en cloud.
+
+    El segundo paso (.ics) preserva el comportamiento que tenía run_dash
+    antes del split — útil cuando el usuario invoca dash manualmente y
+    quiere ver Calendar.app actualizado sin tener que hacer save.
+    """
+    rc = run_dash(silent=False)
+    try:
+        from core.deliver import _find_cloud_root
+        from views.cal.ics import write_workspace
+        cr = _find_cloud_root()
+        if cr:
+            with capture_output() as _buf:
+                write_workspace(cr)
+    except Exception:
+        pass
+    return rc
 
 
 def cmd_report(args):
