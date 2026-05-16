@@ -796,37 +796,18 @@ def cmd_panel(args):
 def run_dash(silent: bool = False, project_hint: Optional[str] = None):
     """Refresh panel.md, agenda.md (2 weeks), calendar.md (3 months).
 
+    Orquesta los viewers de secretary; cada uno escribe su .md.
     silent=True suppresses all terminal output (used in background refresh and shutdown).
     project_hint: if set, the .ics regeneration only rewrites that project's
     per-project file (workspace bucket aggregators are always rebuilt).
     """
-    from datetime import date as _date_cls, timedelta
-    import calendar as _calmod
-    from core.panel import run_panel
-    from core.agenda_view import run_agenda, run_cal
+    from views.secretary import panel as sec_panel
+    from views.secretary import agenda_next as sec_agenda
+    from views.secretary import calendar as sec_calendar
 
-    today = _date_cls.today()
-    today_str = today.isoformat()
-    two_weeks_end = (today + timedelta(days=13)).isoformat()
-    m1 = today.replace(day=1)
-    m3_month = (m1.month + 2 - 1) % 12 + 1
-    m3_year = m1.year + (m1.month + 2 - 1) // 12
-    m3_end = _date_cls(m3_year, m3_month, _calmod.monthrange(m3_year, m3_month)[1])
-
-    # 1. Panel today → panel.md
-    with capture_output() as buf:
-        run_panel(period="today")
-    (ORBIT_DIR / "panel.md").write_text(buf.getvalue())
-
-    # 2. Agenda 2 weeks → agenda.md
-    with capture_output() as buf:
-        run_agenda(date_from=today_str, date_to=two_weeks_end, markdown=True)
-    (ORBIT_DIR / "agenda.md").write_text(buf.getvalue())
-
-    # 3. Calendar 3 months → calendar.md
-    with capture_output() as buf:
-        run_cal(date_from=m1.isoformat(), date_to=m3_end.isoformat(), markdown=True)
-    (ORBIT_DIR / "calendar.md").write_text(buf.getvalue())
+    sec_panel.generate(ORBIT_DIR / "panel.md")
+    sec_agenda.generate(ORBIT_DIR / "agenda.md")
+    sec_calendar.generate(ORBIT_DIR / "calendar.md")
 
     # Touch stamp so background dash in other shells skips redundant refreshes
     (ORBIT_DIR / ".dash-stamp").touch()
