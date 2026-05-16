@@ -115,19 +115,19 @@ Una action que falla en **pre crítico** debe abortar la chain (la condición de
 
 ## 6.2. Trigger: `orbit render` (explicit) + post-commit implícito (vía cloudsync)
 
-**Chain: `render`** — entrada `core/render.py:226` (`render_changed`)
+**Chain: `render`** — entrada `views/render/render.py` (`render_changed`)
 
 ### Core action
 
 | # | Action | File:Line | Notas |
 |---|--------|-----------|-------|
-| 1 | `render_changed_html` | `core/render.py:226-268` | Renderiza .md cambiados a HTML en cloud |
+| 1 | `render_changed_html` | `views/render/render.py` | Renderiza .md cambiados a HTML en cloud |
 
 ### Post-actions
 
 | # | Action | File:Line | Crítica | Desactivable | Notas |
 |---|--------|-----------|---------|--------------|-------|
-| 2 | `ics_emit_workspace` | `core/render.py:273` → `core/ics.py:598` | no | no | Llamado en CADA render, no condicional |
+| 2 | `ics_emit_workspace` | `views/render/render.py` → `core/ics.py` | no | no | Llamado en CADA render, no condicional |
 | 3 | `calendar_app_reload` | `core/ics.py:671` → `_trigger_calendar_reload` | no | si Calendar.app cerrado | AppleScript best-effort, fail silencioso |
 
 **Problemas conocidos:**

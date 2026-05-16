@@ -11,7 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
-from core import render, hooks
+from core import hooks
+from views.render import render
 
 
 @pytest.fixture

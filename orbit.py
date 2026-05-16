@@ -467,7 +467,7 @@ def cmd_clip(args):
 
 
 def cmd_render(args):
-    from core.render import run_render
+    from views.render.render import run_render
     skip = _hooks.collected_skip_actions(args, "render")
     return run_render(project=args.project, full=args.full, check=args.check,
                       skip_actions=skip)

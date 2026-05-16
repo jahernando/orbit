@@ -62,7 +62,7 @@
       "critical": false
     },
     "ics_emit_workspace": {
-      "module": "core.render",
+      "module": "views.render.render",
       "fn": "_action_ics_emit_workspace",
       "critical": false
     },

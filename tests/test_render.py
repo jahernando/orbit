@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 from datetime import date
 
-from core.render import (
+from views.render.render import (
     _md_to_html, _rewrite_md_links, render_project, render_all,
     render_index, render_proyectos, render_agenda,
     ensure_cloud_inboxes, _sync_css,
@@ -32,7 +32,7 @@ def cloud_env(tmp_path, monkeypatch):
 
     monkeypatch.setattr("core.config.ORBIT_HOME", workspace)
     monkeypatch.setattr("core.config._ORBIT_JSON_PATH", workspace / "orbit.json")
-    monkeypatch.setattr("core.render.ORBIT_HOME", workspace)
+    monkeypatch.setattr("views.render.render.ORBIT_HOME", workspace)
     monkeypatch.setattr("core.deliver.ORBIT_DIR", workspace)
 
     # Create a project

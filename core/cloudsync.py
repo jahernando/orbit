@@ -98,7 +98,7 @@ def sync_to_cloud() -> int:
 
     Returns the number of files rendered.
     """
-    from core.render import render_changed, _render_dashboard
+    from views.render.render import render_changed, _render_dashboard
     cloud_root = _find_cloud_root()
     if not cloud_root:
         _write_sync_status(0, error="cloud_root no encontrado")
@@ -144,7 +144,7 @@ def sync_all_to_cloud(dry_run: bool = False) -> int:
 
     Returns the number of files rendered.
     """
-    from core.render import render_all, _render_dashboard
+    from views.render.render import render_all, _render_dashboard
     cloud_root = _find_cloud_root()
     if not cloud_root:
         return 0
