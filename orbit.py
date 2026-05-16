@@ -468,9 +468,7 @@ def cmd_clip(args):
 
 def cmd_render(args):
     from views.render.render import run_render
-    skip = _hooks.collected_skip_actions(args, "render")
-    return run_render(project=args.project, full=args.full, check=args.check,
-                      skip_actions=skip)
+    return run_render(project=args.project, full=args.full, check=args.check)
 
 
 def cmd_deliver(args):
@@ -1880,7 +1878,6 @@ def _build_parser():
     rnd_p.add_argument("project", nargs="?", default=None, help="Project name (partial match)")
     rnd_p.add_argument("--full", action="store_true", help="Full render of all projects")
     rnd_p.add_argument("--check", action="store_true", help="Check cloud sync status")
-    _hooks.add_chain_flags(rnd_p, "render")
 
     # --- deliver (top-level alias of `cloud deliver`, kept for daily use) ---
     dlv_p = subparsers.add_parser("import", aliases=["deliver"],

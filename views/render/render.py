@@ -270,8 +270,7 @@ def render_delivered_md(project_dir: Path, dest_md: Path,
     return True
 
 
-def render_all(cloud_root: Optional[Path] = None,
-                skip_actions: Optional[list] = None) -> int:
+def render_all(cloud_root: Optional[Path] = None) -> int:
     """Render all projects to HTML. Returns total files rendered."""
     if not cloud_root:
         cloud_root = _find_cloud_root()
@@ -288,25 +287,26 @@ def render_all(cloud_root: Optional[Path] = None,
         n = render_project(project_dir, cloud_root)
         total += n
 
-    _hooks.fire("after_render", ctx={"cloud_root": cloud_root},
-                 skip_actions=skip_actions, verbosity="quiet")
     return total
 
 
-# ── Render-chain hook actions ─────────────────────────────────────────────────
+# ── Post-save action: emit ICS ───────────────────────────────────────────────
 #
-# See HOOKSYSTEM.md §6.2. The `render` chain has a single post-action
-# (`ics_emit_workspace`) that regenerates .ics files and triggers Calendar.app
-# to refresh subscriptions. Fired by render_changed and render_all after the
-# HTML render completes.
+# Acción independiente del render: vive en commit_post (no anidada en
+# after_render). Render escribe HTML a `cloud_root/{type}/{proj}/`; ICS
+# escribe a `cloud_root/calendar/`. Directorios disjuntos, sin coupling.
+# `orbit render` manual NO la dispara — usa `orbit ics --workspace`.
 
 def _action_ics_emit_workspace(ctx):
     """Best-effort: regenerate .ics files + trigger Calendar.app reload.
 
-    Failures don't block the chain — they print a warning and return ok=False
-    (non-critical, so the chain continues).
+    Resuelve cloud_root vía _find_cloud_root() si no viene en ctx (caso
+    de commit_post, donde el chain no propaga cloud_root). Failures no
+    bloquean el chain — print warning + return ok=False (non-critical).
     """
     cloud_root = (ctx or {}).get("cloud_root") if isinstance(ctx, dict) else None
+    if cloud_root is None:
+        cloud_root = _find_cloud_root()
     if cloud_root is None:
         return {"ok": True, "msg": "no cloud_root", "data": None}
     try:
@@ -323,8 +323,7 @@ def _action_ics_emit_workspace(ctx):
 from core import hooks as _hooks
 
 
-def render_changed(cloud_root: Optional[Path] = None,
-                    skip_actions: Optional[list] = None) -> int:
+def render_changed(cloud_root: Optional[Path] = None) -> int:
     """Render only .md files changed in the last commit. Returns count."""
     if not cloud_root:
         cloud_root = _find_cloud_root()
@@ -368,11 +367,6 @@ def render_changed(cloud_root: Optional[Path] = None,
         _render_file(src, dest, css_rel, nav_links)
         rendered += 1
 
-    # .ics generation is cheap (~50 ms for a typical workspace) so we
-    # regenerate on every render-changed pass; the snapshot diff inside
-    # write_workspace summarises real deltas.
-    _hooks.fire("after_render", ctx={"cloud_root": cloud_root},
-                 skip_actions=skip_actions, verbosity="quiet")
     return rendered
 
 
@@ -558,9 +552,13 @@ def ensure_cloud_inboxes(cloud_root: Optional[Path] = None) -> int:
 
 
 def run_render(project: Optional[str] = None, full: bool = False,
-               check: bool = False,
-               skip_actions: Optional[list] = None) -> int:
-    """CLI entry point: orbit render [project] [--full] [--check]."""
+               check: bool = False) -> int:
+    """CLI entry point: orbit render [project] [--full] [--check].
+
+    Sólo HTML — los .ics ya no se regeneran automáticamente desde aquí
+    (desde 2026-05-16 fase C: ics es post-action propia de save).
+    Para refrescar los .ics manualmente: `orbit ics --workspace`.
+    """
     if check:
         from core.cloudsync import check_cloud_sync
         return check_cloud_sync()
@@ -579,16 +577,19 @@ def run_render(project: Optional[str] = None, full: bool = False,
         _render_dashboard(cloud_root)
         print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''} ({project_dir.name})")
     elif full:
-        n = render_all(cloud_root, skip_actions=skip_actions)
+        n = render_all(cloud_root)
         _render_dashboard(cloud_root)
         print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''} (todos)")
     else:
-        n = render_changed(cloud_root, skip_actions=skip_actions)
+        n = render_changed(cloud_root)
         _render_dashboard(cloud_root)
         if n:
             print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''}")
         else:
             print("📄 Sin cambios para renderizar")
+
+    if not check:
+        print("ℹ️  .ics no regenerados — `orbit ics --workspace` si los necesitas.")
 
     return 0
 

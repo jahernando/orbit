@@ -47,7 +47,7 @@ def test_commit_post_chain_registered():
     assert chain is not None
     assert chain.trigger_type == "explicit"
     assert chain.pre == []
-    assert chain.post == ["render_changed_background", "ring_refresh"]
+    assert chain.post == ["render_changed_background", "ics_emit_workspace", "ring_refresh"]
 
 
 def test_commit_pre_and_post_bound():

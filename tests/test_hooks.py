@@ -425,15 +425,20 @@ def test_bootstrap_with_missing_path_returns_false(tmp_path):
 
 
 def test_bootstrap_loads_default_catalog():
-    """Loading the real catalog should register all five chains."""
+    """Loading the real catalog should register all the chains.
+
+    Post-fase C (2026-05-16): chain `render` y binding `after_render` eliminados;
+    ics_emit_workspace vive ahora en commit_post directo.
+    """
     assert hooks.bootstrap() is True
     assert "commit_pre" in hooks.CHAINS
     assert "commit_post" in hooks.CHAINS
     assert "shell_start" in hooks.CHAINS
     assert "day_open" in hooks.CHAINS
-    assert "render" in hooks.CHAINS
+    assert "render" not in hooks.CHAINS
     assert hooks.BINDINGS["commit_pre"] == "commit_pre"
     assert hooks.BINDINGS["shell_startup"] == "shell_start"
+    assert "after_render" not in hooks.BINDINGS
 
 
 def test_bootstrap_loads_non_critical_flag():

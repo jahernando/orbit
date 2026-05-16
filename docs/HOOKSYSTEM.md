@@ -104,33 +104,27 @@ Una action que falla en **pre crítico** debe abortar la chain (la condición de
 | # | Action | File:Line | Crítica | Desactivable | Notas |
 |---|--------|-----------|---------|--------------|-------|
 | 10 | `render_changed_background` | `views/render/render.py::_action_render_changed_background` | no | `--no-render-changed-background` | `subprocess.Popen` detached. Lanza `render_changed_to_cloud` (render HTML cambiados + dashboard + write `.cloud-sync.json`). Renombrada desde `cloudsync_push_background` el 2026-05-16 (fase B) |
+| 11 | `ics_emit_workspace` | `views/render/render.py::_action_ics_emit_workspace` → `views/cal/ics.py` | no | `--no-ics-emit-workspace` | Síncrono ~50-100 ms. Emite todos los `.ics` a `cloud_root/calendar/` + reload Calendar.app. Elevada a `commit_post` el 2026-05-16 (fase C); antes vivía en chain `render` con binding `after_render` (eliminados) |
+| 12 | `ring_refresh` | `views/ring/export.py::_action_ring_refresh` | no | `--no-ring-refresh` | Regenera `ring.json` por workspace + invoca daemon |
 
 **Problemas conocidos:**
 - (3), (4) tienen `try/except` que tragan errores sin reportar.
 - (7), (8) están dormantes pero siguen siendo invocadas — overhead inútil en cada save.
+- (11) corre incondicionalmente aunque no haya cambios reales en `.ics` — el dedup vive *dentro* de `write_workspace`.
 
 ---
 
-## 6.2. Trigger: `orbit render` (explicit) + post-save implícito (vía render_changed_background)
+## 6.2. Trigger: `orbit render` (explicit)
 
-**Chain: `render`** — entrada `views/render/render.py` (`render_changed`)
+`orbit render` ya **no** dispara ningún chain. Sólo renderiza .md → HTML al
+`cloud_root` y devuelve. Para refrescar también los `.ics` o el `ring.json`,
+hay que invocarlos explícitamente (`orbit ics --workspace`, `orbit ring refresh`)
+o pasar por `orbit save` (que orquesta el lote vía `commit_post`).
 
-### Core action
-
-| # | Action | File:Line | Notas |
-|---|--------|-----------|-------|
-| 1 | `render_changed_html` | `views/render/render.py` | Renderiza .md cambiados a HTML en cloud |
-
-### Post-actions
-
-| # | Action | File:Line | Crítica | Desactivable | Notas |
-|---|--------|-----------|---------|--------------|-------|
-| 2 | `ics_emit_workspace` | `views/render/render.py` → `views/cal/ics.py` | no | no | Llamado en CADA render, no condicional |
-| 3 | `calendar_app_reload` | `views/cal/ics.py` → `_trigger_calendar_reload` | no | si Calendar.app cerrado | AppleScript best-effort, fail silencioso |
-
-**Problemas conocidos:**
-- (2) corre incondicionalmente aunque no haya cambios reales en `.ics` — el dedup vive *dentro* de `write_workspace`.
-- (3) silencioso si falla; no hay journal.
+Histórico: hasta 2026-05-16 (fase C) `render_changed`/`render_all` disparaban
+el chain `render` con binding `after_render` que ejecutaba `ics_emit_workspace`.
+La acción se elevó a `commit_post` directo y el chain quedó eliminado, junto
+con sus dos `_hooks.fire("after_render", ...)` en el módulo.
 
 ---
 

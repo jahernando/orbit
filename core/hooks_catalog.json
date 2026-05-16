@@ -88,7 +88,7 @@
     },
     "commit_post": {
       "trigger_type": "explicit",
-      "post": ["render_changed_background", "ring_refresh"]
+      "post": ["render_changed_background", "ics_emit_workspace", "ring_refresh"]
     },
     "shell_start": {
       "trigger_type": "temporal",
@@ -111,17 +111,12 @@
         "advance_overdue_recurring",
         "dash_render"
       ]
-    },
-    "render": {
-      "trigger_type": "explicit",
-      "post": ["ics_emit_workspace"]
     }
   },
   "bindings": {
     "commit_pre": "commit_pre",
     "commit_post": "commit_post",
     "shell_startup": "shell_start",
-    "day_changed": "day_open",
-    "after_render": "render"
+    "day_changed": "day_open"
   }
 }
