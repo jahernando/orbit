@@ -30,7 +30,7 @@ _WORKSPACE_MD_TEMPLATE = """\
 
 - [📊 Panel del día](📋secretary/panel.md)
 - [📅 Agenda próxima](📋secretary/agenda-next.md)
-- [🗓 Calendar 3 meses](📋secretary/calendar.md)
+- [🗓 Calendario 3 meses](📋secretary/calendar.md)
 - [📂 Proyectos](📋secretary/projects.md)
 """
 
