@@ -6,7 +6,7 @@ from datetime import date
 
 from views.render.render import (
     _md_to_html, _rewrite_md_links, render_project, render_all,
-    render_index, render_proyectos, render_agenda,
+    render_workspace_dashboard,
     ensure_cloud_inboxes, _sync_css,
 )
 
@@ -159,45 +159,44 @@ class TestRenderAll:
         assert n >= 5  # 4 from myproject + 1 from second
 
 
-class TestRenderIndex:
-    def test_creates_index(self, cloud_env):
-        ok = render_index(cloud_env["cloud"])
-        assert ok
+class TestRenderWorkspaceDashboard:
+    """Post fase E2 (2026-05-16): el dashboard del cloud se compone
+    de workspace.md (→ index.html) + 📋secretary/*.md, todo viene de
+    los markdown que genera secretary; render solo proyecta a HTML.
+    """
+
+    def test_renders_workspace_md_as_index(self, cloud_env):
+        (cloud_env["workspace"] / "workspace.md").write_text(
+            "# 🚀 test-ws\n\n## Dashboard\n\n"
+            "- [Panel](📋secretary/panel.md)\n"
+        )
+        n = render_workspace_dashboard(cloud_env["cloud"])
+        assert n >= 1
         idx = cloud_env["cloud"] / "index.html"
         assert idx.exists()
         html = idx.read_text()
         assert "orbit.css" in html
-        assert "agenda.html" in html
-        assert "proyectos.html" in html
+        # Markdown link a panel.md fue reescrito a .html.
+        assert "panel.html" in html
 
+    def test_renders_secretary_md_files(self, cloud_env):
+        sec = cloud_env["workspace"] / "📋secretary"
+        sec.mkdir()
+        (sec / "panel.md").write_text("# Panel\n\nHoy: nada.\n")
+        (sec / "projects.md").write_text("# Proyectos\n\n## software\n")
+        render_workspace_dashboard(cloud_env["cloud"])
+        out = cloud_env["cloud"] / "📋secretary"
+        assert (out / "panel.html").exists()
+        assert (out / "projects.html").exists()
+        # Nav apunta a index.html del root.
+        html = (out / "panel.html").read_text()
+        assert "../index.html" in html
 
-class TestRenderProyectos:
-    def test_creates_proyectos(self, cloud_env):
-        ok = render_proyectos(cloud_env["cloud"])
-        assert ok
-        html = (cloud_env["cloud"] / "proyectos.html").read_text()
-        assert "myproject" in html
-        assert "myproject-project.html" in html
-
-    def test_has_nav(self, cloud_env):
-        render_proyectos(cloud_env["cloud"])
-        html = (cloud_env["cloud"] / "proyectos.html").read_text()
-        assert "index.html" in html
-        assert "agenda.html" in html
-
-
-class TestRenderAgenda:
-    def test_creates_agenda(self, cloud_env):
-        ok = render_agenda(cloud_env["cloud"])
-        assert ok
-        html = (cloud_env["cloud"] / "agenda.html").read_text()
-        assert "Agenda" in html
-
-    def test_has_nav(self, cloud_env):
-        render_agenda(cloud_env["cloud"])
-        html = (cloud_env["cloud"] / "agenda.html").read_text()
-        assert "index.html" in html
-        assert "proyectos.html" in html
+    def test_no_workspace_md_no_index(self, cloud_env):
+        # Sin workspace.md no se crea index.html.
+        n = render_workspace_dashboard(cloud_env["cloud"])
+        assert n == 0
+        assert not (cloud_env["cloud"] / "index.html").exists()
 
 
 class TestEnsureCloudInboxes:

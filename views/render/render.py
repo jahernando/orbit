@@ -370,149 +370,49 @@ def render_changed(cloud_root: Optional[Path] = None) -> int:
     return rendered
 
 
-def render_index(cloud_root: Optional[Path] = None) -> bool:
-    """Generate index.html — clean hub with links to agenda and projects."""
-    if not cloud_root:
+_SECRETARY_DIRNAME = "📋secretary"
+
+
+def render_workspace_dashboard(cloud_root: Optional[Path] = None) -> int:
+    """Render workspace.md + 📋secretary/*.md a HTML en cloud_root.
+
+    Fuente única de la verdad-derivada: los .md ya los generó secretary
+    (panel, agenda-next, calendar, projects) en `📋secretary/`. Aquí
+    sólo los proyectamos a HTML para el cloud.
+
+    - workspace.md         → cloud_root/index.html   (front-page del cloud)
+    - 📋secretary/*.md     → cloud_root/📋secretary/*.html
+
+    Returns el número de ficheros renderizados.
+    """
+    if cloud_root is None:
         cloud_root = _find_cloud_root()
-    if not cloud_root:
-        return False
+    if cloud_root is None:
+        return 0
 
-    from core.config import ORBIT_SPACE, ORBIT_PROMPT
+    _sync_css(cloud_root)
+    rendered = 0
 
-    today = date.today()
-    lines = [
-        f"# {ORBIT_PROMPT} {ORBIT_SPACE}\n",
-        f"*Actualizado: {today.isoformat()}*\n",
-        "---\n",
-        "## 📋 Navegación\n",
-        "- [📅 Agenda — esta semana y la siguiente](agenda.html)",
-        "- [📂 Proyectos — estado y enlaces](proyectos.html)",
-        "",
-    ]
+    # workspace.md → index.html (front-page).
+    ws_src = ORBIT_HOME / "workspace.md"
+    if ws_src.exists():
+        _render_file(ws_src, cloud_root / "index.html",
+                     css_rel=_CSS_FILENAME, nav_html="")
+        rendered += 1
 
-    md_text = "\n".join(lines)
-    body = _md_to_html(md_text)
-    body = _rewrite_md_links(body)
-    html = _HTML_TEMPLATE.format(
-        title=f"{ORBIT_PROMPT} {ORBIT_SPACE}",
-        css_path=_CSS_FILENAME,
-        nav=f"{ORBIT_PROMPT} {ORBIT_SPACE}",
-        body=body,
-    )
-    (cloud_root / "index.html").write_text(html, encoding="utf-8")
-    return True
+    # 📋secretary/*.md → 📋secretary/*.html.
+    sec_src_dir = ORBIT_HOME / _SECRETARY_DIRNAME
+    if sec_src_dir.is_dir():
+        sec_cloud_dir = cloud_root / _SECRETARY_DIRNAME
+        sec_cloud_dir.mkdir(parents=True, exist_ok=True)
+        nav = '<a href="../index.html">🏠 Inicio</a>'
+        css_rel = "../" + _CSS_FILENAME
+        for md in sorted(sec_src_dir.glob("*.md")):
+            dest = sec_cloud_dir / md.with_suffix(".html").name
+            _render_file(md, dest, css_rel=css_rel, nav_html=nav)
+            rendered += 1
 
-
-def render_proyectos(cloud_root: Optional[Path] = None) -> bool:
-    """Generate proyectos.html — active projects with status and links."""
-    if not cloud_root:
-        cloud_root = _find_cloud_root()
-    if not cloud_root:
-        return False
-
-    from core.project import _read_project_meta, _resolve_status
-    from core.log import find_proyecto_file, resolve_file
-
-    lines = ["# 📂 Proyectos\n"]
-
-    type_groups: dict = {}
-    for project_dir in iter_project_dirs():
-        if not _is_new_project(project_dir):
-            continue
-        rel = project_dir.relative_to(ORBIT_HOME)
-        type_dir = rel.parts[0]
-        if type_dir not in type_groups:
-            type_groups[type_dir] = []
-
-        meta = _read_project_meta(project_dir)
-        status, _, _ = _resolve_status(meta, project_dir)
-        project_file = find_proyecto_file(project_dir)
-
-        if project_file:
-            html_name = project_file.relative_to(project_dir).with_suffix(".html")
-            link = f"{type_dir}/{project_dir.name}/{html_name}"
-        else:
-            link = f"{type_dir}/{project_dir.name}/"
-
-        # Section links
-        sections = []
-        for kind, label in [("agenda", "📅"), ("logbook", "📓"),
-                            ("highlights", "⭐")]:
-            f = resolve_file(project_dir, kind)
-            if f.exists():
-                f_html = f"{type_dir}/{project_dir.name}/{f.name}".replace(".md", ".html")
-                sections.append(f"[{label}]({f_html})")
-
-        from core.tasks import PRIORITY_MAP, normalize
-        prio_key = normalize(meta["prioridad"])
-        prio_emoji = PRIORITY_MAP.get(prio_key, "")
-
-        _STATUS_EMOJI = {"new": "⬜", "active": "▶️", "paused": "⏸️", "sleeping": "💤"}
-        status_emoji = _STATUS_EMOJI.get(status, "❓")
-
-        type_groups[type_dir].append({
-            "name": project_dir.name,
-            "link": link,
-            "status_emoji": status_emoji,
-            "prio_emoji": prio_emoji,
-            "sections": " ".join(sections),
-        })
-
-    for type_dir, projects in sorted(type_groups.items()):
-        lines.append(f"\n## {type_dir}\n")
-        for p in sorted(projects, key=lambda x: x["name"]):
-            lines.append(
-                f"- [{p['name']}]({p['link']})  "
-                f"{p['status_emoji']} {p['prio_emoji']}  {p['sections']}"
-            )
-
-    md_text = "\n".join(lines)
-    body = _md_to_html(md_text)
-    body = _rewrite_md_links(body)
-    nav = '<a href="index.html">🏠 Inicio</a> <a href="agenda.html">📅 Agenda</a>'
-    html = _HTML_TEMPLATE.format(
-        title="Proyectos", css_path=_CSS_FILENAME, nav=nav, body=body,
-    )
-    (cloud_root / "proyectos.html").write_text(html, encoding="utf-8")
-    return True
-
-
-def render_agenda(cloud_root: Optional[Path] = None) -> bool:
-    """Generate agenda.html — this week + next week across all projects."""
-    if not cloud_root:
-        cloud_root = _find_cloud_root()
-    if not cloud_root:
-        return False
-
-    from core.agenda_view import _collect_data, _resolve_dirs, _format_by_date
-
-    today = date.today()
-    # Monday of this week to Sunday of next week
-    start = today - timedelta(days=today.weekday())
-    end = start + timedelta(days=13)
-
-    dirs = _resolve_dirs(None)  # all projects
-
-    lines = [f"# 📅 Agenda\n"]
-    lines.append(f"*{start.isoformat()} → {end.isoformat()}*\n")
-
-    # Calendar grid
-    cal_lines = _build_calendar_md(dirs, start, end)
-    lines.extend(cal_lines)
-
-    collected = _collect_data(dirs, start, end, dated_only=True)
-    formatted = _format_by_date(collected, markdown=True, dated_only=True)
-    lines.extend(formatted)
-
-    md_text = "\n".join(lines)
-    body = _md_to_html(md_text)
-    body = _rewrite_md_links(body)
-    nav = '<a href="index.html">🏠 Inicio</a> <a href="proyectos.html">📂 Proyectos</a>'
-    html = _HTML_TEMPLATE.format(
-        title="Agenda", css_path=_CSS_FILENAME, nav=nav, body=body,
-    )
-    (cloud_root / "agenda.html").write_text(html, encoding="utf-8")
-    return True
+    return rendered
 
 
 
@@ -574,15 +474,15 @@ def run_render(project: Optional[str] = None, full: bool = False,
             return 1
         _sync_css(cloud_root)
         n = render_project(project_dir, cloud_root)
-        _render_dashboard(cloud_root)
+        render_workspace_dashboard(cloud_root)
         print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''} ({project_dir.name})")
     elif full:
         n = render_all(cloud_root)
-        _render_dashboard(cloud_root)
+        render_workspace_dashboard(cloud_root)
         print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''} (todos)")
     else:
         n = render_changed(cloud_root)
-        _render_dashboard(cloud_root)
+        render_workspace_dashboard(cloud_root)
         if n:
             print(f"📄 {n} fichero{'s' if n != 1 else ''} renderizado{'s' if n != 1 else ''}")
         else:
@@ -594,103 +494,7 @@ def run_render(project: Optional[str] = None, full: bool = False,
     return 0
 
 
-# ── Calendar ──────────────────────────────────────────────────────────────────
-
-_MONTH_NAMES = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
-}
-
-
-def _build_calendar_md(dirs: list, start: date, end: date) -> list:
-    """Build a markdown calendar grid for the given period. Returns lines."""
-    import calendar as _cal
-
-    from core.agenda_view import _collect_calendar_dates, _project_link
-
-    today = date.today()
-    task_dates, event_dates, ms_dates, overdue_dates, overdue_items = \
-        _collect_calendar_dates(dirs, start, end)
-
-    lines = []
-    if overdue_items:
-        lines.append("### ⚠️ Vencidas\n")
-        for proj_dir, kind, desc, d_str in sorted(overdue_items, key=lambda x: x[3]):
-            display_kind = "☐" if kind == "[ ]" else kind
-            proj_tag = _project_link(proj_dir)
-            lines.append(f"- {display_kind} {desc} ({d_str}) — {proj_tag}")
-        lines.append("")
-
-    def _week_overlaps(week, y, m):
-        for day in week:
-            if day != 0:
-                d = date(y, m, day)
-                if start <= d <= end:
-                    return True
-        return False
-
-    current = date(start.year, start.month, 1)
-    while current <= end:
-        y, m = current.year, current.month
-        cal = _cal.Calendar(firstweekday=0)
-        weeks = [w for w in cal.monthdayscalendar(y, m)
-                 if _week_overlaps(w, y, m)]
-
-        if weeks:
-            lines.append(f"### {_MONTH_NAMES[m]} {y}\n")
-            lines.append("| Wk | Lu | Ma | Mi | Ju | Vi | Sa | Do |")
-            lines.append("|---:|---:|---:|---:|---:|---:|---:|---:|")
-
-            for week in weeks:
-                first_day = next((d for d in week if d != 0), None)
-                if first_day is None:
-                    continue
-                wk_num = date(y, m, first_day).isocalendar()[1]
-                cells = [f"**W{wk_num:02d}**"]
-
-                for day in week:
-                    if day == 0:
-                        cells.append("")
-                        continue
-                    d = date(y, m, day)
-                    in_range = start <= d <= end
-
-                    if not in_range:
-                        cells.append(f"~~{day}~~")
-                    elif d == today:
-                        cells.append(f"**[{day}]**")
-                    elif d in overdue_dates:
-                        cells.append(f"⚠️{day}")
-                    elif d in ms_dates:
-                        cells.append(f"🏁{day}")
-                    elif d in event_dates:
-                        cells.append(f"📅{day}")
-                    elif d in task_dates:
-                        cells.append(f"✅{day}")
-                    else:
-                        cells.append(str(day))
-
-                lines.append("| " + " | ".join(cells) + " |")
-
-            lines.append("")
-
-        current = date(y, m + 1, 1) if m < 12 else date(y + 1, 1, 1)
-
-    lines.append("**[N]** hoy · 📅 evento · ✅ tarea · 🏁 hito · ⚠️ vencida")
-    lines.append("")
-    lines.append("[📆 Abrir Google Calendar](https://calendar.google.com)\n")
-    return lines
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _render_dashboard(cloud_root: Path) -> None:
-    """Render the dashboard pages: index, proyectos, agenda."""
-    render_index(cloud_root)
-    render_proyectos(cloud_root)
-    render_agenda(cloud_root)
-
 
 def _sync_css(cloud_root: Path) -> None:
     """Copy orbit.css to cloud root if newer or missing."""
@@ -735,7 +539,7 @@ def render_changed_to_cloud() -> int:
         return 0
     try:
         n = render_changed(cloud_root)
-        _render_dashboard(cloud_root)
+        render_workspace_dashboard(cloud_root)
         _write_sync_status(n)
         return n
     except Exception as e:
@@ -774,7 +578,7 @@ def render_all_to_cloud(dry_run: bool = False) -> int:
     if not cloud_root:
         return 0
     n = render_all(cloud_root)
-    _render_dashboard(cloud_root)
+    render_workspace_dashboard(cloud_root)
     return n
 
 
