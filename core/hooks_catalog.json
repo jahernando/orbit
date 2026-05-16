@@ -67,7 +67,7 @@
       "critical": false
     },
     "ring_refresh": {
-      "module": "core.ring_export",
+      "module": "views.ring.export",
       "fn": "_action_ring_refresh",
       "critical": false
     }

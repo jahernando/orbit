@@ -1,4 +1,4 @@
-"""core/ring_export.py — build ring.json from agenda.md across a workspace.
+"""views/ring/export.py — build ring.json from agenda.md across a workspace.
 
 Declarative projection of the rolling 7-day window of items carrying a
 ``--ring`` attribute into a JSON payload. The standalone daemon
@@ -8,7 +8,7 @@ union into the single ``Orbit Ring`` Reminders.app list.
 Eligibility:
   - status pending (task/milestone) / not cancelled (reminder)
   - has both ``date`` and ``time`` (rings without time are skipped per RING.md)
-  - has ``ring`` attribute parseable by ``core.ring._parse_ring``
+  - has ``ring`` attribute parseable by ``views.ring.parse._parse_ring``
   - has ``orbit_id`` (identity required for daemon idempotency)
 
 Recurring items are expanded into individual occurrences in the window,
@@ -30,7 +30,7 @@ from core.config import (
 )
 from core.log import resolve_file
 from core.project import _is_new_project
-from core.ring import _parse_ring
+from views.ring.parse import _parse_ring
 
 DEFAULT_DAYS = 7
 DEFAULT_ENABLED = True

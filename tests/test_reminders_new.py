@@ -162,7 +162,7 @@ class TestAgendaReminders:
 class TestReminderRingCollection:
 
     def test_collects_today_reminders(self, tmp_path):
-        from core.ring import _reminders_on
+        from views.ring.parse import _reminders_on
         from core.config import iter_project_dirs
         from core.log import resolve_file
 
@@ -174,7 +174,7 @@ class TestReminderRingCollection:
                           f"- [-] Cancelado ({today}) ⏰10:00\n")
 
         # Mock resolve_file to return our tmp agenda
-        import core.ring as ring_mod
+        import views.ring.parse as ring_mod
         original_read = ring_mod._read_agenda
 
         def mock_read(path):

@@ -1,4 +1,4 @@
-"""Tests for core/ring_export.py — ring.json payload builder."""
+"""Tests for views/ring/export.py — ring.json payload builder."""
 
 import json
 from datetime import date, datetime, timedelta
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from core.ring_export import (
+from views.ring.export import (
     DEFAULT_DAYS,
     DEFAULT_ENABLED,
     _default_list_name,

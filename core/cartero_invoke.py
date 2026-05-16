@@ -4,7 +4,7 @@ orbit never imports from satellites/cartero/ directly; this module is the
 only bridge. The satellite lives under satellites/cartero/daemon.py and
 exposes a CLI (--status/--stop/--start/--summary/--startup) consumed here.
 
-Mirrors the pattern of core/ring_export.invoke_daemon for the ring satellite.
+Mirrors the pattern of views/ring/export.invoke_daemon for the ring satellite.
 """
 
 import subprocess

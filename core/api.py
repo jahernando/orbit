@@ -67,7 +67,7 @@ def _validate_common(*, date: Optional[str], time: Optional[str],
     if ring and not date:
         raise ValueError("ring requires date")
     if ring:
-        from core.ring import _parse_ring
+        from views.ring.parse import _parse_ring
         if _parse_ring(ring) is None:
             raise ValueError(f"invalid ring: {ring!r}")
     if time:

@@ -41,8 +41,8 @@ def _isolate_external_side_effects(request, monkeypatch):
             pass
     if "uses_osa" not in request.keywords:
         try:
-            import core.ring
-            monkeypatch.setattr(core.ring, "_osa", lambda *a, **k: None)
+            import views.ring.parse as _ring_parse
+            monkeypatch.setattr(_ring_parse, "_osa", lambda *a, **k: None)
         except (ImportError, AttributeError):
             pass
 

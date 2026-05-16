@@ -152,7 +152,7 @@ Esta es la chain con **más actions** del sistema. Solo es trigger temporal: nin
 | 5 | `commit_offer` | `core/commit.py:636-687` | no | tty-only | Ofrece commit + push si hay cambios |
 | 6 | `code_update_check` | `core/commit.py:499-622` | no | tty-only | Checkea si orbit repo tiene nuevos commits, ofrece pull |
 | 7 | `gsync_background` | `core/gsync.py:2829` | no | `applescript_writes: false` → DORMANT | Thread daemon |
-| 8 | `schedule_reminders` | `core/ring.py:442` | no | NO-OP | **Dead code**. Cuerpo unreachable (`return []` en línea 453). Llamada vestigial |
+| 8 | `schedule_reminders` | `views/ring/parse.py` | no | NO-OP | **Dead code**. Cuerpo unreachable (`return []`). Llamada vestigial |
 | 9 | `cartero_startup` | `core/cartero_invoke.py` → `satellites/cartero/daemon.py --startup` | no | falta `cartero.json` | Daemon de mail/Slack si está configurado |
 | 10 | `dash_render` | `core/shell.py:126-131` → `run_dash(silent=False)` | no | no | Updatea `panel.md`, `agenda.md`, `calendar.md` |
 | 11 | `dash_background_loop_start` | `core/shell.py:134-136` | no | no | Thread daemon: refresh dash cada 1h |
@@ -417,7 +417,7 @@ El meta-modelo `trigger → chain → actions` aplica cuando *hay* automatizaci�
 
 | # | Acción | Estado |
 |---|--------|--------|
-| 1 | Borrar `schedule_new_format_reminders` de startup + day_changed (dead code). Función en `core/ring.py` queda como no-op (tests la cubren). | ✓ done |
+| 1 | Borrar `schedule_new_format_reminders` de startup + day_changed (dead code). Función en `views/ring/parse.py` queda como no-op (tests la cubren). | ✓ done |
 | 2 | Move-up `applescript_writes` check en `gsync_background`. | descartado — el check ya estaba en `gsync.py:2836`, nada que mover |
 | 3 | `_dash_stop` poll cada 5s en vez de cada 1h. Shutdown latency ≤5s. | ✓ done |
 | 4 | Print en `advance_overdue_recurring`. | descartado — el print ya existe en el caller (`shell.py:88-94`) |

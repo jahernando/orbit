@@ -141,7 +141,7 @@ def _check_ring_health() -> None:
     """
     import json
     import time
-    from core.ring_export import (
+    from views.ring.export import (
         PLIST_PATH, LOG_DIR, all_workspaces, _load_ring_config,
     )
 

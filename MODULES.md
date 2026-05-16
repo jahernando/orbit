@@ -2,7 +2,7 @@
 
 Mapa de módulos del paquete y sus dependencias internas. Sirve para guiar la limpieza/simplificación del CLI sin perder de vista qué encaja con qué.
 
-Última auditoría: 2026-05-15 (post F1+F2+F3 satellites refactor: ring-daemon y cartero+google_oauth movidos a `satellites/`; orbit los invoca solo por subprocess vía `core/ring_export.invoke_daemon` y `core/cartero_invoke`). Total: 42 módulos en `core/` + `orbit.py` (CLI) + 2 satélites (`satellites/ring-daemon/daemon.py`, `satellites/cartero/{daemon,google_oauth}.py`).
+Última auditoría: 2026-05-16 (post F1+F2+F3+F4 views refactor: render, doctor, cal y ring extraídos a `views/` como readers de la verdad). El subprocess al ring-daemon vive ahora en `views/ring/export.invoke_daemon`, y el bridge a cartero sigue en `core/cartero_invoke`. Total: ~37 módulos en `core/` + 4 paquetes en `views/` (`render`, `doctor`, `cal`, `ring`) + `orbit.py` (CLI) + 2 satélites (`satellites/ring-daemon/daemon.py`, `satellites/cartero/{daemon,google_oauth}.py`).
 
 ---
 

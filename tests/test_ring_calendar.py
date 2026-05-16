@@ -1,4 +1,4 @@
-"""Tests for core/ring.py and Phase-7 extensions to core/calendar_sync.py."""
+"""Tests for views/ring/parse.py and Phase-7 extensions to core/calendar_sync.py."""
 
 import importlib
 from datetime import date, datetime
@@ -26,7 +26,7 @@ def _make_project(type_dir: Path, name: str = "alpha") -> Path:
 # _parse_ring
 # ══════════════════════════════════════════════════════════════════════════════
 
-from core.ring import _parse_ring, resolve_ring_datetime
+from views.ring.parse import _parse_ring, resolve_ring_datetime
 
 
 class TestParseRing:
@@ -111,7 +111,7 @@ class TestResolveRingDatetime:
 # _tasks_ringing_on
 # ══════════════════════════════════════════════════════════════════════════════
 
-from core.ring import _tasks_ringing_on
+from views.ring.parse import _tasks_ringing_on
 
 
 class TestTasksRingingOn:
@@ -210,7 +210,7 @@ class TestTasksRingingOn:
 # _clear_ring
 # ══════════════════════════════════════════════════════════════════════════════
 
-from core.ring import _clear_ring
+from views.ring.parse import _clear_ring
 
 
 class TestClearRing:

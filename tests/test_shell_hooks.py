@@ -274,9 +274,9 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
                side_effect=record("startup_code_update_check")), \
          patch("core.cartero_invoke.startup_cartero",
                side_effect=record("startup_cartero")), \
-         patch("core.ring_export.refresh_all",
+         patch("views.ring.export.refresh_all",
                side_effect=lambda *a, **kw: (calls.append("ring_refresh_all") or [])), \
-         patch("core.ring_export.invoke_daemon", return_value=(True, "noop")), \
+         patch("views.ring.export.invoke_daemon", return_value=(True, "noop")), \
          patch("orbit.run_dash", side_effect=record("run_dash")), \
          patch("core.shell.threading.Thread") as MockThread:
         MockThread.return_value.start = lambda: calls.append("dash_daemon_thread")

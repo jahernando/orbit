@@ -453,7 +453,7 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
                 rem["date"] = next_due
                 _write_agenda(agenda_path, data)
                 if date_val_is_today(today_str) and not _agenda_via_calendar():
-                    from core.ring import _delete_reminder
+                    from views.ring.parse import _delete_reminder
                     _delete_reminder(rem["desc"], project_dir.name,
                                       kind="reminder", background=True)
                 print(f"✓ [{project_dir.name}] Recordatorio avanzado: {rem['desc']} → {next_due}")
@@ -463,7 +463,7 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
         rem["cancelled"] = True
         _write_agenda(agenda_path, data)
         if date_val_is_today(rem.get("date")) and not _agenda_via_calendar():
-            from core.ring import _delete_reminder
+            from views.ring.parse import _delete_reminder
             _delete_reminder(rem["desc"], project_dir.name, kind="reminder",
                               background=True)
         if drop_series:

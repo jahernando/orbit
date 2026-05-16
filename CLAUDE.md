@@ -136,11 +136,11 @@ iPhone / iPad
 ```
 
 **Componentes nuevos**:
-- `core/ring_export.py` (~300 LOC): `build_payload`, `write_payload`, `refresh_all`, `invoke_daemon`, `run_ring_refresh/status/install/uninstall`, `_action_ring_refresh`, `_load_ring_config`.
+- `views/ring/export.py` (~300 LOC): `build_payload`, `write_payload`, `refresh_all`, `invoke_daemon`, `run_ring_refresh/status/install/uninstall`, `_action_ring_refresh`, `_load_ring_config`.
 - `satellites/ring-daemon/daemon.py` (~200 LOC, standalone): EventKit upsert idempotente, dedup, agrupación por lista, manejo de TCC permission denied. Movido a `satellites/` en F1 del refactor 2026-05-15.
 - `core/hooks_catalog.json`: nueva acción `ring_refresh` añadida a `commit_post.post` y `shell_start.post`.
 - `views/doctor/doctor.py::_check_ring_health`: avisa de plist no instalado, TCC denied en stderr log reciente, ring.json viejo (>24h).
-- `core/ring.py` antiguo queda **dormante** (la API `schedule_new_format_reminders` ya estaba marcada como deprecada; ahora aún más).
+- `views/ring/parse.py` antiguo queda **dormante** (la API `schedule_new_format_reminders` ya estaba marcada como deprecada; ahora aún más).
 
 **CLI**:
 ```

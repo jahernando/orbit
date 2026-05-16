@@ -1103,7 +1103,7 @@ def cmd_ics_import(args):
 
 
 def cmd_ring(args):
-    from core.ring_export import (
+    from views.ring.export import (
         run_ring_refresh, run_ring_status,
         run_ring_install, run_ring_uninstall,
     )

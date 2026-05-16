@@ -135,7 +135,7 @@ Lo que efectivamente shipping difiere del plan original en estos puntos:
 
 | Cambios | Archivos |
 |---|---|
-| Módulo nuevo `core/ring_export.py` (separado de `core/ring.py`) | nuevo |
+| Módulo nuevo `views/ring/export.py` (separado de `views/ring/parse.py`) | nuevo |
 | Función `build_ring_payload(workspace_root, days=7)` itera proyectos federados-aware, filtra `--ring`, expande recurrencia 7d, normaliza schema | nuevo |
 | CLI: `orbit ring refresh\|status\|install\|uninstall` | `orbit.py` |
 | `orbit ring refresh` escribe `<workspace>/.reminders/ring.json` (atómico: write tmp + rename) | nuevo |
@@ -190,7 +190,7 @@ store.saveReminder_commit_error_(reminder, True, None)
 
 | Cambios | Archivos |
 |---|---|
-| `orbit ring install` genera `~/Library/LaunchAgents/com.orbit.ring-daemon.plist` | `core/ring_export.py` |
+| `orbit ring install` genera `~/Library/LaunchAgents/com.orbit.ring-daemon.plist` | `views/ring/export.py` |
 | Plist con `WatchPaths` (uno por federado) + `StartCalendarInterval` 00:00 + `ProgramArguments` (`sys.executable` + script path) | — |
 | Ejecuta `launchctl load` y un primer `ring refresh` de bootstrap | — |
 | `orbit ring uninstall` hace `launchctl unload` y borra plist | — |
@@ -201,7 +201,7 @@ store.saveReminder_commit_error_(reminder, True, None)
 | Cambios | Archivos |
 |---|---|
 | `orbit doctor` chequea: plist cargado, último `last_applied` vs ahora, count `ring.json` vs Reminders.app | `views/doctor/doctor.py` |
-| `orbit ring status` enriquecido con la misma info | `core/ring_export.py` |
+| `orbit ring status` enriquecido con la misma info | `views/ring/export.py` |
 
 ## Estimación
 
