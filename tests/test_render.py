@@ -133,7 +133,9 @@ class TestRenderProject:
         render_project(cloud_env["project"], cloud_env["cloud"])
         cloud_proj = cloud_env["cloud"] / "💻software" / "💻myproject"
         html = (cloud_proj / "myproject-project.html").read_text()
-        assert "index.html" in html
+        # Nav 🏠 Inicio apunta al front-page real (workspace.html), no al
+        # stub redirect (index.html).
+        assert "workspace.html" in html
 
     def test_md_links_rewritten(self, cloud_env):
         # Add a link to logbook in the project file
@@ -161,23 +163,38 @@ class TestRenderAll:
 
 class TestRenderWorkspaceDashboard:
     """Post fase E2 (2026-05-16): el dashboard del cloud se compone
-    de workspace.md (→ index.html) + 📋secretary/*.md, todo viene de
-    los markdown que genera secretary; render solo proyecta a HTML.
+    de workspace.md (→ workspace.html, contenido real) + index.html
+    (meta-refresh redirect, abre el browser al entrar al cloud) +
+    📋secretary/*.md. Todo viene de los markdown que genera secretary;
+    render solo proyecta a HTML.
     """
 
-    def test_renders_workspace_md_as_index(self, cloud_env):
+    def test_renders_workspace_md_as_workspace_html(self, cloud_env):
         (cloud_env["workspace"] / "workspace.md").write_text(
             "# 🚀 test-ws\n\n## Dashboard\n\n"
             "- [Panel](📋secretary/panel.md)\n"
         )
         n = render_workspace_dashboard(cloud_env["cloud"])
         assert n >= 1
-        idx = cloud_env["cloud"] / "index.html"
-        assert idx.exists()
-        html = idx.read_text()
+        ws_html = cloud_env["cloud"] / "workspace.html"
+        assert ws_html.exists()
+        html = ws_html.read_text()
         assert "orbit.css" in html
         # Markdown link a panel.md fue reescrito a .html.
         assert "panel.html" in html
+
+    def test_index_html_is_redirect_stub(self, cloud_env):
+        """index.html existe y es un meta-refresh hacia workspace.html
+        (para que el browser auto-abra el cloud-root)."""
+        (cloud_env["workspace"] / "workspace.md").write_text("# X\n")
+        render_workspace_dashboard(cloud_env["cloud"])
+        idx = cloud_env["cloud"] / "index.html"
+        assert idx.exists()
+        body = idx.read_text()
+        assert 'http-equiv="refresh"' in body
+        assert "workspace.html" in body
+        # No es el render completo: no contiene KaTeX, ni Mermaid, ni nav.
+        assert "katex" not in body.lower()
 
     def test_renders_secretary_md_files(self, cloud_env):
         sec = cloud_env["workspace"] / "📋secretary"
@@ -188,14 +205,15 @@ class TestRenderWorkspaceDashboard:
         out = cloud_env["cloud"] / "📋secretary"
         assert (out / "panel.html").exists()
         assert (out / "projects.html").exists()
-        # Nav apunta a index.html del root.
+        # Nav apunta a workspace.html (front-page real), no al stub redirect.
         html = (out / "panel.html").read_text()
-        assert "../index.html" in html
+        assert "../workspace.html" in html
 
-    def test_no_workspace_md_no_index(self, cloud_env):
-        # Sin workspace.md no se crea index.html.
+    def test_no_workspace_md_no_index_or_workspace_html(self, cloud_env):
+        # Sin workspace.md no se crea ni workspace.html ni index.html.
         n = render_workspace_dashboard(cloud_env["cloud"])
         assert n == 0
+        assert not (cloud_env["cloud"] / "workspace.html").exists()
         assert not (cloud_env["cloud"] / "index.html").exists()
 
 

@@ -588,14 +588,15 @@ fire("commit_post"): render_changed_background · ics_emit_workspace · ring_ref
 2. **Front-page del workspace**: `workspace.md` estático en la raíz del workspace, escrito por el usuario (descripción libre) con links al dashboard. Análogo a `{proj}-project.md` por proyecto. Lo bootstrappea `bootstrap_workspace_md()` desde `orbit setup` con un template básico; no sobreescribe si ya existe.
 
 3. **Dashboard cloud unificado (fase E2)**: render lee de secretary como fuente única.
-   - `workspace.md` → `cloud_root/index.html` (front-page del cloud).
+   - `workspace.md` → `cloud_root/workspace.html` (front-page real del cloud).
+   - `cloud_root/index.html` (escrito automáticamente): stub con `<meta http-equiv="refresh">` apuntando a `workspace.html` — los navegadores abren `index.html` por convención al entrar a un folder; el redirect lleva al contenido real. Permite que el nombre del fichero refleje su semántica (`workspace.md` ↔ `workspace.html`) sin perder el auto-open del browser.
    - `📋secretary/*.md` → `cloud_root/📋secretary/*.html`.
    - **Eliminadas** `render_index`, `render_proyectos`, `render_agenda` y `_render_dashboard` (~230 ℓ borradas) — su lógica vivía duplicada en secretary; cloud y local comparten ahora la misma fuente, sólo cambia el formato.
 
 **Razón**:
 - *Una sola fuente de verdad-derivada*. Antes la lista de proyectos vivía dos veces (`render_proyectos` para cloud y `secretary/projects` para local) con lógica paralela. Tras E2, vive una vez en `secretary/projects.py`; el cloud sólo proyecta a HTML.
 - *Resolución de la colisión `agenda.md`*. El derivado del workspace y la verdad de proyecto compartían nombre — fuente real de confusión. `agenda-next.md` (en `📋secretary/`) las distingue.
-- *workspace.md como front-page de autor*. Análogo al `{proj}-project.md`: descripción + links. Editable por el usuario, no sobrescrito por bootstrap; render lo proyecta a `index.html` del cloud.
+- *workspace.md como front-page de autor*. Análogo al `{proj}-project.md`: descripción + links. Editable por el usuario, no sobrescrito por bootstrap; render lo proyecta a `workspace.html` del cloud (con `index.html` como stub redirect para que el browser auto-abra).
 - *Coherencia con la metáfora oficinista*. cartero + ring-daemon + secretary cubren los tres roles auxiliares (mensajería + alarmas + dashboard).
 
 **Lo que NO se hizo** (deuda o decisiones aplazadas):
@@ -605,7 +606,7 @@ fire("commit_post"): render_changed_background · ics_emit_workspace · ring_ref
 - *Borrado de `panel.md`/`agenda.md`/`calendar.md` legacy en raíz*: se hizo manualmente tras E2 (no automático en código). Coherente con "no migración automática del histórico".
 
 **Consecuencias**:
-- Cambio observable: `orbit render` manual ya no regenera `.ics`; el dashboard del cloud ahora vive en `📋secretary/*.html` con `index.html` viniendo de `workspace.md`.
+- Cambio observable: `orbit render` manual ya no regenera `.ics`; el dashboard del cloud ahora vive en `📋secretary/*.html` con `workspace.html` viniendo de `workspace.md` (+ `index.html` como stub redirect, 2026-05-16 PM).
 - Acción manual ejecutada al cierre: `bootstrap_workspace_md()` invocado one-shot en orbit-ws y orbit-ps; `git rm` de los .md viejos en orbit-ws (staged para el próximo save).
 - −197 ℓ netas en `render.py` por la unificación E2.
 

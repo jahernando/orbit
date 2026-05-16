@@ -199,7 +199,7 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
         dest = cloud_dir / rel.with_suffix(".html")
         depth = _depth(rel)
         css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
-        nav_links = f'<a href="{"../" * (depth + 2)}index.html">🏠 Inicio</a>'
+        nav_links = f'<a href="{"../" * (depth + 2)}workspace.html">🏠 Inicio</a>'
         project_html = list(project_dir.glob("*-project.md"))
         if project_html:
             proj_name = project_html[0].stem + ".html"
@@ -221,7 +221,7 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
         dest = cloud_dir / rel.with_suffix(".html")
         depth = _depth(rel)
         css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
-        nav_links = f'<a href="{"../" * (depth + 2)}index.html">🏠 Inicio</a>'
+        nav_links = f'<a href="{"../" * (depth + 2)}workspace.html">🏠 Inicio</a>'
         project_html = list(project_dir.glob("*-project.md"))
         if project_html:
             proj_name = project_html[0].stem + ".html"
@@ -260,7 +260,7 @@ def render_delivered_md(project_dir: Path, dest_md: Path,
     dest_html = dest_md.with_suffix(".html")
     depth = _depth(rel)
     css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
-    nav_links = f'<a href="{"../" * (depth + 2)}index.html">🏠 Inicio</a>'
+    nav_links = f'<a href="{"../" * (depth + 2)}workspace.html">🏠 Inicio</a>'
     project_html = list(project_dir.glob("*-project.md"))
     if project_html:
         proj_name = project_html[0].stem + ".html"
@@ -364,7 +364,7 @@ def render_changed(cloud_root: Optional[Path] = None) -> int:
         dest = cloud_dir / rel_in_project.with_suffix(".html")
         depth = _depth(rel_in_project)
         css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
-        nav_links = f'<a href="{"../" * (depth + 2)}index.html">🏠 Inicio</a>'
+        nav_links = f'<a href="{"../" * (depth + 2)}workspace.html">🏠 Inicio</a>'
         _render_file(src, dest, css_rel, nav_links)
         rendered += 1
 
@@ -373,18 +373,37 @@ def render_changed(cloud_root: Optional[Path] = None) -> int:
 
 _SECRETARY_DIRNAME = "📋secretary"
 
+_INDEX_REDIRECT_HTML = """\
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0; url=workspace.html">
+<title>Redirecting…</title>
+</head>
+<body>
+<p>Cargando <a href="workspace.html">workspace.html</a>…</p>
+</body>
+</html>
+"""
+
 
 def render_workspace_dashboard(cloud_root: Optional[Path] = None) -> int:
     """Render workspace.md + 📋secretary/*.md a HTML en cloud_root.
 
     Fuente única de la verdad-derivada: los .md ya los generó secretary
-    (panel, agenda-next, calendar, projects) en `📋secretary/`. Aquí
-    sólo los proyectamos a HTML para el cloud.
+    (panel, agenda-next, calendar, projects, report-summary) en
+    `📋secretary/`. Aquí sólo los proyectamos a HTML para el cloud.
 
-    - workspace.md         → cloud_root/index.html   (front-page del cloud)
+    - workspace.md         → cloud_root/workspace.html (front-page real)
+    - (auto)               → cloud_root/index.html      (meta-refresh →
+                                                         workspace.html;
+                                                         lo abre el browser
+                                                         al entrar al cloud)
     - 📋secretary/*.md     → cloud_root/📋secretary/*.html
 
-    Returns el número de ficheros renderizados.
+    Returns el número de ficheros renderizados (workspace.html cuenta
+    como 1; index.html no cuenta porque es un stub estático).
     """
     if cloud_root is None:
         cloud_root = _find_cloud_root()
@@ -394,11 +413,12 @@ def render_workspace_dashboard(cloud_root: Optional[Path] = None) -> int:
     _sync_css(cloud_root)
     rendered = 0
 
-    # workspace.md → index.html (front-page).
+    # workspace.md → workspace.html (contenido real) + index.html (redirect).
     ws_src = ORBIT_HOME / "workspace.md"
     if ws_src.exists():
-        _render_file(ws_src, cloud_root / "index.html",
+        _render_file(ws_src, cloud_root / "workspace.html",
                      css_rel=_CSS_FILENAME, nav_html="")
+        (cloud_root / "index.html").write_text(_INDEX_REDIRECT_HTML)
         rendered += 1
 
     # 📋secretary/*.md → 📋secretary/*.html.
@@ -406,7 +426,7 @@ def render_workspace_dashboard(cloud_root: Optional[Path] = None) -> int:
     if sec_src_dir.is_dir():
         sec_cloud_dir = cloud_root / _SECRETARY_DIRNAME
         sec_cloud_dir.mkdir(parents=True, exist_ok=True)
-        nav = '<a href="../index.html">🏠 Inicio</a>'
+        nav = '<a href="../workspace.html">🏠 Inicio</a>'
         css_rel = "../" + _CSS_FILENAME
         for md in sorted(sec_src_dir.glob("*.md")):
             dest = sec_cloud_dir / md.with_suffix(".html").name

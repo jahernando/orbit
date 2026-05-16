@@ -652,7 +652,7 @@ orbit deliver <project> <file>        # alias top-level de `cloud deliver`
 ```
 
 - Convierte ficheros `.md` de cada proyecto a `.html` en el directorio cloud
-- Genera `index.html` con dashboard de proyectos
+- Front-page del cloud: `workspace.html` (de `workspace.md`) + `index.html` stub con `<meta http-equiv="refresh">` redirigiendo a `workspace.html` (para que el browser abra el cloud-root automáticamente)
 - Incluye soporte KaTeX para ecuaciones LaTeX (`$...$` y `$$...$$`)
 - `cloud sync` se ejecuta automáticamente en background tras cada `save`; el verbo manual sirve para forzar o auditar con `--dry-run`
 - `deliver` también disponible como `--deliver` en `log` y `hl add`
