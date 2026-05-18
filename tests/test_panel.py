@@ -245,13 +245,12 @@ class TestCollectActivity:
 
     def test_entries_in_range(self, panel_env):
         today = date.today()
-        yesterday = (today - timedelta(days=1)).isoformat()
-        logbook = f"{yesterday} 📝 Yesterday entry #apunte\n{today.isoformat()} 📝 Today entry #apunte\n"
+        yesterday = today - timedelta(days=1)
+        logbook = f"{yesterday.isoformat()} 📝 Yesterday entry #apunte\n{today.isoformat()} 📝 Today entry #apunte\n"
         _make_project(panel_env["type_dir"], logbook_extra=logbook)
-        # Week range should catch both
-        monday = today - timedelta(days=today.weekday())
-        sunday = monday + timedelta(days=6)
-        activity = _collect_activity(monday, sunday)
+        # Range spanning yesterday→today catches both regardless of weekday
+        # (a week-aligned range would drop yesterday when today is Monday).
+        activity = _collect_activity(yesterday, today)
         assert len(activity) == 1
         assert len(activity[0][1]) == 2
 
