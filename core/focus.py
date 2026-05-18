@@ -561,6 +561,128 @@ def _run_mode_plantilla(mission_dir: Path, template: dict,
     return 0
 
 
+# ── Modo repetir (F6) ─────────────────────────────────────────────────────
+
+def _parse_week_blocks_detailed(text: str) -> list[tuple[str, str, str]]:
+    """Return [(rail, project, orbit_id), ...] from a focus week file."""
+    out: list[tuple[str, str, str]] = []
+    in_blocks = False
+    current_rail: Optional[str] = None
+    current_proj: Optional[str] = None
+    for line in text.splitlines():
+        s = line.strip()
+        if s == "## Bloques":
+            in_blocks = True
+            continue
+        if s.startswith("## ") and s != "## Bloques":
+            in_blocks = False
+            current_rail = None
+            current_proj = None
+            continue
+        if not in_blocks:
+            continue
+        if s.startswith("### "):
+            rest = s[4:].strip()
+            for emoji, rail in _RAIL_FROM_EMOJI.items():
+                if rest.startswith(emoji):
+                    current_rail = rail
+                    current_proj = rest[len(emoji):].strip()
+                    break
+            else:
+                current_rail = None
+                current_proj = None
+            continue
+        if current_rail is None or current_proj is None:
+            continue
+        m = _ORBIT_LINE_RE.search(s)
+        if m:
+            out.append((current_rail, current_proj, m.group(1)))
+    return out
+
+
+def _run_mode_repetir(mission_dir: Path, template: dict,
+                      target: date, week_file: Path) -> int:
+    """Clone W-1: same rails / projects / slot offsets (+7 days)."""
+    prev = _prev_week_file(mission_dir, target)
+    if prev is None:
+        print("⚠️  No existe la semana anterior, no se puede repetir.")
+        return 1
+    prev_blocks = _parse_week_blocks_detailed(prev.read_text())
+    if not prev_blocks:
+        print(f"⚠️  {prev.name} no contiene bloques.")
+        return 1
+
+    id_index = _build_id_task_index(mission_dir)
+    available = set(_list_available_projects(mission_dir))
+    week_label = _iso_week_label(target)
+
+    # Build the clone plan: (rail, project, new_date, time).
+    plan: list[tuple[str, str, str, str]] = []
+    skipped: list[str] = []
+    for rail, proj, oid in prev_blocks:
+        if proj not in available:
+            skipped.append(f"{_RAIL_EMOJI[rail]} {proj} (proyecto ausente)")
+            continue
+        t = id_index.get(oid)
+        if not t or not t.get("date") or not t.get("time"):
+            skipped.append(f"{_RAIL_EMOJI[rail]} {proj} [orbit:{oid}] "
+                           f"(sin date/time en agenda)")
+            continue
+        try:
+            old_date = date.fromisoformat(t["date"])
+        except ValueError:
+            skipped.append(f"{_RAIL_EMOJI[rail]} {proj} [orbit:{oid}] "
+                           f"(date inválida: {t['date']!r})")
+            continue
+        new_date = (old_date + timedelta(days=7)).isoformat()
+        plan.append((rail, proj, new_date, t["time"]))
+
+    if not plan:
+        print("⚠️  No hay bloques clonables de W-1.")
+        for s in skipped:
+            print(f"   • {s}")
+        return 1
+
+    print(f"\n  Voy a clonar {len(plan)} bloque(s) de {prev.name}:")
+    by_rail: dict[str, list[tuple[str, str, str]]] = {r: [] for r in _RAILS}
+    for rail, proj, d, t in plan:
+        by_rail[rail].append((proj, d, t))
+    for rail in _RAILS:
+        if not by_rail[rail]:
+            continue
+        print(f"    {_RAIL_EMOJI[rail]} {_RAIL_LABEL[rail]}:")
+        for proj, d, t in by_rail[rail]:
+            print(f"      • [{proj}] {d} ⏰{t}")
+    if skipped:
+        print(f"  Skip: {len(skipped)} bloque(s)")
+        for s in skipped:
+            print(f"    • {s}")
+
+    if not _ask_yn("\n  ¿Crear estos bloques?", default=True):
+        return 1
+
+    rails_projects: dict[str, list[str]] = {r: [] for r in _RAILS}
+    blocks_by_rail: dict[str, list[tuple[str, str]]] = {r: [] for r in _RAILS}
+    for rail, proj, d, t in plan:
+        orbit_id = _create_block(proj, rail, week_label, d, t)
+        if orbit_id:
+            if proj not in rails_projects[rail]:
+                rails_projects[rail].append(proj)
+            blocks_by_rail[rail].append((proj, orbit_id))
+            print(f"  ✓ {_RAIL_EMOJI[rail]} [{proj}] {d} ⏰{t}")
+
+    total = sum(len(v) for v in blocks_by_rail.values())
+    if total == 0:
+        print("⚠️  No se creó ningún bloque.")
+        return 1
+
+    _write_week_file(week_file, target, "normal",
+                     rails_projects, blocks_by_rail)
+    print(f"\n✓ {total} bloques creados en mission/agenda.md")
+    print(f"✓ Archivo semanal: {week_file}")
+    return 0
+
+
 # ── Selector de modo (F5) ─────────────────────────────────────────────────
 
 def _select_mode(mission_dir: Path, target: date) -> Optional[str]:
@@ -577,8 +699,9 @@ def _select_mode(mission_dir: Path, target: date) -> Optional[str]:
     print("Modo:")
     for i, (name, desc) in enumerate(options, 1):
         print(f"  {i}) {name:<10} — {desc}")
-    # Default = primera opción "plantilla" (en F5 repetir todavía es stub).
-    default_idx = next(i for i, (n, _) in enumerate(options, 1) if n == "plantilla")
+    # Default = "repetir" si hay W-1 (path más rápido), "plantilla" si no.
+    preferred = "repetir" if has_prev else "plantilla"
+    default_idx = next(i for i, (n, _) in enumerate(options, 1) if n == preferred)
     try:
         raw = input(f"  selección [{default_idx}]: ").strip()
     except (EOFError, KeyboardInterrupt):
@@ -712,6 +835,20 @@ def _build_id_status_index(mission_dir: Path) -> dict[str, str]:
     return idx
 
 
+def _build_id_task_index(mission_dir: Path) -> dict[str, dict]:
+    """Map orbit_id → full task dict (date/time/desc/status). Mission only."""
+    from core.log import resolve_file
+    from core.agenda.io import _read_agenda
+    agenda_path = resolve_file(mission_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    idx: dict[str, dict] = {}
+    for t in data.get("tasks", []):
+        oid = t.get("orbit_id")
+        if oid:
+            idx[oid] = t
+    return idx
+
+
 def _format_counter_section(status: str,
                              blocks_by_rail: dict[str, list[str]],
                              id_status: dict[str, str]) -> list[str]:
@@ -831,9 +968,7 @@ def run_focus_week(next_week: bool = False, review: bool = False) -> int:
     elif mode == "plantilla":
         rc = _run_mode_plantilla(mission_dir, template, target, week_file)
     elif mode == "repetir":
-        # F6 ships this. For F5 the option is only offered, not executed.
-        print("⚠️  Modo repetir pendiente (F6).")
-        return 1
+        rc = _run_mode_repetir(mission_dir, template, target, week_file)
     else:
         return 1
     if rc == 0 and week_file.exists():
