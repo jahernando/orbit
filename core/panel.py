@@ -452,6 +452,7 @@ def run_panel(period=None, include_federated=True,
     # ── 3. Cronogramas ──
     cronogramas = _collect_cronogramas(include_federated)
     if cronogramas:
+        from core.cronograma import _deadline_short_str
         today = date.today()
         print(f"\n## 📊 Cronogramas\n")
         print("| Proyecto | Cronograma | Progreso | | Deadline |")
@@ -461,23 +462,7 @@ def run_panel(period=None, include_federated=True,
             filled = round(pct / 10)
             bar = "█" * filled + "░" * (10 - filled)
             proj = _project_link(project_dir)
-            if deadline:
-                days_left = (deadline - today).days
-                remaining = total - done
-                if days_left < 0:
-                    dl_str = f"⚠️ vencido ({-days_left}d)"
-                elif days_left == 0:
-                    dl_str = f"⚠️ hoy — {remaining} pend."
-                else:
-                    pace = remaining / days_left
-                    if pace > 2:
-                        dl_str = f"⚠️ {deadline.isoformat()} ({days_left}d)"
-                    elif pace > 1:
-                        dl_str = f"{deadline.isoformat()} ({days_left}d)"
-                    else:
-                        dl_str = f"{deadline.isoformat()} ({days_left}d)"
-            else:
-                dl_str = ""
+            dl_str = _deadline_short_str(done, total, deadline, today)
             print(f"| {proj} | {crono_name} | {bar} | {done}/{total} ({pct}%) | {dl_str} |")
         print("\n---")
 

@@ -729,6 +729,29 @@ def _resolve_deadline(metadata: dict, project_dir: Path = None,
     return None
 
 
+def _deadline_short_str(done: int, total: int, deadline,
+                        today: date = None) -> str:
+    """Compact deadline string used by panel & agenda cronos section.
+
+    Examples: ``"2026-06-15 (28d)"`` / ``"⚠️ vencido (3d)"`` /
+    ``"⚠️ hoy — 4 pend."``. Empty string if no deadline given.
+    """
+    if deadline is None:
+        return ""
+    if today is None:
+        today = date.today()
+    remaining = total - done
+    days_left = (deadline - today).days
+    if days_left < 0:
+        return f"⚠️ vencido ({-days_left}d)"
+    if days_left == 0:
+        return f"⚠️ hoy — {remaining} pend."
+    pace = remaining / days_left if days_left > 0 else 0
+    if pace > 2:
+        return f"⚠️ {deadline.isoformat()} ({days_left}d)"
+    return f"{deadline.isoformat()} ({days_left}d)"
+
+
 def _deadline_status(done: int, total: int, deadline: date,
                      today: date = None) -> str:
     """Build a deadline status string with pace warning.
@@ -1348,6 +1371,73 @@ def _ensure_crono_section(project_dir: Path):
         text += "\n"
     text += f"\n{_CRONO_HEADER}\n"
     agenda_path.write_text(text, encoding="utf-8")
+
+
+def _refresh_agenda_cronos_section(project_dir: Path) -> bool:
+    """Rebuild the ``## 📊 Cronogramas`` section in this project's agenda.md.
+
+    Scans ``<project_dir>/cronos/crono-*.md``, computes leaf counts and
+    deadline for each, and writes a panel-style table into the cronos
+    blob (see :func:`core.agenda.io._read_agenda`). Idempotent.
+
+    Empty ``cronos/`` (or no parseable file) → blob cleared so the writer
+    skips the section header. Caller is responsible for federation
+    filtering — federated workspaces must stay read-only.
+
+    Returns True if the file changed, False if no-op.
+    """
+    from core.agenda.io import _read_agenda, _write_agenda
+
+    agenda_path = resolve_file(project_dir, "agenda")
+    if not agenda_path.exists():
+        return False
+
+    cronos_dir = project_dir / _CRONO_DIR
+    today = date.today()
+    rows = []
+    if cronos_dir.exists():
+        for crono_file in sorted(cronos_dir.glob("crono-*.md")):
+            cdata = _parse_crono_file(crono_file)
+            tasks = cdata["tasks"]
+            if not tasks:
+                continue
+            parents = _parent_indices(tasks)
+            leaves = [t for t in tasks if _is_leaf(t, parents)]
+            total = len(leaves)
+            done = sum(1 for t in leaves if t["done"])
+            deadline = _resolve_deadline(cdata["metadata"], project_dir, today)
+            rows.append({
+                "name": cdata["name"],
+                "file": crono_file.name,
+                "done": done,
+                "total": total,
+                "deadline": deadline,
+            })
+
+    if not rows:
+        blob = []
+    else:
+        blob = [
+            "",
+            "| Cronograma | Progreso |   | Deadline |",
+            "|------------|----------|---|----------|",
+        ]
+        for r in rows:
+            pct = r["done"] * 100 // r["total"] if r["total"] else 0
+            filled = round(pct / 10)
+            bar = "█" * filled + "░" * (10 - filled)
+            dl = _deadline_short_str(r["done"], r["total"], r["deadline"], today)
+            blob.append(
+                f"| [{r['name']}]({_CRONO_DIR}/{r['file']}) "
+                f"| {bar} | {r['done']}/{r['total']} ({pct}%) | {dl or '—'} |"
+            )
+
+    data = _read_agenda(agenda_path)
+    if data.get("cronos", []) == blob:
+        return False
+    data["cronos"] = blob
+    _write_agenda(agenda_path, data)
+    return True
 
 
 def run_crono_show(project: str, name: str) -> int:

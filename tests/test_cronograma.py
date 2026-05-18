@@ -1375,3 +1375,130 @@ class TestNextOpenLeaf:
               - [ ] 1.2 b | 2026-04-08
         """)
         assert cronograma_all_done(data) is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 10. _refresh_agenda_cronos_section (derived ## 📊 Cronogramas in agenda.md)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestRefreshAgendaCronosSection:
+    """The generator rebuilds the cronos blob inside agenda.md from
+    ``cronos/crono-*.md`` — panel-style table with progress bar + deadline.
+    """
+
+    def _read_agenda_text(self, project_dir):
+        from core.log import resolve_file
+        return resolve_file(project_dir, "agenda").read_text()
+
+    def test_empty_cronos_dir_clears_blob(self, projects_dir):
+        from core.cronograma import _refresh_agenda_cronos_section
+        proj = _make_project(projects_dir, "p1")
+        # Pre-existing stale blob that should be wiped
+        from core.log import resolve_file
+        ag = resolve_file(proj, "agenda")
+        ag.write_text(
+            "# Agenda\n\n"
+            "## ✅ Tareas\n- [ ] t (2026-06-01)\n\n"
+            "## 📊 Cronogramas\n- [stale](cronos/crono-stale.md)\n"
+        )
+        changed = _refresh_agenda_cronos_section(proj)
+        assert changed is True
+        text = self._read_agenda_text(proj)
+        assert "## 📊 Cronogramas" not in text
+        assert "- [ ] t (2026-06-01)" in text  # tasks untouched
+
+    def test_no_agenda_no_op(self, projects_dir):
+        from core.cronograma import _refresh_agenda_cronos_section
+        proj = projects_dir / "ghost"
+        proj.mkdir()
+        (proj / "cronos").mkdir()
+        # No agenda.md → cannot resolve → no-op
+        assert _refresh_agenda_cronos_section(proj) is False
+
+    def test_one_crono_emits_row(self, projects_dir):
+        from core.cronograma import _refresh_agenda_cronos_section
+        proj = _make_project(projects_dir, "p2")
+        _write_crono(proj, "issues", """\
+            # Cronograma: issues
+
+            - [ ] 1 root
+              - [x] 1.1 a
+              - [ ] 1.2 b
+              - [ ] 1.3 c
+        """)
+        assert _refresh_agenda_cronos_section(proj) is True
+        text = self._read_agenda_text(proj)
+        assert "## 📊 Cronogramas" in text
+        assert "| Cronograma | Progreso |   | Deadline |" in text
+        assert "[issues](cronos/crono-issues.md)" in text
+        assert "1/3 (33%)" in text
+
+    def test_multiple_cronos_sorted(self, projects_dir):
+        from core.cronograma import _refresh_agenda_cronos_section
+        proj = _make_project(projects_dir, "p3")
+        _write_crono(proj, "zeta", "# Cronograma: zeta\n\n- [ ] 1 z\n  - [ ] 1.1 a\n")
+        _write_crono(proj, "alpha", "# Cronograma: alpha\n\n- [ ] 1 a\n  - [x] 1.1 b\n")
+        _refresh_agenda_cronos_section(proj)
+        text = self._read_agenda_text(proj)
+        # sorted by filename: crono-alpha before crono-zeta
+        assert text.index("crono-alpha.md") < text.index("crono-zeta.md")
+
+    def test_idempotent(self, projects_dir):
+        from core.cronograma import _refresh_agenda_cronos_section
+        proj = _make_project(projects_dir, "p4")
+        _write_crono(proj, "x", "# Cronograma: x\n\n- [ ] 1 r\n  - [ ] 1.1 a\n")
+        assert _refresh_agenda_cronos_section(proj) is True
+        assert _refresh_agenda_cronos_section(proj) is False  # no-op second time
+
+    def test_deadline_string_appears(self, projects_dir):
+        from core.cronograma import _refresh_agenda_cronos_section
+        proj = _make_project(projects_dir, "p5")
+        # deadline in the future → "<iso> (Nd)"; metadata must come AFTER
+        # the # Cronograma: header per _parse_metadata's contract.
+        future = (date.today() + timedelta(days=20)).isoformat()
+        _write_crono(proj, "dl",
+            f"# Cronograma: dl\ndeadline: {future}\n\n- [ ] 1 r\n  - [ ] 1.1 a\n  - [ ] 1.2 b\n")
+        _refresh_agenda_cronos_section(proj)
+        text = self._read_agenda_text(proj)
+        assert future in text
+        assert "(20d)" in text
+
+    def test_skips_crono_with_empty_tasks(self, projects_dir):
+        from core.cronograma import _refresh_agenda_cronos_section
+        proj = _make_project(projects_dir, "p6")
+        _write_crono(proj, "empty", "# Cronograma: empty\n")  # no tasks
+        _write_crono(proj, "real", "# Cronograma: real\n\n- [ ] 1 r\n  - [ ] 1.1 a\n")
+        _refresh_agenda_cronos_section(proj)
+        text = self._read_agenda_text(proj)
+        assert "crono-real.md" in text
+        assert "crono-empty.md" not in text
+
+    def test_completed_crono_still_appears(self, projects_dir):
+        """Unlike panel.py, the agenda section lists *all* cronos with
+        tasks — including 100%-done ones — so the user keeps the
+        link/handle in agenda.md even after finishing. Status string in
+        Deadline column communicates completion."""
+        from core.cronograma import _refresh_agenda_cronos_section
+        proj = _make_project(projects_dir, "p7")
+        _write_crono(proj, "done", "# Cronograma: done\n\n- [ ] 1 r\n  - [x] 1.1 a\n  - [x] 1.2 b\n")
+        _refresh_agenda_cronos_section(proj)
+        text = self._read_agenda_text(proj)
+        assert "crono-done.md" in text
+        assert "2/2 (100%)" in text
+
+    def test_preserves_tasks_section(self, projects_dir):
+        """The existing tasks/ms/ev/rem are not touched by the refresh."""
+        from core.cronograma import _refresh_agenda_cronos_section
+        from core.log import resolve_file
+        proj = _make_project(projects_dir, "p8")
+        ag = resolve_file(proj, "agenda")
+        ag.write_text(
+            "# Agenda\n\n"
+            "## ✅ Tareas\n- [ ] foo (2026-06-01)\n- [x] bar (2026-06-02)\n"
+        )
+        _write_crono(proj, "c", "# Cronograma: c\n\n- [ ] 1 r\n  - [ ] 1.1 a\n")
+        _refresh_agenda_cronos_section(proj)
+        text = self._read_agenda_text(proj)
+        assert "- [ ] foo (2026-06-01)" in text
+        assert "- [x] bar (2026-06-02)" in text
+        assert "crono-c.md" in text
