@@ -55,6 +55,7 @@ from core.agenda.lifecycle import (  # noqa: F401
 from core.agenda.runners import (  # noqa: F401
     run_task_add, run_task_done, run_task_drop, run_task_edit,
     run_task_list, run_task_log,
+    run_task_plan, run_task_pending,
     run_ms_add, run_ms_done, run_ms_drop, run_ms_edit,
     run_ms_list, run_ms_log,
     run_ev_add, run_ev_drop, run_ev_edit, run_ev_log, run_ev_list,

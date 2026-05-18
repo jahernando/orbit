@@ -747,6 +747,7 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
                   new_text=None, new_date=None, new_time=None,
                   new_recur=None, new_until=None, new_ring=None,
                   new_desc=None, new_end=None,
+                  new_ff: Optional[str] = None,
                   new_agenda: Optional[str] = None,
                   new_room: Optional[str] = None,
                   force=False, occurrence=False, series=False) -> int:
@@ -764,6 +765,10 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
                                 time_format=cfg["time_format"])
     if err:
         print(err)
+        return 1
+    if (new_ff and new_ff not in ("none", "someday")
+            and not _valid_date(new_ff)):
+        print(f"⚠️  Fast-forward '{new_ff}' no válido. Usa: YYYY-MM-DD, someday, o none.")
         return 1
 
     # Select item
@@ -796,6 +801,7 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
             if new_ring and cfg["has_ring"]: edits["ring"] = new_ring
             if new_end and cfg["has_end"]: edits["end"] = new_end
             if new_desc is not None: edits["notes"] = new_desc
+            if new_ff is not None: edits["ff"] = new_ff
             if new_agenda is not None: edits["agenda"] = new_agenda
             if new_room is not None: edits["room"] = new_room
             new_item, next_info = _make_edit_occurrence(item, items, cfg, edits,
@@ -817,6 +823,7 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
     if new_ring and cfg["has_ring"]:  edits["ring"]  = new_ring
     if new_end and cfg["has_end"]:    edits["end"]   = new_end
     if new_desc is not None:          edits["notes"] = new_desc
+    if new_ff is not None:            edits["ff"]    = new_ff
     _apply_edits(item, edits, type_name=type_name)
     item["notes"] = _upsert_emoji_note(item.get("notes") or [],
                                        _AGENDA_NOTE_PREFIX, new_agenda)

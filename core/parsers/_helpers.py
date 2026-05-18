@@ -76,6 +76,7 @@ def _add_edit_args(p, has_end=False, has_end_time=False):
     p.add_argument("--ring", dest="new_ring", default=None, help="New ring (or 'none')")
     p.add_argument("--time", dest="new_time", default=None, help="New time HH:MM (or 'none')")
     p.add_argument("--desc", dest="new_desc", default=None, help="New description (or 'none')")
+    p.add_argument("--ff", dest="new_ff", default=None, help="Fast-forward: YYYY-MM-DD, someday, or 'none'")
     if has_end:
         p.add_argument("--end", "--end-date", dest="new_end", default=None, help="End date or 'none'")
     if has_end_time:

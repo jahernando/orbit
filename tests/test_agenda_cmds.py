@@ -236,6 +236,196 @@ class TestFfAndCounters:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Verbs: task plan / task pending — F2 of taxonomy plan
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestTaskAddDefaultFf:
+    """api.add_task without date defaults ff to today (raw capture)."""
+
+    def test_no_date_sets_ff_today(self, proj):
+        from datetime import date
+        from core import api
+        from core.agenda_cmds import _read_agenda
+        api.add_task(project=proj.name, text="Bare capture")
+        data = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
+        assert data["tasks"][-1]["ff"] == date.today().isoformat()
+
+    def test_with_date_no_ff_default(self, proj):
+        from core import api
+        from core.agenda_cmds import _read_agenda
+        api.add_task(project=proj.name, text="Planned",
+                     date="2026-06-01")
+        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
+        assert t["ff"] is None
+
+    def test_explicit_ff_overrides_default(self, proj):
+        from core import api
+        from core.agenda_cmds import _read_agenda
+        api.add_task(project=proj.name, text="Someday X", ff="someday")
+        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
+        assert t["ff"] == "someday"
+
+
+class TestRunTaskPlan:
+    """task plan: promote pending→planned or reschedule planned."""
+
+    def _add_pending(self, proj, text, ff_val):
+        from core import api
+        api.add_task(project=proj.name, text=text, ff=ff_val)
+
+    def _add_planned(self, proj, text, date_val):
+        from core import api
+        api.add_task(project=proj.name, text=text, date=date_val)
+
+    def _tasks(self, proj):
+        from core.agenda_cmds import _read_agenda
+        return _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"]
+
+    def test_promote_pending_to_planned(self, proj):
+        from core.agenda_cmds import run_task_plan
+        self._add_pending(proj, "X", "2026-05-20")
+        run_task_plan(project=proj.name, text="X", date_val="2026-06-01")
+        t = self._tasks(proj)[-1]
+        assert t["date"] == "2026-06-01"
+        assert t["ff"] is None
+        assert t["snooze_count"] == 0
+
+    def test_promote_resets_snooze_count(self, proj):
+        from core.agenda_cmds import run_task_plan, _read_agenda, _write_agenda
+        self._add_pending(proj, "X", "2026-05-20")
+        # bump snooze on the underlying item
+        agenda_path = proj / f"{_strip_emoji(proj.name)}-agenda.md"
+        data = _read_agenda(agenda_path)
+        data["tasks"][-1]["snooze_count"] = 5
+        _write_agenda(agenda_path, data)
+        run_task_plan(project=proj.name, text="X", date_val="2026-06-01")
+        assert self._tasks(proj)[-1]["snooze_count"] == 0
+
+    def test_reschedule_overdue_increments_failed_count(self, proj):
+        from core.agenda_cmds import run_task_plan
+        self._add_planned(proj, "X", "2020-01-01")   # very overdue
+        run_task_plan(project=proj.name, text="X", date_val="2026-06-01")
+        t = self._tasks(proj)[-1]
+        assert t["date"] == "2026-06-01"
+        assert t["failed_count"] == 1
+
+    def test_reschedule_future_does_not_increment(self, proj):
+        from core.agenda_cmds import run_task_plan
+        self._add_planned(proj, "X", "2099-01-01")   # future
+        run_task_plan(project=proj.name, text="X", date_val="2099-02-01")
+        t = self._tasks(proj)[-1]
+        assert t["failed_count"] == 0
+
+    def test_plan_with_time(self, proj):
+        from core.agenda_cmds import run_task_plan
+        self._add_pending(proj, "Focus block", "2026-05-20")
+        run_task_plan(project=proj.name, text="Focus block",
+                      date_val="2026-06-01", time_val="09:00-11:00")
+        t = self._tasks(proj)[-1]
+        assert t["time"] == "09:00-11:00"
+
+    def test_missing_date_returns_error(self, proj, capsys):
+        from core.agenda_cmds import run_task_plan
+        self._add_pending(proj, "X", "2026-05-20")
+        rc = run_task_plan(project=proj.name, text="X", date_val=None)
+        assert rc == 1
+        assert "fecha" in capsys.readouterr().out.lower()
+
+
+class TestRunTaskPending:
+    """task pending: demote planned→pending or snooze pending."""
+
+    def _add_pending(self, proj, text, ff_val):
+        from core import api
+        api.add_task(project=proj.name, text=text, ff=ff_val)
+
+    def _add_planned(self, proj, text, date_val):
+        from core import api
+        api.add_task(project=proj.name, text=text, date=date_val)
+
+    def _tasks(self, proj):
+        from core.agenda_cmds import _read_agenda
+        return _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"]
+
+    def test_snooze_pending_increments_snooze_count(self, proj):
+        from core.agenda_cmds import run_task_pending
+        self._add_pending(proj, "X", "2026-05-20")
+        run_task_pending(project=proj.name, text="X", target_ff="2026-05-25")
+        t = self._tasks(proj)[-1]
+        assert t["ff"] == "2026-05-25"
+        assert t["snooze_count"] == 1
+
+    def test_snooze_default_is_tomorrow(self, proj):
+        from datetime import date, timedelta
+        from core.agenda_cmds import run_task_pending
+        self._add_pending(proj, "X", "2026-05-20")
+        run_task_pending(project=proj.name, text="X", target_ff=None)
+        t = self._tasks(proj)[-1]
+        assert t["ff"] == (date.today() + timedelta(days=1)).isoformat()
+        assert t["snooze_count"] == 1
+
+    def test_snooze_to_someday(self, proj):
+        from core.agenda_cmds import run_task_pending
+        self._add_pending(proj, "X", "2026-05-20")
+        run_task_pending(project=proj.name, text="X", target_ff="someday")
+        t = self._tasks(proj)[-1]
+        assert t["ff"] == "someday"
+
+    def test_demote_planned_moves_date_to_ff(self, proj):
+        from core.agenda_cmds import run_task_pending
+        self._add_planned(proj, "X", "2026-06-01")
+        run_task_pending(project=proj.name, text="X", target_ff=None)
+        t = self._tasks(proj)[-1]
+        assert t["ff"] == "2026-06-01"
+        assert t["date"] is None
+        # demote is not a snooze: counter stays
+        assert t["snooze_count"] == 0
+
+    def test_demote_with_explicit_target(self, proj):
+        from core.agenda_cmds import run_task_pending
+        self._add_planned(proj, "X", "2026-06-01")
+        run_task_pending(project=proj.name, text="X", target_ff="2026-07-15")
+        t = self._tasks(proj)[-1]
+        assert t["ff"] == "2026-07-15"
+        assert t["date"] is None
+
+    def test_invalid_target_rejected(self, proj, capsys):
+        from core.agenda_cmds import run_task_pending
+        self._add_pending(proj, "X", "2026-05-20")
+        rc = run_task_pending(project=proj.name, text="X", target_ff="garbage")
+        assert rc == 1
+        assert "no reconocida" in capsys.readouterr().out.lower()
+
+
+class TestTaskEditFf:
+    """task edit --ff allows direct manipulation of the ff field."""
+
+    def test_edit_sets_ff(self, proj):
+        from core import api
+        from core.agenda_cmds import run_task_edit, _read_agenda
+        api.add_task(project=proj.name, text="X", date="2026-06-01")
+        run_task_edit(project=proj.name, text="X", new_ff="2026-05-25")
+        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
+        assert t["ff"] == "2026-05-25"
+
+    def test_edit_ff_none_clears(self, proj):
+        from core import api
+        from core.agenda_cmds import run_task_edit, _read_agenda
+        api.add_task(project=proj.name, text="X", ff="2026-05-24")
+        run_task_edit(project=proj.name, text="X", new_ff="none")
+        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
+        assert t["ff"] is None
+
+    def test_edit_invalid_ff_rejected(self, proj, capsys):
+        from core import api
+        from core.agenda_cmds import run_task_edit
+        api.add_task(project=proj.name, text="X", date="2026-06-01")
+        rc = run_task_edit(project=proj.name, text="X", new_ff="garbage")
+        assert rc == 1
+        assert "fast-forward" in capsys.readouterr().out.lower()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # _parse_event_line / _format_event_line
 # ══════════════════════════════════════════════════════════════════════════════
 

@@ -14,13 +14,27 @@ from core.parsers._helpers import (
 
 
 def register_task(subparsers):
-    """``orbit task {add,done,drop,edit,log,crono}``."""
-    tsknew_p   = subparsers.add_parser("task", help="Task commands: add, done, cancel, edit, list")
+    """``orbit task {add,plan,pending,done,drop,edit,log,crono}``."""
+    tsknew_p   = subparsers.add_parser("task", help="Task commands: add, plan, pending, done, drop, edit, log, crono")
     tsknew_sub = tsknew_p.add_subparsers(dest="action")
 
-    tn_add = tsknew_sub.add_parser("add", help="Add a task")
+    tn_add = tsknew_sub.add_parser("add", help="Add a task (no date → ff:today, raw capture)")
     _add_project_text(tn_add, project_required=True)
     _add_add_args(tn_add)
+
+    tn_plan = tsknew_sub.add_parser("plan",
+        help="Promote pending→planned or reschedule planned (date posicional)")
+    _add_project_text(tn_plan, project_required=False)
+    tn_plan.add_argument("date", nargs="?", default=None,
+                         help="Date YYYY-MM-DD or today/tomorrow/...")
+    tn_plan.add_argument("time", nargs="?", default=None,
+                         help="Optional time HH:MM or HH:MM-HH:MM")
+
+    tn_pending = tsknew_sub.add_parser("pending",
+        help="Demote planned→pending or snooze pending (ff posicional, default tomorrow)")
+    _add_project_text(tn_pending, project_required=False)
+    tn_pending.add_argument("ff", nargs="?", default=None,
+                            help="Target ff: YYYY-MM-DD or 'someday' (default: tomorrow on snooze; keep date on demote)")
 
     tn_done = tsknew_sub.add_parser("done", help="Complete a pending task")
     _add_project_text(tn_done, project_required=False)

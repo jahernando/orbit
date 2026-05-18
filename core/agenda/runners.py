@@ -6,7 +6,7 @@ of the generic add/drop/edit/log flows in :mod:`core.agenda.lifecycle`.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from core.project import _find_new_project, _is_new_project
@@ -14,7 +14,7 @@ from core.log import add_orbit_entry, resolve_file
 from core.config import iter_project_dirs, iter_federated_project_dirs
 
 from core.agenda.recurrence import _next_occurrence
-from core.agenda.io import _read_agenda, _write_agenda
+from core.agenda.io import _read_agenda, _write_agenda, _valid_date, _valid_time
 from core.agenda.display import _select_item, _select_item_reminder
 from core.agenda.lifecycle import (
     _fed_tag, _resolve_project,
@@ -93,7 +93,7 @@ def run_task_edit(project: Optional[str], text: Optional[str],
                   new_text: Optional[str] = None, new_date: Optional[str] = None,
                   new_recur: Optional[str] = None, new_until: Optional[str] = None,
                   new_ring: Optional[str] = None, new_time: Optional[str] = None,
-                  new_desc: Optional[str] = None,
+                  new_desc: Optional[str] = None, new_ff: Optional[str] = None,
                   force: bool = False, occurrence: bool = False,
                   series: bool = False) -> int:
     project_dir = _resolve_project(project)
@@ -104,7 +104,117 @@ def run_task_edit(project: Optional[str], text: Optional[str],
     return _generic_edit("task", project_dir, data, agenda_path, text,
                          new_text=new_text, new_date=new_date, new_time=new_time,
                          new_recur=new_recur, new_until=new_until, new_ring=new_ring,
-                         new_desc=new_desc, force=force, occurrence=occurrence, series=series)
+                         new_desc=new_desc, new_ff=new_ff,
+                         force=force, occurrence=occurrence, series=series)
+
+
+def run_task_plan(project: Optional[str], text: Optional[str],
+                  date_val: Optional[str] = None,
+                  time_val: Optional[str] = None) -> int:
+    """Promote pending→planned or reschedule planned. Sets ``date`` (and
+    optionally ``time``), clears ``ff``. If the task was already planned
+    and its previous ``date`` was overdue, increment ``failed_count``;
+    if the task was pending (had ``ff``), reset ``snooze_count`` to 0.
+    """
+    project_dir = _resolve_project(project)
+    if project_dir is None:
+        return 1
+    if not date_val:
+        print("Error: especifica fecha (ej. task plan <proyecto> <texto> <YYYY-MM-DD>)")
+        return 1
+    if not _valid_date(date_val):
+        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, ...")
+        return 1
+    if time_val and not _valid_time(time_val):
+        print(f"⚠️  Hora '{time_val}' no válida. Usa: HH:MM o HH:MM-HH:MM")
+        return 1
+
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    idx = _select_item(data["tasks"], "Tareas pendientes", text)
+    if idx is None:
+        return 1
+    task = data["tasks"][idx]
+
+    old_date = task.get("date")
+    old_ff   = task.get("ff")
+    today_iso = date.today().isoformat()
+    was_overdue = bool(old_date) and old_date < today_iso
+
+    task["date"] = date_val
+    if time_val is not None:
+        task["time"] = time_val
+    task["ff"] = None
+
+    if old_ff is not None:
+        # pending/someday → planned: reset snooze on promotion
+        task["snooze_count"] = 0
+        kind_msg = "planeada"
+    elif was_overdue:
+        # planned overdue → reschedule: count the slip
+        task["failed_count"] = task.get("failed_count", 0) + 1
+        kind_msg = "replaneada (atrasada)"
+    else:
+        kind_msg = "replaneada"
+
+    _write_agenda(agenda_path, data)
+
+    desc = task["desc"]
+    add_orbit_entry(project_dir, f"[{kind_msg}] Tarea: {desc} → {date_val}", "apunte")
+    print(f"✓ [{project_dir.name}] {kind_msg}: {desc} → {date_val}")
+    return 0
+
+
+def run_task_pending(project: Optional[str], text: Optional[str],
+                     target_ff: Optional[str] = None) -> int:
+    """Demote planned→pending or snooze an existing pending. ``target_ff``
+    accepts ``None`` (default: tomorrow for snooze, keep date for demote),
+    ``"someday"``, or ``YYYY-MM-DD``. Snoozing a pending increments
+    ``snooze_count``; demoting a planned does not (it's a kind change,
+    not a slip).
+    """
+    project_dir = _resolve_project(project)
+    if project_dir is None:
+        return 1
+
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    idx = _select_item(data["tasks"], "Tareas pendientes", text)
+    if idx is None:
+        return 1
+    task = data["tasks"][idx]
+
+    old_ff   = task.get("ff")
+    old_date = task.get("date")
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+    if target_ff is None:
+        if old_ff is not None:
+            target_ff = tomorrow                # snooze: bump to tomorrow
+        else:
+            target_ff = old_date or tomorrow    # demote: keep date as ff
+    elif target_ff != "someday" and not _valid_date(target_ff):
+        print(f"⚠️  Fecha '{target_ff}' no reconocida. Usa: YYYY-MM-DD o someday.")
+        return 1
+
+    if old_ff is not None:
+        # already pending → snooze
+        task["ff"] = target_ff
+        task["snooze_count"] = task.get("snooze_count", 0) + 1
+        kind_msg = "aplazada"
+    else:
+        # planned → pending (degrade); clear date+time, ff carries the slot
+        task["ff"] = target_ff
+        task["date"] = None
+        task["time"] = None
+        kind_msg = "a pendiente"
+
+    _write_agenda(agenda_path, data)
+
+    desc = task["desc"]
+    add_orbit_entry(project_dir, f"[{kind_msg}] Tarea: {desc} ⏩{target_ff}", "apunte")
+    print(f"✓ [{project_dir.name}] {kind_msg}: {desc} ⏩{target_ff}")
+    return 0
 
 
 def run_task_list(projects: Optional[list] = None,

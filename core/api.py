@@ -124,20 +124,29 @@ def add_task(project: str, text: str, *,
              recur: Optional[str] = None,
              until: Optional[str] = None,
              ring: Optional[str] = None,
+             ff: Optional[str] = None,
              notes: Optional[list] = None) -> dict:
     """Add a task to ``project``'s agenda. Returns the created task dict.
 
     Raises :class:`ValueError` for invalid args or unknown project.
+
+    Raw capture (no ``date`` and no ``recur``) defaults ``ff`` to today,
+    landing the task in the "Decidir hoy" lane until the user processes it.
     """
+    from datetime import date as _date
     if not text or not str(text).strip():
         raise ValueError("text is required")
     project_dir = _resolve_project_or_raise(project)
     recur = _validate_common(date=date, time=time, recur=recur,
                              until=until, ring=ring, time_format="event")
+    if ff is None and date is None and recur is None:
+        ff = _date.today().isoformat()
     item = _build_item("task", text=text, date=date, time=time,
                        recur=recur, until=until, ring=ring,
                        end_date=None, notes_in=notes,
                        agenda=None, room=None)
+    if ff is not None:
+        item["ff"] = ff
     return _append_and_write("task", project_dir, item)
 
 
