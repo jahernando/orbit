@@ -185,7 +185,7 @@ def render_vevent(item: dict, kind: str, project_name: str,
         dtstart_val = start_d
         dtend_val   = _date.fromisoformat(end_d_iso) + timedelta(days=1)
     else:
-        if is_event and time_val and "-" in time_val:
+        if time_val and "-" in time_val:
             start_part, end_part = time_val.split("-", 1)
             sh, sm = _parse_hm(start_part)
             eh, em = _parse_hm(end_part)

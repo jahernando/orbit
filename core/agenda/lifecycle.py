@@ -146,7 +146,7 @@ _TYPE_CONFIG = {
     "task": {
         "key": "tasks", "label": "Tarea", "kind": "task",
         "has_status": True, "has_ring": True, "has_gsync": True,
-        "has_end": False, "time_format": "simple",
+        "has_end": False, "time_format": "event",
         "select_fn": lambda data, text: _select_item(data["tasks"], "Tareas pendientes", text),
         "drop_action": "cancel", "drop_verb": "cancelada",
         "log_type": "apunte",

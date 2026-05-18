@@ -133,7 +133,7 @@ def add_task(project: str, text: str, *,
         raise ValueError("text is required")
     project_dir = _resolve_project_or_raise(project)
     recur = _validate_common(date=date, time=time, recur=recur,
-                             until=until, ring=ring, time_format="simple")
+                             until=until, ring=ring, time_format="event")
     item = _build_item("task", text=text, date=date, time=time,
                        recur=recur, until=until, ring=ring,
                        end_date=None, notes_in=notes,

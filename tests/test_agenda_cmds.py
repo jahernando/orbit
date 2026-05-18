@@ -123,6 +123,33 @@ class TestParseTaskLine:
         t = {"status": "done", "desc": "Done task", "date": "2026-03-09", "recur": None, "ring": None}
         assert _format_task_line(t) == "- [x] Done task (2026-03-09)"
 
+    def test_time_range_accepted(self, proj):
+        # Focus blocks: task accepts --time HH:MM-HH:MM and persists it
+        # to agenda.md as ⏰HH:MM-HH:MM.
+        from core import api
+        from core.agenda_cmds import _read_agenda
+        api.add_task(project=proj.name, text="Focus block",
+                     date="2026-05-15", time="09:00-11:00")
+        data = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
+        assert data["tasks"][-1]["time"] == "09:00-11:00"
+        assert "⏰09:00-11:00" in _agenda_text(proj)
+
+    def test_time_simple_still_accepted(self, proj):
+        # Backwards compat: HH:MM (no range) still works on task.
+        from core import api
+        from core.agenda_cmds import _read_agenda
+        api.add_task(project=proj.name, text="Plain timed",
+                     date="2026-05-15", time="09:00")
+        data = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
+        assert data["tasks"][-1]["time"] == "09:00"
+
+    def test_time_range_invalid_rejected(self, proj):
+        # Garbage range is still rejected by _valid_time.
+        from core import api
+        with pytest.raises(ValueError, match="invalid time"):
+            api.add_task(project=proj.name, text="Bad",
+                         date="2026-05-15", time="09:00-noon")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # _parse_event_line / _format_event_line

@@ -66,6 +66,14 @@ class TestRenderVevent:
         # Events carry no kind emoji
         assert "SUMMARY:[proj] Kickoff" in block
 
+    def test_task_with_time_range(self):
+        # focus blocks: task with HH:MM-HH:MM uses the explicit end-time
+        # instead of the per-kind default duration.
+        block = "\n".join(ics.render_vevent(
+            self._task(time="09:00-11:00"), "task", "proj"))
+        assert "DTSTART:20260515T090000" in block
+        assert "DTEND:20260515T110000" in block
+
     def test_event_all_day(self):
         ev = {"desc": "Holiday", "date": "2026-05-15", "orbit_id": "h0"}
         block = "\n".join(ics.render_vevent(ev, "event", "proj"))
