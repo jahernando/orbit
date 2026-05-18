@@ -48,6 +48,7 @@ def test_commit_post_chain_registered():
     assert chain.trigger_type == "explicit"
     assert chain.pre == []
     assert chain.post == [
+        "cronos_section_refresh",
         "secretary_refresh",
         "ring_refresh",
         "ics_emit_workspace",
@@ -66,7 +67,8 @@ def test_commit_action_criticality():
     # aborta la chain y por tanto el save. Las demás son non-critical.
     assert hooks.ACTIONS["doctor_check_save"].critical is True
     for name in ("cloud_imgs_process", "cronograma_log_completed",
-                 "render_to_cloud", "ring_refresh"):
+                 "render_to_cloud", "ring_refresh",
+                 "cronos_section_refresh"):
         assert hooks.ACTIONS[name].critical is False, name
 
 

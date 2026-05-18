@@ -1502,3 +1502,47 @@ class TestRefreshAgendaCronosSection:
         assert "- [ ] foo (2026-06-01)" in text
         assert "- [x] bar (2026-06-02)" in text
         assert "crono-c.md" in text
+
+
+class TestCronosSectionRefreshAction:
+    """The ``cronos_section_refresh`` hook action iterates all own
+    projects, calling :func:`_refresh_agenda_cronos_section` on each.
+    """
+
+    def test_action_updates_multiple_projects(self, projects_dir):
+        from core.cronograma import _action_cronos_section_refresh
+        p1 = _make_project(projects_dir, "a")
+        p2 = _make_project(projects_dir, "b")
+        _write_crono(p1, "x", "# Cronograma: x\n\n- [ ] 1 r\n  - [ ] 1.1 a\n")
+        _write_crono(p2, "y", "# Cronograma: y\n\n- [ ] 1 r\n  - [x] 1.1 a\n")
+        result = _action_cronos_section_refresh(None)
+        assert result["ok"] is True
+        assert "2 updated" in result["msg"]
+        from core.log import resolve_file
+        assert "crono-x.md" in resolve_file(p1, "agenda").read_text()
+        assert "crono-y.md" in resolve_file(p2, "agenda").read_text()
+
+    def test_action_idempotent(self, projects_dir):
+        from core.cronograma import _action_cronos_section_refresh
+        p1 = _make_project(projects_dir, "a")
+        _write_crono(p1, "x", "# Cronograma: x\n\n- [ ] 1 r\n  - [ ] 1.1 a\n")
+        _action_cronos_section_refresh(None)
+        result = _action_cronos_section_refresh(None)
+        assert result == {"ok": True, "msg": "0 updated"}
+
+    def test_action_no_projects(self, projects_dir):
+        from core.cronograma import _action_cronos_section_refresh
+        result = _action_cronos_section_refresh(None)
+        assert result == {"ok": True, "msg": "0 updated"}
+
+    def test_action_skips_non_new_projects(self, projects_dir):
+        """Old-format directories without {name}-project.md are not iterated."""
+        from core.cronograma import _action_cronos_section_refresh
+        ghost = projects_dir / "ghost"
+        ghost.mkdir()
+        (ghost / "cronos").mkdir()
+        (ghost / "ghost-agenda.md").write_text("## ✅ Tareas\n")
+        _write_crono(ghost, "x", "# Cronograma: x\n\n- [ ] 1 r\n  - [ ] 1.1 a\n")
+        # No ghost-project.md → _is_new_project False → skipped silently
+        result = _action_cronos_section_refresh(None)
+        assert result == {"ok": True, "msg": "0 updated"}

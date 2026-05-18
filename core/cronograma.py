@@ -1440,6 +1440,32 @@ def _refresh_agenda_cronos_section(project_dir: Path) -> bool:
     return True
 
 
+def _action_cronos_section_refresh(ctx):
+    """Hook action: refresh the ``## 📊 Cronogramas`` section in every own
+    project's agenda.md.
+
+    Fired by ``commit_post`` so render_to_cloud, which runs later in the
+    same chain, projects the updated agenda.md to HTML in one pass.
+    Federated workspaces are skipped (federation-readonly).
+    """
+    from core.config import iter_project_dirs
+    from core.project import _is_new_project
+    changed = 0
+    errors = []
+    for project_dir in iter_project_dirs():
+        if not _is_new_project(project_dir):
+            continue
+        try:
+            if _refresh_agenda_cronos_section(project_dir):
+                changed += 1
+        except Exception as e:
+            errors.append(f"{project_dir.name}: {type(e).__name__}: {e}")
+    if errors:
+        return {"ok": False,
+                "msg": f"{changed} updated; {len(errors)} error(s); first: {errors[0]}"}
+    return {"ok": True, "msg": f"{changed} updated"}
+
+
 def run_crono_show(project: str, name: str) -> int:
     """Show cronograma with computed dates."""
     project_dir = _find_new_project(project)
