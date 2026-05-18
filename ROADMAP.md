@@ -83,7 +83,38 @@ generador HTML, integración con `orbit` CLI y test).
 
 ---
 
-## 3. Cronograma 2.3.2/2.3.3 — vínculo agenda↔cronos como task-compuesta
+## 3. Módulo `focus` — bloques semanales en `mission/agenda.md`
+
+**Estado**: diseño cerrado y aprobado (2026-05-17, sesión continua tras taxonomía de items rev 2). Documento de diseño: `docs/design/2026-05-17_items_taxonomy.md` (en la memoria del proyecto, decisión cardinal del producto). Prerequisito **F0 ya implementado en v0.39**: task acepta `--time HH:MM-HH:MM` (commit `f0b279b`).
+
+**Objetivo**: codificar el sistema de planificación semanal por carriles que el usuario ha validado manualmente durante meses. Un bloque = una task en `mission/agenda.md` con `[[wikilink-a-proyecto]]` + `time HH:MM-HH:MM` (≥90 min). El carril (anchor/push/joy) no es campo: se deriva del archivo semanal `mission/notes/2026-WNN-focus.md`.
+
+**Comando tentativo**:
+
+```bash
+orbit focus week              # planifica semana actual (clona W-1 por defecto)
+orbit focus week --next       # planifica semana siguiente
+orbit focus week --review     # abre el archivo en $EDITOR
+```
+
+**Principios rectores** (cerrados, no negociables al implementar):
+
+- **Media semana libre**: máx 5 bloques/semana, mañanas preferidas. Viene de meses de validación real.
+- **Targets**: 2 anchor / 1-2 push / 0-1 joy (normal); reducidos en `status: docencia`; aparcados en `status: congreso`.
+- **Carriles derivables**: cero campo nuevo en task. Frontmatter del archivo semanal asigna proyectos a carriles para esa semana.
+- **Joy opcional de primera clase**: `joy: null` válido.
+- **Clone-from-W-1 como path primario**: el comando duraría >5 min sin clone.
+- **`core/focus.py`** (no `views/`, no nuevo top-level). Muta agenda vía `core/agenda_cmds.run_task_add`; el archivo semanal sí lo escribe directamente.
+
+**Pendientes menores** a resolver al implementar (no afectan el modelo): formato exacto del frontmatter, parser de wikilinks, detección de huecos, política si no hay slots libres, regenerar idempotente, tasks manuales con wikilink, umbral de duración para "ser bloque". Lista completa en la memoria de diseño.
+
+**Estimación**: 1 fichero único `core/focus.py` (~300-500 ℓ), partición natural cuando crezca. Bloque MVP: ~1-2 días.
+
+**Bloqueado por**: nada. Listo para implementar.
+
+---
+
+## 4. Cronograma 2.3.2/2.3.3 — vínculo agenda↔cronos como task-compuesta
 
 **Estado**: pospuesto al final del plan de simplificación. Resto de Fase 4 (4.A + 4.B) ya cerrado en v0.38; este es el único sub-paso pendiente del plan completo.
 
