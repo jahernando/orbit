@@ -363,9 +363,16 @@ def _create_blocks_for_project(canonical: str, rail: str, n_blocks: int,
 
 
 def _run_mode_libre(mission_dir: Path, template: dict,
-                    target: date, week_file: Path) -> int:
+                    target: date, week_file: Path,
+                    *,
+                    initial_projects: Optional[dict[str, list[str]]] = None,
+                    initial_blocks: Optional[dict[str, list[tuple[str, str]]]] = None,
+                    initial_status: str = "normal") -> int:
     """Interactive free-mode planning. Asks projects/blocks rail by rail,
     creates the tasks in mission/agenda.md, writes the week file.
+
+    Si se pasan ``initial_projects`` / ``initial_blocks``, se extienden
+    (modo "añadir bloques" desde F7) preservando el contenido existente.
     """
     available = _list_available_projects(mission_dir)
     if not available:
@@ -379,8 +386,15 @@ def _run_mode_libre(mission_dir: Path, template: dict,
 
     print(f"\nProyectos disponibles: {', '.join(available)}\n")
 
-    rails_projects: dict[str, list[str]] = {r: [] for r in _RAILS}
-    blocks_by_rail: dict[str, list[tuple[str, str]]] = {r: [] for r in _RAILS}
+    rails_projects: dict[str, list[str]] = (
+        {r: list(initial_projects.get(r, [])) for r in _RAILS}
+        if initial_projects else {r: [] for r in _RAILS}
+    )
+    blocks_by_rail: dict[str, list[tuple[str, str]]] = (
+        {r: list(initial_blocks.get(r, [])) for r in _RAILS}
+        if initial_blocks else {r: [] for r in _RAILS}
+    )
+    pre_existing = sum(len(v) for v in blocks_by_rail.values())
 
     for rail in _RAILS:
         emoji = _RAIL_EMOJI[rail]
@@ -422,13 +436,17 @@ def _run_mode_libre(mission_dir: Path, template: dict,
         print()
 
     total = sum(len(v) for v in blocks_by_rail.values())
-    if total == 0:
+    new_total = total - pre_existing
+    if new_total <= 0 and pre_existing == 0:
         print("⚠️  No se creó ningún bloque. Archivo semanal no escrito.")
         return 1
 
-    _write_week_file(week_file, target, "normal",
+    _write_week_file(week_file, target, initial_status,
                      rails_projects, blocks_by_rail)
-    print(f"\n✓ {total} bloques creados en mission/agenda.md")
+    if pre_existing:
+        print(f"\n✓ {new_total} bloques añadidos · total semana: {total}")
+    else:
+        print(f"\n✓ {total} bloques creados en mission/agenda.md")
     print(f"✓ Archivo semanal: {week_file}")
     return 0
 
@@ -681,6 +699,61 @@ def _run_mode_repetir(mission_dir: Path, template: dict,
     print(f"\n✓ {total} bloques creados en mission/agenda.md")
     print(f"✓ Archivo semanal: {week_file}")
     return 0
+
+
+# ── F7: menú sobre semana existente ───────────────────────────────────────
+
+def _load_existing_state(week_file: Path) -> tuple[
+        str, dict[str, list[str]], dict[str, list[tuple[str, str]]]]:
+    """Read an existing week file → (status, rails_projects, blocks_by_rail)."""
+    text = week_file.read_text()
+    parsed = _parse_week_file(text)
+    detailed = _parse_week_blocks_detailed(text)
+    rails_projects: dict[str, list[str]] = {r: [] for r in _RAILS}
+    blocks_by_rail: dict[str, list[tuple[str, str]]] = {r: [] for r in _RAILS}
+    for rail, proj, oid in detailed:
+        if proj not in rails_projects[rail]:
+            rails_projects[rail].append(proj)
+        blocks_by_rail[rail].append((proj, oid))
+    return parsed["status"], rails_projects, blocks_by_rail
+
+
+def _menu_existing_week(week_file: Path, mission_dir: Path,
+                        template: dict, target: date) -> int:
+    """Show options when 2026-WNN-focus.md already exists."""
+    print(f"⚠️  {week_file.name} ya existe. Opciones:")
+    print("  1) regenerar contador (default)")
+    print("  2) abrir en $EDITOR")
+    print("  3) añadir bloques")
+    print("  4) abortar")
+    try:
+        raw = input("  selección [1]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return 1
+    choice = raw or "1"
+
+    if choice == "1":
+        done, total = _regenerate_counter(week_file, mission_dir)
+        print(f"✓ Contador regenerado: {done}/{total} bloques completados.")
+        return 0
+    if choice == "2":
+        import os
+        os.system(f"$EDITOR '{week_file}'")
+        return 0
+    if choice == "3":
+        status, rails_projects, blocks_by_rail = _load_existing_state(week_file)
+        rc = _run_mode_libre(mission_dir, template, target, week_file,
+                              initial_projects=rails_projects,
+                              initial_blocks=blocks_by_rail,
+                              initial_status=status)
+        if rc == 0:
+            _regenerate_counter(week_file, mission_dir)
+        return rc
+    if choice == "4":
+        return 0
+    print(f"  ⚠️  Selección no válida: {choice!r}")
+    return 1
 
 
 # ── Selector de modo (F5) ─────────────────────────────────────────────────
@@ -949,14 +1022,7 @@ def run_focus_week(next_week: bool = False, review: bool = False) -> int:
         template = _bootstrap_template_from_factory(mission_dir)
 
     if week_file.exists():
-        # F7 will offer regenerate / open / add / abort. For now: regenerate
-        # the counter in place (F4) and let the user open the file if needs
-        # more.
-        done, total = _regenerate_counter(week_file, mission_dir)
-        print(f"✓ {week_file.name} ya existe — contador regenerado: "
-              f"{done}/{total} bloques completados.")
-        print(f"   Edita el fichero a mano o lanza con --review para abrirlo.")
-        return 0
+        return _menu_existing_week(week_file, mission_dir, template, target)
 
     print(f"focus week — {_iso_week_label(target)}")
     mode = _select_mode(mission_dir, target)
