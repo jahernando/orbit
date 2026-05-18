@@ -415,11 +415,10 @@ class TestRunPanel:
                       agenda_extra=f"## ✅ Tareas\n- [ ] Esperar X ⏩{today}\n")
         run_panel()
         out = capsys.readouterr().out
-        # Section present, item rendered, no ❗ when ff == today
+        # Section present, item rendered with the ☐ task icon and no ❗ marker
+        # (ff == today is not overdue).
         assert "## Decidir hoy" in out
-        assert "Esperar X" in out
-        # The Decidir-hoy table row for this item starts blank between pipes.
-        assert any("Esperar X" in line and not line.startswith("| ❗")
+        assert any("Esperar X" in line and line.startswith("| ☐ |") and "❗" not in line
                    for line in out.splitlines())
 
     def test_decidir_section_overdue_shows_exclamation(self, panel_env, capsys):

@@ -433,9 +433,9 @@ def run_panel(period=None, include_federated=True,
                 ff_val = t["ff"]
                 snooze = t.get("snooze_count", 0) or 0
                 if snooze >= 3:
-                    mark = "❗❗"
+                    mark = "❗❗ "
                 elif ff_val < today_iso:
-                    mark = "❗"
+                    mark = "❗ "
                 else:
                     mark = ""
                 extras = ""
@@ -444,7 +444,7 @@ def run_panel(period=None, include_federated=True,
                 failed = t.get("failed_count", 0) or 0
                 if failed:
                     extras += f" ❌{failed}"
-                print(f"| {mark} | {ff_val} | {t['desc']}{extras} | {_project_link(project_dir)} |")
+                print(f"| ☐ | {ff_val} | {mark}{t['desc']}{extras} | {_project_link(project_dir)} |")
         else:
             print("(nada que decidir hoy)")
         print("\n---")
