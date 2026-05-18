@@ -925,6 +925,56 @@ class TestRunTaskList:
         run_task_list(projects=["test-project"])
         assert "My task" in capsys.readouterr().out
 
+    def test_pending_only_filter(self, proj, projects_dir, capsys):
+        from core import api
+        from core.agenda_cmds import run_task_list
+        api.add_task(project="test-project", text="Planned X", date="2026-06-01")
+        api.add_task(project="test-project", text="Pending Y", ff="2026-05-25")
+        api.add_task(project="test-project", text="Someday Z", ff="someday")
+        capsys.readouterr()  # discard add output
+        run_task_list(pending_only=True)
+        out = capsys.readouterr().out
+        assert "Pending Y" in out
+        assert "Planned X" not in out
+        assert "Someday Z" not in out
+
+    def test_someday_only_filter(self, proj, projects_dir, capsys):
+        from core import api
+        from core.agenda_cmds import run_task_list
+        api.add_task(project="test-project", text="Pending Y", ff="2026-05-25")
+        api.add_task(project="test-project", text="Someday Z", ff="someday")
+        capsys.readouterr()
+        run_task_list(someday_only=True)
+        out = capsys.readouterr().out
+        assert "Someday Z" in out
+        assert "Pending Y" not in out
+
+    def test_display_shows_ff_and_counters(self, proj, projects_dir, capsys):
+        from core import api
+        from core.agenda_cmds import run_task_list, _read_agenda, _write_agenda
+        api.add_task(project="test-project", text="X", ff="2026-05-25")
+        # Bump counters directly to verify display.
+        from pathlib import Path
+        path = Path(proj) / f"{_strip_emoji(proj.name)}-agenda.md"
+        data = _read_agenda(path)
+        data["tasks"][-1]["snooze_count"] = 2
+        data["tasks"][-1]["failed_count"] = 1
+        _write_agenda(path, data)
+        capsys.readouterr()
+        run_task_list()
+        out = capsys.readouterr().out
+        assert "⏩2026-05-25" in out
+        assert "💤2" in out
+        assert "❌1" in out
+
+    def test_pending_only_empty_message(self, proj, projects_dir, capsys):
+        from core import api
+        from core.agenda_cmds import run_task_list
+        api.add_task(project="test-project", text="Planned X", date="2026-06-01")
+        capsys.readouterr()
+        run_task_list(pending_only=True)
+        assert "No hay tareas pending" in capsys.readouterr().out
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # run_ms_add / run_ms_done / run_ms_cancel / run_ms_edit / run_ms_list

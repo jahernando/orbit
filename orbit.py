@@ -1332,6 +1332,8 @@ def cmd_ls(args):
             date_filter=_d(getattr(args, "date", None)),
             dated_only=getattr(args, "dated", False),
             unplanned=getattr(args, "unplanned", False),
+            pending_only=getattr(args, "pending", False),
+            someday_only=getattr(args, "someday", False),
             include_federated=_inc_fed)
         return _handle_output(args, fn, "ls tasks")
 
@@ -1473,6 +1475,8 @@ def _build_parser():
     ls_tasks.add_argument("--date",   default=None, help="Filter by date")
     ls_tasks.add_argument("--dated",     action="store_true", help="Only show tasks with a date")
     ls_tasks.add_argument("--unplanned", action="store_true", help="Only show tasks without a date")
+    ls_tasks.add_argument("--pending",   action="store_true", help="Only show tasks with ⏩ set (excludes someday)")
+    ls_tasks.add_argument("--someday",   action="store_true", help="Only show tasks with ⏩someday")
     _add_output_args(ls_tasks)
     _add_log_args(ls_tasks)
     _add_fed_args(ls_tasks)

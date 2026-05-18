@@ -405,7 +405,7 @@ orbit clip catedra notes/tramos.md --from complementos      # enlace relativo en
 ```bash
 orbit ls                              # lista proyectos (por defecto)
 orbit ls projects [--status S] [--type T] [--sort type|status|priority]
-orbit ls tasks    [project...] [--status pending|done|all] [--date D] [--dated] [--unplanned]
+orbit ls tasks    [project...] [--status pending|done|all] [--date D] [--dated] [--unplanned] [--pending] [--someday]
 orbit ls ms       [project...] [--status pending|done|all] [--date D] [--dated]
 orbit ls ev         [project]    [--from D] [--to D]
 orbit ls reminders  [project]    # recordatorios activos (alias: ls rem)
@@ -415,7 +415,11 @@ orbit ls notes    [project]    # notas con estado git
 ```
 
 - `--unplanned`: solo tareas sin fecha asignada (futuribles)
+- `--pending`: solo tareas con ⏩ puesto (excluye someday)
+- `--someday`: solo tareas con ⏩someday
 - `--no-fed`: excluye proyectos federados del listado
+
+El display de `ls tasks` muestra `⏩{fecha}` y los contadores `💤N` / `❌N` cuando están presentes.
 
 Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untracked · `✗` ignored
 

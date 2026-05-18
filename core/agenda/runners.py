@@ -224,8 +224,16 @@ def run_task_list(projects: Optional[list] = None,
                   date_filter: Optional[str] = None,
                   dated_only: bool = False,
                   unplanned: bool = False,
+                  pending_only: bool = False,
+                  someday_only: bool = False,
                   include_federated: bool = True) -> int:
-    """List tasks from new-format projects."""
+    """List tasks from new-format projects.
+
+    ``pending_only`` filters to tasks with ``ff`` set, excluding
+    ``ff:someday``. ``someday_only`` filters to ``ff:someday``. Both
+    flags can be combined with the legacy filters (``status_filter``,
+    ``date_filter``, ``dated_only``, ``unplanned``).
+    """
     if projects:
         dirs = []
         for p in projects:
@@ -250,6 +258,10 @@ def run_task_list(projects: Optional[list] = None,
             tasks = [t for t in tasks if t.get("date")]
         if unplanned:
             tasks = [t for t in tasks if not t.get("date")]
+        if pending_only:
+            tasks = [t for t in tasks if t.get("ff") and t["ff"] != "someday"]
+        if someday_only:
+            tasks = [t for t in tasks if t.get("ff") == "someday"]
 
         if not tasks:
             continue
@@ -258,18 +270,28 @@ def run_task_list(projects: Optional[list] = None,
         for t in tasks:
             status_s = {"pending": "[ ]", "done": "[x]", "cancelled": "[-]"}[t["status"]]
             date_s   = f" ({t['date']})" if t.get("date") else ""
+            time_s   = f" ⏰{t['time']}"  if t.get("time")  else ""
             recur_s = ""
             if t.get("recur"):
                 recur_s = f" 🔄{t['recur']}"
                 if t.get("until"):
                     recur_s += f":{t['until']}"
             ring_s   = f" 🔔{t['ring']}"   if t.get("ring")  else ""
-            print(f"  {status_s} {t['desc']}{date_s}{recur_s}{ring_s}")
+            ff_s     = f" ⏩{t['ff']}"     if t.get("ff")    else ""
+            snooze   = t.get("snooze_count", 0) or 0
+            failed   = t.get("failed_count", 0) or 0
+            cnt_s    = (f" 💤{snooze}" if snooze else "") + (f" ❌{failed}" if failed else "")
+            print(f"  {status_s} {t['desc']}{date_s}{time_s}{recur_s}{ring_s}{ff_s}{cnt_s}")
             total += 1
 
     if not total:
-        sf = f" ({status_filter})" if status_filter != "all" else ""
-        print(f"No hay tareas{sf}.")
+        if pending_only:
+            print("No hay tareas pending.")
+        elif someday_only:
+            print("No hay tareas someday.")
+        else:
+            sf = f" ({status_filter})" if status_filter != "all" else ""
+            print(f"No hay tareas{sf}.")
     else:
         print()
     return 0
