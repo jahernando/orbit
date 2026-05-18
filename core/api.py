@@ -84,8 +84,15 @@ def _validate_common(*, date: Optional[str], time: Optional[str],
 
 
 def _build_item(kind: str, *, text: str, date, time, recur, until,
-                ring, end_date, notes_in, agenda, room) -> dict:
-    """Construct the item dict for the appointments section."""
+                ring, end_date, notes_in, agenda, room,
+                orbit_id: Optional[str] = None) -> dict:
+    """Construct the item dict for the appointments section.
+
+    ``orbit_id``: opcional. Si se pasa, queda en el item y se serializa
+    como ``[orbit:…]`` (lo necesita ``core/focus.py`` para fijar la
+    identidad del bloque al crearse, ya que el flujo normal de ``task
+    add`` no genera ids — sólo lo hace ``views/cal/share.py``).
+    """
     cfg = _TYPE_CONFIG[kind]
     notes = list(notes_in or [])
     if agenda:
@@ -94,6 +101,8 @@ def _build_item(kind: str, *, text: str, date, time, recur, until,
         notes.append(f"{_ROOM_NOTE_PREFIX}{room}")
     item: dict = {"desc": text, "date": date, "recur": recur,
                   "until": until, "notes": notes, "time": time}
+    if orbit_id:
+        item["orbit_id"] = orbit_id
     if cfg["has_status"]:
         item["status"] = "pending"
     if cfg["has_ring"]:
@@ -125,13 +134,18 @@ def add_task(project: str, text: str, *,
              until: Optional[str] = None,
              ring: Optional[str] = None,
              ff: Optional[str] = None,
-             notes: Optional[list] = None) -> dict:
+             notes: Optional[list] = None,
+             orbit_id: Optional[str] = None) -> dict:
     """Add a task to ``project``'s agenda. Returns the created task dict.
 
     Raises :class:`ValueError` for invalid args or unknown project.
 
     Raw capture (no ``date`` and no ``recur``) defaults ``ff`` to today,
     landing the task in the "Decidir hoy" lane until the user processes it.
+
+    ``orbit_id`` opcional: fija el id de la task al crearse (lo usa
+    ``core/focus.py`` para poder referenciar el bloque desde el archivo
+    semanal sin reabrir la agenda).
     """
     from datetime import date as _date
     if not text or not str(text).strip():
@@ -146,7 +160,7 @@ def add_task(project: str, text: str, *,
     item = _build_item("task", text=text, date=date, time=time,
                        recur=recur, until=until, ring=ring,
                        end_date=None, notes_in=notes,
-                       agenda=None, room=None)
+                       agenda=None, room=None, orbit_id=orbit_id)
     if ff is not None:
         item["ff"] = ff
     return _append_and_write("task", project_dir, item)
