@@ -337,6 +337,31 @@ def _ask_yn(prompt: str, default: bool = False) -> bool:
     return raw in ("y", "yes", "s", "si", "sí")
 
 
+def _create_blocks_for_project(canonical: str, rail: str, n_blocks: int,
+                                week_label: str, monday: date,
+                                duration: int) -> list[tuple[str, str]]:
+    """Prompt día+hora for each of n_blocks and create them. Returns
+    list of (project, orbit_id) for blocks successfully created."""
+    emoji = _RAIL_EMOJI[rail]
+    out: list[tuple[str, str]] = []
+    for i in range(n_blocks):
+        print(f"    bloque {i+1}/{n_blocks} — {canonical}")
+        d = _prompt_day(monday)
+        if d is None:
+            print("    (bloque saltado)")
+            continue
+        t = _prompt_time_range(duration)
+        if t is None:
+            print("    (bloque saltado)")
+            continue
+        orbit_id = _create_block(canonical, rail, week_label,
+                                  d.isoformat(), t)
+        if orbit_id:
+            out.append((canonical, orbit_id))
+            print(f"    ✓ {emoji} [{canonical}] {d.isoformat()} ⏰{t}")
+    return out
+
+
 def _run_mode_libre(mission_dir: Path, template: dict,
                     target: date, week_file: Path) -> int:
     """Interactive free-mode planning. Asks projects/blocks rail by rail,
@@ -391,21 +416,9 @@ def _run_mode_libre(mission_dir: Path, template: dict,
             if n_blocks <= 0:
                 continue
 
-            for i in range(n_blocks):
-                print(f"    bloque {i+1}/{n_blocks} — {canonical}")
-                d = _prompt_day(monday)
-                if d is None:
-                    print("    (bloque saltado)")
-                    continue
-                t = _prompt_time_range(duration)
-                if t is None:
-                    print("    (bloque saltado)")
-                    continue
-                orbit_id = _create_block(canonical, rail, week_label,
-                                          d.isoformat(), t)
-                if orbit_id:
-                    blocks_by_rail[rail].append((canonical, orbit_id))
-                    print(f"    ✓ {emoji} [{canonical}] {d.isoformat()} ⏰{t}")
+            blocks_by_rail[rail].extend(
+                _create_blocks_for_project(canonical, rail, n_blocks,
+                                            week_label, monday, duration))
         print()
 
     total = sum(len(v) for v in blocks_by_rail.values())
@@ -418,6 +431,165 @@ def _run_mode_libre(mission_dir: Path, template: dict,
     print(f"\n✓ {total} bloques creados en mission/agenda.md")
     print(f"✓ Archivo semanal: {week_file}")
     return 0
+
+
+# ── Modo plantilla (F5) ───────────────────────────────────────────────────
+
+def _prev_week_file(mission_dir: Path, target: date) -> Optional[Path]:
+    """Return path to W-1 focus file if it exists, else None."""
+    prev = target - timedelta(days=7)
+    p = _week_file_path(mission_dir, prev)
+    return p if p.exists() else None
+
+
+def _extract_w_minus_1_projects(mission_dir: Path,
+                                 target: date) -> dict[str, list[str]]:
+    """Read W-1 file (if any) and return rail → [project names]."""
+    out: dict[str, list[str]] = {r: [] for r in _RAILS}
+    prev = _prev_week_file(mission_dir, target)
+    if not prev:
+        return out
+    text = prev.read_text()
+    # Look at the '## Carriles' section: '- ⚓ Anchor: [[proj-a]], [[proj-b]]'
+    in_section = False
+    for line in text.splitlines():
+        s = line.strip()
+        if s == "## Carriles":
+            in_section = True
+            continue
+        if in_section and s.startswith("## "):
+            break
+        if not in_section or not s.startswith("- "):
+            continue
+        for emoji, rail in _RAIL_FROM_EMOJI.items():
+            if s.startswith(f"- {emoji}"):
+                projs = re.findall(r"\[\[([^\]]+)\]\]", s)
+                if projs:
+                    out[rail] = projs
+                break
+    return out
+
+
+def _prompt_project_with_default(label: str, idx: int, default: Optional[str],
+                                  available: list[str]) -> Optional[str]:
+    """Ask for a project, allowing Enter to accept the default. None to skip."""
+    hint = f" [{default}]" if default else ""
+    try:
+        raw = input(f"  proyecto #{idx}{hint} (Enter "
+                    f"{'acepta default' if default else 'salta'}): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+    if not raw:
+        return default
+    return _resolve_project_name(raw, available)
+
+
+def _run_mode_plantilla(mission_dir: Path, template: dict,
+                        target: date, week_file: Path) -> int:
+    """Plantilla-mode: usa template para cantidades; W-1 (si existe) para
+    defaults de proyectos por carril.
+    """
+    available = _list_available_projects(mission_dir)
+    if not available:
+        print("⚠️  No hay otros proyectos en el workspace.")
+        return 1
+
+    week_label = _iso_week_label(target)
+    monday, _ = _week_bounds(target)
+    duration = template["block_duration"]
+    prev_projects = _extract_w_minus_1_projects(mission_dir, target)
+    if any(prev_projects.values()):
+        print(f"  (defaults de W-1: " +
+              "; ".join(f"{_RAIL_EMOJI[r]} {','.join(prev_projects[r]) or '—'}"
+                         for r in _RAILS) + ")")
+    print(f"  Proyectos disponibles: {', '.join(available)}\n")
+
+    rails_projects: dict[str, list[str]] = {r: [] for r in _RAILS}
+    blocks_by_rail: dict[str, list[tuple[str, str]]] = {r: [] for r in _RAILS}
+
+    for rail in _RAILS:
+        emoji = _RAIL_EMOJI[rail]
+        label = _RAIL_LABEL[rail]
+        lo, hi = template["projects_per_rail"][rail]
+        n_blocks = template["blocks_per_project"][rail]
+        rng = f"{lo}" if lo == hi else f"{lo}-{hi}"
+        proj_word = "proyecto" if hi == 1 else "proyectos"
+        blk_word = "bloque" if n_blocks == 1 else "bloques"
+        print(f"{emoji} {label} — template: {rng} {proj_word} × "
+              f"{n_blocks} {blk_word}")
+
+        # Decide cuántos proyectos esta semana.
+        if lo == hi:
+            n_projects = lo
+        else:
+            try:
+                raw = input(f"  cuántos proyectos [{hi}]: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 1
+            try:
+                n_projects = int(raw) if raw else hi
+            except ValueError:
+                n_projects = hi
+            n_projects = max(0, min(n_projects, len(available)))
+
+        defaults = prev_projects.get(rail) or []
+        for i in range(1, n_projects + 1):
+            default = defaults[i - 1] if i - 1 < len(defaults) else None
+            canonical = _prompt_project_with_default(label, i, default, available)
+            if canonical is None:
+                continue
+            if canonical in rails_projects[rail]:
+                print(f"    ⚠️  {canonical} ya está en {label} esta semana")
+                continue
+            rails_projects[rail].append(canonical)
+            blocks_by_rail[rail].extend(
+                _create_blocks_for_project(canonical, rail, n_blocks,
+                                            week_label, monday, duration))
+        print()
+
+    total = sum(len(v) for v in blocks_by_rail.values())
+    if total == 0:
+        print("⚠️  No se creó ningún bloque. Archivo semanal no escrito.")
+        return 1
+
+    _write_week_file(week_file, target, "normal",
+                     rails_projects, blocks_by_rail)
+    print(f"\n✓ {total} bloques creados en mission/agenda.md")
+    print(f"✓ Archivo semanal: {week_file}")
+    return 0
+
+
+# ── Selector de modo (F5) ─────────────────────────────────────────────────
+
+def _select_mode(mission_dir: Path, target: date) -> Optional[str]:
+    """Ask the user which planning mode to use. Returns canonical name or
+    None on abort. ``repetir`` only offered when W-1 exists.
+    """
+    has_prev = _prev_week_file(mission_dir, target) is not None
+    options: list[tuple[str, str]] = []
+    if has_prev:
+        options.append(("repetir", "clona la semana anterior"))
+    options.append(("plantilla", "template + W-1 como default de proyectos"))
+    options.append(("libre", "prompt proyecto a proyecto"))
+
+    print("Modo:")
+    for i, (name, desc) in enumerate(options, 1):
+        print(f"  {i}) {name:<10} — {desc}")
+    # Default = primera opción "plantilla" (en F5 repetir todavía es stub).
+    default_idx = next(i for i, (n, _) in enumerate(options, 1) if n == "plantilla")
+    try:
+        raw = input(f"  selección [{default_idx}]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+    if not raw:
+        return options[default_idx - 1][0]
+    if not raw.isdigit() or not (1 <= int(raw) <= len(options)):
+        print(f"  ⚠️  Selección no válida")
+        return None
+    return options[int(raw) - 1][0]
 
 
 # ── Archivo semanal: 2026-WNN-focus.md ───────────────────────────────────
@@ -649,10 +821,21 @@ def run_focus_week(next_week: bool = False, review: bool = False) -> int:
         print(f"   Edita el fichero a mano o lanza con --review para abrirlo.")
         return 0
 
-    # F5 will introduce the mode selector (libre/plantilla/repetir).
-    # F3 ships only the free mode.
     print(f"focus week — {_iso_week_label(target)}")
-    rc = _run_mode_libre(mission_dir, template, target, week_file)
+    mode = _select_mode(mission_dir, target)
+    if mode is None:
+        print("Cancelado.")
+        return 1
+    if mode == "libre":
+        rc = _run_mode_libre(mission_dir, template, target, week_file)
+    elif mode == "plantilla":
+        rc = _run_mode_plantilla(mission_dir, template, target, week_file)
+    elif mode == "repetir":
+        # F6 ships this. For F5 the option is only offered, not executed.
+        print("⚠️  Modo repetir pendiente (F6).")
+        return 1
+    else:
+        return 1
     if rc == 0 and week_file.exists():
         # Counter starts at 0/N by construction, but regenerate to keep the
         # single source of truth (avoids drift if the user did `task done`
