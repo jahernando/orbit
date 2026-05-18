@@ -1192,6 +1192,18 @@ def cmd_organize(args):
     )
 
 
+def cmd_focus(args):
+    from core.focus import run_focus_week
+    action = getattr(args, "action", None) or "week"
+    if action != "week":
+        print(f"⚠️  Subcomando desconocido para focus: {action}")
+        return 1
+    return run_focus_week(
+        next_week=getattr(args, "next", False),
+        review=getattr(args, "review", False),
+    )
+
+
 def cmd_mail(args):
     from core.cartero_invoke import run_mail
     return run_mail(
@@ -2045,6 +2057,16 @@ def _build_parser():
     crono_p = subparsers.add_parser("crono", help="Cronogramas: tareas anidadas con dependencias (alias of `task crono`)")
     _add_crono_subparsers(crono_p.add_subparsers(dest="action"))
 
+    # --- focus ---
+    foc_p = subparsers.add_parser("focus",
+        help="Planificación semanal por carriles (anchor/push/joy) en mission")
+    foc_sub = foc_p.add_subparsers(dest="action")
+    foc_week_p = foc_sub.add_parser("week", help="Planifica la semana actual (idempotente)")
+    foc_week_p.add_argument("--next", action="store_true", dest="next",
+                            help="Planifica la semana siguiente en lugar de la actual")
+    foc_week_p.add_argument("--review", action="store_true", dest="review",
+                            help="Abre el archivo semanal en $EDITOR")
+
     # --- undo ---
     subparsers.add_parser("undo", help="Undo the last operation")
 
@@ -2076,6 +2098,7 @@ _COMMANDS = {
     "crono": cmd_crono,
     "ring": cmd_ring,
     "organize": cmd_organize, "reorganize": cmd_organize,
+    "focus": cmd_focus,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,
 }
@@ -2089,7 +2112,7 @@ _COMMANDS = {
 #   resto en _DASH_TRIGGERS → solo dash  (log/hl/project no afectan ics
 #                     ni ring, sólo a los viewers markdown).
 _CITA_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
-                  "ics-import", "email"}
+                  "ics-import", "email", "focus"}
 _DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project"}
 
 
