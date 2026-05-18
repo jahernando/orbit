@@ -243,6 +243,41 @@ def _collect_agenda(start, end, include_federated=True):
 
 # ── Activity ──────────────────────────────────────────────────────────────────
 
+def _collect_decidir_hoy(today, include_federated=True):
+    """Collect pending tasks with ``ff <= today`` across all projects.
+
+    Used by the "Decidir hoy" section of the daily panel. Excludes
+    ``ff: someday`` (parked) and items already done/cancelled. Sorted
+    ascending by ``ff`` so the most overdue surface first.
+
+    Returns a list of ``(project_dir, task_dict)``.
+    """
+    from core.agenda_cmds import _read_agenda
+    from core.log import resolve_file
+
+    today_iso = today.isoformat()
+    results = []
+    for project_dir in iter_federated_project_dirs(include_federated):
+        if not _is_new_project(project_dir):
+            continue
+        agenda_path = resolve_file(project_dir, "agenda")
+        if not agenda_path or not agenda_path.exists():
+            continue
+        data = _read_agenda(agenda_path)
+        for t in data.get("tasks", []):
+            if t.get("status") != "pending":
+                continue
+            ff = t.get("ff")
+            if not ff or ff == "someday":
+                continue
+            if ff > today_iso:
+                continue
+            results.append((project_dir, t))
+
+    results.sort(key=lambda r: r[1]["ff"])
+    return results
+
+
 def _collect_activity(start, end, include_federated=True):
     """Collect logbook entries for period. Returns list of (project_dir, entries)."""
     from core.stats import _scan_logbook
@@ -384,6 +419,35 @@ def run_panel(period=None, include_federated=True,
     else:
         print("(sin citas)")
     print("\n---")
+
+    # ── 2.5 Decidir hoy (pending tasks with ff <= today) ──
+    today = date.today()
+    if is_single_day and start == today:
+        decidir = _collect_decidir_hoy(today, include_federated)
+        print(f"\n## Decidir hoy\n")
+        if decidir:
+            today_iso = today.isoformat()
+            print("| | ff | Tarea | Proyecto |")
+            print("|---|----|------|----------|")
+            for project_dir, t in decidir:
+                ff_val = t["ff"]
+                snooze = t.get("snooze_count", 0) or 0
+                if snooze >= 3:
+                    mark = "❗❗"
+                elif ff_val < today_iso:
+                    mark = "❗"
+                else:
+                    mark = ""
+                extras = ""
+                if snooze:
+                    extras += f" 💤{snooze}"
+                failed = t.get("failed_count", 0) or 0
+                if failed:
+                    extras += f" ❌{failed}"
+                print(f"| {mark} | {ff_val} | {t['desc']}{extras} | {_project_link(project_dir)} |")
+        else:
+            print("(nada que decidir hoy)")
+        print("\n---")
 
     # ── 3. Cronogramas ──
     cronogramas = _collect_cronogramas(include_federated)

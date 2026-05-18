@@ -21,6 +21,7 @@ from core.panel import (
     _collect_priority_projects,
     _collect_agenda,
     _collect_activity,
+    _collect_decidir_hoy,
     run_panel,
 )
 
@@ -256,6 +257,82 @@ class TestCollectActivity:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# _collect_decidir_hoy
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestCollectDecidirHoy:
+
+    def test_includes_ff_today(self, panel_env):
+        today = date.today()
+        _make_project(
+            panel_env["type_dir"],
+            agenda_extra=f"## ✅ Tareas\n- [ ] Decidir X ⏩{today.isoformat()}\n",
+        )
+        items = _collect_decidir_hoy(today)
+        assert len(items) == 1
+        assert items[0][1]["desc"] == "Decidir X"
+
+    def test_includes_ff_in_past(self, panel_env):
+        today = date.today()
+        past = (today - timedelta(days=5)).isoformat()
+        _make_project(
+            panel_env["type_dir"],
+            agenda_extra=f"## ✅ Tareas\n- [ ] Overdue Y ⏩{past}\n",
+        )
+        items = _collect_decidir_hoy(today)
+        assert len(items) == 1
+        assert items[0][1]["ff"] == past
+
+    def test_excludes_ff_future(self, panel_env):
+        today = date.today()
+        future = (today + timedelta(days=5)).isoformat()
+        _make_project(
+            panel_env["type_dir"],
+            agenda_extra=f"## ✅ Tareas\n- [ ] Later Z ⏩{future}\n",
+        )
+        assert _collect_decidir_hoy(today) == []
+
+    def test_excludes_someday(self, panel_env):
+        today = date.today()
+        _make_project(
+            panel_env["type_dir"],
+            agenda_extra="## ✅ Tareas\n- [ ] Maybe ⏩someday\n",
+        )
+        assert _collect_decidir_hoy(today) == []
+
+    def test_excludes_planned_without_ff(self, panel_env):
+        today = date.today()
+        _make_project(
+            panel_env["type_dir"],
+            agenda_extra="## ✅ Tareas\n- [ ] Plain task (2026-06-01)\n",
+        )
+        assert _collect_decidir_hoy(today) == []
+
+    def test_excludes_done(self, panel_env):
+        today = date.today()
+        _make_project(
+            panel_env["type_dir"],
+            agenda_extra=f"## ✅ Tareas\n- [x] Done X ⏩{today.isoformat()}\n",
+        )
+        assert _collect_decidir_hoy(today) == []
+
+    def test_orders_by_ff_ascending(self, panel_env):
+        today = date.today()
+        d1 = (today - timedelta(days=3)).isoformat()
+        d2 = (today - timedelta(days=1)).isoformat()
+        _make_project(
+            panel_env["type_dir"],
+            agenda_extra=(
+                "## ✅ Tareas\n"
+                f"- [ ] Newer A ⏩{d2}\n"
+                f"- [ ] Older B ⏩{d1}\n"
+            ),
+        )
+        items = _collect_decidir_hoy(today)
+        assert [t["desc"] for _, t in items] == ["Older B", "Newer A"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # run_panel
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -322,3 +399,53 @@ class TestRunPanel:
         assert rc == 0
         out = capsys.readouterr().out
         assert "W" in out
+
+    # ── Decidir hoy section ─────────────────────────────────────────
+
+    def test_decidir_section_today_empty(self, panel_env, capsys):
+        _make_project(panel_env["type_dir"])
+        run_panel()
+        out = capsys.readouterr().out
+        assert "## Decidir hoy" in out
+        assert "(nada que decidir hoy)" in out
+
+    def test_decidir_section_today_with_item(self, panel_env, capsys):
+        today = date.today().isoformat()
+        _make_project(panel_env["type_dir"],
+                      agenda_extra=f"## ✅ Tareas\n- [ ] Esperar X ⏩{today}\n")
+        run_panel()
+        out = capsys.readouterr().out
+        # Section present, item rendered, no ❗ when ff == today
+        assert "## Decidir hoy" in out
+        assert "Esperar X" in out
+        # The Decidir-hoy table row for this item starts blank between pipes.
+        assert any("Esperar X" in line and not line.startswith("| ❗")
+                   for line in out.splitlines())
+
+    def test_decidir_section_overdue_shows_exclamation(self, panel_env, capsys):
+        past = (date.today() - timedelta(days=2)).isoformat()
+        _make_project(panel_env["type_dir"],
+                      agenda_extra=f"## ✅ Tareas\n- [ ] Overdue Y ⏩{past}\n")
+        run_panel()
+        out = capsys.readouterr().out
+        assert any("Overdue Y" in line and "❗" in line
+                   for line in out.splitlines())
+
+    def test_decidir_section_three_snoozes_double_exclamation(self, panel_env, capsys):
+        today = date.today().isoformat()
+        _make_project(
+            panel_env["type_dir"],
+            agenda_extra=f"## ✅ Tareas\n- [ ] Tough Z ⏩{today} 💤3\n",
+        )
+        run_panel()
+        out = capsys.readouterr().out
+        assert any("Tough Z" in line and "❗❗" in line
+                   for line in out.splitlines())
+
+    def test_decidir_section_omitted_on_week(self, panel_env, capsys):
+        today = date.today().isoformat()
+        _make_project(panel_env["type_dir"],
+                      agenda_extra=f"## ✅ Tareas\n- [ ] X ⏩{today}\n")
+        run_panel(period="week")
+        out = capsys.readouterr().out
+        assert "## Decidir hoy" not in out
