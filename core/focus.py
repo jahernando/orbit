@@ -411,10 +411,10 @@ def _run_mode_libre(mission_dir: Path, template: dict,
             canonical = _resolve_project_name(raw, available)
             if canonical is None:
                 continue
-            if canonical in rails_projects[rail]:
-                print(f"    ⚠️  {canonical} ya está en {label} esta semana")
-                continue
-            rails_projects[rail].append(canonical)
+            # Allow extending an already-listed project (add more blocks);
+            # avoid duplicate header in rails_projects.
+            if canonical not in rails_projects[rail]:
+                rails_projects[rail].append(canonical)
 
             default_blocks = template["blocks_per_project"][rail]
             try:
