@@ -1504,6 +1504,76 @@ class TestRefreshAgendaCronosSection:
         assert "crono-c.md" in text
 
 
+class TestCronoVerbsRefreshSection:
+    """Mutating crono verbs (add, done, edit, reindex) call
+    :func:`_refresh_agenda_cronos_section` so the agenda.md section is
+    always coherent with the underlying cronos/ files — without waiting
+    for the commit_post hook.
+    """
+
+    def _agenda(self, project_dir):
+        from core.log import resolve_file
+        return resolve_file(project_dir, "agenda").read_text()
+
+    def test_add_writes_table_row(self, projects_dir):
+        from core.cronograma import run_crono_add
+        proj = _make_project(projects_dir)
+        run_crono_add(project=proj.name, name="Plan")
+        text = self._agenda(proj)
+        # New panel-style table format
+        assert "| Cronograma | Progreso |   | Deadline |" in text
+        assert "[Plan](cronos/crono-plan.md)" in text
+        assert "0/1" in text  # template starts with 1 leaf, none done
+
+    def test_done_updates_progress(self, projects_dir):
+        from core.cronograma import run_crono_add, run_crono_done
+        proj = _make_project(projects_dir)
+        run_crono_add(project=proj.name, name="Plan")
+        # Template has one leaf "1.1"
+        run_crono_done(project=proj.name, name="plan", index="1.1")
+        text = self._agenda(proj)
+        assert "1/1" in text
+        assert "(100%)" in text
+
+    def test_reindex_keeps_section_coherent(self, projects_dir):
+        from core.cronograma import run_crono_reindex
+        proj = _make_project(projects_dir)
+        # Hand-written cronograma with gappy indices
+        _write_crono(proj, "p", """\
+            # Cronograma: P
+
+            - [ ] 7 root
+              - [ ] 7.5 a
+              - [ ] 7.8 b
+        """)
+        # Stale agenda blob with old link — verify it gets replaced
+        from core.log import resolve_file
+        ag = resolve_file(proj, "agenda")
+        ag.write_text(
+            "## ✅ Tareas\n- [ ] foo (2026-06-01)\n\n"
+            "## 📊 Cronogramas\n- [stale](cronos/crono-old.md)\n"
+        )
+        run_crono_reindex(project=proj.name, name="p")
+        text = self._agenda(proj)
+        assert "stale" not in text
+        assert "[P](cronos/crono-p.md)" in text
+        assert "0/2" in text
+
+    def test_edit_triggers_refresh(self, projects_dir, monkeypatch):
+        """edit is a black box; we still refresh on return so the agenda
+        section reflects any edits the user made in the editor."""
+        from core.cronograma import run_crono_edit
+        proj = _make_project(projects_dir)
+        _write_crono(proj, "p", "# Cronograma: P\n\n- [ ] 1 r\n  - [ ] 1.1 a\n")
+        # Stub the editor: pretend it ran and returned 0 without changes
+        monkeypatch.setattr("core.open.open_file", lambda *a, **kw: 0)
+        rc = run_crono_edit(project=proj.name, name="p")
+        assert rc == 0
+        text = self._agenda(proj)
+        assert "[P](cronos/crono-p.md)" in text
+        assert "0/1" in text
+
+
 class TestCronosSectionRefreshAction:
     """The ``cronos_section_refresh`` hook action iterates all own
     projects, calling :func:`_refresh_agenda_cronos_section` on each.

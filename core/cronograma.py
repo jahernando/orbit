@@ -1331,46 +1331,11 @@ def run_crono_add(project: str, name: str) -> int:
     )
     crono_path.write_text(template, encoding="utf-8")
 
-    # Register in agenda.md
-    _ensure_crono_section(project_dir)
-    agenda_path = resolve_file(project_dir, "agenda")
-    text = agenda_path.read_text(encoding="utf-8")
-    link_line = f"- [{name}]({_CRONO_DIR}/crono-{slug}.md)"
-
-    # Insert after section header
-    lines = text.splitlines()
-    insert_idx = None
-    for i, line in enumerate(lines):
-        if line.strip() == _CRONO_HEADER:
-            insert_idx = i + 1
-            # Skip any existing links
-            while insert_idx < len(lines) and lines[insert_idx].startswith("- ["):
-                insert_idx += 1
-            break
-
-    if insert_idx is not None:
-        lines.insert(insert_idx, link_line)
-        agenda_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Register in agenda.md via the idempotent generator (panel-style row).
+    _refresh_agenda_cronos_section(project_dir)
 
     print(f"✓ [{project_dir.name}] cronograma creado: {crono_path.name}")
     return 0
-
-
-def _ensure_crono_section(project_dir: Path):
-    """Ensure ## 📊 Cronogramas section exists in agenda.md."""
-    agenda_path = resolve_file(project_dir, "agenda")
-    if not agenda_path.exists():
-        return
-
-    text = agenda_path.read_text(encoding="utf-8")
-    if _CRONO_HEADER in text:
-        return
-
-    # Append section at the end
-    if not text.endswith("\n"):
-        text += "\n"
-    text += f"\n{_CRONO_HEADER}\n"
-    agenda_path.write_text(text, encoding="utf-8")
 
 
 def _refresh_agenda_cronos_section(project_dir: Path) -> bool:
@@ -1625,7 +1590,12 @@ def run_crono_list(project: str) -> int:
 
 
 def run_crono_edit(project: str, name: str, editor: str = "") -> int:
-    """Open a cronograma file in the editor."""
+    """Open a cronograma file in the editor.
+
+    Refreshes the agenda.md cronos section on return — the editor is
+    a black box (could be no-op or major restructure); the generator
+    is idempotent so the extra call is cheap when nothing changed.
+    """
     from core.open import open_file
 
     project_dir = _find_new_project(project)
@@ -1638,7 +1608,9 @@ def run_crono_edit(project: str, name: str, editor: str = "") -> int:
         print(f"Cronograma no encontrado: {name}")
         return 1
 
-    return open_file(path, editor)
+    rc = open_file(path, editor)
+    _refresh_agenda_cronos_section(project_dir)
+    return rc
 
 
 def _reindex_lines(lines: list) -> tuple:
@@ -1720,6 +1692,10 @@ def run_crono_reindex(project: str, name: str) -> int:
 
     path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
+    # Reindex doesn't change done/total but the section may be stale
+    # from an earlier session without the auto-refresh.
+    _refresh_agenda_cronos_section(project_dir)
+
     for old, new in rename_map.items():
         if old != new:
             print(f"  {old} → {new}")
@@ -1791,6 +1767,9 @@ def run_crono_done(project: str, name: str, index: str = None) -> int:
             break
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # Reflect new done/total in agenda.md's cronos section
+    _refresh_agenda_cronos_section(project_dir)
 
     # Log to logbook
     crono_name = _parse_crono_file(path)["name"]
