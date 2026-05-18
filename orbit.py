@@ -1175,9 +1175,9 @@ def cmd_ring(args):
     return 2
 
 
-def cmd_reorganize(args):
-    from core.reorganize import run_reorganize
-    return run_reorganize(
+def cmd_organize(args):
+    from core.organize import run_organize
+    return run_organize(
         type_filter=getattr(args, "type", None),
         project=getattr(args, "project", None),
         period=getattr(args, "period", "today"),
@@ -1619,18 +1619,18 @@ def _build_parser():
                        help="Open in editor (optionally specify editor name)")
     _add_log_args(cal_p)
 
-    # --- reorganize ---
-    reorg_p = subparsers.add_parser("reorganize",
-                                     help="Triage interactivo de items pendientes (drop/done/move)")
-    reorg_p.add_argument("type", nargs="?", default=None,
-                         choices=[None, "all", "tasks", "task", "ms", "ev", "events", "rem", "reminders", "reminder"],
-                         help="Filtrar por tipo. Default: all")
-    reorg_p.add_argument("--project", "-p", default=None,
-                         help="Filtrar por proyecto (substring match)")
-    reorg_p.add_argument("--period", "-P", default="today",
-                         help="Periodo: today (default, incluye vencidas) | week | month | YYYY-MM-DD | YYYY-Wnn")
-    reorg_p.add_argument("--undated", action="store_true", dest="undated",
-                         help="Incluir tareas/hitos sin fecha (futuribles)")
+    # --- organize (alias: reorganize, legacy) ---
+    org_p = subparsers.add_parser("organize", aliases=["reorganize"],
+                                   help="Triage interactivo de items pendientes (drop/done/move)")
+    org_p.add_argument("type", nargs="?", default=None,
+                       choices=[None, "all", "tasks", "task", "ms", "ev", "events", "rem", "reminders", "reminder"],
+                       help="Filtrar por tipo. Default: all")
+    org_p.add_argument("--project", "-p", default=None,
+                       help="Filtrar por proyecto (substring match)")
+    org_p.add_argument("--period", "-P", default="today",
+                       help="Periodo: today (default, incluye vencidas) | week | month | YYYY-MM-DD | YYYY-Wnn")
+    org_p.add_argument("--undated", action="store_true", dest="undated",
+                       help="Incluir tareas/hitos sin fecha (futuribles)")
 
     # --- gsync ---
     # `gsync` and `calsync` argparse parsers removed in v0.33; the
@@ -2062,7 +2062,7 @@ _COMMANDS = {
     "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "link": cmd_track, "untrack": cmd_untrack, "unlink": cmd_untrack, "import": cmd_deliver, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "ring": cmd_ring,
-    "reorganize": cmd_reorganize,
+    "organize": cmd_organize, "reorganize": cmd_organize,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,
 }

@@ -1,4 +1,4 @@
-"""reorganize — interactive batch reschedule of pending items.
+"""organize — interactive batch processing of agenda items.
 
 The morning/evening workflow: see what's pending today (plus anything
 overdue), pick items one by one and act on them quickly without typing
@@ -8,7 +8,10 @@ push happens automatically.
 
 Scope: drop / done / move-date / move-time / skip. For other edits
 (title, notes, recur, ring) the user exits and runs `task edit` etc.
-directly — keeping reorganize simple.
+directly — keeping organize simple.
+
+The command was named ``reorganize`` until 2026-05-18; the old name is
+still accepted as an alias for muscle-memory.
 """
 
 from datetime import date, timedelta
@@ -303,7 +306,7 @@ def _summary_and_refresh(actions_applied: int) -> None:
             pass
 
 
-def run_reorganize(type_filter: Optional[str] = None,
+def run_organize(type_filter: Optional[str] = None,
                    project: Optional[str] = None,
                    period: str = "today",
                    include_undated: bool = False) -> int:
@@ -316,7 +319,7 @@ def run_reorganize(type_filter: Optional[str] = None,
             if actions_applied:
                 _summary_and_refresh(actions_applied)
             else:
-                print("Sin items para reorganizar.")
+                print("Sin items para organizar.")
             return 0
 
         _print_listing(items, period)
@@ -342,3 +345,7 @@ def run_reorganize(type_filter: Optional[str] = None,
                 actions_applied += 1
         except Exception as exc:
             print(f"  ⚠️  Error: {exc}")
+
+
+# Backwards-compat alias (the command was named ``reorganize`` until 2026-05-18).
+run_reorganize = run_organize

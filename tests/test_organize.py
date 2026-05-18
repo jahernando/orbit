@@ -1,11 +1,11 @@
-"""Tests for orbit reorganize — interactive triage of pending items."""
+"""Tests for orbit organize — interactive triage of pending items."""
 
 from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
-from core import reorganize
+from core import organize
 
 
 # ── Period resolution ─────────────────────────────────────────────────────
@@ -13,35 +13,35 @@ from core import reorganize
 class TestResolvePeriod:
 
     def test_today_default(self):
-        lo, hi, overdue = reorganize._resolve_period("today")
+        lo, hi, overdue = organize._resolve_period("today")
         assert lo == hi == date.today()
         assert overdue is True
 
     def test_empty_means_today(self):
-        lo, hi, overdue = reorganize._resolve_period("")
+        lo, hi, overdue = organize._resolve_period("")
         assert lo == hi == date.today()
         assert overdue is True
 
     def test_week_is_iso_week(self):
-        lo, hi, overdue = reorganize._resolve_period("week")
+        lo, hi, overdue = organize._resolve_period("week")
         assert (hi - lo).days == 6
         assert lo.weekday() == 0  # Monday
         assert overdue is False
 
     def test_month(self):
-        lo, hi, overdue = reorganize._resolve_period("month")
+        lo, hi, overdue = organize._resolve_period("month")
         assert lo.day == 1
         assert (hi + timedelta(days=1)).day == 1  # next day is the 1st of next month
         assert overdue is False
 
     def test_iso_week_explicit(self):
-        lo, hi, _ = reorganize._resolve_period("2026-W21")
+        lo, hi, _ = organize._resolve_period("2026-W21")
         assert lo.weekday() == 0
         assert lo.year == 2026
         assert (hi - lo).days == 6
 
     def test_specific_date(self):
-        lo, hi, overdue = reorganize._resolve_period("2026-05-15")
+        lo, hi, overdue = organize._resolve_period("2026-05-15")
         assert lo == hi == date(2026, 5, 15)
         assert overdue is False
 
@@ -56,42 +56,42 @@ class TestItemInPeriod:
 
     def test_in_range(self):
         item = {"date": "2026-05-13", "status": "pending"}
-        assert reorganize._item_in_period(item, "task", self.lo, self.hi, False)
+        assert organize._item_in_period(item, "task", self.lo, self.hi, False)
 
     def test_out_of_range(self):
         item = {"date": "2026-05-20", "status": "pending"}
-        assert not reorganize._item_in_period(item, "task", self.lo, self.hi, False)
+        assert not organize._item_in_period(item, "task", self.lo, self.hi, False)
 
     def test_overdue_included_when_today(self):
         item = {"date": "2026-04-01", "status": "pending"}
-        assert reorganize._item_in_period(item, "task", self.lo, self.hi, True)
+        assert organize._item_in_period(item, "task", self.lo, self.hi, True)
 
     def test_overdue_excluded_otherwise(self):
         item = {"date": "2026-04-01", "status": "pending"}
-        assert not reorganize._item_in_period(item, "task", self.lo, self.hi, False)
+        assert not organize._item_in_period(item, "task", self.lo, self.hi, False)
 
     def test_done_excluded(self):
         item = {"date": "2026-05-13", "status": "done"}
-        assert not reorganize._item_in_period(item, "task", self.lo, self.hi, True)
+        assert not organize._item_in_period(item, "task", self.lo, self.hi, True)
 
     def test_cancelled_excluded(self):
         item = {"date": "2026-05-13", "cancelled": True}
-        assert not reorganize._item_in_period(item, "reminder", self.lo, self.hi, True)
+        assert not organize._item_in_period(item, "reminder", self.lo, self.hi, True)
 
     def test_undated_task_excluded_by_default(self):
         """Default is to require a date; undated only with explicit opt-in."""
         item = {"date": None, "status": "pending"}
-        assert not reorganize._item_in_period(item, "task", self.lo, self.hi, True)
+        assert not organize._item_in_period(item, "task", self.lo, self.hi, True)
 
     def test_undated_task_with_opt_in(self):
         item = {"date": None, "status": "pending"}
-        assert reorganize._item_in_period(item, "task", self.lo, self.hi, True,
+        assert organize._item_in_period(item, "task", self.lo, self.hi, True,
                                             include_undated=True)
 
     def test_undated_event_excluded_even_with_opt_in(self):
         """Events without a date are nonsensical — never list."""
         item = {"date": None}
-        assert not reorganize._item_in_period(item, "ev", self.lo, self.hi, True,
+        assert not organize._item_in_period(item, "ev", self.lo, self.hi, True,
                                                 include_undated=True)
 
 
@@ -100,20 +100,20 @@ class TestItemInPeriod:
 class TestCanonicalType:
 
     def test_aliases(self):
-        assert reorganize._canonical_type("tasks") == "task"
-        assert reorganize._canonical_type("task") == "task"
-        assert reorganize._canonical_type("milestone") == "ms"
-        assert reorganize._canonical_type("milestones") == "ms"
-        assert reorganize._canonical_type("event") == "ev"
-        assert reorganize._canonical_type("events") == "ev"
-        assert reorganize._canonical_type("ev") == "ev"
-        assert reorganize._canonical_type("rem") == "reminder"
-        assert reorganize._canonical_type("reminders") == "reminder"
+        assert organize._canonical_type("tasks") == "task"
+        assert organize._canonical_type("task") == "task"
+        assert organize._canonical_type("milestone") == "ms"
+        assert organize._canonical_type("milestones") == "ms"
+        assert organize._canonical_type("event") == "ev"
+        assert organize._canonical_type("events") == "ev"
+        assert organize._canonical_type("ev") == "ev"
+        assert organize._canonical_type("rem") == "reminder"
+        assert organize._canonical_type("reminders") == "reminder"
 
     def test_all_or_none(self):
-        assert reorganize._canonical_type(None) is None
-        assert reorganize._canonical_type("all") is None
-        assert reorganize._canonical_type("") is None
+        assert organize._canonical_type(None) is None
+        assert organize._canonical_type("all") is None
+        assert organize._canonical_type("") is None
 
 
 # ── Item collection (file-system level) ──────────────────────────────────
@@ -154,10 +154,10 @@ class TestCollectItems:
             "events":     [{"desc": "E",  "date": today, "time": "10:00"}],
             "reminders":  [{"desc": "R",  "date": today, "time": "09:00"}],
         })
-        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
-        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
 
-        items = reorganize._collect_items(None, None, "today")
+        items = organize._collect_items(None, None, "today")
         kinds = sorted(k for k, _, _ in items)
         assert kinds == ["ev", "ms", "reminder", "task"]
 
@@ -168,19 +168,19 @@ class TestCollectItems:
             "tasks":   [{"desc": "T", "date": today, "status": "pending"}],
             "events":  [{"desc": "E", "date": today, "time": "10:00"}],
         })
-        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
-        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
 
-        items = reorganize._collect_items("tasks", None, "today")
+        items = organize._collect_items("tasks", None, "today")
         assert {k for k, _, _ in items} == {"task"}
 
     def test_overdue_surfaced_when_today(self, tmp_path, monkeypatch):
         proj = _make_proj(tmp_path, "🌀foo")
         long_ago = (date.today() - timedelta(days=30)).isoformat()
         _seed(proj, {"tasks": [{"desc": "Old", "date": long_ago, "status": "pending"}]})
-        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
-        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
-        items = reorganize._collect_items(None, None, "today")
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
+        items = organize._collect_items(None, None, "today")
         assert len(items) == 1
         assert items[0][2]["desc"] == "Old"
 
@@ -188,9 +188,9 @@ class TestCollectItems:
         proj = _make_proj(tmp_path, "🌀foo")
         long_ago = (date.today() - timedelta(days=30)).isoformat()
         _seed(proj, {"tasks": [{"desc": "Old", "date": long_ago, "status": "pending"}]})
-        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
-        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
-        items = reorganize._collect_items(None, None, "week")
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
+        items = organize._collect_items(None, None, "week")
         # "Old" is well outside this week and overdue isn't included.
         assert items == []
 
@@ -203,9 +203,9 @@ class TestCollectItems:
                 {"desc": "T2", "date": today, "status": "done"},
             ]
         })
-        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
-        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
-        items = reorganize._collect_items(None, None, "today")
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
+        items = organize._collect_items(None, None, "today")
         descs = [i["desc"] for _, _, i in items]
         assert descs == ["T1"]
 
@@ -216,9 +216,9 @@ class TestCollectItems:
             {"desc": "Today",   "date": today.isoformat(),                 "status": "pending"},
             {"desc": "Overdue", "date": (today - timedelta(days=5)).isoformat(), "status": "pending"},
         ]})
-        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
-        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
-        items = reorganize._collect_items(None, None, "today")
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
+        items = organize._collect_items(None, None, "today")
         assert [i["desc"] for _, _, i in items] == ["Overdue", "Today"]
 
     def test_undated_excluded_by_default(self, tmp_path, monkeypatch):
@@ -228,9 +228,9 @@ class TestCollectItems:
             {"desc": "Dated",   "date": today, "status": "pending"},
             {"desc": "Undated", "date": None,  "status": "pending"},
         ]})
-        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
-        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
-        items = reorganize._collect_items(None, None, "today")
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
+        items = organize._collect_items(None, None, "today")
         assert [i["desc"] for _, _, i in items] == ["Dated"]
 
     def test_undated_included_with_flag(self, tmp_path, monkeypatch):
@@ -240,9 +240,9 @@ class TestCollectItems:
             {"desc": "Dated",   "date": today, "status": "pending"},
             {"desc": "Undated", "date": None,  "status": "pending"},
         ]})
-        monkeypatch.setattr(reorganize, "iter_project_dirs", lambda: [proj])
-        monkeypatch.setattr(reorganize, "_is_new_project", lambda d: True)
-        items = reorganize._collect_items(None, None, "today", include_undated=True)
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
+        items = organize._collect_items(None, None, "today", include_undated=True)
         descs = sorted(i["desc"] for _, _, i in items)
         assert descs == ["Dated", "Undated"]
 
@@ -255,19 +255,19 @@ class TestFormatRow:
         proj = tmp_path / "🌀foo"
         proj.mkdir()
         item = {"desc": "Hi", "date": (date.today() + timedelta(days=1)).isoformat()}
-        line = reorganize._format_item_row(1, "task", proj, item)
+        line = organize._format_item_row(1, "task", proj, item)
         assert "Hi" in line and "[🌀foo]" in line and "✅" in line
 
     def test_overdue_marker(self, tmp_path):
         proj = tmp_path / "🌀foo"
         proj.mkdir()
         item = {"desc": "Old", "date": (date.today() - timedelta(days=3)).isoformat()}
-        line = reorganize._format_item_row(1, "task", proj, item)
+        line = organize._format_item_row(1, "task", proj, item)
         assert "⚠️" in line
 
     def test_undated(self, tmp_path):
         proj = tmp_path / "🌀foo"
         proj.mkdir()
         item = {"desc": "Some day", "date": None}
-        line = reorganize._format_item_row(1, "task", proj, item)
+        line = organize._format_item_row(1, "task", proj, item)
         assert "sin fecha" in line

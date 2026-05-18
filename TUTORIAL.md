@@ -604,19 +604,21 @@ Alias legacy: `commit` sigue funcionando.
 
 Para hacer push al remoto, usa `orbit_push` desde la terminal del sistema (fuera de la shell). Si hay cambios sin save, hace save primero.
 
-### Reorganizar tareas (`reorganize`)
+### Organizar tareas (`organize`)
 
 Cuando llegas por la mañana y tienes vencidas + las del día por delante, lo más rápido es:
 
 ```bash
-reorganize                # lista hoy + vencidas, te deja moverlas/cerrarlas una a una
-reorganize ev -P week     # solo eventos de esta semana
-reorganize -p santiago    # solo el proyecto santiago
+organize                  # lista hoy + vencidas, te deja moverlas/cerrarlas una a una
+organize ev -P week       # solo eventos de esta semana
+organize -p santiago      # solo el proyecto santiago
 ```
 
 El bucle: te lista, eliges número, acción rápida (`d` drop, `n` done, `f` fecha, `h` hora, `s` skip), vuelve a la lista. Sale con `q`. Cada cambio se sincroniza al momento a Calendar/Reminders.
 
-Para editar título o notas → sal de reorganize y usa `task edit "X" --desc "..."` directo.
+Para editar título o notas → sal de organize y usa `task edit "X" --desc "..."` directo.
+
+> El comando se llamaba `reorganize` hasta 2026-05-18 y sigue funcionando como alias.
 
 ### Calendar.app (vía suscripción `.ics`)
 
@@ -662,7 +664,7 @@ orbit ics phd-diego --out a.ics   # exporta un proyecto a fichero
 
 **Servicios deprecados (v0.33)**: `gsync` (AppleScript-write a Calendar.app/Reminders.app) y `calsync` (auditoría de drift) quedan dormantes. Los comandos siguen ahí pero solo se activan si pones `"applescript_writes": true` en `calendar-sync.json`. La ruta por defecto es la suscripción `.ics`.
 
-Orbit es la fuente de verdad. Calendar.app es sólo render: para reorganizar tareas usa el CLI (`task edit`, `ev edit`, ...) o el modo interactivo `orbit reorganize`.
+Orbit es la fuente de verdad. Calendar.app es sólo render: para reorganizar tareas usa el CLI (`task edit`, `ev edit`, ...) o el modo interactivo `orbit organize`.
 
 ### Cloud (OneDrive/Google Drive)
 

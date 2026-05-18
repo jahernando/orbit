@@ -473,16 +473,18 @@ Proyectos locales se muestran como links a `project.md`; federados con emoji del
 
 ---
 
-## reorganize — triage interactivo
+## organize — triage interactivo
 
 ```bash
-orbit reorganize                     # hoy + vencidas, todos los tipos
-orbit reorganize tasks               # solo tareas
-orbit reorganize ev -P week          # eventos de esta semana
-orbit reorganize -p next-kr          # solo proyecto next-kr
-orbit reorganize -P 2026-W22         # ISO week específica
-orbit reorganize -P 2026-05-15       # un día concreto
+orbit organize                       # hoy + vencidas, todos los tipos
+orbit organize tasks                 # solo tareas
+orbit organize ev -P week            # eventos de esta semana
+orbit organize -p next-kr            # solo proyecto next-kr
+orbit organize -P 2026-W22           # ISO week específica
+orbit organize -P 2026-05-15         # un día concreto
 ```
+
+Alias legacy: `orbit reorganize` sigue funcionando.
 
 Modo bucle:
 

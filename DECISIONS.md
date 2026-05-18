@@ -94,7 +94,7 @@ La **fuente de verdad** es el markdown del repo (versionado con git). El cloud e
 **Estado**: VIGENTE (desde v0.32)
 **Decisión**: la dirección de la verdad va de `agenda.md` hacia `.ics`, nunca al revés. No hay reverse sync (Calendar.app → orbit).
 **Contexto**: la inversión ("`.ics` como verdad para poder editar en Calendar.app") se consideró y se descartó: rompe editabilidad markdown, diffs git legibles, workflow móvil vía inbox.md.
-**Consecuencias**: reorganizar requiere `orbit reorganize` o `task edit`/`ev edit`; no se puede tocar Calendar.app esperando que llegue a orbit.
+**Consecuencias**: reorganizar requiere `orbit organize` o `task edit`/`ev edit`; no se puede tocar Calendar.app esperando que llegue a orbit.
 
 ---
 
