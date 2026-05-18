@@ -85,7 +85,7 @@ generador HTML, integración con `orbit` CLI y test).
 
 ## 3. Módulo `focus` — bloques semanales en `mission/agenda.md`
 
-**Estado**: diseño cerrado y aprobado (2026-05-17, sesión continua tras taxonomía de items rev 2). Documento de diseño: `docs/design/2026-05-17_items_taxonomy.md` (en la memoria del proyecto, decisión cardinal del producto). Prerequisito **F0 ya implementado en v0.39**: task acepta `--time HH:MM-HH:MM` (commit `f0b279b`).
+**Estado**: ✅ IMPLEMENTADO 2026-05-18. Plan F0–F9 completo. Commits `e866a3d` → `597f51a` + docs en este commit. Ver [ADR-038](DECISIONS.md#adr-038--focus-en-corefocuspy-bloques-como-tasks-en-mission-con-id-propio) para el detalle de las cinco decisiones estructurales tomadas durante la implementación (carril por sección del fichero semanal en vez de campo, contador por orbit-id en vez de wikilink, plantilla per-workspace en bullets, etc.). Diseño original (parcialmente superado por la implementación) en la memoria `project-orbit-focus`.
 
 **Objetivo**: codificar el sistema de planificación semanal por carriles que el usuario ha validado manualmente durante meses. Un bloque = una task en `mission/agenda.md` con `[[wikilink-a-proyecto]]` + `time HH:MM-HH:MM` (≥90 min). El carril (anchor/push/joy) no es campo: se deriva del archivo semanal `mission/notes/2026-WNN-focus.md`.
 

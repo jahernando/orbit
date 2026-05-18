@@ -25,6 +25,7 @@ Principios de diseño:
     log.py                ← logbook entries
     highlights.py         ← highlights CRUD
     project.py            ← gestión de proyectos
+    focus.py              ← planificación semanal por carriles (anchor/push/joy) en mission
     types.py              ← dataclasses compartidas entre core/ y views/ (Issue, …)
   views/                  ← readers de la verdad → artefactos derivados (regla en RULES.md)
     render/render.py      ← MD → HTML en cloud_root (+ orbit.css)

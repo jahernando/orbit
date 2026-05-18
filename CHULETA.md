@@ -542,6 +542,46 @@ Cada acción dispara `sync_item` automático → Calendar/Reminders se actualiza
 
 ---
 
+## focus — planificación semanal por carriles
+
+```bash
+orbit focus week              # planifica la semana actual (ISO)
+orbit focus week --next       # planifica la semana siguiente
+orbit focus week --review     # abre el archivo semanal en $EDITOR
+```
+
+Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` agrupados por carril:
+
+| Carril | Significado | Default template |
+|--------|-------------|------------------|
+| ⚓ Anchor | sostiene la semana, trabajo principal | 2 proyectos × 2 bloques |
+| 🔥 Push   | iniciativa que estás empujando        | 1-2 proyectos × 1 bloque |
+| 🌿 Joy    | opcional que nutre                    | 0-1 proyectos × 1 bloque |
+
+**Plantilla por workspace**: `mission/notes/focus-template.md` se materializa la primera vez desde `📐templates/focus-template.md` y queda editable a mano. Define cuántos proyectos por carril, cuántos bloques por proyecto, duración default (90 min) y theme days. Cada workspace tiene la suya (personal ≠ trabajo).
+
+**Tres modos** al ejecutar `orbit focus week`:
+
+1. **Repetir** (default si existe W-1) — clona la semana anterior: mismos proyectos en cada carril, mismos slots desplazados +7 días. Pide confirmación [Y/n].
+2. **Plantilla** — usa el template para cantidades y W-1 (si existe) como default de proyectos. Pregunta sólo qué proyectos llenan cada carril.
+3. **Libre** — prompt proyecto a proyecto. Para cada bloque: día (`lun`/`mar`/`mie`/`jue`/`vie`) y hora (`HH:MM` o `HH:MM-HH:MM`; si das sólo start, añade duration del template).
+
+**Archivo semanal**: `mission/notes/2026-WNN-focus.md` con frontmatter (fechas, status: `normal` o `especial`), proyectos por carril, IDs de bloques agrupados, contador autogenerado y retrospectiva (texto libre para el viernes).
+
+**Contador**: regenera al ejecutar `orbit focus week` sobre semana existente. Cuenta tasks `done` en mission por carril (lookup por orbit-id, robusto a renombrados del título).
+
+**Status: especial** (vacaciones, congreso) → contador muestra `—` en lugar de `done/total`. Edita a mano en el frontmatter.
+
+**Sobre una semana ya creada**, el comando muestra menú:
+1. regenerar contador
+2. abrir en $EDITOR (== `--review`)
+3. añadir bloques (extiende el flujo libre con el estado existente)
+4. abortar
+
+Los bloques aparecen automáticamente en Calendar.app (vía `.ics`) por ser tasks normales de mission.
+
+---
+
 ## report — informe de actividad
 
 ```bash

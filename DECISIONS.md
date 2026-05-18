@@ -700,6 +700,51 @@ Además, tras añadir el viewer `report_summary` (que lee logbook + highlights),
 
 ---
 
+## ADR-038 — `focus` en `core/focus.py`: bloques como tasks en mission con id propio
+**Estado**: VIGENTE (decisión 2026-05-17, implementación 2026-05-18, memoria `project-orbit-focus`).
+
+**Contexto**: tras meses de validación manual del usuario, se diseña un módulo de planificación semanal por carriles (anchor / push / joy) con principio rector "media semana libre" (max 5 bloques, mañanas preferidas). Cinco preguntas estructurales abiertas: (1) dónde vive el módulo (¿`core/`, `views/`, `satellites/`, top-layer nuevo?); (2) cómo se representa un bloque (¿tipo nuevo de cita? ¿atributo de task?); (3) cómo se identifica el carril (¿campo en la cita? ¿derivado de un fichero externo?); (4) cómo se cuenta lo completado (¿wikilink? ¿id?); (5) cómo se configura el shape (¿hardcoded? ¿per-workspace?).
+
+**Decisión**: cinco respuestas, todas minimalistas:
+
+1. **`core/focus.py` mono-fichero**. Es writer (muta `mission/agenda.md` + escribe nota semanal), no view. No es daemon, no necesita top-layer nuevo. Partir el fichero cuando duela, no antes.
+
+2. **Bloque = task normal de mission con `time HH:MM-HH:MM`**. Reusa `core.api.add_task` (extendido con `orbit_id` opcional). No se introducen tipos. Calendar.app, ring scheduling y .ics export funcionan gratis. El título lleva wikilink decorativo al proyecto-carril (`⚓ [[paper-neutrinos]] · focus 2026-W21`); el wikilink no es canónico (ver punto 4).
+
+3. **Carril identificado por la sección donde vive el id en el fichero semanal**, no por un campo nuevo en la task ni por parsing del título. `### ⚓ paper-neutrinos` agrupa ids bajo el carril anchor. Esto fija el carril al crearse el bloque (no se "redescubre" en cada lookup) y permite que el mismo proyecto sea anchor en W20 y push en W22 sin esquema nuevo.
+
+4. **Contador por orbit-id, no por wikilink**. `_regenerate_counter` lee los ids del fichero semanal y hace lookup en `mission/agenda.md` por `orbit_id`. Si el usuario edita el título de la task (drop wikilink, rename), el contador sigue funcionando. El id se genera en `core/focus.py:_create_block` con `secrets.token_hex(4)` (mismo formato que `views/cal/share.py:_new_orbit_id`).
+
+5. **Plantilla per-workspace** en `mission/notes/focus-template.md`, bullet-format (no YAML — coherente con `project.md`). Bootstrap desde `📐templates/focus-template.md` la primera vez que se ejecuta focus en el workspace; usuario edita después a mano. Cada workspace (personal, trabajo) tiene su shape independiente.
+
+**Tres modos de planificación**:
+- **Repetir** (default si existe W-1): clona la semana anterior con date+7. Confirma [Y/n].
+- **Plantilla**: usa template para cantidades + W-1 como default de proyectos.
+- **Libre**: prompt proyecto a proyecto.
+
+**Razón**:
+- *Reuse vs novedad*: `task` con `time HH:MM-HH:MM` ya funciona desde el modelo de taxonomía (ADR no asignado, F0 de focus verificó round-trip). Ring/ics/Calendar ya splittean rangos. Inventar un tipo nuevo era esfuerzo sin beneficio.
+- *Carril sin campo nuevo*: la opción alternativa ("campo `rail` en la task") cargaba el modelo con un atributo que sólo focus usa. La sección del fichero semanal hace exactamente el mismo trabajo con cero schema nuevo.
+- *Id como handle estable*: el wikilink en el título es UX (lectura humana, render); el id es API (tracking, idempotencia). Separarlos hace el contador robusto a cualquier edición del usuario.
+- *Plantilla per-workspace*: las necesidades del workspace personal (joy más amplio, anchor más ligero) ≠ las del trabajo (anchor pesado, push grande, joy 0). Hard-coded para v1 (decisión inicial en memoria) se revisó cuando el usuario apuntó que distintos espacios tienen distintos perfiles. Bullet-format evita la dep YAML y hace el fichero legible y editable.
+
+**Implementación (commits)**:
+- `e866a3d` F0-F2: esqueleto + dispatcher + bootstrap del template.
+- `6eb8f68` F3: modo libre end-to-end.
+- `c75e8f3` F4: contador por id + regeneración idempotente.
+- `086b465` F5: modo plantilla + selector de modo.
+- `a23e8b3` F6: modo repetir.
+- `f32f5e5` F7: menú regenerar/abrir/añadir/abortar sobre semana existente.
+- `597f51a` F8: 19 tests en `tests/test_focus.py`.
+
+**Cambio aditivo en `core/api.py`**: `add_task` (y `_build_item`) acepta `orbit_id: Optional[str] = None`. El flujo CLI sigue sin asignar id (compat); focus pasa el suyo. No rompe nada, no auto-genera donde no se pidió.
+
+**Aparcado a v2** (memoria `project-orbit-focus`): cognitive label deep/shallow, email windows como bloques, tracking longitudinal, surface del contador en panel del secretary, `orbit focus day` / `orbit focus review` separados, generalización a otros proyectos-meta.
+
+**Where lives**: `core/focus.py` (~700 ℓ), dispatcher en `orbit.py:cmd_focus` + subparser, `📐templates/focus-template.md` (factory), `core/api.py` (extensión de `add_task`), tests en `tests/test_focus.py`. Documentación en `CHULETA.md` § focus.
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:
