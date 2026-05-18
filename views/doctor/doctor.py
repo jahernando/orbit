@@ -396,6 +396,27 @@ def _check_agenda(project_name: str, path: Path) -> list:
                         except ValueError:
                             issues.append(Issue(project_name, path.name, i + 1, line,
                                                 f"Fecha until inválida: {parsed['until']}"))
+                    # Validate ff: must be ISO date or 'someday'.
+                    # Invariant: ff <= date (warning on equality, error on >).
+                    ff_val = parsed.get("ff")
+                    if ff_val and ff_val != "someday":
+                        try:
+                            ff_d = date.fromisoformat(ff_val)
+                        except ValueError:
+                            issues.append(Issue(project_name, path.name, i + 1, line,
+                                                f"ff inválido: {ff_val} (usa YYYY-MM-DD o someday)"))
+                        else:
+                            if parsed.get("date"):
+                                try:
+                                    dt_d = date.fromisoformat(parsed["date"])
+                                except ValueError:
+                                    dt_d = None
+                                if dt_d is not None and ff_d > dt_d:
+                                    issues.append(Issue(project_name, path.name, i + 1, line,
+                                                        f"ff posterior a date ({ff_val} > {parsed['date']})"))
+                                elif dt_d is not None and ff_d == dt_d:
+                                    issues.append(Issue(project_name, path.name, i + 1, line,
+                                                        f"ff coincide con date ({ff_val}); considera limpiar ff"))
                     # Empty description
                     if not parsed["desc"]:
                         issues.append(Issue(project_name, path.name, i + 1, line,

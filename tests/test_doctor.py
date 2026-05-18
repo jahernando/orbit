@@ -269,6 +269,54 @@ class TestCheckAgenda:
         issues = _check_agenda("💻testproj", path)
         assert issues == []
 
+    # ── ff / fast-forward invariant ────────────────────────────────────
+
+    def test_ff_someday_alone_ok(self, doctor_env):
+        path = doctor_env["proj"] / "testproj-agenda.md"
+        path.write_text(
+            "# Agenda\n\n## ✅ Tareas\n- [ ] Algún día X ⏩someday\n")
+        assert _check_agenda("💻testproj", path) == []
+
+    def test_ff_before_date_ok(self, doctor_env):
+        path = doctor_env["proj"] / "testproj-agenda.md"
+        path.write_text(
+            "# Agenda\n\n## ✅ Tareas\n"
+            "- [ ] Preparar X (2026-06-01) ⏩2026-05-25\n")
+        assert _check_agenda("💻testproj", path) == []
+
+    def test_ff_after_date_flagged(self, doctor_env):
+        path = doctor_env["proj"] / "testproj-agenda.md"
+        path.write_text(
+            "# Agenda\n\n## ✅ Tareas\n"
+            "- [ ] X (2026-05-25) ⏩2026-06-01\n")
+        issues = _check_agenda("💻testproj", path)
+        assert len(issues) == 1
+        assert "ff posterior a date" in issues[0].msg
+
+    def test_ff_equals_date_warned(self, doctor_env):
+        path = doctor_env["proj"] / "testproj-agenda.md"
+        path.write_text(
+            "# Agenda\n\n## ✅ Tareas\n"
+            "- [ ] X (2026-06-01) ⏩2026-06-01\n")
+        issues = _check_agenda("💻testproj", path)
+        assert len(issues) == 1
+        assert "coincide" in issues[0].msg
+
+    def test_ff_invalid_value_flagged(self, doctor_env):
+        path = doctor_env["proj"] / "testproj-agenda.md"
+        path.write_text(
+            "# Agenda\n\n## ✅ Tareas\n- [ ] X ⏩garbage\n")
+        issues = _check_agenda("💻testproj", path)
+        assert len(issues) == 1
+        assert "ff inválido" in issues[0].msg
+
+    def test_ff_without_date_ok(self, doctor_env):
+        # Pure pending: ff with no date is the normal case.
+        path = doctor_env["proj"] / "testproj-agenda.md"
+        path.write_text(
+            "# Agenda\n\n## ✅ Tareas\n- [ ] X ⏩2026-05-25\n")
+        assert _check_agenda("💻testproj", path) == []
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # _check_highlights
