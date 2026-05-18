@@ -440,3 +440,69 @@ class TestApplyTriageAction:
         ok = organize._apply_triage_action("n", proj, task)
         assert ok is True
         assert read()["tasks"][-1]["status"] == "done"
+
+
+class TestApplyActionPending:
+    """[p]ending verb in organize default mode (planned → pending)."""
+
+    def _setup(self, tmp_path, monkeypatch):
+        from core.agenda_cmds import _read_agenda
+        type_dir = tmp_path / "💻sw"
+        type_dir.mkdir()
+        proj = type_dir / "💻foo"
+        proj.mkdir()
+        (proj / "foo-project.md").write_text(
+            "# foo\n- Tipo: 💻 Software\n- Estado: [auto]\n- Prioridad: media\n")
+        (proj / "foo-logbook.md").write_text("# Logbook — foo\n\n")
+        (proj / "foo-agenda.md").write_text("# Agenda — foo\n\n<!-- -->\n")
+        monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
+        monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+        monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+        return proj, lambda: _read_agenda(proj / "foo-agenda.md")
+
+    def test_p_someday_degrades_planned(self, tmp_path, monkeypatch):
+        from core import api
+        proj, read = self._setup(tmp_path, monkeypatch)
+        api.add_task(project="💻foo", text="Old X", date="2020-01-01")
+        monkeypatch.setattr(organize, "_prompt",
+                            lambda *a, **k: "someday")
+        item = read()["tasks"][-1]
+        ok = organize._apply_action("p", "task", proj, item)
+        assert ok is True
+        new = read()["tasks"][-1]
+        assert new["ff"] == "someday"
+        assert new["date"] is None
+        assert new["time"] is None
+
+    def test_p_enter_keeps_date_as_ff(self, tmp_path, monkeypatch):
+        from core import api
+        proj, read = self._setup(tmp_path, monkeypatch)
+        api.add_task(project="💻foo", text="X", date="2020-01-01")
+        monkeypatch.setattr(organize, "_prompt",
+                            lambda *a, **k: "")
+        item = read()["tasks"][-1]
+        ok = organize._apply_action("p", "task", proj, item)
+        assert ok is True
+        assert read()["tasks"][-1]["ff"] == "2020-01-01"
+
+    def test_p_rejected_for_ms(self, tmp_path, monkeypatch, capsys):
+        proj, _ = self._setup(tmp_path, monkeypatch)
+        # No prompt should happen because we early-exit on kind!=task.
+        ok = organize._apply_action("p", "ms", proj,
+                                     {"desc": "M", "status": "pending"})
+        assert ok is False
+        assert "sólo tasks" in capsys.readouterr().out
+
+    def test_demote_planned_clears_ring(self, tmp_path, monkeypatch):
+        """Bug fix: degrading planned→pending must also drop ring (ring needs date+time)."""
+        from core import api
+        from core.agenda_cmds import run_task_pending
+        proj, read = self._setup(tmp_path, monkeypatch)
+        api.add_task(project="💻foo", text="X",
+                     date="2020-01-01", time="10:00", ring="15m")
+        run_task_pending(project="💻foo", text="X", target_ff="someday")
+        t = read()["tasks"][-1]
+        assert t["date"] is None
+        assert t["time"] is None
+        assert t["ring"] is None
+        assert t["ff"] == "someday"

@@ -203,10 +203,12 @@ def run_task_pending(project: Optional[str], text: Optional[str],
         task["snooze_count"] = task.get("snooze_count", 0) + 1
         kind_msg = "aplazada"
     else:
-        # planned → pending (degrade); clear date+time, ff carries the slot
+        # planned → pending (degrade). ff carries the slot; date/time/ring
+        # have no meaning without a planned moment, so drop them.
         task["ff"] = target_ff
         task["date"] = None
         task["time"] = None
+        task["ring"] = None
         kind_msg = "a pendiente"
 
     _write_agenda(agenda_path, data)

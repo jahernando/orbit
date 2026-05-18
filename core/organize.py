@@ -277,6 +277,25 @@ def _apply_action(action: str, kind: str, project_dir: Path, item: dict) -> bool
         elif kind == "reminder":
             run_reminder_edit(proj, desc, new_time=new_time, force=True)
         return True
+    if action == "p":
+        # Demote planned → pending (move date to ff, or use an explicit
+        # target). Only tasks support the ff field.
+        if kind != "task":
+            print(f"  (sólo tasks tienen ⏩; {_KIND_LABEL[kind]} no aplica.)")
+            return False
+        raw = _prompt("    ⏩ (YYYY-MM-DD/mañana/+N/someday, enter = keep date): ")
+        if not raw:
+            target = None
+        elif raw == "someday":
+            target = "someday"
+        else:
+            resolved = _parse_date(raw)
+            if resolved == raw and not _looks_iso(resolved):
+                print(f"  ⚠️  Fecha no reconocida: {raw!r}.")
+                return False
+            target = resolved
+        rc = run_task_pending(project=proj, text=desc, target_ff=target)
+        return rc == 0
     return False
 
 
@@ -287,7 +306,7 @@ def _action_for(idx: int, items: list) -> Optional[str]:
     kind, project_dir, item = items[idx - 1]
     print()
     print(_format_item_row(idx, kind, project_dir, item).strip())
-    print("  [d]rop  [n]done  [f]echa  [h]ora  [s]kip")
+    print("  [d]rop  [n]done  [f]echa  [h]ora  [p]ending  [s]kip")
     a = _prompt("  ?> ").lower()
     return a
 
