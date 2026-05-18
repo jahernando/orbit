@@ -21,6 +21,7 @@ from typing import Optional
 from core.agenda_cmds import (
     _read_agenda,
     run_task_done, run_task_drop, run_task_edit,
+    run_task_plan, run_task_pending,
     run_ms_done, run_ms_drop, run_ms_edit,
     run_ev_drop, run_ev_edit,
     run_reminder_drop, run_reminder_edit,
@@ -199,7 +200,7 @@ def _format_item_row(idx: int, kind: str, project_dir: Path, item: dict) -> str:
 def _print_listing(items: list, period: str):
     if not items:
         return
-    print(f"Reorganizar — {period}")
+    print(f"Organizar — {period}")
     print("─" * 70)
     for i, (kind, pd, item) in enumerate(items, 1):
         print(_format_item_row(i, kind, pd, item))
@@ -309,8 +310,17 @@ def _summary_and_refresh(actions_applied: int) -> None:
 def run_organize(type_filter: Optional[str] = None,
                    project: Optional[str] = None,
                    period: str = "today",
-                   include_undated: bool = False) -> int:
-    """Interactive loop to triage pending items."""
+                   include_undated: bool = False,
+                   triage: bool = False) -> int:
+    """Interactive loop to triage pending items.
+
+    ``triage=True`` switches the flow to pending tasks (``ff <= today``)
+    with the plan/pending/done/drop/skip verbs. Default mode processes
+    planned + overdue + ev/ms/reminder with the legacy verbs.
+    """
+    if triage:
+        return _run_organize_triage(project_filter=project)
+
     actions_applied = 0
     while True:
         items = _collect_items(type_filter, project, period,
@@ -342,6 +352,163 @@ def run_organize(type_filter: Optional[str] = None,
         kind, project_dir, item = items[idx - 1]
         try:
             if _apply_action(action, kind, project_dir, item):
+                actions_applied += 1
+        except Exception as exc:
+            print(f"  ⚠️  Error: {exc}")
+
+
+# ── Triage mode (pending tasks with ff <= today) ────────────────────────────
+
+def _collect_pending_items(project_filter: Optional[str],
+                           today: date) -> list:
+    """Return pending tasks with ``ff <= today`` (excluding someday).
+
+    Sorted ascending by ``ff`` (most overdue first), then by description
+    to keep the order deterministic across runs.
+    """
+    if project_filter:
+        project_dir = _find_new_project(project_filter)
+        if not project_dir:
+            print(f"⚠️  Proyecto no encontrado: {project_filter!r}")
+            return []
+        dirs = [project_dir]
+    else:
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+
+    today_iso = today.isoformat()
+    out = []
+    for project_dir in dirs:
+        agenda = resolve_file(project_dir, "agenda")
+        if not agenda.exists():
+            continue
+        data = _read_agenda(agenda)
+        for t in data.get("tasks") or []:
+            if t.get("status") != "pending":
+                continue
+            ff = t.get("ff")
+            if not ff or ff == "someday":
+                continue
+            if ff > today_iso:
+                continue
+            out.append((project_dir, t))
+
+    out.sort(key=lambda r: (r[1]["ff"], r[1]["desc"]))
+    return out
+
+
+def _format_triage_row(idx: int, project_dir: Path, task: dict,
+                       today_iso: str) -> str:
+    ff = task["ff"]
+    snooze = task.get("snooze_count", 0) or 0
+    failed = task.get("failed_count", 0) or 0
+    if snooze >= 3:
+        mark = "❗❗"
+    elif ff < today_iso:
+        mark = "❗ "
+    else:
+        mark = "  "
+    extras = ""
+    if snooze:
+        extras += f" 💤{snooze}"
+    if failed:
+        extras += f" ❌{failed}"
+    return f"  {idx:>3}. {mark} [{project_dir.name}] {task['desc']:<50.50} ⏩{ff}{extras}"
+
+
+def _print_triage_listing(items: list, today_iso: str):
+    if not items:
+        return
+    print("Decidir hoy — pending con ⏩ <= today")
+    print("─" * 70)
+    for i, (pd, task) in enumerate(items, 1):
+        print(_format_triage_row(i, pd, task, today_iso))
+    print("─" * 70)
+
+
+def _apply_triage_action(action: str, project_dir: Path,
+                          task: dict) -> bool:
+    """Run the matching CLI op for one pending task. Return True if changed."""
+    proj = project_dir.name
+    desc = task["desc"]
+    if action == "p":  # plan: promote to planned with a date
+        raw = _prompt("    fecha (today/mañana/viernes/+N/YYYY-MM-DD): ")
+        if not raw:
+            return False
+        new_date = _parse_date(raw)
+        if new_date == raw and not _looks_iso(new_date):
+            print(f"  ⚠️  Fecha no reconocida: {raw!r}.")
+            return False
+        time_raw = _prompt("    hora (opcional, HH:MM[-HH:MM], enter para ninguna): ")
+        time_val = time_raw or None
+        rc = run_task_plan(project=proj, text=desc,
+                           date_val=new_date, time_val=time_val)
+        return rc == 0
+    if action == "f":  # ff: snooze to a new ff (or someday)
+        raw = _prompt("    nuevo ⏩ (YYYY-MM-DD/mañana/+N/someday, enter=tomorrow): ")
+        if not raw:
+            target = None  # runner defaults to tomorrow on snooze
+        elif raw == "someday":
+            target = "someday"
+        else:
+            resolved = _parse_date(raw)
+            if resolved == raw and not _looks_iso(resolved):
+                print(f"  ⚠️  Fecha no reconocida: {raw!r}.")
+                return False
+            target = resolved
+        rc = run_task_pending(project=proj, text=desc, target_ff=target)
+        return rc == 0
+    if action == "d":
+        run_task_drop(proj, desc, force=True)
+        return True
+    if action == "n":
+        run_task_done(proj, desc)
+        return True
+    return False
+
+
+def _triage_action_for(idx: int, items: list, today_iso: str) -> Optional[str]:
+    if idx < 1 or idx > len(items):
+        return None
+    pd, task = items[idx - 1]
+    print()
+    print(_format_triage_row(idx, pd, task, today_iso).strip())
+    print("  [p]lan-date  [f]f-snooze  [d]rop  do[n]e  [s]kip")
+    return _prompt("  ?> ").lower()
+
+
+def _run_organize_triage(project_filter: Optional[str] = None) -> int:
+    today = date.today()
+    today_iso = today.isoformat()
+    actions_applied = 0
+    while True:
+        items = _collect_pending_items(project_filter, today)
+        if not items:
+            if actions_applied:
+                _summary_and_refresh(actions_applied)
+            else:
+                print("Nada que decidir hoy.")
+            return 0
+
+        _print_triage_listing(items, today_iso)
+        sel = _prompt("\n#? (número, q=salir) > ")
+        if not sel or sel.lower() in ("q", "quit", "exit"):
+            _summary_and_refresh(actions_applied)
+            return 0
+        try:
+            idx = int(sel)
+        except ValueError:
+            print(f"  ⚠️  No reconozco {sel!r}.")
+            continue
+
+        action = _triage_action_for(idx, items, today_iso)
+        if not action or action == "s":
+            continue
+        if action == "q":
+            _summary_and_refresh(actions_applied)
+            return 0
+        pd, task = items[idx - 1]
+        try:
+            if _apply_triage_action(action, pd, task):
                 actions_applied += 1
         except Exception as exc:
             print(f"  ⚠️  Error: {exc}")

@@ -482,7 +482,12 @@ orbit organize ev -P week            # eventos de esta semana
 orbit organize -p next-kr            # solo proyecto next-kr
 orbit organize -P 2026-W22           # ISO week específica
 orbit organize -P 2026-05-15         # un día concreto
+orbit organize --triage              # pending tasks con ⏩ <= today
 ```
+
+Modo default (planned + overdue): acciones `[d]rop [n]done [f]echa [h]ora [s]kip`.
+
+Modo `--triage` (pending): acciones `[p]lan-date  [f]f-snooze  [d]rop  do[n]e  [s]kip`. `p` promueve a planned con fecha (limpia ⏩, incrementa ❌ si vencida). `f` actualiza ⏩ (incrementa 💤, acepta `someday`, default `tomorrow`).
 
 Alias legacy: `orbit reorganize` sigue funcionando.
 

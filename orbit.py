@@ -1182,6 +1182,7 @@ def cmd_organize(args):
         project=getattr(args, "project", None),
         period=getattr(args, "period", "today"),
         include_undated=getattr(args, "undated", False),
+        triage=getattr(args, "triage", False),
     )
 
 
@@ -1631,6 +1632,8 @@ def _build_parser():
                        help="Periodo: today (default, incluye vencidas) | week | month | YYYY-MM-DD | YYYY-Wnn")
     org_p.add_argument("--undated", action="store_true", dest="undated",
                        help="Incluir tareas/hitos sin fecha (futuribles)")
+    org_p.add_argument("--triage", action="store_true", dest="triage",
+                       help="Modo triage: procesa pending tasks con ⏩ <= today (verbos plan/ff-snooze/drop/done)")
 
     # --- gsync ---
     # `gsync` and `calsync` argparse parsers removed in v0.33; the
