@@ -21,6 +21,8 @@ def register_task(subparsers):
     tn_add = tsknew_sub.add_parser("add", help="Add a task (no date → ff:today, raw capture)")
     _add_project_text(tn_add, project_required=True)
     _add_add_args(tn_add)
+    tn_add.add_argument("--ff", default=None,
+                        help="Fast-forward target: YYYY-MM-DD or 'someday' (creates pending directly)")
 
     tn_plan = tsknew_sub.add_parser("plan",
         help="Promote pending→planned or reschedule planned (date posicional)")

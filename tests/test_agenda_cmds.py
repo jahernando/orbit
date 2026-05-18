@@ -265,6 +265,39 @@ class TestTaskAddDefaultFf:
         t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
         assert t["ff"] == "someday"
 
+    def test_run_task_add_with_ff(self, proj):
+        from core.agenda_cmds import run_task_add, _read_agenda
+        # CLI surface: run_task_add accepts ff and propagates to api.
+        rc = run_task_add(project=proj.name, text="Esperar X", ff="2026-06-15")
+        assert rc == 0
+        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
+        assert t["ff"] == "2026-06-15"
+        assert t["date"] is None
+
+    def test_run_task_add_ff_someday(self, proj):
+        from core.agenda_cmds import run_task_add, _read_agenda
+        rc = run_task_add(project=proj.name, text="Quizá Y", ff="someday")
+        assert rc == 0
+        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
+        assert t["ff"] == "someday"
+
+    def test_run_task_add_ff_with_date_combined(self, proj):
+        # Both can coexist: a planned date with an earlier ff for internal review.
+        from core.agenda_cmds import run_task_add, _read_agenda
+        rc = run_task_add(project=proj.name, text="Charla viernes",
+                          date_val="2026-06-05", ff="2026-06-02")
+        assert rc == 0
+        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
+        assert t["date"] == "2026-06-05"
+        assert t["ff"] == "2026-06-02"
+
+    def test_add_invalid_ff_rejected(self, proj, capsys):
+        from core.agenda_cmds import run_task_add
+        rc = run_task_add(project=proj.name, text="Bad", ff="garbage")
+        assert rc == 1
+        # _generic_add translates api ValueError to CLI error wording
+        assert "ff" in capsys.readouterr().out.lower()
+
 
 class TestRunTaskPlan:
     """task plan: promote pending→planned or reschedule planned."""

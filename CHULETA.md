@@ -35,12 +35,43 @@ orbit project type drop <name>              # elimina tipo
 ## task — tareas
 
 ```bash
-orbit task add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
-orbit task done   [<project>] ["<text>"]
-orbit task drop   [<project>] ["<text>"] [--force] [-o] [-s]
-orbit task log    [<project>] ["<text>"]
-orbit task edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
+orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--ff DATE|someday]
+orbit task plan    [<project>] ["<text>"]  <date> [<time>]    # promueve pending→planned o reschedule planned
+orbit task pending [<project>] ["<text>"] [<ff>|someday]      # degrada planned→pending o snooze pending
+orbit task done    [<project>] ["<text>"]
+orbit task drop    [<project>] ["<text>"] [--force] [-o] [-s]
+orbit task log     [<project>] ["<text>"]
+orbit task edit    [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--ff DATE|someday|none]
 ```
+
+### Modelo planned / pending / someday
+
+Una task vive en uno de tres estados, derivados del campo `⏩` (fast-forward) y `date`:
+
+| Estado | `date` | `time` | `ring` | `⏩` |
+|---|---|---|---|---|
+| planned | ✓ | opcional | opcional | — |
+| pending | — | — | — | fecha ISO |
+| someday | — | — | — | `someday` |
+
+- **planned**: compromiso firme. Aparece en Agenda del panel.
+- **pending**: blanda. Aparece en sección "Decidir hoy" cuando `⏩ <= today`.
+- **someday**: aparcada sin presión. No aparece en dashboard hasta que la promuevas.
+
+Verbos primarios y transiciones:
+
+| Verbo | Gesto | Contador |
+|---|---|---|
+| `add` (sin --date ni --ff) | captura cruda → pending con `⏩today` | — |
+| `add --ff DATE` | captura ya programada (esperar respuesta de alguien) | — |
+| `add --date DATE` | compromiso planeado | — |
+| `plan X DATE` | pending → planned, o reschedule planned | `❌` si reschedule de vencida |
+| `pending X DATE` | planned → pending, o snooze pending | `💤` si snooze |
+| `done X` | completa | reset al avanzar recurrente |
+| `drop X` | descarta | — |
+| `edit X --ff DATE` | edición directa del campo | — |
+
+Marcadores en línea: `⏩{fecha}` (next surface), `💤N` (snooze_count), `❌N` (failed_count). Doctor valida invariante `⏩ <= date`.
 
 - `done` y `drop`: interactivos si no se especifica texto; `drop` pide confirmación
 - Si el texto coincide con varias citas, se muestra una lista numerada para elegir (aplica a task, ms, ev y reminder)

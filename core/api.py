@@ -139,6 +139,8 @@ def add_task(project: str, text: str, *,
     project_dir = _resolve_project_or_raise(project)
     recur = _validate_common(date=date, time=time, recur=recur,
                              until=until, ring=ring, time_format="event")
+    if ff is not None and ff != "someday" and not _valid_date(ff):
+        raise ValueError(f"invalid ff: {ff!r}")
     if ff is None and date is None and recur is None:
         ff = _date.today().isoformat()
     item = _build_item("task", text=text, date=date, time=time,

@@ -29,9 +29,11 @@ from core.agenda.lifecycle import (
 def run_task_add(project: str, text: str, date_val: Optional[str] = None,
                  recur: Optional[str] = None, until: Optional[str] = None,
                  ring: Optional[str] = None, time_val: Optional[str] = None,
-                 desc: Optional[str] = None) -> int:
+                 desc: Optional[str] = None,
+                 ff: Optional[str] = None) -> int:
     return _generic_add("task", project, text, date_val=date_val, recur=recur,
-                        until=until, ring=ring, time_val=time_val, desc=desc)
+                        until=until, ring=ring, time_val=time_val, desc=desc,
+                        ff=ff)
 
 
 def run_task_done(project: Optional[str], text: Optional[str]) -> int:

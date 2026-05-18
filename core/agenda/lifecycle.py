@@ -537,6 +537,7 @@ def _generic_add(type_name: str, project: str, text: str,
                  date_val=None, recur=None, until=None,
                  ring=None, time_val=None, desc=None,
                  end_date=None,
+                 ff: Optional[str] = None,
                  agenda: Optional[str] = None,
                  room: Optional[str] = None) -> int:
     """CLI wrapper around :mod:`core.api` ``add_*`` functions.
@@ -583,7 +584,7 @@ def _generic_add(type_name: str, project: str, text: str,
             new_item = api.add_task(project=project, text=text,
                                     date=date_val, time=time_val,
                                     recur=recur, until=until,
-                                    ring=ring, notes=notes_in)
+                                    ring=ring, ff=ff, notes=notes_in)
         elif type_name == "milestone":
             new_item = api.add_milestone(project=project, text=text,
                                           date=date_val, time=time_val,

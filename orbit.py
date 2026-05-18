@@ -500,7 +500,13 @@ def cmd_commit(args):
 def cmd_task_new(args):
     """Task subcommand dispatcher."""
     action = _ga(args, "action") or "add"
-    if action == "add":    return run_task_add(**_add_args(args))
+    if action == "add":
+        kw = _add_args(args)
+        ff_arg = _ga(args, "ff")
+        if ff_arg and ff_arg != "someday":
+            ff_arg = _d(ff_arg) or ff_arg
+        kw["ff"] = ff_arg
+        return run_task_add(**kw)
     if action == "plan":
         return run_task_plan(project=_ga(args, "project"), text=_ga(args, "text"),
                              date_val=_d(_ga(args, "date")) or _ga(args, "date"),
