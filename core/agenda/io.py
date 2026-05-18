@@ -69,10 +69,13 @@ def _extract_orbit_id(text: str) -> Optional[str]:
 # Each pattern has an emoji form and a legacy bracketed form that older
 # agendas may still use.
 
-_DATE_RE  = re.compile(r"\((\d{4}-\d{2}-\d{2})\)")
-_RECUR_RE = re.compile(r"🔄(\S+)|\[recur:([^\]]+)\]")
-_RING_RE  = re.compile(r"🔔(\S+)|\[ring:([^\]]+)\]")
-_TIME_RE  = re.compile(r"⏰(\S+)|\[time:([^\]]+)\]")
+_DATE_RE   = re.compile(r"\((\d{4}-\d{2}-\d{2})\)")
+_RECUR_RE  = re.compile(r"🔄(\S+)|\[recur:([^\]]+)\]")
+_RING_RE   = re.compile(r"🔔(\S+)|\[ring:([^\]]+)\]")
+_TIME_RE   = re.compile(r"⏰(\S+)|\[time:([^\]]+)\]")
+_FF_RE     = re.compile(r"⏩(\S+)|\[ff:([^\]]+)\]")
+_SNOOZE_RE = re.compile(r"💤(\d+)|\[snooze:(\d+)\]")
+_FAILED_RE = re.compile(r"❌(\d+)|\[failed:(\d+)\]")
 
 # Patterns stripped from a line to recover the bare ``desc`` (one pass).
 # Includes legacy sync markers (`[G]`, `[gtask:…]`) and the dormant
@@ -82,6 +85,9 @@ _DESC_STRIP_PATS = [
     r"🔄\S+", r"\[recur:[^\]]+\]",
     r"🔔\S+", r"\[ring:[^\]]+\]",
     r"⏰\S+", r"\[time:[^\]]+\]",
+    r"⏩\S+", r"\[ff:[^\]]+\]",
+    r"💤\d+", r"\[snooze:\d+\]",
+    r"❌\d+", r"\[failed:\d+\]",
     r"☁️", r"\[G\]", r"\[gtask:[^\]]+\]",
     r"\[orbit:[0-9a-f]{8}\]",
 ]
@@ -144,6 +150,11 @@ def _parse_simple_line(line: str, kind: str) -> Optional[dict]:
     date_val = date_m.group(1) if date_m else None
     recur, until = _extract_recur(rest)
     time_val = _extract_emoji_or_legacy(_TIME_RE, rest)
+    ff_val   = _extract_emoji_or_legacy(_FF_RE, rest)
+    snooze_m = _SNOOZE_RE.search(rest)
+    snooze_count = int(snooze_m.group(1) or snooze_m.group(2)) if snooze_m else 0
+    failed_m = _FAILED_RE.search(rest)
+    failed_count = int(failed_m.group(1) or failed_m.group(2)) if failed_m else 0
     orbit_id = _extract_orbit_id(rest)
     # v0.30 ☁️ marker: parser still tolerates it; formatter no longer
     # writes it (v0.33 — AppleScript-write retired).
@@ -159,6 +170,9 @@ def _parse_simple_line(line: str, kind: str) -> Optional[dict]:
         "desc": desc, "date": date_val, "recur": recur, "until": until,
         "time": time_val, "orbit_id": orbit_id,
         "cloud_verified": cloud_verified,
+        "ff": ff_val,
+        "snooze_count": snooze_count,
+        "failed_count": failed_count,
     }
     item.update(prefix_data)
     if kind != "reminder":
@@ -187,6 +201,12 @@ def _format_simple_line(item: dict, kind: str) -> str:
         parts.append(f"🔄{recur_tag}")
     if kind != "reminder" and item.get("ring"):
         parts.append(f"🔔{item['ring']}")
+    if item.get("ff"):
+        parts.append(f"⏩{item['ff']}")
+    if item.get("snooze_count"):
+        parts.append(f"💤{item['snooze_count']}")
+    if item.get("failed_count"):
+        parts.append(f"❌{item['failed_count']}")
     # ☁️ marker dormant since v0.33 — vestigial cloud_verified is parsed
     # but never re-emitted.
     if item.get("orbit_id"):

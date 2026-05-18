@@ -152,6 +152,90 @@ class TestParseTaskLine:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ff / snooze_count / failed_count — taxonomy items rev 2
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestFfAndCounters:
+    """Parser+writer of ⏩ (fast-forward), 💤 (snooze_count), ❌ (failed_count)."""
+
+    def test_parse_ff_date(self):
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [ ] Esperar X ⏩2026-05-24")
+        assert t["ff"] == "2026-05-24"
+        assert t["desc"] == "Esperar X"
+        assert t["snooze_count"] == 0
+        assert t["failed_count"] == 0
+
+    def test_parse_ff_someday(self):
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [ ] Quizá Y ⏩someday")
+        assert t["ff"] == "someday"
+
+    def test_parse_counters(self):
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [ ] Esperar Z ⏩2026-05-24 💤3 ❌1")
+        assert t["ff"] == "2026-05-24"
+        assert t["snooze_count"] == 3
+        assert t["failed_count"] == 1
+        assert t["desc"] == "Esperar Z"
+
+    def test_parse_legacy_bracketed(self):
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [ ] Old style [ff:2026-05-24] [snooze:2] [failed:5]")
+        assert t["ff"] == "2026-05-24"
+        assert t["snooze_count"] == 2
+        assert t["failed_count"] == 5
+
+    def test_parse_absent_defaults(self):
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [ ] Plain task (2026-04-01)")
+        assert t["ff"] is None
+        assert t["snooze_count"] == 0
+        assert t["failed_count"] == 0
+
+    def test_format_emits_only_when_truthy(self):
+        from core.agenda_cmds import _format_task_line
+        t = {"status": "pending", "desc": "X", "date": None,
+             "recur": None, "ring": None,
+             "ff": None, "snooze_count": 0, "failed_count": 0}
+        assert _format_task_line(t) == "- [ ] X"
+
+    def test_format_with_ff_only(self):
+        from core.agenda_cmds import _format_task_line
+        t = {"status": "pending", "desc": "X", "date": None,
+             "recur": None, "ring": None,
+             "ff": "2026-05-24", "snooze_count": 0, "failed_count": 0}
+        assert _format_task_line(t) == "- [ ] X ⏩2026-05-24"
+
+    def test_format_with_counters(self):
+        from core.agenda_cmds import _format_task_line
+        t = {"status": "pending", "desc": "X", "date": None,
+             "recur": None, "ring": None,
+             "ff": "2026-05-24", "snooze_count": 3, "failed_count": 1}
+        assert _format_task_line(t) == "- [ ] X ⏩2026-05-24 💤3 ❌1"
+
+    def test_roundtrip_full(self):
+        from core.agenda_cmds import _parse_task_line, _format_task_line
+        line = "- [ ] Esperar revisión (2026-05-30) 🔄weekly 🔔1h ⏩2026-05-24 💤2 ❌1"
+        t = _parse_task_line(line)
+        assert _format_task_line(t) == line
+
+    def test_roundtrip_someday(self):
+        from core.agenda_cmds import _parse_task_line, _format_task_line
+        line = "- [ ] Quizá algún día ⏩someday"
+        t = _parse_task_line(line)
+        assert _format_task_line(t) == line
+
+    def test_desc_strips_ff_and_counters(self):
+        # Bare desc must not include the ⏩/💤/❌ tokens.
+        from core.agenda_cmds import _parse_task_line
+        t = _parse_task_line("- [ ] Esperar Z ⏩2026-05-24 💤3 ❌1")
+        assert "⏩" not in t["desc"]
+        assert "💤" not in t["desc"]
+        assert "❌" not in t["desc"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # _parse_event_line / _format_event_line
 # ══════════════════════════════════════════════════════════════════════════════
 
