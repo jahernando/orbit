@@ -832,10 +832,12 @@ def run_dash(silent: bool = False):
     from views.secretary import calendar as sec_calendar
     from views.secretary import projects as sec_projects
     from views.secretary import report_summary as sec_report
+    from views.secretary import today as sec_today
 
     SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
     sec_projects.generate(SECRETARY_DIR / "projects.md")
     sec_panel.generate(SECRETARY_DIR / "panel.md")
+    sec_today.generate(SECRETARY_DIR / "today.md")
     sec_agenda.generate(SECRETARY_DIR / "agenda-next.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
     sec_report.generate(SECRETARY_DIR / "report-summary.md")
@@ -844,7 +846,7 @@ def run_dash(silent: bool = False):
     (ORBIT_DIR / ".dash-stamp").touch()
 
     if not silent:
-        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,agenda-next,calendar,report-summary}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,today,agenda-next,calendar,report-summary}.md)")
 
     return 0
 
@@ -1582,7 +1584,7 @@ def _build_parser():
     _add_fed_args(pan_p)
 
     # --- dash ---
-    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{panel,agenda-next,calendar,projects}.md")
+    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{panel,today,agenda-next,calendar,projects}.md")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")

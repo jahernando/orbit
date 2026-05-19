@@ -29,6 +29,7 @@ def test_bootstrap_creates_when_missing(fake_ws):
     content = ws_md.read_text()
     assert "🚀 test-ws" in content
     assert "📊panel/secretary/panel.md" in content
+    assert "📊panel/secretary/today.md" in content
     assert "📊panel/secretary/agenda-next.md" in content
     assert "📊panel/secretary/calendar.md" in content
     assert "📊panel/secretary/projects.md" in content
