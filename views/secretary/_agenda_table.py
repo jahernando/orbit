@@ -181,14 +181,37 @@ def render_day_rows(items) -> list:
     return lines
 
 
+def _add_item_spanning(by_day: dict, entry, item_start: str, item_end: str,
+                       df_date, dt_date) -> None:
+    """Add `entry` a by_day para cada día en [item_start, item_end] ∩ [df, dt].
+    Para events multi-día (con `end`), aparecerá en cada día del rango."""
+    from datetime import date as _date, timedelta
+    try:
+        s = max(_date.fromisoformat(item_start), df_date)
+        e = min(_date.fromisoformat(item_end),   dt_date)
+    except ValueError:
+        return
+    cur = s
+    while cur <= e:
+        by_day.setdefault(cur.isoformat(), []).append(entry)
+        cur += timedelta(days=1)
+
+
 def collect_items_by_day(date_from, date_to, include_federated: bool = True) -> dict:
     """Returns ``{date_str: [(kind, item, project_dir, proj_md)]}`` for items
-    whose `date` ∈ [date_from, date_to]. Filters done/cancelled.
+    cuyo rango temporal intersecta ``[date_from, date_to]``. Filters
+    done/cancelled.
 
-    Items con `recur` se expanden con `_expand_recurrences` (todas las 4 citas,
-    incluyendo reminders — orbit/agenda_view._collect_data omite reminders,
-    pero aquí los queremos para que las vistas de agenda muestren las
-    instancias futuras de un reminder recurrente).
+    Tres extensiones sobre "una entrada un día":
+    - **Multi-día events** (con `end` set): aparecen en cada día de su
+      rango ``[date, end]`` (no sólo el día de inicio). Útil para
+      conferencias/viajes de varios días.
+    - **Recurrencia**: expansión con `_expand_recurrences` para las 4
+      citas (incluyendo reminders; `_collect_data` omite reminders pero
+      aquí los queremos).
+    - **Recurrencia × multi-día**: ocurrencias virtuales preservan
+      `end` (offset del original), así que cada virtual también se
+      expande por sus días.
     """
     from datetime import date as _date
     from core.agenda.io import _read_agenda
@@ -197,8 +220,6 @@ def collect_items_by_day(date_from, date_to, include_federated: bool = True) -> 
 
     df_date = date_from if hasattr(date_from, "isoformat") else _date.fromisoformat(date_from)
     dt_date = date_to   if hasattr(date_to,   "isoformat") else _date.fromisoformat(date_to)
-    df = df_date.isoformat()
-    dt = dt_date.isoformat()
 
     by_day: dict = {}
     for project_dir in _resolve_dirs(None, include_federated=include_federated):
@@ -214,13 +235,15 @@ def collect_items_by_day(date_from, date_to, include_federated: bool = True) -> 
                 d = item.get("date")
                 if not d:
                     continue
-                # Base date (si cae en rango).
-                if df <= d <= dt:
-                    by_day.setdefault(d, []).append(
-                        (kind, item, project_dir, proj_md))
+                entry = (kind, item, project_dir, proj_md)
+                # Base occurrence (con rango si multi-día events).
+                end_d = item.get("end") or d
+                _add_item_spanning(by_day, entry, d, end_d, df_date, dt_date)
                 # Recurring: expandir ocurrencias virtuales dentro del rango.
                 if item.get("recur"):
                     for vi in _expand_recurrences(item, df_date, dt_date):
-                        by_day.setdefault(vi["date"], []).append(
-                            (kind, vi, project_dir, proj_md))
+                        v_entry = (kind, vi, project_dir, proj_md)
+                        v_end = vi.get("end") or vi["date"]
+                        _add_item_spanning(by_day, v_entry, vi["date"], v_end,
+                                            df_date, dt_date)
     return by_day

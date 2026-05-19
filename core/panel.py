@@ -210,8 +210,25 @@ def _collect_agenda(start, end, include_federated=True):
                 day = item.get("date") or ""
                 if not day:
                     continue
-                by_day.setdefault(day, []).append(
-                    (kind, item, project_dir, proj_md))
+                entry = (kind, item, project_dir, proj_md)
+                # Siempre al start date — preserva el overdue fold de
+                # single-day view (tasks/ms de ayer entran a by_day[ayer]
+                # y luego se folden a hoy).
+                by_day.setdefault(day, []).append(entry)
+                # Multi-day events: además a los días subsiguientes que
+                # caen en el rango de vista. Tasks/ms no tienen `end`.
+                end_day = item.get("end")
+                if end_day and end_day != day:
+                    try:
+                        start_dt = date.fromisoformat(day)
+                        end_dt   = date.fromisoformat(end_day)
+                    except ValueError:
+                        continue
+                    cur = max(start_dt + timedelta(days=1), start)
+                    last = min(end_dt, end)
+                    while cur <= last:
+                        by_day.setdefault(cur.isoformat(), []).append(entry)
+                        cur += timedelta(days=1)
 
     # Single-day overdue fold: non-event items de fechas pasadas → hoy.
     # Decora desc con " (📅date) ⚠️" para que se vea que está overdue.
