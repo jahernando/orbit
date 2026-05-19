@@ -832,17 +832,31 @@ def cmd_panel(args):
                           open_file_path=SECRETARY_DIR / "panel.md")
 
 
-def run_dash(silent: bool = False):
-    """Refresh los viewers de secretary: panel + agenda-next + calendar + projects.
+def run_dash_hot(silent: bool = False):
+    """Refresca SOLO `agenda.md` (carril hot).
 
-    Orquesta los viewers de secretary; cada uno escribe su .md dentro de
-    `📊panel/secretary/` en la raíz del workspace. Salida local únicamente — la
-    proyección a HTML en cloud es trabajo de `render` (commit_post), y la
-    regeneración de .ics es trabajo de `ics_emit_workspace` (commit_post).
+    Es el único viewer que se regenera tras cualquier mutación de cita /
+    log / hl / project en background. Resto de viewers (cold) se queda
+    estable hasta el siguiente `commit_post` / `day_open` / `orbit dash`.
 
-    silent=True suppresses all terminal output (used in background refresh and shutdown).
+    Ver ADR-036 + [[project-orbit-dashboard-refactor]] (F2).
     """
     from views.secretary import agenda as sec_agenda
+    SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
+    sec_agenda.generate(SECRETARY_DIR / "agenda.md")
+    (ORBIT_DIR / ".dash-stamp").touch()
+    if not silent:
+        print("  ✓ agenda actualizada (📊panel/secretary/agenda.md)")
+    return 0
+
+
+def run_dash_cold(silent: bool = False):
+    """Refresca los viewers cold (todo menos `agenda.md`).
+
+    Se regenera sólo en momentos rentables: save (commit_post), nuevo
+    día (day_open), arranque del shell, o `orbit dash` manual. NO se
+    dispara en background tras mutaciones.
+    """
     from views.secretary import agenda_next as sec_agenda_next
     from views.secretary import agenda_today as sec_agenda_today
     from views.secretary import calendar as sec_calendar
@@ -855,7 +869,6 @@ def run_dash(silent: bool = False):
     from views.secretary import today as sec_today
 
     SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
-    sec_agenda.generate(SECRETARY_DIR / "agenda.md")
     sec_projects.generate(SECRETARY_DIR / "projects.md")
     sec_panel.generate(SECRETARY_DIR / "panel.md")
     sec_today.generate(SECRETARY_DIR / "today.md")
@@ -867,12 +880,25 @@ def run_dash(silent: bool = False):
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
     sec_report.generate(SECRETARY_DIR / "report-summary.md")
 
-    # Touch stamp so background dash in other shells skips redundant refreshes
-    (ORBIT_DIR / ".dash-stamp").touch()
+    if not silent:
+        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,panel,today,agenda-today,agenda-next,decisions-next,ring-today,ring-next,calendar,report-summary}.md)")
+    return 0
+
+
+def run_dash(silent: bool = False):
+    """Refresh completo: carril hot + carril cold.
+
+    Llamado por `orbit dash` CLI, `commit_post` chain, `day_open`,
+    `shell_start`. Para el carril de background tras mutaciones se usa
+    `run_dash_hot` (sólo agenda.md).
+
+    silent=True silencia toda salida (background refresh y shutdown).
+    """
+    run_dash_hot(silent=True)
+    run_dash_cold(silent=True)
 
     if not silent:
         print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,panel,today,agenda-today,agenda-next,decisions-next,ring-today,ring-next,calendar,report-summary}.md)")
-
     return 0
 
 
@@ -880,22 +906,26 @@ _DASH_COALESCE_SECONDS = 10.0
 
 
 def _run_dash_coalesced() -> None:
-    """Refresca dash en silencio, coalescido por .dash-stamp.
+    """Refresca el carril hot en silencio, coalescido por .dash-stamp.
 
     Si el stamp es más reciente que _DASH_COALESCE_SECONDS, no hace nada
     — varias mutaciones seguidas (p.ej. ráfaga de `log`) colapsan en un
     único refresh. Pensado para llamarse desde un daemon thread tras
     comandos en _DASH_TRIGGERS.
+
+    F2 (2026-05-19): refresca SOLO el carril hot (agenda.md). El nombre
+    se conserva por compatibilidad con tests y watchdog; cold se queda
+    para `commit_post` / `day_open` / `orbit dash`.
     """
     import time
     stamp = ORBIT_DIR / ".dash-stamp"
     if stamp.exists() and time.time() - stamp.stat().st_mtime < _DASH_COALESCE_SECONDS:
         return
-    run_dash(silent=True)
+    run_dash_hot(silent=True)
 
 
 def _run_full_refresh_coalesced(project_hint=None) -> None:
-    """Tras mutación de cita: ring + dash (coalescido) + ics(filter).
+    """Tras mutación de cita: ring + hot dash (coalescido) + ics(filter).
 
     Replica en bg el orden del chain `commit_post` (ring → secretary →
     ics) sin render, que se reserva para save. Ring va primero porque
@@ -905,6 +935,9 @@ def _run_full_refresh_coalesced(project_hint=None) -> None:
     impide dash, etc. project_hint se propaga solo a ics (único writer
     con per-project artifacts); dash y ring no soportan filtro útil
     (artefactos workspace-agregados).
+
+    F2 (2026-05-19): la parte de dash ahora es hot only (sólo agenda.md).
+    Cold se regenera en commit_post / day_open / `orbit dash`.
     """
     try:
         from views.ring.export import _action_ring_refresh

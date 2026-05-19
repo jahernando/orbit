@@ -1,7 +1,10 @@
-"""Tests for _run_dash_coalesced: debounced dash refresh helper.
+"""Tests for _run_dash_coalesced: debounced hot-dash refresh helper.
 
 Coalescing via .dash-stamp: bursts of mutations (log, hl, task add, …)
 collapse into one refresh per _DASH_COALESCE_SECONDS window.
+
+F2 (2026-05-19): el coalesced refresca SOLO el carril hot (agenda.md).
+Cold se queda para `commit_post` / `day_open` / `orbit dash`.
 """
 
 import time
@@ -20,7 +23,7 @@ def stamp_env(tmp_path, monkeypatch):
 
 def test_runs_when_stamp_missing(stamp_env):
     import orbit
-    with patch.object(orbit, "run_dash") as h:
+    with patch.object(orbit, "run_dash_hot") as h:
         orbit._run_dash_coalesced()
     h.assert_called_once_with(silent=True)
 
@@ -29,7 +32,7 @@ def test_skips_when_stamp_fresh(stamp_env):
     import orbit
     stamp = stamp_env / ".dash-stamp"
     stamp.touch()  # mtime = now
-    with patch.object(orbit, "run_dash") as h:
+    with patch.object(orbit, "run_dash_hot") as h:
         orbit._run_dash_coalesced()
     h.assert_not_called()
 
@@ -42,9 +45,24 @@ def test_runs_when_stamp_stale(stamp_env):
     old = time.time() - (orbit._DASH_COALESCE_SECONDS + 5)
     import os
     os.utime(stamp, (old, old))
-    with patch.object(orbit, "run_dash") as h:
+    with patch.object(orbit, "run_dash_hot") as h:
         orbit._run_dash_coalesced()
     h.assert_called_once_with(silent=True)
+
+
+def test_coalesced_only_touches_hot_not_cold(stamp_env, monkeypatch):
+    """Verifica el invariante de F2: el coalesced en background sólo
+    refresca hot (agenda.md). Si run_dash_cold se invocase aquí, el
+    invariante 'cold sólo en save/day_open/dash' quedaría roto.
+    """
+    import orbit
+    cold_called = []
+    monkeypatch.setattr(orbit, "run_dash_cold",
+                        lambda silent=False: cold_called.append("cold"))
+    with patch.object(orbit, "run_dash_hot") as h:
+        orbit._run_dash_coalesced()
+    h.assert_called_once_with(silent=True)
+    assert cold_called == []
 
 
 def test_triggers_include_log_hl_project():
