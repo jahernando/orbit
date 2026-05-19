@@ -115,6 +115,29 @@ def register_ev(subparsers):
     _add_project_text(ev_log, project_required=False)
 
 
+def register_cita(subparsers):
+    """``orbit cita log [text]`` y alias ``orbit clog [text]``.
+
+    Umbrella para las 4 citas: encuentra la cita activa ahora (now ∈
+    [start, end+10min]) y crea entrada de logbook. Si hay >1 activa o 0,
+    abre selector. Elimina la fricción de "buscar el proyecto + tipo
+    + texto" al loguear citas en curso.
+    """
+    cita_p = subparsers.add_parser(
+        "cita", help="Cita umbrella (las 4 citas): `cita log [text]`")
+    cita_sub = cita_p.add_subparsers(dest="action")
+    cita_log = cita_sub.add_parser(
+        "log", help="Create logbook entry from currently-active cita")
+    cita_log.add_argument("text", nargs="?", default=None,
+                          help="Optional filter text (substring match on desc)")
+
+    # Atajo directo equivalente a `cita log`.
+    clog_p = subparsers.add_parser(
+        "clog", help="Alias de `cita log` — logbook entry de la cita activa")
+    clog_p.add_argument("text", nargs="?", default=None,
+                        help="Optional filter text (substring match on desc)")
+
+
 def register_reminder(subparsers):
     """``orbit reminder|rem {add,drop,edit,log}``."""
     rem_p   = subparsers.add_parser("reminder", aliases=["rem"], help="Reminder commands (agenda.md 💬)")

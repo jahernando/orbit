@@ -702,3 +702,195 @@ def run_reminder_log(project: Optional[str], text: Optional[str]) -> int:
 
     print("No se encontró el recordatorio.")
     return 1
+
+
+# ── CITA commands ─────────────────────────────────────────────────────────────
+
+# Cita = umbrella para las 4 citas (task / ms / event / reminder). `cita log`
+# elimina la fricción de "buscar el proyecto + tipo + texto" cuando quieres
+# loguear algo sobre una cita actualmente en curso o reciente.
+
+_CITA_LOG_TAIL_MIN = 10        # tolerancia post-end: cita "viva" 10min después
+_CITA_KIND_EMOJI = {
+    "events":     "📅",
+    "tasks":      "✅",
+    "milestones": "🏁",
+    "reminders":  "💬",
+}
+_CITA_LOG_TYPE = {
+    "events":     "evento",
+    "tasks":      "apunte",
+    "milestones": "resultado",
+    "reminders":  "apunte",
+}
+_CITA_DEFAULT_MIN = {
+    "events":     60,
+    "tasks":      15,
+    "milestones": 0,
+    "reminders":  0,
+}
+
+
+def _cita_start_min(item) -> int:
+    t = item.get("time") or ""
+    if not t:
+        return 0
+    h, m = map(int, t.split("-")[0].split(":"))
+    return h * 60 + m
+
+
+def _cita_duration_min(item, kind: str) -> int:
+    t = item.get("time") or ""
+    if not t:
+        return 0
+    if "-" in t:
+        a, b = t.split("-", 1)
+        ah, am = map(int, a.split(":"))
+        bh, bm = map(int, b.split(":"))
+        return max((bh * 60 + bm) - (ah * 60 + am), 0)
+    return _CITA_DEFAULT_MIN.get(kind, 0)
+
+
+def _cita_pick(items, label: str, text: Optional[str]):
+    """Selector interactivo entre `items` = lista de (kind, project_dir, item).
+
+    Si `text` filtra a un único item → retorna directamente. Si filtra a >1 →
+    pregunta. Si no hay text y hay >1 items → pregunta.
+    """
+    import sys
+    if text:
+        text_l = text.lower()
+        matches = [i for i, (_k, _p, it) in enumerate(items)
+                   if text_l in (it.get("desc") or "").lower()]
+        if not matches:
+            print(f"Sin coincidencias para '{text}'")
+            return None
+        if len(matches) == 1:
+            return matches[0]
+        # Restrict pool to matches
+        pool = [items[i] for i in matches]
+        sub = _cita_pick(pool, label, None)
+        return matches[sub] if sub is not None else None
+
+    if len(items) == 1:
+        return 0
+
+    print(f"\n{label}:")
+    for i, (kind, project_dir, item) in enumerate(items, 1):
+        time_s = item.get("time") or "—"
+        emoji = _CITA_KIND_EMOJI[kind]
+        print(f"  {i}. {emoji} {time_s} [{project_dir.name}] {item['desc']}")
+    if not sys.stdin.isatty():
+        return None
+    try:
+        raw = input("Selecciona (#): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+    if raw.isdigit():
+        idx = int(raw) - 1
+        if 0 <= idx < len(items):
+            return idx
+    print("Cancelado.")
+    return None
+
+
+def run_cita_log(text: Optional[str] = None) -> int:
+    """Crea entrada de logbook de la cita activa ahora (o selector).
+
+    Flujo:
+    1. Busca items de hoy con hora (tasks/events/ms/reminders, locales — no
+       federados, escritura denegada en federación read-only).
+    2. Filtra a "activos": `now ∈ [start, end + 10min]`. Reminders excluidos
+       de la detección de overlaps pero sí pueden ser "activos" si están a
+       <= 10min de now (tratan como instantáneos).
+    3. 1 activo → usa ese. >1 → selector. 0 activos → selector con todos los
+       items del día.
+    4. Una vez elegido, llama directo a `core.log.add_entry` con
+       `item.desc` como mensaje y el `log_type` según kind. Para eventos,
+       reenvía agenda/room URLs como continuations (paridad con `ev log`).
+    """
+    from datetime import date as _date, datetime
+    from core.agenda.io import _read_agenda
+    from core.agenda_view import _resolve_dirs
+    from core.log import resolve_file, add_entry
+
+    today = _date.today()
+    today_str = today.isoformat()
+    now = datetime.now()
+    now_min = now.hour * 60 + now.minute
+
+    candidates = []  # (kind, project_dir, item)
+    for project_dir in _resolve_dirs(None, include_federated=False):
+        agenda_path = resolve_file(project_dir, "agenda")
+        if not agenda_path.exists():
+            continue
+        data = _read_agenda(agenda_path)
+        for kind in ("events", "tasks", "milestones", "reminders"):
+            for item in data.get(kind, []):
+                if item.get("status") in ("done", "cancelled"):
+                    continue
+                if item.get("date") != today_str:
+                    continue
+                candidates.append((kind, project_dir, item))
+
+    if not candidates:
+        print("No hay citas para hoy.")
+        return 1
+
+    # Filtrar activos ahora.
+    active = []
+    for entry in candidates:
+        kind, _proj, item = entry
+        t = item.get("time") or ""
+        if not t:
+            continue  # sin hora no se considera activo
+        start = _cita_start_min(item)
+        if kind == "reminders":
+            # reminders: instantáneo, "activo" si now ∈ [start, start + tail]
+            if start <= now_min <= start + _CITA_LOG_TAIL_MIN:
+                active.append(entry)
+        else:
+            end = start + _cita_duration_min(item, kind)
+            if start <= now_min <= end + _CITA_LOG_TAIL_MIN:
+                active.append(entry)
+
+    # Elegir cita.
+    if active:
+        idx = _cita_pick(active, "Citas activas ahora", text)
+        pool = active
+    else:
+        # Sort by start_time (con-hora primero, sin-hora al final)
+        candidates.sort(key=lambda e: (
+            0 if e[2].get("time") else 1,
+            _cita_start_min(e[2]) if e[2].get("time") else 0
+        ))
+        print("(sin citas activas ahora — selecciona de hoy)")
+        idx = _cita_pick(candidates, "Citas de hoy", text)
+        pool = candidates
+
+    if idx is None:
+        return 1
+    kind, project_dir, item = pool[idx]
+
+    # Construir continuations para events (paridad con _generic_log).
+    continuations = None
+    if kind == "events":
+        from core.agenda.display import (
+            event_agenda_urls, event_room_urls, _is_meeting_url, _room_icon,
+        )
+        lines = []
+        for url in event_agenda_urls(item):
+            lines.append(f"[📋]({url})")
+        for room in event_room_urls(item):
+            if _is_meeting_url(room):
+                lines.append(f"[{_room_icon(room)}]({room})")
+            else:
+                lines.append(f"🚪 {room}")
+        if lines:
+            continuations = lines
+
+    log_type = _CITA_LOG_TYPE[kind]
+    return add_entry(project_dir.name, item["desc"], log_type, None,
+                     item.get("date"), project_dir=project_dir,
+                     continuations=continuations)

@@ -579,6 +579,21 @@ def cmd_ev(args):
     return 1
 
 
+def cmd_cita(args):
+    """Cita umbrella dispatcher: `cita log [text]`."""
+    action = _ga(args, "action") or "log"
+    if action == "log":
+        from core.agenda.runners import run_cita_log
+        return run_cita_log(text=_ga(args, "text"))
+    return 1
+
+
+def cmd_clog(args):
+    """Atajo: `clog [text]` ≡ `cita log [text]`."""
+    from core.agenda.runners import run_cita_log
+    return run_cita_log(text=_ga(args, "text"))
+
+
 def cmd_reminder(args):
     """Reminder subcommand dispatcher."""
     action = _ga(args, "action") or "list"
@@ -1826,6 +1841,7 @@ def _build_parser():
     _agenda_parsers.register_ms(subparsers)
     _agenda_parsers.register_ev(subparsers)
     _agenda_parsers.register_reminder(subparsers)
+    _agenda_parsers.register_cita(subparsers)
 
     # --- hl ---
     hl_p   = subparsers.add_parser("hl", help="Highlights commands (highlights.md)")
@@ -2089,7 +2105,8 @@ def _build_parser():
 # Command dispatch table
 _COMMANDS = {
     "task": cmd_task_new,
-    "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder, "hl": cmd_hl,
+    "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder,
+    "cita": cmd_cita, "clog": cmd_clog, "hl": cmd_hl,
     "view": cmd_view_new,
     "note": cmd_note, "save": cmd_commit, "commit": cmd_commit, "deliver": cmd_deliver,
     "clip": cmd_clip,
