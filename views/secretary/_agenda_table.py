@@ -129,8 +129,8 @@ def proj_link_md(project_dir) -> str:
 
 
 TABLE_HEADER = (
-    "| | Inicio | Fin | Descripción | Proyecto |\n"
-    "|---|--------|-----|-------------|----------|"
+    "| | | Inicio | Fin | Descripción | Proyecto |\n"
+    "|---|---|--------|-----|-------------|----------|"
 )
 
 
@@ -155,8 +155,8 @@ def render_day_rows(items) -> list:
     Returns lista de strings (líneas markdown) — header + filas. Si no hay
     items, devuelve lista vacía. Sort por hora; sin-hora al final.
 
-    Col 1 lleva emoji-de-kind seguido del marcador overlap `░ ▒ ▓` cuando
-    aplica (reminders sin marcador). Events incluyen indicadores
+    Layout (6 cols): emoji-de-kind | overlap-marker | Inicio | Fin | Desc | Proyecto.
+    Reminders sin overlap (instantáneos). Events incluyen indicadores
     `[📋] [🚪] [✉️]` (markdown clickables) tras la descripción si tienen
     URLs de agenda/room/email.
     """
@@ -170,18 +170,14 @@ def render_day_rows(items) -> list:
     for idx, (kind, item, _pdir, proj_md) in enumerate(timed):
         emoji = KIND_EMOJI[kind]
         start, end = time_pair(item, DEFAULT_MIN.get(kind))
-        if kind == "reminders":
-            kind_cell = emoji
-        else:
-            kind_cell = f"{emoji} {overlap_char(overlaps.get(idx, 0))}"
+        ov = "" if kind == "reminders" else overlap_char(overlaps.get(idx, 0))
         desc = _desc_with_event_indicators(kind, item)
-        lines.append(f"| {kind_cell} | {start} | {end} | {desc} | {proj_md} |")
+        lines.append(f"| {emoji} | {ov} | {start} | {end} | {desc} | {proj_md} |")
     for kind, item, _pdir, proj_md in untimed:
         emoji = KIND_EMOJI[kind]
-        kind_cell = emoji  # untimed: sin overlap marker
         desc = _desc_with_event_indicators(kind, item)
-        # untimed: columnas Inicio/Fin vacías.
-        lines.append(f"| {kind_cell} |  |  | {desc} | {proj_md} |")
+        # untimed: overlap/Inicio/Fin vacíos.
+        lines.append(f"| {emoji} |  |  |  | {desc} | {proj_md} |")
     return lines
 
 
