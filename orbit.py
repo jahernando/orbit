@@ -848,6 +848,8 @@ def run_dash(silent: bool = False):
     from views.secretary import calendar as sec_calendar
     from views.secretary import projects as sec_projects
     from views.secretary import report_summary as sec_report
+    from views.secretary import ring_next as sec_ring_next
+    from views.secretary import ring_today as sec_ring_today
     from views.secretary import today as sec_today
 
     SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
@@ -856,6 +858,8 @@ def run_dash(silent: bool = False):
     sec_today.generate(SECRETARY_DIR / "today.md")
     sec_agenda_today.generate(SECRETARY_DIR / "agenda-today.md")
     sec_agenda.generate(SECRETARY_DIR / "agenda-next.md")
+    sec_ring_today.generate(SECRETARY_DIR / "ring-today.md")
+    sec_ring_next.generate(SECRETARY_DIR / "ring-next.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
     sec_report.generate(SECRETARY_DIR / "report-summary.md")
 
@@ -863,7 +867,7 @@ def run_dash(silent: bool = False):
     (ORBIT_DIR / ".dash-stamp").touch()
 
     if not silent:
-        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,today,agenda-today,agenda-next,decisions-next,calendar,report-summary}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,today,agenda-today,agenda-next,ring-today,ring-next,decisions-next,calendar,report-summary}.md)")
 
     return 0
 
@@ -887,22 +891,25 @@ def _run_dash_coalesced() -> None:
 
 
 def _run_full_refresh_coalesced(project_hint=None) -> None:
-    """Tras mutación de cita: dash (coalescido) + ring + ics(filter).
+    """Tras mutación de cita: ring + dash (coalescido) + ics(filter).
 
-    Replica en bg el orden del chain `commit_post` (secretary → ring →
-    ics) sin render, que se reserva para save. Cada paso fail-isolated:
-    un fallo en dash no impide ring, etc. project_hint se propaga solo
-    a ics (único writer con per-project artifacts); dash y ring no
-    soportan filtro útil (artefactos workspace-agregados).
+    Replica en bg el orden del chain `commit_post` (ring → secretary →
+    ics) sin render, que se reserva para save. Ring va primero porque
+    `ring.json` es input de los viewers `ring-today/next` de secretary;
+    si dash se ejecutara antes, los viewers leerían el ring.json del
+    refresh anterior. Cada paso fail-isolated: un fallo en ring no
+    impide dash, etc. project_hint se propaga solo a ics (único writer
+    con per-project artifacts); dash y ring no soportan filtro útil
+    (artefactos workspace-agregados).
     """
     try:
-        _run_dash_coalesced()
+        from views.ring.export import _action_ring_refresh
+        _action_ring_refresh(None)
     except Exception:
         pass
 
     try:
-        from views.ring.export import _action_ring_refresh
-        _action_ring_refresh(None)
+        _run_dash_coalesced()
     except Exception:
         pass
 

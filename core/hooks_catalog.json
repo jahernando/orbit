@@ -100,8 +100,8 @@
       "trigger_type": "explicit",
       "post": [
         "cronos_section_refresh",
-        "secretary_refresh",
         "ring_refresh",
+        "secretary_refresh",
         "ics_emit_workspace",
         "render_to_cloud"
       ],

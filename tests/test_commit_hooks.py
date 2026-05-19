@@ -49,8 +49,8 @@ def test_commit_post_chain_registered():
     assert chain.pre == []
     assert chain.post == [
         "cronos_section_refresh",
-        "secretary_refresh",
         "ring_refresh",
+        "secretary_refresh",
         "ics_emit_workspace",
         "render_to_cloud",
     ]

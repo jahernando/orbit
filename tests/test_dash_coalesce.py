@@ -72,7 +72,8 @@ def test_cita_triggers_are_subset_of_dash_triggers():
 
 class TestRunFullRefreshCoalesced:
     def test_calls_all_three_steps(self, stamp_env, monkeypatch):
-        """dash + ring + ics, en ese orden."""
+        """ring + dash + ics, en ese orden (ring antes que dash porque
+        ring.json es input de los viewers ring-today/next de secretary)."""
         import orbit
         calls = []
 
@@ -101,8 +102,8 @@ class TestRunFullRefreshCoalesced:
         orbit._run_full_refresh_coalesced(project_hint="proj1")
 
         assert calls == [
-            "dash",
             "ring",
+            "dash",
             ("ics", str(cloud), "proj1"),
         ]
 
