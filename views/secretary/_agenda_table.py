@@ -182,19 +182,25 @@ def render_day_rows(items) -> list:
 
 
 def collect_items_by_day(date_from, date_to, include_federated: bool = True) -> dict:
-    """Returns {date_str: [(kind, item, project_dir, proj_md)]} for items
-    whose `date` ∈ [date_from, date_to] (string ISO compare). Filters
-    done/cancelled.
+    """Returns ``{date_str: [(kind, item, project_dir, proj_md)]}`` for items
+    whose `date` ∈ [date_from, date_to]. Filters done/cancelled.
+
+    Items con `recur` se expanden con `_expand_recurrences` (todas las 4 citas,
+    incluyendo reminders — orbit/agenda_view._collect_data omite reminders,
+    pero aquí los queremos para que las vistas de agenda muestren las
+    instancias futuras de un reminder recurrente).
     """
     from datetime import date as _date
     from core.agenda.io import _read_agenda
-    from core.agenda_view import _resolve_dirs
+    from core.agenda_view import _resolve_dirs, _expand_recurrences
     from core.log import resolve_file
 
-    by_day = {}
-    df = date_from.isoformat() if hasattr(date_from, "isoformat") else date_from
-    dt = date_to.isoformat() if hasattr(date_to, "isoformat") else date_to
+    df_date = date_from if hasattr(date_from, "isoformat") else _date.fromisoformat(date_from)
+    dt_date = date_to   if hasattr(date_to,   "isoformat") else _date.fromisoformat(date_to)
+    df = df_date.isoformat()
+    dt = dt_date.isoformat()
 
+    by_day: dict = {}
     for project_dir in _resolve_dirs(None, include_federated=include_federated):
         agenda_path = resolve_file(project_dir, "agenda")
         if not agenda_path.exists():
@@ -206,7 +212,15 @@ def collect_items_by_day(date_from, date_to, include_federated: bool = True) -> 
                 if item.get("status") in ("done", "cancelled"):
                     continue
                 d = item.get("date")
-                if not d or d < df or d > dt:
+                if not d:
                     continue
-                by_day.setdefault(d, []).append((kind, item, project_dir, proj_md))
+                # Base date (si cae en rango).
+                if df <= d <= dt:
+                    by_day.setdefault(d, []).append(
+                        (kind, item, project_dir, proj_md))
+                # Recurring: expandir ocurrencias virtuales dentro del rango.
+                if item.get("recur"):
+                    for vi in _expand_recurrences(item, df_date, dt_date):
+                        by_day.setdefault(vi["date"], []).append(
+                            (kind, vi, project_dir, proj_md))
     return by_day
