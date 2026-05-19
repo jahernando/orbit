@@ -14,8 +14,9 @@ edición manual se pierde.
 Config en `<workspace>/orbit.json`:
 
     "secretary": {
-      "agenda_days": 14,      // ventana de agenda-next, [1, 90]
-      "report_days": 14       // ventana de report-summary, [1, 365]
+      "agenda_days":    14,   // ventana de agenda-next, [1, 90]
+      "report_days":    14,   // ventana de report-summary, [1, 365]
+      "decisions_days": 7     // ventana de decisions-next, [1, 90]
     }
 """
 
@@ -25,9 +26,11 @@ from pathlib import Path
 
 DEFAULT_AGENDA_DAYS = 14
 DEFAULT_REPORT_DAYS = 14
+DEFAULT_DECISIONS_DAYS = 7
 
-MIN_AGENDA_DAYS, MAX_AGENDA_DAYS = 1, 90
-MIN_REPORT_DAYS, MAX_REPORT_DAYS = 1, 365
+MIN_AGENDA_DAYS,    MAX_AGENDA_DAYS    = 1, 90
+MIN_REPORT_DAYS,    MAX_REPORT_DAYS    = 1, 365
+MIN_DECISIONS_DAYS, MAX_DECISIONS_DAYS = 1, 90
 
 
 def _clamp_int(value, lo: int, hi: int, default: int) -> int:
@@ -48,8 +51,9 @@ def _load_secretary_config(workspace_root: Path) -> dict:
     defaults.
     """
     cfg = {
-        "agenda_days": DEFAULT_AGENDA_DAYS,
-        "report_days": DEFAULT_REPORT_DAYS,
+        "agenda_days":    DEFAULT_AGENDA_DAYS,
+        "report_days":    DEFAULT_REPORT_DAYS,
+        "decisions_days": DEFAULT_DECISIONS_DAYS,
     }
     path = workspace_root / "orbit.json"
     if not path.exists():
@@ -70,5 +74,10 @@ def _load_secretary_config(workspace_root: Path) -> dict:
         cfg["report_days"] = _clamp_int(
             user["report_days"], MIN_REPORT_DAYS, MAX_REPORT_DAYS,
             DEFAULT_REPORT_DAYS,
+        )
+    if "decisions_days" in user:
+        cfg["decisions_days"] = _clamp_int(
+            user["decisions_days"], MIN_DECISIONS_DAYS, MAX_DECISIONS_DAYS,
+            DEFAULT_DECISIONS_DAYS,
         )
     return cfg

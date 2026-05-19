@@ -7,6 +7,7 @@ import pytest
 
 from views.secretary import (
     DEFAULT_AGENDA_DAYS,
+    DEFAULT_DECISIONS_DAYS,
     DEFAULT_REPORT_DAYS,
     _load_secretary_config,
 )
@@ -16,8 +17,9 @@ class TestLoadSecretaryConfig:
     def test_no_orbit_json(self, tmp_path):
         cfg = _load_secretary_config(tmp_path)
         assert cfg == {
-            "agenda_days": DEFAULT_AGENDA_DAYS,
-            "report_days": DEFAULT_REPORT_DAYS,
+            "agenda_days":    DEFAULT_AGENDA_DAYS,
+            "report_days":    DEFAULT_REPORT_DAYS,
+            "decisions_days": DEFAULT_DECISIONS_DAYS,
         }
 
     def test_no_secretary_section(self, tmp_path):

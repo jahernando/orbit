@@ -863,7 +863,7 @@ def run_dash(silent: bool = False):
     (ORBIT_DIR / ".dash-stamp").touch()
 
     if not silent:
-        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,today,agenda-today,agenda-next,calendar,report-summary}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,today,agenda-today,agenda-next,decisions-next,calendar,report-summary}.md)")
 
     return 0
 
@@ -1601,7 +1601,7 @@ def _build_parser():
     _add_fed_args(pan_p)
 
     # --- dash ---
-    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{panel,today,agenda-next,calendar,projects}.md")
+    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{panel,today,agenda-today,agenda-next,decisions-next,calendar,projects}.md")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")
