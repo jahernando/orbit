@@ -19,7 +19,8 @@ def generate(out_path: Path, days: Optional[int] = None) -> None:
     """
     from core.agenda_view import run_agenda
     from core.config import ORBIT_HOME
-    from views.secretary import AUTOGEN_BANNER, _load_secretary_config
+    from views import autogen_banner
+    from views.secretary import _load_secretary_config
 
     if days is None:
         days = _load_secretary_config(ORBIT_HOME)["agenda_days"]
@@ -30,4 +31,4 @@ def generate(out_path: Path, days: Optional[int] = None) -> None:
     with redirect_stdout(buf):
         run_agenda(date_from=today.isoformat(), date_to=end.isoformat(),
                    markdown=True)
-    out_path.write_text(AUTOGEN_BANNER + buf.getvalue())
+    out_path.write_text(autogen_banner("secretary.agenda_next") + buf.getvalue())

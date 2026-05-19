@@ -13,8 +13,8 @@ from pathlib import Path
 def generate(out_path: Path) -> None:
     """Escribe el panel del día en out_path."""
     from core.panel import run_panel
-    from views.secretary import AUTOGEN_BANNER
+    from views import autogen_banner
     buf = StringIO()
     with redirect_stdout(buf):
         run_panel(period="today")
-    out_path.write_text(AUTOGEN_BANNER + buf.getvalue())
+    out_path.write_text(autogen_banner("secretary.panel") + buf.getvalue())

@@ -24,6 +24,7 @@ if _ORBIT_JSON_PATH.exists():
     except (json.JSONDecodeError, KeyError):
         pass
 ORBIT_SPACE   = _orbit_space
+ORBIT_EMOJI  = _orbit_emoji  # raw emoji from orbit.json (sin env override)
 ORBIT_PROMPT = os.environ.get("ORBIT_PROMPT", _orbit_emoji)
 
 # ── Federation (read-only access to other workspaces) ────────────────────────

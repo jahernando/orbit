@@ -14,7 +14,7 @@ from pathlib import Path
 def generate(out_path: Path) -> None:
     """Escribe el calendario (mes actual + 2 meses) en out_path."""
     from core.agenda_view import run_cal
-    from views.secretary import AUTOGEN_BANNER
+    from views import autogen_banner
     today = date.today()
     m1 = today.replace(day=1)
     m3_month = (m1.month + 2 - 1) % 12 + 1
@@ -24,4 +24,4 @@ def generate(out_path: Path) -> None:
     with redirect_stdout(buf):
         run_cal(date_from=m1.isoformat(), date_to=m3_end.isoformat(),
                 markdown=True)
-    out_path.write_text(AUTOGEN_BANNER + buf.getvalue())
+    out_path.write_text(autogen_banner("secretary.calendar") + buf.getvalue())

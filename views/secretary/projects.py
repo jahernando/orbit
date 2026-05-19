@@ -85,9 +85,9 @@ def generate(out_path: Path) -> None:
     from core.project import _is_new_project, _read_project_meta, _resolve_status
     from core.log import find_proyecto_file, resolve_file
     from core.tasks import PRIORITY_MAP, normalize
-    from views.secretary import AUTOGEN_BANNER
+    from views import autogen_banner
 
-    lines = [AUTOGEN_BANNER.rstrip(), "", "# 📂 Proyectos\n"]
+    lines = [autogen_banner("secretary.projects").rstrip(), "", "# 📂 Proyectos\n"]
 
     out_dir = out_path.parent
     try:

@@ -20,7 +20,8 @@ def generate(out_path: Path, days: Optional[int] = None) -> None:
     """
     from core.config import ORBIT_HOME
     from core.stats import run_report
-    from views.secretary import AUTOGEN_BANNER, _load_secretary_config
+    from views import autogen_banner
+    from views.secretary import _load_secretary_config
 
     if days is None:
         days = _load_secretary_config(ORBIT_HOME)["report_days"]
@@ -35,4 +36,4 @@ def generate(out_path: Path, days: Optional[int] = None) -> None:
             summary="",
             include_federated=True,
         )
-    out_path.write_text(AUTOGEN_BANNER + buf.getvalue())
+    out_path.write_text(autogen_banner("secretary.report_summary") + buf.getvalue())
