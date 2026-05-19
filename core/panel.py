@@ -176,67 +176,60 @@ def _collect_priority_projects(start, end, include_federated=True):
 # ── Agenda ────────────────────────────────────────────────────────────────────
 
 def _collect_agenda(start, end, include_federated=True):
-    """Collect agenda items for period.
+    """Collect agenda items + adapt to `_agenda_table` format.
 
-    Returns dict {date_str: [(sort_key, icon, time, desc, proj_link)]}.
+    Returns dict ``{date_str: [(kind, item, project_dir, proj_md)]}`` listo
+    para `_agenda_table.render_day_rows` (mismo helper que usan
+    `agenda_today.py` y `agenda_next.py` → consistencia visual entre los
+    tres viewers).
+
+    Comportamiento heredado del panel original:
+    - Sólo items con `date` (dated_only=True) — los sin fecha no se
+      agrupan por día.
+    - En single-day view, items con fecha pasada (no eventos) se pliegan
+      a hoy con suffix " (📅fecha) ⚠️" en `desc`. El item se copia para
+      no mutar la caché de `_read_agenda`.
+    - Recurrencia: heredada de `_collect_data` (que la expande).
+    - Reminders: NO incluidos (preserva comportamiento previo del panel;
+      ver `agenda_today.md` si quieres reminders).
     """
     from core.agenda_view import _collect_data
+    from views.secretary._agenda_table import proj_link_md
 
     today = date.today()
     dirs = [d for d in iter_federated_project_dirs(include_federated) if _is_new_project(d)]
     collected = _collect_data(dirs, start, end, dated_only=True)
 
-    from core.agenda_cmds import event_indicators
-
-    by_day = {}  # date_str → [(sort_key, icon, time, desc, proj_link)]
+    by_day = {}  # date_str → [(kind, item, project_dir, proj_md)]
     for project_dir, tasks, events, milestones in collected:
-        proj = _project_link(project_dir)
-        for e in events:
-            day = e.get("date", "")
-            time = e.get("time", "")
-            key = time if time else "zz"
-            ind = event_indicators(e, markdown=True)
-            by_day.setdefault(day, []).append(
-                (key, "📅", time, f"{e['desc']}{ind}", proj))
-        for m in milestones:
-            day = m.get("date", "")
-            overdue = ""
-            if day:
-                try:
-                    if date.fromisoformat(day) < today:
-                        overdue = f" (📅{day}) ⚠️"
-                except ValueError:
-                    pass
-            by_day.setdefault(day, []).append(
-                ("zz", "☐ 🏁", "", f"{m['desc']}{overdue}", proj))
-        for t in tasks:
-            day = t.get("date", "")
-            time = t.get("time", "")
-            overdue = ""
-            if day:
-                try:
-                    if date.fromisoformat(day) < today:
-                        overdue = f" (📅{day}) ⚠️"
-                except ValueError:
-                    pass
-            key = time if time else "zz"
-            by_day.setdefault(day, []).append(
-                (key, "☐", time, f"{t['desc']}{overdue}", proj))
+        proj_md = proj_link_md(project_dir)
+        for kind, items_list in (("events", events),
+                                  ("tasks", tasks),
+                                  ("milestones", milestones)):
+            for item in items_list:
+                day = item.get("date") or ""
+                if not day:
+                    continue
+                by_day.setdefault(day, []).append(
+                    (kind, item, project_dir, proj_md))
 
-    # For single-day view, fold overdue items into today (not events)
+    # Single-day overdue fold: non-event items de fechas pasadas → hoy.
+    # Decora desc con " (📅date) ⚠️" para que se vea que está overdue.
     if start == end:
         today_str = start.isoformat()
         for day_str in list(by_day.keys()):
-            if day_str and day_str < today_str:
-                # Keep only non-event items (events in the past already happened)
-                items = by_day.pop(day_str)
-                non_events = [it for it in items if it[1] != "📅"]
-                if non_events:
-                    by_day.setdefault(today_str, []).extend(non_events)
-
-    # Sort items within each day by time
-    for day in by_day:
-        by_day[day].sort(key=lambda x: x[0])
+            if not day_str or day_str >= today_str:
+                continue
+            items = by_day.pop(day_str)
+            non_events = []
+            for (kind, item, project_dir, proj_md) in items:
+                if kind == "events":
+                    continue
+                decorated = dict(item)
+                decorated["desc"] = f"{item.get('desc', '')} (📅{day_str}) ⚠️"
+                non_events.append((kind, decorated, project_dir, proj_md))
+            if non_events:
+                by_day.setdefault(today_str, []).extend(non_events)
 
     return by_day
 
@@ -389,17 +382,19 @@ def run_panel(period=None, include_federated=True,
     print("\n---")
 
     # ── 2. Agenda ──
+    # Usa `_agenda_table.render_day_rows` (helper compartido con
+    # `agenda_today.py` y `agenda_next.py`) para que las 3 vistas
+    # mantengan exactamente el mismo formato de tabla.
+    from views.secretary._agenda_table import render_day_rows
     by_day = _collect_agenda(start, end, include_federated)
 
     print(f"\n## Agenda\n")
-    _TBL_HDR = "| | Hora | Descripción | Proyecto |\n|---|------|------------|----------|"
     if by_day:
         if is_single_day:
             items = by_day.get(start.isoformat(), [])
             if items:
-                print(_TBL_HDR)
-                for _, icon, time, desc, proj in items:
-                    print(f"| {icon} | {time} | {desc} | {proj} |")
+                for line in render_day_rows(items):
+                    print(line)
             else:
                 print("(sin citas)")
         else:
@@ -412,9 +407,8 @@ def run_panel(period=None, include_federated=True,
                     print(f"**{day_str} ({wd})**\n")
                 except ValueError:
                     print(f"**{day_str}**\n")
-                print(_TBL_HDR)
-                for _, icon, time, desc, proj in by_day[day_str]:
-                    print(f"| {icon} | {time} | {desc} | {proj} |")
+                for line in render_day_rows(by_day[day_str]):
+                    print(line)
                 print()
     else:
         print("(sin citas)")
