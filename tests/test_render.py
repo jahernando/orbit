@@ -172,7 +172,7 @@ class TestRenderWorkspaceDashboard:
     def test_renders_workspace_md_as_workspace_html(self, cloud_env):
         (cloud_env["workspace"] / "workspace.md").write_text(
             "# 🚀 test-ws\n\n## Dashboard\n\n"
-            "- [Panel](📊panel/secretary/panel.md)\n"
+            "- [Agenda](📊panel/secretary/agenda.md)\n"
         )
         n = render_workspace_dashboard(cloud_env["cloud"])
         assert n >= 1
@@ -180,8 +180,8 @@ class TestRenderWorkspaceDashboard:
         assert ws_html.exists()
         html = ws_html.read_text()
         assert "orbit.css" in html
-        # Markdown link a panel.md fue reescrito a .html.
-        assert "panel.html" in html
+        # Markdown link a agenda.md fue reescrito a .html.
+        assert "agenda.html" in html
 
     def test_index_html_is_redirect_stub(self, cloud_env):
         """index.html existe y es un meta-refresh hacia workspace.html
@@ -199,15 +199,15 @@ class TestRenderWorkspaceDashboard:
     def test_renders_secretary_md_files(self, cloud_env):
         sec = cloud_env["workspace"] / "📊panel" / "secretary"
         sec.mkdir(parents=True)
-        (sec / "panel.md").write_text("# Panel\n\nHoy: nada.\n")
+        (sec / "agenda.md").write_text("# Agenda\n\nHoy: nada.\n")
         (sec / "projects.md").write_text("# Proyectos\n\n## software\n")
         render_workspace_dashboard(cloud_env["cloud"])
         out = cloud_env["cloud"] / "📊panel" / "secretary"
-        assert (out / "panel.html").exists()
+        assert (out / "agenda.html").exists()
         assert (out / "projects.html").exists()
         # Nav apunta a workspace.html (front-page real), no al stub redirect.
         # Profundidad 2 (📊panel/secretary/) → "../../workspace.html".
-        html = (out / "panel.html").read_text()
+        html = (out / "agenda.html").read_text()
         assert "../../workspace.html" in html
 
     def test_no_workspace_md_no_index_or_workspace_html(self, cloud_env):

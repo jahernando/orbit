@@ -575,6 +575,8 @@ fire("commit_post"): render_changed_background · ics_emit_workspace · ring_ref
 ## ADR-035 — `views/secretary/` como viewers del workspace + dashboard cloud unificado
 **Estado**: VIGENTE (decisión 2026-05-16, 7 commits: `ad2e30f`, `5e79069`, `c7400e2`, `7a21dde`, `a826313`, `44b60e3`, `9e63d8d`).
 
+> **Evolución 2026-05-19** (dashboard refactor F1–F4): `agenda-next.md`, `panel.md`, `today.md`, `agenda-today.md` y `decisions-next.md` se fusionan/borran. El dashboard hot único pasa a ser `agenda.md` (counter + Hoy + Próximos 7 días) regenerado tras cada mutación; los viewers cold (`projects`, `ring-today`, `ring-next`, `calendar`, `report-summary`) sólo en `commit_post` / `day_open` / `orbit dash`. Link de proyecto en tablas → `<project>.md` (index), no `-agenda.md`. La regla "una sola fuente de verdad-derivada" se mantiene; lo que cambia es la granularidad de viewers.
+
 **Contexto**: tras introducir [ADR-033](#adr-033--separación-core-writers-vs-views-readers), `views/` ya tenía render, doctor, cal y ring. Faltaba un sitio coherente para los viewers que regeneran el dashboard del workspace (panel del día, agenda próxima, calendar, lista de proyectos): vivían inline en `orbit.py::run_dash`, mezclados con la orquestación, y emitían sus `.md` a la raíz del workspace con el nombre `agenda.md` — chocando con `{proj}-agenda.md` (la verdad escrita por el usuario en Obsidian). Y a la vez, `render.py` generaba en cloud **otro** dashboard ad-hoc (`index.html`, `proyectos.html`, `agenda.html`) con lógica paralela al que vivía localmente.
 
 **Decisión**: introducir el concepto **secretary** como tercera familia (junto a `cartero` y `ring-daemon`), con dos cosas combinadas.

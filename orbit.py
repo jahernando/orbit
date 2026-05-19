@@ -728,8 +728,9 @@ def cmd_agenda(args):
         summary=getattr(args, "summary", False),
         include_federated=not getattr(args, "no_fed", False),
     )
-    return _handle_output(args, fn, "agenda",
-                          open_file_path=SECRETARY_DIR / "agenda-next.md")
+    # `--open` escribe a un fichero transitorio (cmd.md). El dashboard fijo
+    # pineable es `📊panel/secretary/agenda.md`, regenerado por `orbit dash`.
+    return _handle_output(args, fn, "agenda")
 
 
 _MONTH_MAP = {
@@ -828,8 +829,9 @@ def cmd_panel(args):
                            include_federated=not getattr(args, "no_fed", False),
                            date_from=_d(getattr(args, "date_from", None)),
                            date_to=_d(getattr(args, "date_to", None)))
-    return _handle_output(args, fn, "panel",
-                          open_file_path=SECRETARY_DIR / "panel.md")
+    # `--open` escribe a un fichero transitorio (cmd.md). El dashboard fijo
+    # pineable es `📊panel/secretary/agenda.md`, regenerado por `orbit dash`.
+    return _handle_output(args, fn, "panel")
 
 
 def run_dash_hot(silent: bool = False):
@@ -857,31 +859,21 @@ def run_dash_cold(silent: bool = False):
     día (day_open), arranque del shell, o `orbit dash` manual. NO se
     dispara en background tras mutaciones.
     """
-    from views.secretary import agenda_next as sec_agenda_next
-    from views.secretary import agenda_today as sec_agenda_today
     from views.secretary import calendar as sec_calendar
-    from views.secretary import decisions_next as sec_decisions_next
-    from views.secretary import panel as sec_panel
     from views.secretary import projects as sec_projects
     from views.secretary import report_summary as sec_report
     from views.secretary import ring_next as sec_ring_next
     from views.secretary import ring_today as sec_ring_today
-    from views.secretary import today as sec_today
 
     SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
     sec_projects.generate(SECRETARY_DIR / "projects.md")
-    sec_panel.generate(SECRETARY_DIR / "panel.md")
-    sec_today.generate(SECRETARY_DIR / "today.md")
-    sec_agenda_today.generate(SECRETARY_DIR / "agenda-today.md")
-    sec_agenda_next.generate(SECRETARY_DIR / "agenda-next.md")
-    sec_decisions_next.generate(SECRETARY_DIR / "decisions-next.md")
     sec_ring_today.generate(SECRETARY_DIR / "ring-today.md")
     sec_ring_next.generate(SECRETARY_DIR / "ring-next.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
     sec_report.generate(SECRETARY_DIR / "report-summary.md")
 
     if not silent:
-        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,panel,today,agenda-today,agenda-next,decisions-next,ring-today,ring-next,calendar,report-summary}.md)")
+        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,ring-today,ring-next,calendar,report-summary}.md)")
     return 0
 
 
@@ -898,7 +890,7 @@ def run_dash(silent: bool = False):
     run_dash_cold(silent=True)
 
     if not silent:
-        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,panel,today,agenda-today,agenda-next,decisions-next,ring-today,ring-next,calendar,report-summary}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,ring-today,ring-next,calendar,report-summary}.md)")
     return 0
 
 
@@ -1645,7 +1637,7 @@ def _build_parser():
     _add_fed_args(pan_p)
 
     # --- dash ---
-    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,panel,today,agenda-today,agenda-next,decisions-next,calendar,projects}.md")
+    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,ring-today,ring-next,calendar,report-summary}.md")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")

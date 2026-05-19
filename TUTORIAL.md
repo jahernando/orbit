@@ -79,7 +79,7 @@ panel                      # panel del día
 panel week                 # panel semanal
 panel month                # panel mensual
 panel --from monday --to friday   # rango personalizado
-panel --open               # escribe a 📊panel/secretary/panel.md y abre en editor (fijable en Obsidian)
+panel --open               # abre fichero transitorio (cmd.md) en editor
 ```
 
 Secciones del panel:
@@ -96,14 +96,14 @@ La agenda muestra tareas pendientes y vencidas, eventos, hitos y recordatorios.
 agenda                     # agenda de hoy
 agenda week                # agenda de la semana
 agenda month               # agenda del mes
-agenda --open              # escribe a 📊panel/secretary/agenda-next.md y abre en editor (fijable en Obsidian)
+agenda --open              # abre fichero transitorio (cmd.md) en editor
 agenda --date 2026-03      # agenda de un mes concreto
 agenda --from monday --to friday   # rango personalizado
 agenda --dated             # solo tareas/hitos con fecha
 agenda --order date        # agrupa por día con horas
 ```
 
-Con `--open`, tanto panel como agenda escriben a ficheros fijos dentro de `📊panel/secretary/` (`panel.md`, `agenda-next.md`) que puedes fijar como pestañas en Obsidian. Cada vez que ejecutas el comando, el fichero se actualiza.
+El dashboard fijo del workspace es `📊panel/secretary/agenda.md`, regenerado tras cada mutación (carril hot). Pínalo en Obsidian como pestaña principal del día. Los comandos `panel` / `agenda` siguen imprimiendo a terminal para inspección puntual o consultas de semana / mes.
 
 ### Flujo típico del día
 
@@ -111,8 +111,8 @@ Con `--open`, tanto panel como agenda escriben a ficheros fijos dentro de `📊p
 Por la mañana
 ──────────────
 orbit
-  panel --open              # abre 📊panel/secretary/panel.md: ¿qué proyectos son prioritarios?
-  agenda --open             # abre 📊panel/secretary/agenda-next.md: ¿qué citas hay hoy?
+  # Abre `📊panel/secretary/agenda.md` en Obsidian (pestaña pineable):
+  # contiene citas de hoy, vencidas arrastradas, ⏩ por triar y próximos 7 días.
   note mission "notas-día"  # (opcional) nota temporal para apuntes sueltos
 
 Durante el día
@@ -361,8 +361,10 @@ orbit
   hl add next-kr "Resolución validada a 511 keV" --type results
 
   # Refrescar durante el día:
-  panel                            # actualiza 📊panel/secretary/panel.md: nueva actividad
-  agenda                           # actualiza 📊panel/secretary/agenda-next.md: tareas completadas
+  # `📊panel/secretary/agenda.md` se regenera automáticamente tras cada
+  # mutación (task/ms/ev/log/hl). `dash` fuerza un refresh completo
+  # (incluye cold: projects, ring-*, calendar, report-summary).
+  dash                             # refresh completo del dashboard
 
 Lunes por la tarde
 ──────────────────

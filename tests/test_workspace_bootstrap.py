@@ -28,14 +28,18 @@ def test_bootstrap_creates_when_missing(fake_ws):
     assert ws_md.exists()
     content = ws_md.read_text()
     assert "🚀 test-ws" in content
-    assert "📊panel/secretary/panel.md" in content
-    assert "📊panel/secretary/today.md" in content
-    assert "📊panel/secretary/agenda-today.md" in content
-    assert "📊panel/secretary/agenda-next.md" in content
-    assert "📊panel/secretary/decisions-next.md" in content
-    assert "📊panel/secretary/calendar.md" in content
+    assert "📊panel/secretary/agenda.md" in content
     assert "📊panel/secretary/projects.md" in content
+    assert "📊panel/secretary/ring-today.md" in content
+    assert "📊panel/secretary/ring-next.md" in content
+    assert "📊panel/secretary/calendar.md" in content
     assert "📊panel/secretary/report-summary.md" in content
+    # F3: estos viewers se borraron; el bootstrap ya no debe referenciarlos.
+    assert "secretary/panel.md" not in content
+    assert "secretary/today.md" not in content
+    assert "secretary/agenda-today.md" not in content
+    assert "secretary/agenda-next.md" not in content
+    assert "secretary/decisions-next.md" not in content
 
 
 def test_bootstrap_falls_back_to_dir_name_when_no_config(fake_ws):

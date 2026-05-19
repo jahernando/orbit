@@ -6,8 +6,6 @@ from datetime import date
 import pytest
 
 from views.secretary import (
-    DEFAULT_AGENDA_DAYS,
-    DEFAULT_DECISIONS_DAYS,
     DEFAULT_REPORT_DAYS,
     _load_secretary_config,
 )
@@ -16,35 +14,18 @@ from views.secretary import (
 class TestLoadSecretaryConfig:
     def test_no_orbit_json(self, tmp_path):
         cfg = _load_secretary_config(tmp_path)
-        assert cfg == {
-            "agenda_days":    DEFAULT_AGENDA_DAYS,
-            "report_days":    DEFAULT_REPORT_DAYS,
-            "decisions_days": DEFAULT_DECISIONS_DAYS,
-        }
+        assert cfg == {"report_days": DEFAULT_REPORT_DAYS}
 
     def test_no_secretary_section(self, tmp_path):
         (tmp_path / "orbit.json").write_text(json.dumps({"space": "test"}))
         cfg = _load_secretary_config(tmp_path)
-        assert cfg["agenda_days"] == DEFAULT_AGENDA_DAYS
         assert cfg["report_days"] == DEFAULT_REPORT_DAYS
-
-    def test_agenda_days_override(self, tmp_path):
-        (tmp_path / "orbit.json").write_text(
-            json.dumps({"secretary": {"agenda_days": 30}})
-        )
-        assert _load_secretary_config(tmp_path)["agenda_days"] == 30
 
     def test_report_days_override(self, tmp_path):
         (tmp_path / "orbit.json").write_text(
             json.dumps({"secretary": {"report_days": 60}})
         )
         assert _load_secretary_config(tmp_path)["report_days"] == 60
-
-    def test_agenda_days_clamp_out_of_range(self, tmp_path):
-        (tmp_path / "orbit.json").write_text(
-            json.dumps({"secretary": {"agenda_days": 9999}})
-        )
-        assert _load_secretary_config(tmp_path)["agenda_days"] == DEFAULT_AGENDA_DAYS
 
     def test_report_days_clamp_out_of_range(self, tmp_path):
         (tmp_path / "orbit.json").write_text(
@@ -54,16 +35,14 @@ class TestLoadSecretaryConfig:
 
     def test_bad_types_fall_back(self, tmp_path):
         (tmp_path / "orbit.json").write_text(
-            json.dumps({"secretary": {"agenda_days": "many", "report_days": None}})
+            json.dumps({"secretary": {"report_days": None}})
         )
         cfg = _load_secretary_config(tmp_path)
-        assert cfg["agenda_days"] == DEFAULT_AGENDA_DAYS
         assert cfg["report_days"] == DEFAULT_REPORT_DAYS
 
     def test_bad_json_returns_defaults(self, tmp_path):
         (tmp_path / "orbit.json").write_text("{not json")
         cfg = _load_secretary_config(tmp_path)
-        assert cfg["agenda_days"] == DEFAULT_AGENDA_DAYS
         assert cfg["report_days"] == DEFAULT_REPORT_DAYS
 
     def test_secretary_not_a_dict(self, tmp_path):
@@ -71,7 +50,7 @@ class TestLoadSecretaryConfig:
             json.dumps({"secretary": "not-a-dict"})
         )
         cfg = _load_secretary_config(tmp_path)
-        assert cfg["agenda_days"] == DEFAULT_AGENDA_DAYS
+        assert cfg["report_days"] == DEFAULT_REPORT_DAYS
 
 
 class TestReportSummaryViewer:

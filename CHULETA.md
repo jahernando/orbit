@@ -477,7 +477,7 @@ orbit agenda month                    # este mes
 - `--order project`: agrupa por proyecto (por defecto)
 - `--order date`: agrupa por día, con horas como sub-cabeceras; sin-fecha al final
 - `--no-fed`: excluye proyectos de workspaces federados
-- `--open` escribe a `📊panel/secretary/agenda-next.md` (fijable en Obsidian) — formato tabla markdown
+- `--open` escribe a fichero transitorio (`cmd.md`) y lo abre; el dashboard fijo pineable es `📊panel/secretary/agenda.md`, regenerado en cada mutación.
 - Tareas vencidas se agrupan en el día de hoy con la fecha original: `(📅2026-03-22) ⚠️`
 - Compatible con `--log`
 
@@ -490,7 +490,7 @@ orbit panel                                        # panel del día
 orbit panel week                                   # panel de la semana
 orbit panel month                                  # panel del mes
 orbit panel --from monday --to friday              # rango personalizado
-orbit panel --open                                 # abre en editor (📊panel/secretary/panel.md)
+orbit panel --open                                 # abre en editor (fichero transitorio cmd.md)
 orbit panel --no-fed                               # sin proyectos federados
 orbit panel --append mission:W12                   # añade a una nota
 ```
@@ -502,7 +502,7 @@ Dashboard con cuatro secciones (formato tabla markdown):
 - **📊 Cronogramas**: barra de progreso por cronograma (solo si hay cronogramas activos)
 - **Actividad**: entradas de logbook del periodo por proyecto
 
-`--open` escribe a `📊panel/secretary/panel.md` (fijable en Obsidian). `--no-fed` excluye federados.
+`--open` escribe a un fichero transitorio (`cmd.md`) y lo abre. El dashboard fijo del workspace es `📊panel/secretary/agenda.md` (regenerado en cada mutación tras F3 2026-05-19). `--no-fed` excluye federados.
 
 Proyectos locales se muestran como links a `project.md`; federados con emoji del workspace (🌿).
 
@@ -853,7 +853,7 @@ Se ejecuta automáticamente al iniciar la shell, antes de cada save **y periódi
 Daemon background que arranca al abrir la shell. Cada `interval_minutes` (defecto 60):
 
 1. Corre `doctor` sobre el workspace.
-2. **Si hay issues** → escribe `.doctor-pending` (marker) y NO regenera derivados (panel/agenda-next/calendar/projects/report-summary, .ics, ring.json se congelan en su última versión limpia). El prompt del REPL muestra al siguiente input — una sola vez por sesión:
+2. **Si hay issues** → escribe `.doctor-pending` (marker) y NO regenera derivados (agenda/projects/ring-today/ring-next/calendar/report-summary, .ics, ring.json se congelan en su última versión limpia). El prompt del REPL muestra al siguiente input — una sola vez por sesión:
 
    ```
    🏥 Doctor (14:30): 3 problemas detectados — ejecuta `doctor`
@@ -999,18 +999,17 @@ orbit agenda --open obsidian      # abre en Obsidian
 orbit panel --open code           # abre en VS Code
 ```
 
-- `panel --open` → `📊panel/secretary/panel.md`
-- `agenda --open` → `📊panel/secretary/agenda-next.md`
-- `cal --open`   → `📊panel/secretary/calendar.md`
-- El resto → `cmd.md`
+- `cal --open` → `📊panel/secretary/calendar.md`
+- `panel --open` / `agenda --open` / el resto → `cmd.md` (transitorio)
 
-`orbit dash` regenera además `📊panel/secretary/{projects,report-summary}.md`
-(tabla de proyectos del workspace + `report --summary` de los últimos N
-días). Ventanas configurables en `orbit.json`:
+El dashboard fijo del workspace es `📊panel/secretary/agenda.md`, regenerado
+en cada mutación de cita / log / hl / project (carril hot). `orbit dash`
+refresca además los viewers cold: `📊panel/secretary/{projects,ring-today,
+ring-next,calendar,report-summary}.md`. Ventanas configurables en
+`orbit.json`:
 
 ```json
 "secretary": {
-  "agenda_days": 14,   // ventana de agenda-next, [1, 90]
   "report_days": 14    // ventana de report-summary, [1, 365]
 }
 ```

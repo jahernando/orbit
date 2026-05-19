@@ -108,12 +108,12 @@ Pulido arquitectónico mayor — 5 ADRs nuevos, separación core/views/, save fl
 **1. Separación `core/` vs `views/`** ([ADR-033](DECISIONS.md#adr-033--separación-core-writers-vs-views-readers))
 `render`, `doctor`, `ics`, `ring` salen de `core/` a `views/{render,doctor,cal,ring}/`. Writers (core) escriben la verdad; viewers (views) leen y proyectan derivados. Regla: core no importa views salvo lazy. Más [ADR-034](DECISIONS.md#adr-034--save-como-verbo-de-cierre--chain-commit_post-unificado): `save` como verbo primario (alias legacy `commit`); chains `commit_pre`/`commit_post` con todas las acciones declarativas.
 
-**2. Secretary + dashboard cloud unificado** ([ADR-035](DECISIONS.md#adr-035--viewssecretary-como-viewers-del-workspace--dashboard-cloud-unificado))
-Nuevo `views/secretary/` con 5 viewers puros (panel, agenda-next, calendar, projects, report-summary). Outputs en `📊panel/secretary/*.md` (view-layer transversal, separado del vault de proyectos). Front-page del workspace: `workspace.md` estático (bootstrappeado por `orbit setup`). En cloud: `workspace.md → workspace.html` + `index.html` stub redirect (auto-open del browser preservado).
+**2. Secretary + dashboard cloud unificado** ([ADR-035](DECISIONS.md#adr-035--viewssecretary-como-viewers-del-workspace--dashboard-cloud-unificado), evolucionado por el dashboard refactor 2026-05-19)
+`views/secretary/` con viewers puros del workspace. Tras F1–F4 (2026-05-19), el dashboard hot único es `agenda.md` (counter + Hoy + Próximos 7 días); regenerado tras cada mutación (carril hot). Carril cold (`projects`, `ring-today`, `ring-next`, `calendar`, `report-summary`) se refresca sólo en `commit_post` / `day_open` / `orbit dash`. Outputs en `📊panel/secretary/*.md` (view-layer transversal, separado del vault de proyectos). Front-page del workspace: `workspace.md` estático (bootstrappeado por `orbit setup`). En cloud: `workspace.md → workspace.html` + `index.html` stub redirect (auto-open del browser preservado).
 
 Config en `<workspace>/orbit.json`:
 ```json
-"secretary": { "agenda_days": 14, "report_days": 14 }
+"secretary": { "report_days": 14 }
 ```
 
 **3. Wrap CLI + watchdog + pretty hooks** ([ADR-036](DECISIONS.md#adr-036--wrap-de-refresh-tras-mutación-cli-matriz-por-comando-sin-render) + [ADR-037](DECISIONS.md#adr-037--watchdog-doctor--full-refresh-periódico-tras-edición-externa))

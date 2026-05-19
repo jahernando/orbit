@@ -197,17 +197,19 @@ orbit open next-kr agenda
 
 Panel y agenda son las dos herramientas dinámicas para planificar y seguir la jornada. Se ejecutan al empezar el día y se refrescan durante el trabajo.
 
+El dashboard fijo del workspace es `📊panel/secretary/agenda.md` (regenerado tras cada mutación), pineable como pestaña en Obsidian. Los comandos `orbit panel` / `orbit agenda` siguen imprimiendo a terminal para inspección puntual.
+
 ```bash
 orbit panel                    # dashboard del día: prioridad, citas, actividad
 orbit panel week               # dashboard semanal
 orbit panel month              # dashboard mensual
 orbit panel --from monday --to friday   # rango personalizado
-orbit panel --open             # escribe a panel.md (fijable en Obsidian)
+orbit panel --open             # abre fichero transitorio (cmd.md) en editor
 
 orbit agenda                   # citas de hoy: tareas, eventos, hitos, recordatorios
 orbit agenda week              # citas de la semana
 orbit agenda month             # citas del mes
-orbit agenda --open            # escribe a agenda.md (fijable en Obsidian)
+orbit agenda --open            # abre fichero transitorio (cmd.md) en editor
 orbit agenda --date 2026-03    # mes concreto
 orbit agenda --from monday --to friday   # rango personalizado
 ```
