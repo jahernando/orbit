@@ -314,7 +314,7 @@ def _run_shutdown():
     try:
         from orbit import run_dash
         run_dash(silent=True)
-        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,today,agenda-today,agenda-next,decisions-next,calendar,report-summary}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,panel,today,agenda-today,agenda-next,decisions-next,calendar,report-summary}.md)")
         print()
     except Exception:
         pass

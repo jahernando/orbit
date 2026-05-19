@@ -28,6 +28,7 @@ _WORKSPACE_MD_TEMPLATE = """\
 
 ## 📋 Dashboard
 
+- [🗓 Agenda](📊panel/secretary/agenda.md)
 - [📂 Proyectos](📊panel/secretary/projects.md)
 - [📊 Panel del día](📊panel/secretary/panel.md)
 - [🕐 Vista del día](📊panel/secretary/today.md)
