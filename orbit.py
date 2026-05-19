@@ -829,6 +829,7 @@ def run_dash(silent: bool = False):
     """
     from views.secretary import panel as sec_panel
     from views.secretary import agenda_next as sec_agenda
+    from views.secretary import agenda_today as sec_agenda_today
     from views.secretary import calendar as sec_calendar
     from views.secretary import projects as sec_projects
     from views.secretary import report_summary as sec_report
@@ -838,6 +839,7 @@ def run_dash(silent: bool = False):
     sec_projects.generate(SECRETARY_DIR / "projects.md")
     sec_panel.generate(SECRETARY_DIR / "panel.md")
     sec_today.generate(SECRETARY_DIR / "today.md")
+    sec_agenda_today.generate(SECRETARY_DIR / "agenda-today.md")
     sec_agenda.generate(SECRETARY_DIR / "agenda-next.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
     sec_report.generate(SECRETARY_DIR / "report-summary.md")
@@ -846,7 +848,7 @@ def run_dash(silent: bool = False):
     (ORBIT_DIR / ".dash-stamp").touch()
 
     if not silent:
-        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,today,agenda-next,calendar,report-summary}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,today,agenda-today,agenda-next,calendar,report-summary}.md)")
 
     return 0
 

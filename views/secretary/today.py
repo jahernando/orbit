@@ -28,32 +28,48 @@ from pathlib import Path
 from views import autogen_banner
 
 
-# (emoji, color_light, color_dark, default-duration-min). Color light = sin
-# overlap (pastel, calmado); color_dark = con overlap (saturado, llama la
-# atención). default_min=None ⇒ no bar.
+# (emoji, default-duration-min). Sin color por kind: el kind se distingue
+# por su emoji en col 1 (📅 ✅ 🏁 💬), no por color de la barra.
+# default_min=None ⇒ sin duración derivable (milestones, reminders).
 _KIND_META = {
-    "events":     ("📅", "#e48473", "#ae3f2c", 60),
-    "tasks":      ("✅", "#78a3e4", "#3262ae", 15),
-    "milestones": ("🏁", "#b98bcc", "#7c4792", None),
-    "reminders":  ("💬", None,      None,      None),
+    "events":     ("📅", 60),
+    "tasks":      ("✅", 15),
+    "milestones": ("🏁", None),
+    "reminders":  ("💬", None),
 }
+
+
+# Puntitos para la barra (estilo crono): densidad = overlap.
+# Accesible para usuarios daltónicos (sin color en la barra).
+#   - 0 overlaps → ░ (shade ligero)
+#   - 1 overlap  → ▒
+#   - 2+ overlaps → ▓
+_BAR_CHARS = ("░", "▒", "▓")
+
+
+def _bar_char(overlap_count: int) -> str:
+    if overlap_count <= 0:
+        return _BAR_CHARS[0]
+    if overlap_count == 1:
+        return _BAR_CHARS[1]
+    return _BAR_CHARS[2]
 
 
 _CSS = """\
 <style>
-.orbit-today { font-family: -apple-system, system-ui, sans-serif; max-width: 760px; }
+.orbit-today { font-family: -apple-system, system-ui, sans-serif; max-width: 900px; }
 .orbit-today table { border-collapse: collapse; width: 100%; margin: 0; }
-.orbit-today td { padding: 6px 10px; vertical-align: top; border: none; }
+.orbit-today td { padding: 6px 8px; vertical-align: top; border: none; }
 .orbit-today tr.row td { border-top: 1px solid #ececec; }
-.orbit-today .time { white-space: nowrap; color: #555; font-variant-numeric: tabular-nums; font-size: 0.95em; min-width: 4em; line-height: 1.35; }
-.orbit-today .t-end { color: #999; }
-.orbit-today .bar { width: 4px; min-width: 4px; padding: 0; border-radius: 2px; }
-.orbit-today .content { width: 100%; line-height: 1.35; }
-.orbit-today .tag { color: #888; font-size: 0.85em; margin-right: 6px; }
-.orbit-today .tag a { color: inherit; text-decoration: none; }
-.orbit-today .tag a:hover { text-decoration: underline; }
-.orbit-today .desc { color: #222; }
-.orbit-today tr.reminder .time, .orbit-today tr.reminder .desc { color: #888; font-style: italic; }
+.orbit-today .icon { width: 1.4em; font-size: 1em; color: #555; padding-right: 4px; }
+.orbit-today .bar { width: 1.2em; font-family: monospace; font-size: 1.1em; color: #555; text-align: center; line-height: 1.1; padding: 0 4px; }
+.orbit-today .t-start { white-space: nowrap; color: #555; font-variant-numeric: tabular-nums; font-size: 0.95em; width: 4.5em; }
+.orbit-today .t-end { white-space: nowrap; color: #999; font-variant-numeric: tabular-nums; font-size: 0.95em; width: 4.5em; }
+.orbit-today .desc { color: #222; width: 100%; line-height: 1.35; }
+.orbit-today .link { white-space: nowrap; color: #888; font-size: 0.85em; }
+.orbit-today .link a { color: inherit; text-decoration: none; }
+.orbit-today .link a:hover { text-decoration: underline; }
+.orbit-today tr.reminder .icon, .orbit-today tr.reminder .t-start, .orbit-today tr.reminder .desc { color: #888; font-style: italic; }
 .orbit-today .untimed { margin-top: 1.5em; padding-top: 0.5em; border-top: 1px dashed #ddd; }
 .orbit-today .untimed-title { color: #888; font-size: 0.9em; margin-bottom: 0.3em; }
 .orbit-today .empty { color: #888; font-style: italic; }
@@ -102,55 +118,55 @@ def _duration_min(item, default_min) -> int:
     return default_min or 0
 
 
-def _time_cell(start: str, end: str) -> str:
-    """Time column con start arriba y end abajo."""
-    if not start:
-        return '<td class="time"></td>'
-    if end:
-        return (
-            f'<td class="time">{html.escape(start)} –'
-            f'<br><span class="t-end">{html.escape(end)}</span></td>'
-        )
-    return f'<td class="time">{html.escape(start)}</td>'
-
-
 def _row_height_style(duration_min: int) -> str:
     """Inline style for proportional row height. Min floor for legibility."""
     h = max(duration_min * _PX_PER_MIN, _MIN_ROW_PX)
     return f' style="height:{h}px"'
 
 
-def _tag_html(proj_tag: str, agenda_href: str) -> str:
-    """Tag wrapped en <a> si hay agenda accesible; texto plano si no."""
+def _link_html(proj_tag: str, agenda_href: str) -> str:
+    """Project tag wrapped en <a class="internal-link"> si hay agenda; texto
+    plano si federado. La clase `internal-link` hace que Obsidian intercepte
+    el href como navegación de vault (no como URL externa)."""
     tag = html.escape(proj_tag)
     if agenda_href:
-        return f'<span class="tag"><a href="{html.escape(agenda_href)}">{tag}</a></span>'
-    return f'<span class="tag">{tag}</span>'
+        href_esc = html.escape(agenda_href)
+        return (
+            f'<a class="internal-link" '
+            f'href="{href_esc}" data-href="{href_esc}">{tag}</a>'
+        )
+    return tag
 
 
-def _row_html(kind, item, proj_tag, agenda_href, emoji, color_light, color_dark,
-              default_min, has_overlap=False) -> str:
+def _row_html(kind, item, proj_tag, agenda_href, emoji, default_min,
+              overlap_count=0) -> str:
+    """Render 6-col row: icon | bar | t-start | t-end | desc | link."""
     desc = html.escape(item.get("desc") or "")
-    tag_html = _tag_html(proj_tag, agenda_href)
+    link = _link_html(proj_tag, agenda_href)
     start, end = _time_pair(item, default_min)
     duration = _duration_min(item, default_min)
-    height_style = _row_height_style(duration)
     if kind == "reminders":
-        # Reminders: una sola línea de hora, fila tenue, sin barra, altura mínima.
+        # Reminders: sin barra, sin end, altura mínima, italic.
         return (
             f'<tr class="row reminder"{_row_height_style(0)}>'
-            f'{_time_cell(start, "")}'
+            f'<td class="icon">{emoji}</td>'
             f'<td class="bar"></td>'
-            f'<td class="content">{tag_html}'
-            f'<span class="desc">{emoji} {desc}</span></td></tr>\n'
+            f'<td class="t-start">{html.escape(start)}</td>'
+            f'<td class="t-end"></td>'
+            f'<td class="desc">{desc}</td>'
+            f'<td class="link">{link}</td>'
+            f'</tr>\n'
         )
-    color = color_dark if has_overlap else color_light
+    char = _bar_char(overlap_count)
     return (
-        f'<tr class="row"{height_style}>'
-        f'{_time_cell(start, end)}'
-        f'<td class="bar" style="background:{color}"></td>'
-        f'<td class="content">{tag_html}'
-        f'<span class="desc">{emoji} {desc}</span></td></tr>\n'
+        f'<tr class="row"{_row_height_style(duration)}>'
+        f'<td class="icon">{emoji}</td>'
+        f'<td class="bar">{char}</td>'
+        f'<td class="t-start">{html.escape(start)}</td>'
+        f'<td class="t-end">{html.escape(end)}</td>'
+        f'<td class="desc">{desc}</td>'
+        f'<td class="link">{link}</td>'
+        f'</tr>\n'
     )
 
 
@@ -192,13 +208,18 @@ def _detect_overlap_counts(enriched):
 
 
 def _untimed_row_html(kind, item, proj_tag, agenda_href, emoji) -> str:
+    """Render 6-col untimed row: icon | (no bar) | (no time) | (no time) | desc | link."""
     desc = html.escape(item.get("desc") or "")
-    tag_html = _tag_html(proj_tag, agenda_href)
+    link = _link_html(proj_tag, agenda_href)
     return (
-        f'<tr><td class="content">'
-        f'{tag_html}'
-        f'<span class="desc">{emoji} {desc}</span>'
-        f'</td></tr>\n'
+        f'<tr>'
+        f'<td class="icon">{emoji}</td>'
+        f'<td class="bar"></td>'
+        f'<td class="t-start"></td>'
+        f'<td class="t-end"></td>'
+        f'<td class="desc">{desc}</td>'
+        f'<td class="link">{link}</td>'
+        f'</tr>\n'
     )
 
 
@@ -251,7 +272,7 @@ def generate(out_path: Path) -> None:
     timed.sort(key=lambda x: x[0])
 
     # Detección de overlaps (post-sort, sólo items con duración).
-    enriched = [(kind, item, proj_tag, _KIND_META[kind][3])
+    enriched = [(kind, item, proj_tag, _KIND_META[kind][1])
                 for _, kind, item, proj_tag, _ in timed]
     overlap_counts = _detect_overlap_counts(enriched)
 
@@ -268,18 +289,17 @@ def generate(out_path: Path) -> None:
         if timed:
             parts.append('<table>\n')
             for idx, (_, kind, item, proj_tag, href) in enumerate(timed):
-                emoji, color_light, color_dark, default_min = _KIND_META[kind]
-                has_overlap = overlap_counts.get(idx, 0) > 0
+                emoji, default_min = _KIND_META[kind]
                 parts.append(_row_html(kind, item, proj_tag, href, emoji,
-                                       color_light, color_dark, default_min,
-                                       has_overlap))
+                                       default_min,
+                                       overlap_counts.get(idx, 0)))
             parts.append('</table>\n')
         if untimed:
             parts.append('<div class="untimed">\n')
             parts.append('<div class="untimed-title">Sin hora</div>\n')
             parts.append('<table>\n')
             for kind, item, proj_tag, href in untimed:
-                emoji, *_rest = _KIND_META[kind]
+                emoji, _default_min = _KIND_META[kind]
                 parts.append(_untimed_row_html(kind, item, proj_tag, href, emoji))
             parts.append('</table>\n')
             parts.append('</div>\n')
