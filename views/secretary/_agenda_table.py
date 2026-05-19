@@ -19,7 +19,7 @@ from typing import Optional
 
 KIND_EMOJI = {
     "events":     "📅",
-    "tasks":      "✅",
+    "tasks":      "☐",
     "milestones": "🏁",
     "reminders":  "💬",
 }

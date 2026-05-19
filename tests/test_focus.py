@@ -362,7 +362,9 @@ class TestModeLibre:
         # Two tasks created in mission/agenda.md.
         ag_text = _agenda_path(mission).read_text()
         assert ag_text.count("[orbit:") == 2
-        assert ag_text.count("[[paper-neutrinos]]") == 2
+        # El task title incluye el emoji del proyecto para coherencia visual
+        # con el dashboard ("[🌀paper-neutrinos]" vs "[paper-neutrinos]").
+        assert ag_text.count("[[🌀paper-neutrinos]]") == 2
         # Week file written with rail bucket and IDs.
         week_label_today = date.today().isocalendar()
         week_file = (mission / "notes" /
@@ -405,9 +407,9 @@ class TestModePlantilla:
         ])
         rc = run_focus_week()
         assert rc == 0
-        # 1 anchor block created.
+        # 1 anchor block created (emoji prefix por coherencia visual).
         ag_text = _agenda_path(mission).read_text()
-        assert ag_text.count("[[paper-neutrinos]]") == 1
+        assert ag_text.count("[[🌀paper-neutrinos]]") == 1
 
 
 class TestModeRepetir:

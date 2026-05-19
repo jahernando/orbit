@@ -314,7 +314,11 @@ def _create_block(project_name: str, rail: str, week_label: str,
     """
     from core import api
     oid = secrets.token_hex(4)  # 8 hex chars, mismo formato que share.py
-    title = f"{_RAIL_EMOJI[rail]} [[{project_name}]] · focus {week_label}"
+    # Project name con prefijo emoji del tipo para coherencia visual con
+    # el resto del dashboard ("[📚catedra]" en lugar de "[catedra]").
+    pd = _find_new_project(project_name)
+    display_name = pd.name if pd is not None else project_name
+    title = f"{_RAIL_EMOJI[rail]} [[{display_name}]] · focus {week_label}"
     try:
         item = api.add_task(project=_MISSION_NAME, text=title,
                             date=date_val, time=time_val,
