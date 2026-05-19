@@ -28,11 +28,11 @@ def test_bootstrap_creates_when_missing(fake_ws):
     assert ws_md.exists()
     content = ws_md.read_text()
     assert "🚀 test-ws" in content
-    assert "📋secretary/panel.md" in content
-    assert "📋secretary/agenda-next.md" in content
-    assert "📋secretary/calendar.md" in content
-    assert "📋secretary/projects.md" in content
-    assert "📋secretary/report-summary.md" in content
+    assert "📊panel/secretary/panel.md" in content
+    assert "📊panel/secretary/agenda-next.md" in content
+    assert "📊panel/secretary/calendar.md" in content
+    assert "📊panel/secretary/projects.md" in content
+    assert "📊panel/secretary/report-summary.md" in content
 
 
 def test_bootstrap_falls_back_to_dir_name_when_no_config(fake_ws):

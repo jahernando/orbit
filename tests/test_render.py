@@ -165,14 +165,14 @@ class TestRenderWorkspaceDashboard:
     """Post fase E2 (2026-05-16): el dashboard del cloud se compone
     de workspace.md (→ workspace.html, contenido real) + index.html
     (meta-refresh redirect, abre el browser al entrar al cloud) +
-    📋secretary/*.md. Todo viene de los markdown que genera secretary;
+    📊panel/secretary/*.md. Todo viene de los markdown que genera secretary;
     render solo proyecta a HTML.
     """
 
     def test_renders_workspace_md_as_workspace_html(self, cloud_env):
         (cloud_env["workspace"] / "workspace.md").write_text(
             "# 🚀 test-ws\n\n## Dashboard\n\n"
-            "- [Panel](📋secretary/panel.md)\n"
+            "- [Panel](📊panel/secretary/panel.md)\n"
         )
         n = render_workspace_dashboard(cloud_env["cloud"])
         assert n >= 1
@@ -197,17 +197,18 @@ class TestRenderWorkspaceDashboard:
         assert "katex" not in body.lower()
 
     def test_renders_secretary_md_files(self, cloud_env):
-        sec = cloud_env["workspace"] / "📋secretary"
-        sec.mkdir()
+        sec = cloud_env["workspace"] / "📊panel" / "secretary"
+        sec.mkdir(parents=True)
         (sec / "panel.md").write_text("# Panel\n\nHoy: nada.\n")
         (sec / "projects.md").write_text("# Proyectos\n\n## software\n")
         render_workspace_dashboard(cloud_env["cloud"])
-        out = cloud_env["cloud"] / "📋secretary"
+        out = cloud_env["cloud"] / "📊panel" / "secretary"
         assert (out / "panel.html").exists()
         assert (out / "projects.html").exists()
         # Nav apunta a workspace.html (front-page real), no al stub redirect.
+        # Profundidad 2 (📊panel/secretary/) → "../../workspace.html".
         html = (out / "panel.html").read_text()
-        assert "../workspace.html" in html
+        assert "../../workspace.html" in html
 
     def test_no_workspace_md_no_index_or_workspace_html(self, cloud_env):
         # Sin workspace.md no se crea ni workspace.html ni index.html.

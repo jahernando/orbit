@@ -28,11 +28,11 @@ _WORKSPACE_MD_TEMPLATE = """\
 
 ## 📋 Dashboard
 
-- [📂 Proyectos](📋secretary/projects.md)
-- [📊 Panel del día](📋secretary/panel.md)
-- [📅 Agenda próxima](📋secretary/agenda-next.md)
-- [🗓 Calendario 3 meses](📋secretary/calendar.md)
-- [📈 Report (últimos 14 días)](📋secretary/report-summary.md)
+- [📂 Proyectos](📊panel/secretary/projects.md)
+- [📊 Panel del día](📊panel/secretary/panel.md)
+- [📅 Agenda próxima](📊panel/secretary/agenda-next.md)
+- [🗓 Calendario 3 meses](📊panel/secretary/calendar.md)
+- [📈 Report (últimos 14 días)](📊panel/secretary/report-summary.md)
 """
 
 

@@ -477,7 +477,7 @@ orbit agenda month                    # este mes
 - `--order project`: agrupa por proyecto (por defecto)
 - `--order date`: agrupa por día, con horas como sub-cabeceras; sin-fecha al final
 - `--no-fed`: excluye proyectos de workspaces federados
-- `--open` escribe a `📋secretary/agenda-next.md` (fijable en Obsidian) — formato tabla markdown
+- `--open` escribe a `📊panel/secretary/agenda-next.md` (fijable en Obsidian) — formato tabla markdown
 - Tareas vencidas se agrupan en el día de hoy con la fecha original: `(📅2026-03-22) ⚠️`
 - Compatible con `--log`
 
@@ -490,7 +490,7 @@ orbit panel                                        # panel del día
 orbit panel week                                   # panel de la semana
 orbit panel month                                  # panel del mes
 orbit panel --from monday --to friday              # rango personalizado
-orbit panel --open                                 # abre en editor (📋secretary/panel.md)
+orbit panel --open                                 # abre en editor (📊panel/secretary/panel.md)
 orbit panel --no-fed                               # sin proyectos federados
 orbit panel --append mission:W12                   # añade a una nota
 ```
@@ -502,7 +502,7 @@ Dashboard con cuatro secciones (formato tabla markdown):
 - **📊 Cronogramas**: barra de progreso por cronograma (solo si hay cronogramas activos)
 - **Actividad**: entradas de logbook del periodo por proyecto
 
-`--open` escribe a `📋secretary/panel.md` (fijable en Obsidian). `--no-fed` excluye federados.
+`--open` escribe a `📊panel/secretary/panel.md` (fijable en Obsidian). `--no-fed` excluye federados.
 
 Proyectos locales se muestran como links a `project.md`; federados con emoji del workspace (🌿).
 
@@ -999,12 +999,12 @@ orbit agenda --open obsidian      # abre en Obsidian
 orbit panel --open code           # abre en VS Code
 ```
 
-- `panel --open` → `📋secretary/panel.md`
-- `agenda --open` → `📋secretary/agenda-next.md`
-- `cal --open`   → `📋secretary/calendar.md`
+- `panel --open` → `📊panel/secretary/panel.md`
+- `agenda --open` → `📊panel/secretary/agenda-next.md`
+- `cal --open`   → `📊panel/secretary/calendar.md`
 - El resto → `cmd.md`
 
-`orbit dash` regenera además `📋secretary/{projects,report-summary}.md`
+`orbit dash` regenera además `📊panel/secretary/{projects,report-summary}.md`
 (tabla de proyectos del workspace + `report --summary` de los últimos N
 días). Ventanas configurables en `orbit.json`:
 

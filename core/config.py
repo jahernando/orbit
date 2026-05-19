@@ -43,6 +43,15 @@ CMD_MD        = ORBIT_HOME / "cmd.md"
 PROYECTOS_MD  = ORBIT_HOME / "proyectos.md"
 HISTORY_MD    = ORBIT_HOME / "history.md"
 
+# View-layer dirs (📊panel/<subsistema>/...) — outputs derivados auto-generados.
+# Truth-layer (agenda, logbook, notes, project.md) vive en los proyectos; las
+# vistas transversales viven aquí para no contaminar el vault de proyectos.
+PANEL_DIRNAME     = "📊panel"
+SECRETARY_SUBDIR  = "secretary"
+SECRETARY_RELPATH = Path(PANEL_DIRNAME) / SECRETARY_SUBDIR  # 📊panel/secretary
+PANEL_DIR         = ORBIT_HOME / PANEL_DIRNAME
+SECRETARY_DIR     = ORBIT_HOME / SECRETARY_RELPATH
+
 
 # ── Project types (from orbit.json) ──────────────────────────────────────────
 

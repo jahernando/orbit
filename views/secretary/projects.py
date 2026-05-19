@@ -77,19 +77,22 @@ def _md_escape(text: str) -> str:
 def generate(out_path: Path) -> None:
     """Escribe la tabla de proyectos del workspace en out_path.
 
-    Los links son relativos a out_path (que vive en `📋secretary/`), por
-    lo que suben un nivel con `../` para alcanzar los directorios de
-    proyecto en la raíz del workspace.
+    Los links son relativos a out_path (que vive en `📊panel/secretary/`).
+    El prefix se calcula dinámicamente subiendo tantos `../` como
+    profundidad tenga out_dir respecto a ORBIT_HOME — así funciona si
+    secretary se mueve a otra ruta sin tocar este código.
     """
     from core.project import _is_new_project, _read_project_meta, _resolve_status
     from core.log import find_proyecto_file, resolve_file
     from core.tasks import PRIORITY_MAP, normalize
+    from views.secretary import AUTOGEN_BANNER
 
-    lines = ["# 📂 Proyectos\n"]
+    lines = [AUTOGEN_BANNER.rstrip(), "", "# 📂 Proyectos\n"]
 
     out_dir = out_path.parent
     try:
-        prefix = Path("..") / out_dir.relative_to(ORBIT_HOME).parent
+        rel_parts = out_dir.relative_to(ORBIT_HOME).parts
+        prefix = Path(*([".."] * len(rel_parts))) if rel_parts else Path(".")
     except ValueError:
         prefix = Path("..")
 

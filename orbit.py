@@ -607,8 +607,7 @@ def cmd_reminder(args):
 
 
 from core.config import ORBIT_HOME as ORBIT_DIR
-
-SECRETARY_DIR = ORBIT_DIR / "📋secretary"
+from core.config import SECRETARY_DIR
 
 
 def cmd_project(args):
@@ -822,7 +821,7 @@ def run_dash(silent: bool = False):
     """Refresh los viewers de secretary: panel + agenda-next + calendar + projects.
 
     Orquesta los viewers de secretary; cada uno escribe su .md dentro de
-    `📋secretary/` en la raíz del workspace. Salida local únicamente — la
+    `📊panel/secretary/` en la raíz del workspace. Salida local únicamente — la
     proyección a HTML en cloud es trabajo de `render` (commit_post), y la
     regeneración de .ics es trabajo de `ics_emit_workspace` (commit_post).
 
@@ -845,7 +844,7 @@ def run_dash(silent: bool = False):
     (ORBIT_DIR / ".dash-stamp").touch()
 
     if not silent:
-        print("  ✓ dash actualizado (📋secretary/{projects,panel,agenda-next,calendar,report-summary}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{projects,panel,agenda-next,calendar,report-summary}.md)")
 
     return 0
 
@@ -1583,7 +1582,7 @@ def _build_parser():
     _add_fed_args(pan_p)
 
     # --- dash ---
-    subparsers.add_parser("dash", help="Refresh dashboard: 📋secretary/{panel,agenda-next,calendar,projects}.md")
+    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{panel,agenda-next,calendar,projects}.md")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")

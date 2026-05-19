@@ -17,7 +17,7 @@ from typing import Optional
 
 import markdown
 
-from core.config import ORBIT_HOME, iter_project_dirs, get_type_emojis
+from core.config import ORBIT_HOME, SECRETARY_RELPATH, iter_project_dirs, get_type_emojis
 from core.deliver import _find_cloud_root, _project_cloud_dir
 from core.project import _is_new_project
 
@@ -371,8 +371,6 @@ def render_changed(cloud_root: Optional[Path] = None) -> int:
     return rendered
 
 
-_SECRETARY_DIRNAME = "📋secretary"
-
 _INDEX_REDIRECT_HTML = """\
 <!DOCTYPE html>
 <html lang="es">
@@ -389,18 +387,18 @@ _INDEX_REDIRECT_HTML = """\
 
 
 def render_workspace_dashboard(cloud_root: Optional[Path] = None) -> int:
-    """Render workspace.md + 📋secretary/*.md a HTML en cloud_root.
+    """Render workspace.md + 📊panel/secretary/*.md a HTML en cloud_root.
 
     Fuente única de la verdad-derivada: los .md ya los generó secretary
     (panel, agenda-next, calendar, projects, report-summary) en
-    `📋secretary/`. Aquí sólo los proyectamos a HTML para el cloud.
+    `📊panel/secretary/`. Aquí sólo los proyectamos a HTML para el cloud.
 
-    - workspace.md         → cloud_root/workspace.html (front-page real)
-    - (auto)               → cloud_root/index.html      (meta-refresh →
-                                                         workspace.html;
-                                                         lo abre el browser
-                                                         al entrar al cloud)
-    - 📋secretary/*.md     → cloud_root/📋secretary/*.html
+    - workspace.md                    → cloud_root/workspace.html (front-page real)
+    - (auto)                          → cloud_root/index.html (meta-refresh →
+                                                               workspace.html;
+                                                               lo abre el browser
+                                                               al entrar al cloud)
+    - 📊panel/secretary/*.md          → cloud_root/📊panel/secretary/*.html
 
     Returns el número de ficheros renderizados (workspace.html cuenta
     como 1; index.html no cuenta porque es un stub estático).
@@ -421,13 +419,14 @@ def render_workspace_dashboard(cloud_root: Optional[Path] = None) -> int:
         (cloud_root / "index.html").write_text(_INDEX_REDIRECT_HTML)
         rendered += 1
 
-    # 📋secretary/*.md → 📋secretary/*.html.
-    sec_src_dir = ORBIT_HOME / _SECRETARY_DIRNAME
+    # 📊panel/secretary/*.md → 📊panel/secretary/*.html.
+    sec_src_dir = ORBIT_HOME / SECRETARY_RELPATH
     if sec_src_dir.is_dir():
-        sec_cloud_dir = cloud_root / _SECRETARY_DIRNAME
+        sec_cloud_dir = cloud_root / SECRETARY_RELPATH
         sec_cloud_dir.mkdir(parents=True, exist_ok=True)
-        nav = '<a href="../workspace.html">🏠 Inicio</a>'
-        css_rel = "../" + _CSS_FILENAME
+        up = "../" * len(SECRETARY_RELPATH.parts)
+        nav = f'<a href="{up}workspace.html">🏠 Inicio</a>'
+        css_rel = up + _CSS_FILENAME
         for md in sorted(sec_src_dir.glob("*.md")):
             dest = sec_cloud_dir / md.with_suffix(".html").name
             _render_file(md, dest, css_rel=css_rel, nav_html=nav)

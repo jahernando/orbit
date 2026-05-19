@@ -252,7 +252,7 @@ def _action_code_update_check(ctx):
 def _action_secretary_refresh(ctx):
     """Regenerate the secretary viewers: panel + agenda-next + calendar + projects.
 
-    Salida local únicamente — los .md viven en `📋secretary/`. La
+    Salida local únicamente — los .md viven en `📊panel/secretary/`. La
     proyección a HTML (cloud) es trabajo del action `render_to_cloud`,
     y los .ics son del action `ics_emit_workspace` (ambos en commit_post).
 
