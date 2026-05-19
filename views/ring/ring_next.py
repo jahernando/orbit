@@ -1,4 +1,4 @@
-"""views/secretary/ring_next.py — alarmas próximas (toda la ventana del ring.json).
+"""views/ring/ring_next.py — alarmas próximas (toda la ventana del ring.json).
 
 Análogo a `ring_today.py` pero cubre toda la ventana ya proyectada en
 `ring.json` (`window_start..window_end`, defecto 7 días). No re-configura
@@ -14,7 +14,7 @@ cuándo?".
 from datetime import date
 from pathlib import Path
 
-from views.secretary._ring_table import (
+from views.ring._ring_table import (
     build_project_index, header_lines, load_ring_json, render_rows, ring_dt,
 )
 
@@ -30,7 +30,7 @@ def generate(out_path: Path) -> None:
     if payload is None:
         from views import autogen_banner
         out_path.write_text(
-            autogen_banner("secretary.ring_next")
+            autogen_banner("ring.next")
             + "# 🔔 Alarmas próximas\n\n"
             "*Sin `ring.json` en este workspace. "
             "Crea una cita con `--ring` o lanza `orbit dash` para "
@@ -51,7 +51,7 @@ def generate(out_path: Path) -> None:
             continue  # ring del pasado: ignorar
         by_day.setdefault(rd.date().isoformat(), []).append(it)
 
-    lines = header_lines(payload, "secretary.ring_next")
+    lines = header_lines(payload, "ring.next")
     lines.append("# 🔔 Alarmas próximas")
     lines.append("")
 

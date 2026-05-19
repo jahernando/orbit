@@ -1,4 +1,4 @@
-"""views/secretary/_ring_table — helpers compartidos para tablas de ring.
+"""views/ring/_ring_table — helpers compartidos para tablas de ring.
 
 Usado por `ring_today.py` (sólo hoy) y `ring_next.py` (toda la ventana del
 ring.json). Centraliza la lectura de `<workspace>/.reminders/ring.json` y
@@ -17,8 +17,9 @@ Estructura de la tabla:
 - Cita:  "HH:MM" si la cita es el mismo día que suena el ring,
          "DD/MM HH:MM" si la cita cae otro día (alarm > 1 día, p.ej.).
 - Suena: "HH:MM (-Xm/-Xh/-Xd)" — hora a la que dispara la alarma y offset.
-- Proyecto: markdown link a la `<project>-agenda.md` si se localiza en
-  el workspace; si no, texto en brackets escapados.
+- Proyecto: markdown link al `<project>.md` (index) si se localiza en
+  el workspace; si no, texto en brackets escapados. Coherente con
+  `views/secretary/_agenda_table.proj_link_md` (F4 2026-05-19).
 """
 
 import json
@@ -107,7 +108,7 @@ def ring_dt(item: dict) -> Optional[datetime]:
 
 
 def _proj_link_md(project_name: str, project_index: dict) -> str:
-    """Markdown link al `<project>-agenda.md` si project_name está en el
+    """Markdown link al `<project>.md` (index) si project_name está en el
     índice; si no, texto en brackets escapados.
 
     `project_index` es un dict `{name: Path}` construido una sola vez por
@@ -118,11 +119,11 @@ def _proj_link_md(project_name: str, project_index: dict) -> str:
     pdir = project_index.get(project_name)
     if pdir is None:
         return f"\\[{project_name}\\]"
-    agenda_path = resolve_file(pdir, "agenda")
-    if not agenda_path.exists():
+    proj_path = resolve_file(pdir, "project")
+    if not proj_path.exists():
         return f"\\[{project_name}\\]"
     try:
-        rel = agenda_path.relative_to(ORBIT_HOME)
+        rel = proj_path.relative_to(ORBIT_HOME)
     except ValueError:
         return f"\\[{project_name}\\]"
     return f"[{project_name}](../../{rel})"

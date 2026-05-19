@@ -853,7 +853,7 @@ Se ejecuta automáticamente al iniciar la shell, antes de cada save **y periódi
 Daemon background que arranca al abrir la shell. Cada `interval_minutes` (defecto 60):
 
 1. Corre `doctor` sobre el workspace.
-2. **Si hay issues** → escribe `.doctor-pending` (marker) y NO regenera derivados (agenda/projects/ring-today/ring-next/calendar/report-summary, .ics, ring.json se congelan en su última versión limpia). El prompt del REPL muestra al siguiente input — una sola vez por sesión:
+2. **Si hay issues** → escribe `.doctor-pending` (marker) y NO regenera derivados (📊panel/secretary/{agenda,projects,calendar,report-summary} + 📊panel/ring/{ring-today,ring-next}, .ics, ring.json se congelan en su última versión limpia). El prompt del REPL muestra al siguiente input — una sola vez por sesión:
 
    ```
    🏥 Doctor (14:30): 3 problemas detectados — ejecuta `doctor`
@@ -1004,9 +1004,10 @@ orbit panel --open code           # abre en VS Code
 
 El dashboard fijo del workspace es `📊panel/secretary/agenda.md`, regenerado
 en cada mutación de cita / log / hl / project (carril hot). `orbit dash`
-refresca además los viewers cold: `📊panel/secretary/{projects,ring-today,
-ring-next,calendar,report-summary}.md`. Ventanas configurables en
-`orbit.json`:
+refresca además los viewers cold: `📊panel/secretary/{projects,calendar,
+report-summary}.md` + `📊panel/ring/{ring-today,ring-next}.md`. Outputs
+agrupados por backend (`secretary/` lee la verdad de proyectos; `ring/`
+lee `ring.json`). Ventanas configurables en `orbit.json`:
 
 ```json
 "secretary": {

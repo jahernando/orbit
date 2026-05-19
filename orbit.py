@@ -622,7 +622,7 @@ def cmd_reminder(args):
 
 
 from core.config import ORBIT_HOME as ORBIT_DIR
-from core.config import SECRETARY_DIR
+from core.config import RING_PANEL_DIR, SECRETARY_DIR
 
 
 def cmd_project(args):
@@ -855,25 +855,30 @@ def run_dash_hot(silent: bool = False):
 def run_dash_cold(silent: bool = False):
     """Refresca los viewers cold (todo menos `agenda.md`).
 
+    Outputs por backend:
+      - `📊panel/secretary/` ← `views/secretary/` (lee la verdad de proyectos)
+      - `📊panel/ring/`      ← `views/ring/`      (lee `ring.json`)
+
     Se regenera sólo en momentos rentables: save (commit_post), nuevo
     día (day_open), arranque del shell, o `orbit dash` manual. NO se
     dispara en background tras mutaciones.
     """
+    from views.ring import ring_next as ring_next_view
+    from views.ring import ring_today as ring_today_view
     from views.secretary import calendar as sec_calendar
     from views.secretary import projects as sec_projects
     from views.secretary import report_summary as sec_report
-    from views.secretary import ring_next as sec_ring_next
-    from views.secretary import ring_today as sec_ring_today
 
     SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
+    RING_PANEL_DIR.mkdir(parents=True, exist_ok=True)
     sec_projects.generate(SECRETARY_DIR / "projects.md")
-    sec_ring_today.generate(SECRETARY_DIR / "ring-today.md")
-    sec_ring_next.generate(SECRETARY_DIR / "ring-next.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
     sec_report.generate(SECRETARY_DIR / "report-summary.md")
+    ring_today_view.generate(RING_PANEL_DIR / "ring-today.md")
+    ring_next_view.generate(RING_PANEL_DIR / "ring-next.md")
 
     if not silent:
-        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,ring-today,ring-next,calendar,report-summary}.md)")
+        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,calendar,report-summary}.md + 📊panel/ring/{ring-today,ring-next}.md)")
     return 0
 
 
@@ -890,7 +895,7 @@ def run_dash(silent: bool = False):
     run_dash_cold(silent=True)
 
     if not silent:
-        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,ring-today,ring-next,calendar,report-summary}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,calendar,report-summary}.md + 📊panel/ring/{ring-today,ring-next}.md)")
     return 0
 
 
@@ -1637,7 +1642,7 @@ def _build_parser():
     _add_fed_args(pan_p)
 
     # --- dash ---
-    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,ring-today,ring-next,calendar,report-summary}.md")
+    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,calendar,report-summary}.md + 📊panel/ring/{ring-today,ring-next}.md")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")

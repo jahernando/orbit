@@ -1,4 +1,4 @@
-"""views/secretary/ring_today.py — alarmas que suenan hoy.
+"""views/ring/ring_today.py — alarmas que suenan hoy.
 
 Viewer de diagnóstico: lee `<workspace>/.reminders/ring.json` y muestra
 los items cuya **hora de alarma** (no de cita) cae hoy. Útil para
@@ -17,7 +17,7 @@ deshabilitado), el viewer escribe un .md informativo.
 from datetime import date
 from pathlib import Path
 
-from views.secretary._ring_table import (
+from views.ring._ring_table import (
     build_project_index, header_lines, load_ring_json, render_rows, ring_dt,
 )
 
@@ -30,7 +30,7 @@ def generate(out_path: Path) -> None:
     if payload is None:
         from views import autogen_banner
         out_path.write_text(
-            autogen_banner("secretary.ring_today")
+            autogen_banner("ring.today")
             + f"# 🔔 Alarmas — {today.isoformat()}\n\n"
             f"*Sin `ring.json` en este workspace. "
             f"Crea una cita con `--ring` o lanza `orbit dash` para "
@@ -49,7 +49,7 @@ def generate(out_path: Path) -> None:
         if rd.date() == today:
             today_items.append(it)
 
-    lines = header_lines(payload, "secretary.ring_today")
+    lines = header_lines(payload, "ring.today")
     lines.append(f"# 🔔 Alarmas — {today.isoformat()}")
     lines.append("")
     if not today_items:

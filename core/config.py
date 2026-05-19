@@ -49,9 +49,12 @@ HISTORY_MD    = ORBIT_HOME / "history.md"
 # vistas transversales viven aquí para no contaminar el vault de proyectos.
 PANEL_DIRNAME     = "📊panel"
 SECRETARY_SUBDIR  = "secretary"
+RING_SUBDIR       = "ring"
 SECRETARY_RELPATH = Path(PANEL_DIRNAME) / SECRETARY_SUBDIR  # 📊panel/secretary
+RING_RELPATH      = Path(PANEL_DIRNAME) / RING_SUBDIR       # 📊panel/ring
 PANEL_DIR         = ORBIT_HOME / PANEL_DIRNAME
 SECRETARY_DIR     = ORBIT_HOME / SECRETARY_RELPATH
+RING_PANEL_DIR    = ORBIT_HOME / RING_RELPATH
 
 
 # ── Project types (from orbit.json) ──────────────────────────────────────────
