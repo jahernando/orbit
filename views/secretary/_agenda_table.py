@@ -109,20 +109,23 @@ def overlap_char(count: int) -> str:
 
 
 def proj_link_md(project_dir) -> str:
-    """Markdown link to <project>-agenda.md desde 📊panel/secretary/.
+    """Markdown link al `<project>.md` (index) desde 📊panel/secretary/.
 
-    Federados → texto con brackets escapados, sin link (otro vault).
+    Apunta al index del proyecto (no a `<project>-agenda.md`) para que el
+    hover-preview de Obsidian muestre la portada con descripción / estado /
+    secciones, desde la que se navega a agenda/notes/logbook con un click
+    explícito. Federados → texto con brackets escapados, sin link.
     """
     from core.config import get_federation_emoji, is_federated, ORBIT_HOME
     from core.log import resolve_file
     if is_federated(project_dir):
         emoji = get_federation_emoji(project_dir)
         return f"{emoji} \\[{project_dir.name}\\]"
-    agenda_path = resolve_file(project_dir, "agenda")
-    if not agenda_path.exists():
+    proj_path = resolve_file(project_dir, "project")
+    if not proj_path.exists():
         return f"\\[{project_dir.name}\\]"
     try:
-        rel = agenda_path.relative_to(ORBIT_HOME)
+        rel = proj_path.relative_to(ORBIT_HOME)
     except ValueError:
         return f"\\[{project_dir.name}\\]"
     return f"[{project_dir.name}](../../{rel})"
