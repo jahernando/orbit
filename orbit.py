@@ -317,7 +317,7 @@ def cmd_log(args):
         tipo=args.entry,
         fecha=_d(args.date),
         deliver=getattr(args, "deliver", False),
-        link=getattr(args, "link", False),
+        as_link=getattr(args, "link", False),
         project_dir=project_dir,
     )
     if rc == 0 and args.open:
@@ -391,7 +391,7 @@ def cmd_hl(args):
             link    = getattr(args, "ref", None),
             date_str = getattr(args, "date", None),
             deliver = getattr(args, "deliver", False),
-            track   = getattr(args, "track", False),
+            as_link = getattr(args, "track", False),
         )
     if action == "drop":
         return run_hl_drop(
@@ -442,7 +442,7 @@ def cmd_note(args):
             no_date   = getattr(args, "no_date", False),
             entry     = getattr(args, "entry", None) or "apunte",
             hl_type   = getattr(args, "hl", None),
-            track     = getattr(args, "track", False),
+            as_link   = getattr(args, "track", False),
             from_path = getattr(args, "from_path", None),
         )
     # default: create (shorthand uses _project/_title/_file)
@@ -457,7 +457,7 @@ def cmd_note(args):
         no_date   = getattr(args, "no_date", False),
         entry     = getattr(args, "entry", None) or "apunte",
         hl_type   = getattr(args, "hl", None),
-        track     = getattr(args, "track", False),
+        as_link   = getattr(args, "track", False),
         from_path = getattr(args, "from_path", None),
     )
 
@@ -2177,8 +2177,26 @@ _CITA_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
 _DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project"}
 
 
+_DEPRECATED_FLAGS = {
+    "--track":   "--link",
+    "--deliver": "--import",
+}
+
+
+def _warn_deprecated_flags(argv: list) -> None:
+    """Emit a stderr warning for each deprecated flag alias used in argv.
+
+    The aliases keep working (argparse maps them to the canonical dest), but
+    the warning nudges the user toward the canonical names.
+    """
+    for old, new in _DEPRECATED_FLAGS.items():
+        if old in argv:
+            print(f"⚠️  {old} es alias deprecado; usa {new}.", file=sys.stderr)
+
+
 def run_command(argv: list) -> int:
     """Execute an orbit command from a list of arguments. Returns exit code."""
+    _warn_deprecated_flags(argv)
     parser = _build_parser()
     args = parser.parse_args(_fix_argv(argv))
 

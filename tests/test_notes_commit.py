@@ -173,13 +173,13 @@ class TestRunNoteCreate:
         assert rc == 1
         assert "no encontrado" in capsys.readouterr().out
 
-    def test_from_and_track_mutually_exclusive(self, tmp_path, proj, projects_dir,
-                                                capsys):
+    def test_from_and_link_mutually_exclusive(self, tmp_path, proj, projects_dir,
+                                               capsys):
         from core.notes import run_note_create
         src = tmp_path / "x.md"
         src.write_text("x")
         rc = run_note_create("test-project", "X", from_path=str(src),
-                             file_str=str(src), track=True, open_after=False)
+                             file_str=str(src), as_link=True, open_after=False)
         assert rc == 1
         assert "mutuamente exclusivos" in capsys.readouterr().out
 

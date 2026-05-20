@@ -794,6 +794,47 @@ Además, tras añadir el viewer `report_summary` (que lee logbook + highlights),
 
 ---
 
+## ADR-040 — `link`/`import` unificados + routing por extensión (md→notes, otro→cloud)
+**Estado**: VIGENTE (2026-05-20).
+
+**Contexto**: pre-v0.39 había tres modelos paralelos para adjuntar un fichero local a una entrada del logbook / highlights / nota:
+
+- `log <p> <msg> <file>`: prompt I/L. Import copia a `cloud/logs/` con prefijo de fecha; link almacena la **ruta absoluta** en el markdown (sin tocar el fichero).
+- `hl add <p> <txt> <file>`: prompt I/L. Import a `cloud/hls/`; link igual al de log (ruta absoluta).
+- `hl add --track <md>` y `note --link <md>`: symlink relativo en `notes/<name>` + registro en `.orbit-tracked.json` (modelo *externa* de [ADR-026](#adr-026--noteexterna-como-relative-symlink-en-notes--registry-minimal-deroga-adr-024)).
+
+Tres fricciones reales:
+1. **Bug latente**: el flag `--link` en `log` no funcionaba — la variable local `link = None` sombreaba el parámetro `link: bool` en `core/log.py::add_entry_with_ref`. Detectado al revisar el output 2026-05-20.
+2. **Asimetría conceptual**: "link" significaba dos cosas distintas según el subsistema — *abs-path-en-md* (log/hl) vs *symlink+registry* (hl --track, note --link). Confuso al pasar entre comandos.
+3. **`.md` para Obsidian**: importar un `.md` a `cloud/logs/` lo escondía del vault de Obsidian; lo natural es que viva en `notes/`.
+
+**Decisión**: unificar el modelo bajo dos flags + routing por extensión, compartido por `log`, `hl add` y `note`.
+
+1. **Dos flags ortogonales**: `--link` (symlink) y `--import` (copia). Sin flag → prompt estricto `[I]mportar / [L]ink`. Mutex (validado).
+2. **Routing por extensión**:
+   - `.md` → `project_dir/notes/<name>` (Obsidian-visible). En modo link, registro en `.orbit-tracked.json` (sigue ADR-026).
+   - resto → `project_dir/cloud/<subdir>/<name>` (cloud-synced). `<subdir>` por comando: `logs` para log, `hls` para hl.
+3. **Date prefix sólo para no-md import** (colisión real al importar el mismo PDF varias veces). El `.md` preserva el nombre fuente — el usuario los nombra con intención.
+4. **NFD stripping en nombres `.md`** ([project_orbit_obsidian_nfd_filenames]): los acentos descompuestos rompen wiki-links en Obsidian/macOS; al importar/linkar un .md el destino lleva el nombre normalizado (NFKD + filter combining marks).
+5. **Defaults**: prompt interactivo Enter→import; non-tty→link (conservador: scripts no deben mover ficheros silenciosamente).
+6. **Aliases legacy**: `--track` (→ `--link`) y `--deliver` (→ `--import`) siguen funcionando con warning a stderr.
+
+**Where lives**: `core/link_import.py` (nuevo: `ask_mode`, `apply_mode`, `resolve_mode`, `echo_mode`). Lo consumen `core/log.py::add_entry_with_ref` y `core/highlights.py::run_hl_add`. `core/notes.py::run_note_create/import` ya hacía symlink en notes/ (modelo externa de [ADR-026](#adr-026--noteexterna-como-relative-symlink-en-notes--registry-minimal-deroga-adr-024)) — sólo se renombra el param `track` → `as_link`. Warning de deprecación en `orbit.py::_warn_deprecated_flags`.
+
+**Consecuencias**:
+- **Behavior change**: `log <p> <m> <pdf>` (sin flag, no-tty) antes guardaba abs-path; ahora crea symlink en `cloud/logs/<name>`. Para scripts que dependían del path absoluto, pasar `--import` explícito.
+- **Behavior change**: `log/hl <p> <m> <md.md> --import` antes iba a `cloud/{logs,hls}/`; ahora va a `notes/`. Más natural para Obsidian, pero un workspace existente puede tener entries antiguas apuntando a la ubicación cloud.
+- `--link` en `log` ahora funciona (era bug); `log --track` (alias) también.
+- Aliases legacy emiten warning a stderr.
+- Tests: +25 en `test_link_import.py`, +5 en `test_deliver.py` para integración.
+
+**Tradeoff considerado**:
+- *Symlink en `cloud/<subdir>/` para no-md link*: los cloud-sync (OneDrive) no siguen symlinks por construcción, así que el destino aparece roto en web/móvil. Aceptado: el caso "link a un PDF" es local-only en práctica; el usuario abre el PDF desde el Mac, no desde la web.
+- *No-tty default = link*: rompe scripts que asumían "no-tty → import". Compromiso elegido: minimizar sorpresa al usuario interactivo (Enter→import) y al script (no movimiento sin consentimiento).
+- *Modelo unificado vs flags por comando*: rechazado tener `--cloud` en algunos y `--import` en otros — el prompt I/L (`I`mportar / `L`ink) marca el vocabulario.
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

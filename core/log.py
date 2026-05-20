@@ -269,35 +269,28 @@ def _is_url(ref: str) -> bool:
     return ref.startswith("http://") or ref.startswith("https://")
 
 
-def _ask_deliver() -> bool:
-    """Ask interactively: import to cloud (True) or link to source (False).
-
-    Default (Enter) = import. Returns False if not a tty.
-    """
-    if not sys.stdin.isatty():
-        return False
-    try:
-        ans = input("  📦 ¿Cómo guardar este fichero? [I]mportar (cloud) / [L]ink (fuente): ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return True
-    return ans not in ("l", "link")
+def _echo_mode(mode: str, rel_link: str) -> None:
+    """Thin wrapper around :func:`core.link_import.echo_mode` for the
+    file branch in :func:`add_entry_with_ref`."""
+    from core.link_import import echo_mode
+    echo_mode(mode, rel_link)
 
 
 def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                        tipo: str, fecha: Optional[str],
                        deliver: bool = False, orbit: bool = False,
-                       link: bool = False,
+                       as_link: bool = False,
                        project_dir: Optional[Path] = None) -> int:
     """Add a logbook entry, handling URL/file/import/link logic.
 
     - ref is URL → link title to URL
-    - ref is file + --import (deliver) → copy to cloud/logs/ with date prefix
-    - ref is file + --link → keep as link to local source (no copy, no prompt)
+    - ref is file + --import (deliver) → copy to destination (md→notes/, other→cloud/logs/)
+    - ref is file + --link → relative symlink at destination (md→notes/, other→cloud/logs/)
     - ref is file (no flag) → prompt: import to cloud or link to source
     - ref is None → plain entry
     """
-    from core.deliver import deliver_file, IMAGE_EXTS, relative_cloud_link
+    from core.deliver import IMAGE_EXTS
+    from core.link_import import apply_mode, resolve_mode
 
     if project_dir is None:
         project_dir = find_project(project)
@@ -320,21 +313,24 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                     src = Path.cwd() / ref
             if src.exists():
                 is_image = src.suffix.lower() in IMAGE_EXTS
-                if link:
-                    should_deliver = False
-                elif deliver:
-                    should_deliver = True
-                else:
-                    should_deliver = _ask_deliver()
-
-                if should_deliver:
-                    dest = deliver_file(project_dir, src, subdir="logs", date_prefix=True)
-                    if not dest:
-                        return 1
-                    link = relative_cloud_link("logs", dest.name)
-                else:
-                    link = str(src)
-            elif deliver:
+                try:
+                    mode = resolve_mode(as_link=as_link, as_import=deliver)
+                except ValueError as exc:
+                    print(f"⚠️  {exc}")
+                    return 1
+                # Date-prefix only for non-md imports (collision prevention in
+                # cloud/logs/). Md files keep their source name in notes/.
+                _date_prefix = (mode == "import"
+                                and src.suffix.lower() != ".md")
+                try:
+                    link, _dest = apply_mode(project_dir, src, mode,
+                                              non_md_subdir="logs",
+                                              date_prefix=_date_prefix)
+                except (FileExistsError, RuntimeError, ValueError) as exc:
+                    print(f"⚠️  {exc}")
+                    return 1
+                _echo_mode(mode, link)
+            elif deliver or as_link:
                 print(f"Error: no existe {src}")
                 return 1
             else:

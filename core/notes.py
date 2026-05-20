@@ -133,45 +133,45 @@ def run_note_create(project: str, title: str, file_str: Optional[str] = None,
                     no_date: bool = False,
                     entry: str = "apunte",
                     hl_type: Optional[str] = None,
-                    track: bool = False,
+                    as_link: bool = False,
                     from_path: Optional[str] = None) -> int:
-    """Create a new note (propia) or track an external file (externa).
+    """Create a new note (propia) or link an external file (externa).
 
     Modes (mutually exclusive):
       - default: create new note with template, date prefix optional.
       - --from <path>: pre-load content from <path> into a new propia. The
         result is fully owned (no link to source). Any extension accepted as
         input; written as .md.
-      - --track / file_str: register as externa — symlink notes/<basename> →
+      - --link / file_str: register as externa — symlink notes/<basename> →
         source. The source remains the truth; orbit just keeps a window.
 
     Args:
-        file_str: external source path for --track (externa).
+        file_str: external source path for --link (externa).
         from_path: source path for --from (propia with pre-loaded content).
         no_date: skip date prefix in filename.
         entry: logbook entry type (default: apunte).
         hl_type: if set, register in highlights under this section.
-        track: create externa (symlink).
+        as_link: create externa (symlink). Was ``track`` pre-v0.39.
     """
     project_dir = _find_new_project(project)
     if project_dir is None:
         return 1
 
-    if from_path and track:
-        print("Error: --from y --track son mutuamente exclusivos (propia vs externa).")
+    if from_path and as_link:
+        print("Error: --from y --link son mutuamente exclusivos (propia vs externa).")
         return 1
     if from_path and file_str:
         print("Error: --from y file (positional) son redundantes; usa solo --from.")
         return 1
-    if track and not file_str:
-        print("Error: --track requiere un fichero origen (úsalo con --file o pasando un path).")
+    if as_link and not file_str:
+        print("Error: --link requiere un fichero origen (úsalo con --file o pasando un path).")
         return 1
 
     notes_dir = project_dir / "notes"
     notes_dir.mkdir(exist_ok=True)
 
     # Externa: relative symlink at notes/<source.name>, registry-tracked.
-    if track:
+    if as_link:
         src = Path(file_str).expanduser().resolve()
         if not src.exists():
             print(f"Error: fichero no encontrado: {src}")
@@ -260,18 +260,18 @@ def run_note_import(project: str, title: str, file_str: str,
                     no_date: bool = False,
                     entry: str = "apunte",
                     hl_type: Optional[str] = None,
-                    track: bool = False,
+                    as_link: bool = False,
                     from_path: Optional[str] = None) -> int:
     """Import an existing .md file as a project note, log it, and clip the link.
 
     Like run_note_create with a file, but file is required and the markdown
-    link to the new note is copied to the clipboard. With ``track=True``
+    link to the new note is copied to the clipboard. With ``as_link=True``
     the file is registered as a tracked external file (auto-refresh on commit).
     """
     rc = run_note_create(
         project=project, title=title, file_str=file_str,
         open_after=open_after, editor=editor, no_date=no_date,
-        entry=entry, hl_type=hl_type, track=track, from_path=from_path,
+        entry=entry, hl_type=hl_type, as_link=as_link, from_path=from_path,
     )
     if rc != 0:
         return rc
@@ -281,7 +281,7 @@ def run_note_import(project: str, title: str, file_str: str,
     if project_dir is None:
         return 0  # note was already created, just can't clip
 
-    use_date_prefix = not hl_type and not no_date and not track
+    use_date_prefix = not hl_type and not no_date and not as_link
     base_name = _title_to_filename(title)
     if use_date_prefix:
         note_name = f"{date.today().isoformat()}_{base_name}"

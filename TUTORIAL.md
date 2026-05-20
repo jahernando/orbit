@@ -161,7 +161,7 @@ log next-kr "González 2024 — calibración" ./refs/gonzalez2024.pdf --entry re
 Orbit preguntará si quieres entregar el fichero a cloud. Para entregarlo directamente:
 
 ```bash
-log next-kr "González 2024 — calibración" ./refs/gonzalez2024.pdf --entry referencia --deliver
+log next-kr "González 2024 — calibración" ./refs/gonzalez2024.pdf --entry referencia --import
 ```
 
 El fichero se copia a `logs/` en cloud con prefijo de fecha (`2026-03-15_gonzalez2024.pdf`) y la entrada enlaza al fichero en cloud. Si el fichero es una imagen, se inserta como figura en la línea siguiente.
@@ -254,7 +254,7 @@ Los highlights son el índice permanente de lo más relevante: referencias clave
 
 ```bash
 hl add next-kr "González 2024 — calibración relativa" ./refs/g2024.pdf --type refs
-hl add next-kr "González 2024" ./refs/g2024.pdf --type refs --deliver   # entrega a cloud (hls/)
+hl add next-kr "González 2024" ./refs/g2024.pdf --type refs --import   # entrega a cloud (hls/)
 hl add next-kr "Paper relevante" https://arxiv.org/... --type refs      # con URL
 hl add next-kr "σ/E = 2.3% @ 1 MeV" --type results
 hl add next-kr "Calibración relativa como estándar" --type decisions
@@ -355,7 +355,7 @@ orbit
   # Trabajar y anotar:
   log next-kr "σ/E = 2.1% @ 511 keV" --entry resultado
   log next-kr "Probar con diferentes ROI" --entry idea
-  log next-kr "Espectro calibrado" spectrum.png --entry resultado --deliver
+  log next-kr "Espectro calibrado" spectrum.png --entry resultado --import
   task done next-kr "Reproducir"
   task add next-kr "Preparar presentación" --date "next thursday"
   hl add next-kr "Resolución validada a 511 keV" --type results
@@ -682,7 +682,7 @@ render next-kr             # renderiza un proyecto concreto
 deliver next-kr paper.pdf  # entrega un fichero al cloud del proyecto
 ```
 
-También puedes entregar ficheros directamente desde `log` y `hl add` con `--deliver`.
+También puedes entregar ficheros directamente desde `log` y `hl add` con `--import`.
 
 ### Mac Reminders
 

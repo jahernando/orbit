@@ -232,26 +232,11 @@ def _is_url(ref: str) -> bool:
     return ref.startswith("http://") or ref.startswith("https://")
 
 
-def _ask_deliver() -> bool:
-    """Ask interactively: import to cloud (True) or link to source (False).
-
-    Default (Enter) = import. Returns False if not a tty.
-    """
-    if not sys.stdin.isatty():
-        return False
-    try:
-        ans = input("  📦 ¿Cómo guardar este fichero? [I]mportar (cloud) / [L]ink (fuente): ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return True
-    return ans not in ("l", "link")
-
-
 def run_hl_add(project: str, text: str, hl_type: str,
                link: Optional[str] = None,
                date_str: Optional[str] = None,
                deliver: bool = False,
-               track: bool = False) -> int:
+               as_link: bool = False) -> int:
     if hl_type not in SECTION_MAP:
         print(f"Error: tipo '{hl_type}' no válido. Opciones: {', '.join(VALID_TYPES)}")
         return 1
@@ -269,34 +254,12 @@ def run_hl_add(project: str, text: str, hl_type: str,
             return 1
         text = f"{text} ({resolved})"
 
-    # --- Tracked external file shortcut ---
-    # When --track is used, a relative symlink is created in notes/
-    # pointing at the source, the highlight points to that symlink.
-    if track:
-        if not link:
-            print("Error: --track requiere un fichero origen.")
-            return 1
-        from pathlib import Path
-        src = Path(link).expanduser().resolve()
-        if not src.exists():
-            print(f"Error: no existe {src}")
-            return 1
-        from core.tracked import track as _tracked_track
-        try:
-            note_name = _tracked_track(project_dir, src)
-        except (FileNotFoundError, ValueError, FileExistsError) as e:
-            print(f"Error: {e}")
-            return 1
-        link = f"./notes/{note_name}"
-        print(f"  🔄 tracked: notes/{note_name} → {src}")
-        # Fall through to highlight write below.
-
-    # Handle file/URL/deliver logic for link argument
-    elif link:
+    # Handle file/URL logic for link argument
+    if link:
         if _is_url(link) or link.startswith("./"):
             pass  # keep as-is (URL or relative link)
         else:
-            from core.deliver import deliver_file, IMAGE_EXTS, relative_cloud_link
+            from core.link_import import apply_mode, resolve_mode, echo_mode
             src = Path(link).expanduser()
             if not src.is_absolute():
                 from core.log import find_project
@@ -306,15 +269,24 @@ def run_hl_add(project: str, text: str, hl_type: str,
                     src = candidate if candidate.exists() else Path.cwd() / link
 
             if src.exists():
-                should_deliver = deliver or _ask_deliver()
-                if should_deliver:
-                    dest = deliver_file(project_dir, src, subdir="hls")
-                    if not dest:
-                        return 1
-                    link = relative_cloud_link("hls", dest.name)
-                else:
-                    link = str(src)
-            elif deliver:
+                try:
+                    mode = resolve_mode(as_link=as_link, as_import=deliver)
+                except ValueError as exc:
+                    print(f"⚠️  {exc}")
+                    return 1
+                # Date-prefix only for non-md imports (collision prevention in
+                # cloud/hls/). Md files keep their source name in notes/.
+                _date_prefix = (mode == "import"
+                                and src.suffix.lower() != ".md")
+                try:
+                    link, _dest = apply_mode(project_dir, src, mode,
+                                              non_md_subdir="hls",
+                                              date_prefix=_date_prefix)
+                except (FileExistsError, RuntimeError, ValueError) as exc:
+                    print(f"⚠️  {exc}")
+                    return 1
+                echo_mode(mode, link)
+            elif deliver or as_link:
                 print(f"Error: no existe {src}")
                 return 1
             # else: keep link as-is (relative path or manual reference)

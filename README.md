@@ -154,7 +154,7 @@ orbit reminder drop mission "correo"
 ### Highlights y notas
 
 ```bash
-orbit hl add next-kr "Gonzalez 2024" ./refs/g2024.pdf --type refs --deliver
+orbit hl add next-kr "Gonzalez 2024" ./refs/g2024.pdf --type refs --import
 orbit hl list next-kr [--open]
 
 orbit note next-kr "Analisis de calibracion"
@@ -180,7 +180,7 @@ Sources: `--mail` (Apple Mail.app, recomendado), `--outlook`, `--gmail`, `--eml 
 
 ```bash
 orbit log next-kr "El fit converge" --entry resultado
-orbit log next-kr "Resultados Q1" results.pdf --entry resultado --deliver
+orbit log next-kr "Resultados Q1" results.pdf --entry resultado --import
 orbit search "calibracion" --entry resultado
 orbit search --project next-kr --from 2026-03-01 [--open]
 ```
@@ -273,8 +273,8 @@ Tras cada `save`, Orbit renderiza los `.md` modificados a HTML y los copia al cl
 
 ```bash
 orbit deliver next-kr notes/results.pdf                                          # copia a cloud + portapapeles
-orbit log next-kr "Resultados Q1" results.pdf --entry resultado --deliver        # log + entrega a cloud/logs/
-orbit hl add next-kr "Paper calibracion" paper.pdf --type refs --deliver         # highlight + entrega a cloud/hls/
+orbit log next-kr "Resultados Q1" results.pdf --entry resultado --import        # log + entrega a cloud/logs/
+orbit hl add next-kr "Paper calibracion" paper.pdf --type refs --import         # highlight + entrega a cloud/hls/
 ```
 
 Cada workspace define su `cloud_root` en `orbit.json`. La estructura cloud:

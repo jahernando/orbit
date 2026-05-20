@@ -184,9 +184,9 @@ orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
 orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE] [--editor E]
 ```
 
-- `<file|url>`: argumento posicional opcional. Si es URL, enlaza el texto. Si es fichero local, enlaza y pregunta si quieres importarlo a cloud o linkar a la fuente
-- `--import`: importa el fichero a cloud sin preguntar (copia a `hls/`, sin prefijo de fecha). Alias legacy: `--deliver`
-- `--link`: registra el fichero como **externa** (symlink al fuente). Solo `.md`. Alias legacy: `--track`. Ver sección [externa](#externa--symlink-a-md-fuera-del-workspace) abajo
+- `<file|url>`: argumento posicional opcional. URL → enlaza el texto. Fichero local → routing por extensión (`.md` va a `notes/`, resto va a `cloud/hls/`) y pregunta si import (copia) o link (symlink)
+- `--import`: copia el fichero al destino sin preguntar. Para no-md añade prefijo `YYYY-MM-DD_`. Alias legacy: `--deliver`
+- `--link`: symlink relativo al destino sin preguntar. Para `.md` además registra en `.orbit-tracked.json` (externa). Alias legacy: `--track`
 - `--type`: `refs` (📎) · `results` (📊) · `decisions` (📌) · `ideas` (💡) · `evals` (🔍) · `plans` (🗓️)
 - `--date`: añade fecha al final del texto — `--date` (hoy), `--date tomorrow`, `--date 2026-04-15`
 - `drop` pide confirmación (defecto **No**); `--force` la omite
@@ -318,9 +318,9 @@ orbit search [query] [--project P...] [--entry TIPO] [--date D] [--from D] [--to
              [--limit N] [--open [EDITOR]]
 ```
 
-- `<file|url>`: argumento posicional opcional. Si es URL, enlaza el título. Si es fichero local, pregunta si quieres importarlo a cloud o linkar a la fuente
-- `--import`: importa a cloud sin preguntar (copia a `logs/` con prefijo `YYYY-MM-DD_`). Alias legacy: `--deliver`
-- `--link`: linka a la fuente sin preguntar (sin copia). Alias legacy: `--track`
+- `<file|url>`: argumento posicional opcional. URL → enlaza el título. Fichero local → routing por extensión (`.md` va a `notes/`, resto va a `cloud/logs/`) y pregunta si import (copia) o link (symlink)
+- `--import`: copia el fichero al destino sin preguntar. Para no-md añade prefijo `YYYY-MM-DD_`. Alias legacy: `--deliver`
+- `--link`: symlink relativo al destino sin preguntar. Para `.md` además registra en `.orbit-tracked.json` (externa). Alias legacy: `--track`
 Muchos comandos soportan `--append proyecto:nota` para añadir su salida a una nota:
 
 ```bash

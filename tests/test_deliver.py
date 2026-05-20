@@ -343,7 +343,7 @@ class TestAddEntryWithRef:
         assert f"{date.today().isoformat()}_results.pdf" in content
 
     def test_file_without_deliver_no_tty(self, orbit_env, capsys, monkeypatch):
-        """Without --deliver and no TTY, links to local file."""
+        """Without flag + no TTY: link mode → relative symlink in cloud/logs/."""
         import sys
         monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
         from core.log import add_entry_with_ref
@@ -353,9 +353,11 @@ class TestAddEntryWithRef:
         )
         assert rc == 0
         content = (orbit_env["proj"] / "catedra-logbook.md").read_text()
-        assert "[Local ref](" in content
-        # Should link to the local file, not cloud
-        assert "logs/" not in content
+        assert "[Local ref](./cloud/logs/results.pdf)" in content
+        # No date prefix on the link mode (file not duplicated, no need to
+        # disambiguate); the actual destination is a symlink, not a copy.
+        from datetime import date
+        assert f"{date.today().isoformat()}_results.pdf" not in content
 
     def test_image_adds_preview(self, orbit_env, capsys):
         from core.log import add_entry_with_ref
@@ -382,6 +384,76 @@ class TestAddEntryWithRef:
         rc = add_entry_with_ref(
             "catedra", "/nonexistent/file.pdf", "Ghost",
             "apunte", None, deliver=True,
+        )
+        assert rc == 1
+        assert "no existe" in capsys.readouterr().out
+
+    def test_md_with_link_creates_symlink_in_notes(self, orbit_env, capsys, tmp_path):
+        """A .md file with --link → relative symlink in notes/."""
+        from core.log import add_entry_with_ref
+        src_md = tmp_path / "DECISIONS.md"
+        src_md.write_text("# D\n")
+        rc = add_entry_with_ref(
+            "catedra", str(src_md), "Decisions doc",
+            "referencia", None, as_link=True,
+        )
+        assert rc == 0
+        symlink = orbit_env["proj"] / "notes" / "DECISIONS.md"
+        assert symlink.is_symlink()
+        content = (orbit_env["proj"] / "catedra-logbook.md").read_text()
+        assert "[Decisions doc](./notes/DECISIONS.md)" in content
+        out = capsys.readouterr().out
+        assert "🔗 modo: link" in out
+        assert "notes/DECISIONS.md" in out
+
+    def test_md_with_import_copies_to_notes(self, orbit_env, capsys, tmp_path):
+        """A .md file with --import → copy in notes/ (no symlink)."""
+        from core.log import add_entry_with_ref
+        src_md = tmp_path / "snapshot.md"
+        src_md.write_text("# S\n")
+        rc = add_entry_with_ref(
+            "catedra", str(src_md), "Snapshot",
+            "apunte", None, deliver=True,
+        )
+        assert rc == 0
+        dest = orbit_env["proj"] / "notes" / "snapshot.md"
+        assert dest.exists()
+        assert not dest.is_symlink()
+        content = (orbit_env["proj"] / "catedra-logbook.md").read_text()
+        assert "[Snapshot](./notes/snapshot.md)" in content
+        out = capsys.readouterr().out
+        assert "📦 modo: import" in out
+        assert "notes/snapshot.md" in out
+
+    def test_pdf_with_link_creates_symlink_in_cloud(self, orbit_env, capsys):
+        """A non-md file with --link → symlink in cloud/logs/."""
+        from core.log import add_entry_with_ref
+        rc = add_entry_with_ref(
+            "catedra", str(orbit_env["src_file"]), "Linked PDF",
+            "referencia", None, as_link=True,
+        )
+        assert rc == 0
+        content = (orbit_env["proj"] / "catedra-logbook.md").read_text()
+        assert "[Linked PDF](./cloud/logs/results.pdf)" in content
+        out = capsys.readouterr().out
+        assert "🔗 modo: link" in out
+
+    def test_mutex_link_and_deliver(self, orbit_env, capsys):
+        """Both flags at once → error."""
+        from core.log import add_entry_with_ref
+        rc = add_entry_with_ref(
+            "catedra", str(orbit_env["src_file"]), "Bad",
+            "apunte", None, deliver=True, as_link=True,
+        )
+        assert rc == 1
+        assert "mutuamente exclusivos" in capsys.readouterr().out
+
+    def test_md_link_not_found_errors(self, orbit_env, capsys):
+        """--link with non-existent path → error (don't store ref as-is)."""
+        from core.log import add_entry_with_ref
+        rc = add_entry_with_ref(
+            "catedra", "/nonexistent/ghost.md", "Ghost",
+            "apunte", None, as_link=True,
         )
         assert rc == 1
         assert "no existe" in capsys.readouterr().out
