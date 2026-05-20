@@ -179,14 +179,15 @@ orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [
 ## hl — highlights
 
 ```bash
-orbit hl add  <project> "<text>" [<file|url>] --type TYPE [--import] [--link] [--date [FECHA]]
+orbit hl add  <project> "<text>" [<file|url>] --type TYPE [--import] [--link] [--no-date] [--date [FECHA]]
 orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
 orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE] [--editor E]
 ```
 
 - `<file|url>`: argumento posicional opcional. URL → enlaza el texto. Fichero local → routing por extensión (`.md` va a `notes/`, resto va a `cloud/hls/`) y pregunta si import (copia) o link (symlink)
-- `--import`: copia el fichero al destino sin preguntar. Para no-md añade prefijo `YYYY-MM-DD_`. Alias legacy: `--deliver`
-- `--link`: symlink relativo al destino sin preguntar. Para `.md` además registra en `.orbit-tracked.json` (externa). Alias legacy: `--track`
+- `--import`: copia el fichero al destino sin preguntar. Para no-md añade prefijo `YYYY-MM-DD_`
+- `--no-date`: con `--import` no-md, suprime el prefijo `YYYY-MM-DD_` (el nombre del fichero llega tal cual; el usuario asume el riesgo de colisión)
+- `--link`: symlink relativo al destino sin preguntar. Para `.md` además registra en `.orbit-tracked.json` (externa)
 - `--type`: `refs` (📎) · `results` (📊) · `decisions` (📌) · `ideas` (💡) · `evals` (🔍) · `plans` (🗓️)
 - `--date`: añade fecha al final del texto — `--date` (hoy), `--date tomorrow`, `--date 2026-04-15`
 - `drop` pide confirmación (defecto **No**); `--force` la omite
@@ -311,7 +312,7 @@ orbit open  <project> [logbook|highlights|agenda|project] [--editor E] [--dir]
 ## log y search
 
 ```bash
-orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--import] [--link] [--note NOTA] [--date D] [--open [EDITOR]]
+orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--import] [--link] [--no-date] [--note NOTA] [--date D] [--open [EDITOR]]
 
 orbit search [query] [--project P...] [--entry TIPO] [--date D] [--from D] [--to D]
              [--in logbook|highlights|agenda] [--any] [--notes]
@@ -319,8 +320,10 @@ orbit search [query] [--project P...] [--entry TIPO] [--date D] [--from D] [--to
 ```
 
 - `<file|url>`: argumento posicional opcional. URL → enlaza el título. Fichero local → routing por extensión (`.md` va a `notes/`, resto va a `cloud/logs/`) y pregunta si import (copia) o link (symlink)
-- `--import`: copia el fichero al destino sin preguntar. Para no-md añade prefijo `YYYY-MM-DD_`. Alias legacy: `--deliver`
-- `--link`: symlink relativo al destino sin preguntar. Para `.md` además registra en `.orbit-tracked.json` (externa). Alias legacy: `--track`
+- `--import`: copia el fichero al destino sin preguntar. Para no-md añade prefijo `YYYY-MM-DD_`
+- `--no-date`: con `--import` no-md, suprime el prefijo `YYYY-MM-DD_` (el nombre del fichero llega tal cual; el usuario asume el riesgo de colisión)
+- `--link`: symlink relativo al destino sin preguntar. Para `.md` además registra en `.orbit-tracked.json` (externa)
+
 Muchos comandos soportan `--append proyecto:nota` para añadir su salida a una nota:
 
 ```bash
@@ -737,7 +740,6 @@ orbit deliver <project> <file>        # alias top-level de `cloud deliver`
 - Front-page del cloud: `workspace.html` (de `workspace.md`) + `index.html` stub con `<meta http-equiv="refresh">` redirigiendo a `workspace.html` (para que el browser abra el cloud-root automáticamente)
 - Incluye soporte KaTeX para ecuaciones LaTeX (`$...$` y `$$...$$`)
 - `cloud sync` se ejecuta automáticamente en background tras cada `save`; el verbo manual sirve para forzar o auditar con `--dry-run`
-- `deliver` también disponible como `--deliver` en `log` y `hl add`
 - Estructura cloud: `cloud_root/{tipo}/{proyecto}/cloud/{logs,hls,imgs,...}/`
 - `cloud_root` se configura en `orbit.json`; cada proyecto tiene un link `[cloud]` en `project.md`
 

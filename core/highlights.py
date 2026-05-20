@@ -236,7 +236,8 @@ def run_hl_add(project: str, text: str, hl_type: str,
                link: Optional[str] = None,
                date_str: Optional[str] = None,
                deliver: bool = False,
-               as_link: bool = False) -> int:
+               as_link: bool = False,
+               no_date: bool = False) -> int:
     if hl_type not in SECTION_MAP:
         print(f"Error: tipo '{hl_type}' no válido. Opciones: {', '.join(VALID_TYPES)}")
         return 1
@@ -276,8 +277,10 @@ def run_hl_add(project: str, text: str, hl_type: str,
                     return 1
                 # Date-prefix only for non-md imports (collision prevention in
                 # cloud/hls/). Md files keep their source name in notes/.
+                # --no-date opts out (user accepts collision risk).
                 _date_prefix = (mode == "import"
-                                and src.suffix.lower() != ".md")
+                                and src.suffix.lower() != ".md"
+                                and not no_date)
                 try:
                     link, _dest = apply_mode(project_dir, src, mode,
                                               non_md_subdir="hls",

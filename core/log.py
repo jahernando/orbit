@@ -280,6 +280,7 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                        tipo: str, fecha: Optional[str],
                        deliver: bool = False, orbit: bool = False,
                        as_link: bool = False,
+                       no_date: bool = False,
                        project_dir: Optional[Path] = None) -> int:
     """Add a logbook entry, handling URL/file/import/link logic.
 
@@ -288,6 +289,9 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
     - ref is file + --link → relative symlink at destination (md→notes/, other→cloud/logs/)
     - ref is file (no flag) → prompt: import to cloud or link to source
     - ref is None → plain entry
+
+    ``no_date`` suppresses the ``YYYY-MM-DD_`` filename prefix on non-md
+    imports (md files never get one).
     """
     from core.deliver import IMAGE_EXTS
     from core.link_import import apply_mode, resolve_mode
@@ -320,8 +324,10 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                     return 1
                 # Date-prefix only for non-md imports (collision prevention in
                 # cloud/logs/). Md files keep their source name in notes/.
+                # --no-date opts out (user accepts collision risk).
                 _date_prefix = (mode == "import"
-                                and src.suffix.lower() != ".md")
+                                and src.suffix.lower() != ".md"
+                                and not no_date)
                 try:
                     link, _dest = apply_mode(project_dir, src, mode,
                                               non_md_subdir="logs",

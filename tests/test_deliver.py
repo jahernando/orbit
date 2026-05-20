@@ -342,6 +342,41 @@ class TestAddEntryWithRef:
         assert "logs/" in content
         assert f"{date.today().isoformat()}_results.pdf" in content
 
+    def test_file_with_deliver_no_date(self, orbit_env, capsys):
+        """--no-date suppresses YYYY-MM-DD_ prefix on non-md imports."""
+        from core.log import add_entry_with_ref
+        rc = add_entry_with_ref(
+            "catedra", str(orbit_env["src_file"]), "Results",
+            "resultado", None, deliver=True, no_date=True,
+        )
+        assert rc == 0
+        content = (orbit_env["proj"] / "catedra-logbook.md").read_text()
+        assert "[Results](./cloud/logs/results.pdf)" in content
+        assert f"{date.today().isoformat()}_results.pdf" not in content
+
+    def test_hl_import_default_date_prefix(self, orbit_env, capsys):
+        """hl add --import (non-md): default is YYYY-MM-DD_ prefix in cloud/hls/."""
+        from core.highlights import run_hl_add
+        rc = run_hl_add(
+            project="catedra", text="Paper", hl_type="results",
+            link=str(orbit_env["src_file"]), deliver=True,
+        )
+        assert rc == 0
+        content = (orbit_env["proj"] / "catedra-highlights.md").read_text()
+        assert f"./cloud/hls/{date.today().isoformat()}_results.pdf" in content
+
+    def test_hl_import_no_date(self, orbit_env, capsys):
+        """hl add --import --no-date: suppresses YYYY-MM-DD_ prefix."""
+        from core.highlights import run_hl_add
+        rc = run_hl_add(
+            project="catedra", text="Paper", hl_type="results",
+            link=str(orbit_env["src_file"]), deliver=True, no_date=True,
+        )
+        assert rc == 0
+        content = (orbit_env["proj"] / "catedra-highlights.md").read_text()
+        assert "[Paper](./cloud/hls/results.pdf)" in content
+        assert f"{date.today().isoformat()}_results.pdf" not in content
+
     def test_file_without_deliver_no_tty(self, orbit_env, capsys, monkeypatch):
         """Without flag + no TTY: link mode → relative symlink in cloud/logs/."""
         import sys
@@ -495,3 +530,4 @@ class TestConfigExtensions:
         # orbit.json doesn't exist, so _orbit_space should use dir name
         # (this tests the initial load logic conceptually)
         assert not (ws / "orbit.json").exists()
+

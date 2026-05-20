@@ -318,6 +318,7 @@ def cmd_log(args):
         fecha=_d(args.date),
         deliver=getattr(args, "deliver", False),
         as_link=getattr(args, "link", False),
+        no_date=getattr(args, "no_date", False),
         project_dir=project_dir,
     )
     if rc == 0 and args.open:
@@ -392,6 +393,7 @@ def cmd_hl(args):
             date_str = getattr(args, "date", None),
             deliver = getattr(args, "deliver", False),
             as_link = getattr(args, "track", False),
+            no_date = getattr(args, "no_date", False),
         )
     if action == "drop":
         return run_hl_drop(
@@ -1492,13 +1494,14 @@ def _build_parser():
         metavar="ENTRY",
         help=f"Entry type: {', '.join(VALID_TYPES)} (default: apunte)",
     )
-    log_p.add_argument("--import", "--deliver", action="store_true",
+    log_p.add_argument("--import", action="store_true",
                        dest="deliver",
-                       help="Import file to cloud (logs/ with date prefix). Alias: --deliver.")
-    log_p.add_argument("--link", "--track", action="store_true",
+                       help="Import file to cloud (logs/ with date prefix).")
+    log_p.add_argument("--link", action="store_true",
                        dest="link",
-                       help="Keep file as link to local source (skips the import-vs-link prompt). "
-                            "Alias: --track.")
+                       help="Keep file as link to local source (skips the import-vs-link prompt).")
+    log_p.add_argument("--no-date", action="store_true", dest="no_date",
+                       help="Skip the YYYY-MM-DD_ prefix on the imported filename (non-md imports only).")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
     log_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
                        help="Open in editor (optionally specify editor name)")
@@ -1894,13 +1897,15 @@ def _build_parser():
     hl_add.add_argument("ref",     nargs="?", default=None, help="File path or URL (optional)")
     hl_add.add_argument("--type",  required=True, choices=HL_TYPES,
                         help="Section type: refs, results, decisions, ideas, evals")
-    hl_add.add_argument("--import", "--deliver", action="store_true",
+    hl_add.add_argument("--import", action="store_true",
                         dest="deliver",
-                        help="Import file to cloud (hls/). Alias: --deliver.")
-    hl_add.add_argument("--link", "--track", action="store_true",
+                        help="Import file to cloud (hls/).")
+    hl_add.add_argument("--link", action="store_true",
                         dest="track",
                         help="Link to external file (symlink in notes/, auto-refresh on commit). "
-                             ".md only. Alias: --track.")
+                             ".md only.")
+    hl_add.add_argument("--no-date", action="store_true", dest="no_date",
+                        help="Skip the YYYY-MM-DD_ prefix on the imported filename (non-md imports only).")
     hl_add.add_argument("--date",  nargs="?", const="today", default=None,
                         help="Prefix date (today, tomorrow, YYYY-MM-DD)")
 
@@ -1946,10 +1951,10 @@ def _build_parser():
                            help="Logbook entry type (default: apunte)")
     nt_create.add_argument("--hl",      default=None, metavar="TYPE",
                            help="Register in highlights instead of logbook (e.g. referencia)")
-    nt_create.add_argument("--link", "--track", action="store_true",
+    nt_create.add_argument("--link", action="store_true",
                            dest="track",
                            help="Link as external file (symlink, auto-refresh on commit). "
-                                "Requires file. Alias: --track.")
+                                "Requires file.")
     nt_create.add_argument("--from",    dest="from_path", default=None, metavar="PATH",
                            help="Pre-load note content from PATH (any extension). Result is fully owned, no link to source.")
     nt_create.add_argument("--editor",  default=None)
@@ -1966,10 +1971,9 @@ def _build_parser():
                            help="Logbook entry type (default: apunte)")
     nt_import.add_argument("--hl",      default=None, metavar="TYPE",
                            help="Register in highlights instead of logbook")
-    nt_import.add_argument("--link", "--track", action="store_true",
+    nt_import.add_argument("--link", action="store_true",
                            dest="track",
-                           help="Link as external file (symlink, auto-refresh on commit). "
-                                "Alias: --track.")
+                           help="Link as external file (symlink, auto-refresh on commit).")
     nt_import.add_argument("--from",    dest="from_path", default=None, metavar="PATH",
                            help="Pre-load note content from PATH (any extension). Result is fully owned.")
     nt_import.add_argument("--editor",  default=None)
@@ -2002,7 +2006,7 @@ def _build_parser():
     note_p.add_argument("--no-date", action="store_true")
     note_p.add_argument("--entry",   default="apunte")
     note_p.add_argument("--hl",      default=None, metavar="TYPE")
-    note_p.add_argument("--link", "--track", action="store_true", dest="track")
+    note_p.add_argument("--link", action="store_true", dest="track")
     note_p.add_argument("--from",    dest="from_path", default=None, metavar="PATH")
     note_p.add_argument("--editor",  default=None)
 
@@ -2177,26 +2181,8 @@ _CITA_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
 _DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project"}
 
 
-_DEPRECATED_FLAGS = {
-    "--track":   "--link",
-    "--deliver": "--import",
-}
-
-
-def _warn_deprecated_flags(argv: list) -> None:
-    """Emit a stderr warning for each deprecated flag alias used in argv.
-
-    The aliases keep working (argparse maps them to the canonical dest), but
-    the warning nudges the user toward the canonical names.
-    """
-    for old, new in _DEPRECATED_FLAGS.items():
-        if old in argv:
-            print(f"⚠️  {old} es alias deprecado; usa {new}.", file=sys.stderr)
-
-
 def run_command(argv: list) -> int:
     """Execute an orbit command from a list of arguments. Returns exit code."""
-    _warn_deprecated_flags(argv)
     parser = _build_parser()
     args = parser.parse_args(_fix_argv(argv))
 
