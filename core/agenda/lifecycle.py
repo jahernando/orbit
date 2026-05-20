@@ -628,7 +628,11 @@ def _generic_add(type_name: str, project: str, text: str,
         print(f"✓ [{project_dir.name}] {cfg['label']}: {text} {attrs}")
     else:
         attrs = _format_add_attrs(date_val, time_val, recur, until, ring)
-        print(f"✓ [{project_dir.name}] {cfg['label']}: {text}{attrs}")
+        if type_name == "task":
+            state = api.task_state(new_item)
+            print(f"✓ [{project_dir.name}] {cfg['label']} {state}: {text}{attrs}")
+        else:
+            print(f"✓ [{project_dir.name}] {cfg['label']}: {text}{attrs}")
 
     # Ring scheduling
     if cfg["has_ring"]:

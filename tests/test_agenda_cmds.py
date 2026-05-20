@@ -746,6 +746,35 @@ class TestRunTaskAdd:
         out = capsys.readouterr().out
         assert "2026-05-01" in out
 
+    def test_output_includes_state_pending(self, proj, projects_dir, capsys):
+        # --ff in the future → state should be 'pending'
+        from core.agenda_cmds import run_task_add
+        from datetime import date as _date, timedelta
+        future = (_date.today() + timedelta(days=7)).isoformat()
+        run_task_add("test-project", "Future review", ff=future)
+        out = capsys.readouterr().out
+        assert "Tarea pending:" in out
+
+    def test_output_includes_state_planned(self, proj, projects_dir, capsys):
+        # date set → state should be 'planned'
+        from core.agenda_cmds import run_task_add
+        run_task_add("test-project", "Anchored", date_val="2026-12-01")
+        out = capsys.readouterr().out
+        assert "Tarea planned:" in out
+
+    def test_output_includes_state_someday(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_task_add
+        run_task_add("test-project", "Maybe later", ff="someday")
+        out = capsys.readouterr().out
+        assert "Tarea someday:" in out
+
+    def test_output_includes_state_due_for_raw_capture(self, proj, projects_dir, capsys):
+        # No date / no ff / no recur → api defaults ff=today → state 'due'
+        from core.agenda_cmds import run_task_add
+        run_task_add("test-project", "Decide now")
+        out = capsys.readouterr().out
+        assert "Tarea due:" in out
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # run_task_done

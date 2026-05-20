@@ -235,6 +235,35 @@ def add_reminder(project: str, text: str, *,
     return _append_and_write("reminder", project_dir, item)
 
 
+# ── Task state ─────────────────────────────────────────────────────────
+
+def task_state(item: dict, today: Optional[str] = None) -> str:
+    """Classify a task by its display state. Pure, no I/O.
+
+    Returns one of ``planned``, ``pending``, ``someday``, ``due``,
+    ``done``, ``dropped``. Derived from ``status`` + ``date`` + ``ff``
+    per the items taxonomy (verbs ``plan/pending/drop/done``).
+
+    ``today`` is the ISO date used to compare against ``ff``; defaults to
+    today. Passing it explicitly keeps the function deterministic in tests.
+    """
+    status = item.get("status")
+    if status == "done":
+        return "done"
+    if status == "cancelled":
+        return "dropped"
+    if item.get("date"):
+        return "planned"
+    ff = item.get("ff")
+    if ff == "someday":
+        return "someday"
+    if ff is None:
+        return "pending"
+    if today is None:
+        today = date.today().isoformat()
+    return "due" if ff <= today else "pending"
+
+
 # ── Item identification ────────────────────────────────────────────────
 
 def _find_matching(items: list, *, orbit_id: Optional[str],
