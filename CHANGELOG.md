@@ -10,6 +10,20 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### v0.39.0 (2026-05-21) — Ring fix: orbit_id backfill · columna 🔔 · rings.md unificado
+
+Bug: alarmas no se programaban para items con `🔔` pero sin `[orbit:XXXX]` — el daemon necesita el id para idempotencia, y `views/ring/export.py:_iter_kind_items` los descartaba silenciosamente. Causa típica: eventos pegados a mano / importados, no creados por `ev add`.
+
+**Fix backfill (`views/ring/export.py`)** — cuando un item tiene `ring` + `date` + `time` pero le falta `orbit_id`, el exportador genera un id (`secrets.token_hex(4)`) y reescribe la línea en el `<project>-agenda.md` antes de proyectar a `ring.json`. El refresh reporta el count (`🆔 N orbit_ids rellenados`). Excepción documentada a la regla "views no escriben verdad": el bug que arregla (perder alarmas) pesa más que la pureza arquitectónica; el alternativo "warn-and-skip" deja al usuario sin la alarma que pidió.
+
+**Columna 🔔 en `agenda.md`** (`views/secretary/_agenda_table.py`) — tabla pasa de 6 a 7 columnas. Indicador local: `🔔` si el item lleva ring en el .md, vacío si no. Lee la verdad (agenda.md de cada proyecto), no `ring.json` — coherente con la regla "truth en agenda, view en panel". Para diagnosticar drift se mira `rings.md`.
+
+**`rings.md` unificado** (`views/ring/rings.py`) — fusiona `ring-today.md` + `ring-next.md` en un solo fichero estilo `agenda.md`: counter telegráfico (`🔔 Hoy: N · Próximos 7d: M`), sección `## 🔔 Hoy — weekday DD/MM`, sección `## 🔔 Próximos días` con subsecciones `### YYYY-MM-DD · weekday`. `views/ring/ring_today.py` y `ring_next.py` borrados.
+
+Tests: +backfill (7 casos + 1 round-trip), +bell column (3 casos), `test_ring_viewers.py` reescrito para `rings.py`. Suite: 1803 passed.
+
+---
+
 ### v0.38.0 (2026-05-16) — Views architecture · save verb · secretary · wrap · watchdog
 
 Bloque grande de pulido arquitectónico (74 commits desde v0.37, 5 ADRs nuevos). Tres ejes:

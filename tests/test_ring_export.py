@@ -9,6 +9,7 @@ import pytest
 from views.ring.export import (
     DEFAULT_DAYS,
     DEFAULT_ENABLED,
+    _backfill_orbit_ids,
     _default_list_name,
     _due_iso,
     _expand_occurrences,
@@ -274,6 +275,107 @@ class TestBuildPayload:
     def test_default_list_is_workspace_name(self, tmp_path):
         payload = build_payload(tmp_path)
         assert payload["list"] == tmp_path.name
+
+
+class TestBackfillOrbitIds:
+    def test_assigns_id_when_ring_date_time_present(self):
+        data = {"tasks": [{"date": "2026-05-21", "time": "11:00",
+                           "ring": "5m", "status": "pending"}],
+                "milestones": [], "events": [], "reminders": []}
+        n = _backfill_orbit_ids(data)
+        assert n == 1
+        oid = data["tasks"][0]["orbit_id"]
+        assert isinstance(oid, str) and len(oid) == 8
+        assert all(c in "0123456789abcdef" for c in oid)
+
+    def test_skips_when_no_ring(self):
+        data = {"tasks": [{"date": "2026-05-21", "time": "11:00",
+                           "status": "pending"}],
+                "milestones": [], "events": [], "reminders": []}
+        assert _backfill_orbit_ids(data) == 0
+        assert "orbit_id" not in data["tasks"][0] or data["tasks"][0]["orbit_id"] is None
+
+    def test_skips_when_no_time(self):
+        data = {"tasks": [{"date": "2026-05-21", "ring": "5m",
+                           "status": "pending"}],
+                "milestones": [], "events": [], "reminders": []}
+        assert _backfill_orbit_ids(data) == 0
+
+    def test_skips_when_no_date(self):
+        data = {"tasks": [{"time": "11:00", "ring": "5m",
+                           "status": "pending"}],
+                "milestones": [], "events": [], "reminders": []}
+        assert _backfill_orbit_ids(data) == 0
+
+    def test_preserves_existing_id(self):
+        data = {"tasks": [{"date": "2026-05-21", "time": "11:00",
+                           "ring": "5m", "orbit_id": "deadbeef",
+                           "status": "pending"}],
+                "milestones": [], "events": [], "reminders": []}
+        assert _backfill_orbit_ids(data) == 0
+        assert data["tasks"][0]["orbit_id"] == "deadbeef"
+
+    def test_counts_across_kinds(self):
+        common = {"date": "2026-05-21", "time": "11:00", "ring": "5m"}
+        data = {
+            "tasks":      [{**common, "status": "pending"}],
+            "milestones": [{**common, "status": "pending"}],
+            "events":     [{**common}],
+            "reminders":  [{**common}],
+        }
+        assert _backfill_orbit_ids(data) == 4
+        for k in ("tasks", "milestones", "events", "reminders"):
+            assert data[k][0].get("orbit_id")
+
+    def test_unique_ids_per_item(self):
+        common = {"date": "2026-05-21", "time": "11:00", "ring": "5m",
+                  "status": "pending"}
+        data = {"tasks": [dict(common) for _ in range(5)],
+                "milestones": [], "events": [], "reminders": []}
+        _backfill_orbit_ids(data)
+        ids = [t["orbit_id"] for t in data["tasks"]]
+        assert len(set(ids)) == 5
+
+
+class TestBuildPayloadBackfill:
+    def test_backfill_persisted_to_agenda(self, tmp_path, monkeypatch):
+        """Real round-trip: agenda con ring sin orbit_id → build_payload
+        rellena id, lo escribe a agenda.md, y el item entra a ring.json."""
+        # Workspace layout: <ws>/<type-emoji-dir>/<project-dir>/<files>
+        # The workspace's own orbit.json declares the type emoji vocabulary.
+        type_dir = tmp_path / "🌀investigacion"
+        proj = type_dir / "🌀p1"
+        proj.mkdir(parents=True)
+        (proj / "p1-project.md").write_text("# p1\n")
+        agenda = proj / "p1-agenda.md"
+        agenda.write_text(
+            "# Agenda\n\n"
+            "## ✅ Tareas\n"
+            "- [ ] Stand-up (2026-05-21) ⏰11:00 🔔5m\n"
+        )
+        (tmp_path / "orbit.json").write_text(json.dumps({
+            "types": {"investigacion": "🌀"},
+        }))
+        # Point ORBIT_HOME elsewhere so _projects_under uses the workspace
+        # branch (_iter_workspace_projects), which reads workspace orbit.json.
+        import core.config as _cfg
+        import views.ring.export as _exp
+        elsewhere = tmp_path / "_not_home"
+        elsewhere.mkdir()
+        monkeypatch.setattr(_cfg, "ORBIT_HOME", elsewhere)
+        monkeypatch.setattr(_exp, "ORBIT_HOME", elsewhere)
+
+        payload = build_payload(tmp_path, today=date(2026, 5, 21))
+
+        assert payload["backfilled"] == 1
+        # agenda.md should now carry an [orbit:XXXXXXXX] tag
+        text = agenda.read_text()
+        import re
+        m = re.search(r"\[orbit:([0-9a-f]{8})\]", text)
+        assert m is not None
+        # And the item should have entered the payload
+        assert len(payload["items"]) == 1
+        assert payload["items"][0]["orbit_id"] == m.group(1)
 
 
 class TestWritePayload:

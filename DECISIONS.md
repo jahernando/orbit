@@ -817,7 +817,7 @@ Tres fricciones reales:
 3. **Date prefix sólo para no-md import** (colisión real al importar el mismo PDF varias veces). El `.md` preserva el nombre fuente — el usuario los nombra con intención.
 4. **NFD stripping en nombres `.md`** ([project_orbit_obsidian_nfd_filenames]): los acentos descompuestos rompen wiki-links en Obsidian/macOS; al importar/linkar un .md el destino lleva el nombre normalizado (NFKD + filter combining marks).
 5. **Defaults**: prompt interactivo Enter→import; non-tty→link (conservador: scripts no deben mover ficheros silenciosamente).
-6. **Aliases legacy**: `--track` (→ `--link`) y `--deliver` (→ `--import`) siguen funcionando con warning a stderr.
+6. **Aliases legacy**: `--track` (→ `--link`) y `--deliver` (→ `--import`) se mantuvieron transitoriamente con warning a stderr; **retirados 2026-05-20** tras la "vive un día" de validación (forma única `--import`/`--link` en `log`, `hl add`, `nt create`, `nt import`, `note`).
 
 **Where lives**: `core/link_import.py` (nuevo: `ask_mode`, `apply_mode`, `resolve_mode`, `echo_mode`). Lo consumen `core/log.py::add_entry_with_ref` y `core/highlights.py::run_hl_add`. `core/notes.py::run_note_create/import` ya hacía symlink en notes/ (modelo externa de [ADR-026](#adr-026--noteexterna-como-relative-symlink-en-notes--registry-minimal-deroga-adr-024)) — sólo se renombra el param `track` → `as_link`. Warning de deprecación en `orbit.py::_warn_deprecated_flags`.
 
@@ -832,6 +832,25 @@ Tres fricciones reales:
 - *Symlink en `cloud/<subdir>/` para no-md link*: los cloud-sync (OneDrive) no siguen symlinks por construcción, así que el destino aparece roto en web/móvil. Aceptado: el caso "link a un PDF" es local-only en práctica; el usuario abre el PDF desde el Mac, no desde la web.
 - *No-tty default = link*: rompe scripts que asumían "no-tty → import". Compromiso elegido: minimizar sorpresa al usuario interactivo (Enter→import) y al script (no movimiento sin consentimiento).
 - *Modelo unificado vs flags por comando*: rechazado tener `--cloud` en algunos y `--import` en otros — el prompt I/L (`I`mportar / `L`ink) marca el vocabulario.
+
+---
+
+## ADR-041 — Excepción a "views no escriben verdad": backfill de `orbit_id` en ring export
+
+**Estado**: aceptada (2026-05-21).
+
+**Contexto**: `views/ring/export.py` proyecta `agenda.md` → `ring.json`. Para que el daemon EventKit haga upsert idempotente en Reminders.app necesita un `orbit_id` estable por cita. Items sin `[orbit:XXXX]` (típicamente eventos pegados a mano o copiados desde correo, no creados por `ev add`) eran descartados silenciosamente — el usuario tenía `🔔` en el .md y no sonaba nada.
+
+**Decisión**: cuando `build_payload` encuentra un item con `ring` + `date` + `time` pero sin `orbit_id`, mintea un id (`secrets.token_hex(4)`) y reescribe la línea en `<project>-agenda.md` antes de continuar la proyección. Es una **excepción documentada** a la regla "views no escriben verdad" (ADR-033) — el view escribe la verdad porque la verdad estaba incompleta para cumplir la intención que ya estaba expresada (el `🔔`).
+
+**Consecuencias**:
+- Pros: las alarmas pedidas por el usuario suenan, sin requerir intervención manual.
+- Contras: el view introduce una escritura en `agenda.md` (visible en git diff si la agenda está trackeada). Mitigación: el cambio es localizado (sólo añade `[orbit:XXXX]`), idempotente (id ya existente nunca se sobrescribe), y los nuevos items posteriores que se creen por `ev add` ya traen el id.
+
+**Tradeoff considerado**:
+- *Doctor lo flaggea y el usuario lo arregla*: respeta la regla pero deja la alarma sin sonar entre que se introduce el item y el siguiente `orbit doctor --fix`. Inaceptable para el caso de uso "no me quiero perder el meeting".
+- *Export grita pero no arregla*: máxima visibilidad pero cero acción — el usuario tiene que volver a tocar la cita. Para un sistema personal con 30+ items/semana es fricción que se acumula.
+- *Generar id en memoria sin persistir*: el id sería distinto en cada refresh ⇒ el daemon crearía un reminder nuevo cada vez en vez de actualizar el existente ⇒ duplicados. Inaceptable.
 
 ---
 

@@ -16,11 +16,13 @@ each given a unique ``orbit_id`` of the form ``<base_id>-<YYYY-MM-DD>`` so
 the daemon can match them as distinct EKReminders.
 """
 import json
+import secrets
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from threading import Thread as _Thread
 from typing import Iterator, Optional
 
+from core.agenda.io import _write_agenda
 from core.agenda_cmds import _next_occurrence, _read_agenda
 from core.config import (
     ORBIT_HOME,
@@ -217,6 +219,40 @@ def _projects_under(workspace_root: Path) -> Iterator[Path]:
         yield from _iter_workspace_projects(workspace_root)
 
 
+def _new_orbit_id() -> str:
+    """Generate a fresh 8-char hex id (same format as cal/share + focus)."""
+    return secrets.token_hex(4)
+
+
+def _backfill_orbit_ids(data: dict) -> int:
+    """Assign orbit_id in-place to items with ring + date + time but no id.
+
+    Modifies ``data`` in place. Returns the number of items backfilled.
+    Items that lack ring or date or time are left untouched — they're
+    inert from the ring's point of view anyway.
+
+    Justification for views→truth-layer write (one of the two exceptions
+    to the views-no-escriben rule): items with ``🔔`` and no
+    ``[orbit:XXXX]`` are silently dropped by the ring exporter (daemon
+    needs the id for idempotent EKReminder upsert). The fix that
+    preserves user intent — they *did* type 🔔 — is to mint an id and
+    persist it back to agenda.md. The alternative (warn-and-skip) leaves
+    citas without their alarm and is the bug we're fixing.
+    """
+    n = 0
+    for key in ("tasks", "milestones", "events", "reminders"):
+        for it in data.get(key, []):
+            if it.get("orbit_id"):
+                continue
+            if not it.get("ring"):
+                continue
+            if not it.get("date") or not it.get("time"):
+                continue
+            it["orbit_id"] = _new_orbit_id()
+            n += 1
+    return n
+
+
 def build_payload(workspace_root: Path, today: Optional[date] = None,
                   cfg: Optional[dict] = None) -> dict:
     """Build the ring payload for items under workspace_root.
@@ -224,6 +260,10 @@ def build_payload(workspace_root: Path, today: Optional[date] = None,
     Reads ring config from <workspace>/orbit.json. When disabled, returns
     a payload with `items: []` but still names the workspace's list so
     the daemon can sweep stale reminders from that list.
+
+    Side effect: backfills missing ``orbit_id`` on items that carry ring
+    + date + time. See :func:`_backfill_orbit_ids` for rationale. The
+    count is reported in ``payload["backfilled"]``.
     """
     cfg = cfg or _load_ring_config(workspace_root)
     today = today or date.today()
@@ -233,6 +273,7 @@ def build_payload(workspace_root: Path, today: Optional[date] = None,
     w_start = today
     w_end = today + timedelta(days=days)
     items: list = []
+    backfilled = 0
 
     if enabled:
         for project_dir in _projects_under(workspace_root):
@@ -245,6 +286,13 @@ def build_payload(workspace_root: Path, today: Optional[date] = None,
                 data = _read_agenda(agenda_path)
             except Exception:
                 continue
+            n = _backfill_orbit_ids(data)
+            if n:
+                try:
+                    _write_agenda(agenda_path, data)
+                    backfilled += n
+                except Exception:
+                    pass  # if write fails, items just won't enter ring this round
             proj_name = project_dir.name
             for kind, key in (("task", "tasks"), ("milestone", "milestones"),
                               ("event", "events"), ("reminder", "reminders")):
@@ -258,6 +306,7 @@ def build_payload(workspace_root: Path, today: Optional[date] = None,
         "enabled":      enabled,
         "list":         list_name,
         "items":        items,
+        "backfilled":   backfilled,
     }
 
 
@@ -303,13 +352,14 @@ def refresh_all() -> list:
         try:
             path, payload = refresh(ws)
             results.append({
-                "workspace": ws.name,
-                "path":      str(path),
-                "count":     len(payload["items"]),
-                "list":      payload["list"],
-                "enabled":   payload["enabled"],
-                "days":      (date.fromisoformat(payload["window_end"]) -
-                              date.fromisoformat(payload["window_start"])).days,
+                "workspace":  ws.name,
+                "path":       str(path),
+                "count":      len(payload["items"]),
+                "list":       payload["list"],
+                "enabled":    payload["enabled"],
+                "days":       (date.fromisoformat(payload["window_end"]) -
+                               date.fromisoformat(payload["window_start"])).days,
+                "backfilled": payload.get("backfilled", 0),
             })
         except Exception as exc:
             results.append({"workspace": ws.name, "error": str(exc)})
@@ -355,8 +405,10 @@ def run_ring_refresh(daemon: bool = True) -> int:
             print(f"  ✗ {r['workspace']}: {r['error']}")
         else:
             state = "" if r["enabled"] else " [disabled]"
+            bf = r.get("backfilled", 0)
+            bf_str = f" · 🆔 {bf} orbit_ids rellenados" if bf else ""
             print(f"  ✓ {r['workspace']}: {r['count']} items "
-                  f"→ list={r['list']!r}{state} ({r['days']}d)")
+                  f"→ list={r['list']!r}{state} ({r['days']}d){bf_str}")
     if daemon:
         ok, msg = invoke_daemon()
         if ok:
@@ -387,7 +439,11 @@ def _action_ring_refresh(ctx):
 
     _Thread(target=_bg, daemon=True).start()
     n = sum(r.get("count", 0) for r in results if "error" not in r)
-    return {"ok": True, "msg": f"{n} items across {len(results)} workspace(s)"}
+    bf = sum(r.get("backfilled", 0) for r in results if "error" not in r)
+    msg = f"{n} items across {len(results)} workspace(s)"
+    if bf:
+        msg += f" · 🆔 {bf} orbit_ids rellenados"
+    return {"ok": True, "msg": msg}
 
 
 PLIST_LABEL = "com.orbit.ring-daemon"
