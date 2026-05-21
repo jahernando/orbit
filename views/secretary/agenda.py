@@ -192,7 +192,7 @@ def _render_pending_row(project_dir, t) -> str:
     if failed:
         extras += f" ❌{failed}"
     desc = (desc_raw + extras).replace("|", "\\|")
-    return f"| ⏩ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
+    return f"| ⏩ |  |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
 def _render_overdue_row(project_dir, t) -> str:
@@ -200,7 +200,7 @@ def _render_overdue_row(project_dir, t) -> str:
     desc_raw = t.get("desc", "") or ""
     d = t.get("date", "")
     desc = f"{desc_raw} (📅{d})".replace("|", "\\|")
-    return f"| ⚠️ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
+    return f"| ⚠️ |  |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
 def _render_items_table(items) -> list:
@@ -208,10 +208,12 @@ def _render_items_table(items) -> list:
 
     Variante de `_agenda_table.render_day_rows` que NO emite el header;
     devuelve sólo las filas. Permite componer una tabla mixta (citas +
-    vencidas/⏩) bajo un único header.
+    vencidas/⏩) bajo un único header. Layout 7-col: kind | 🔔 | overlap
+    | Inicio | Fin | Desc | Proyecto.
     """
     if not items:
         return []
+    from views.secretary._agenda_table import bell_cell
     timed = [it for it in items if it[1].get("time")]
     untimed = [it for it in items if not it[1].get("time")]
     timed.sort(key=lambda x: start_min(x[1]))
@@ -219,14 +221,16 @@ def _render_items_table(items) -> list:
     rows = []
     for idx, (kind, item, _pdir, proj_md) in enumerate(timed):
         emoji = KIND_EMOJI[kind]
+        bell = bell_cell(item)
         st, en = time_pair(item, DEFAULT_MIN.get(kind))
         ov = "" if kind == "reminders" else overlap_char(overlaps.get(idx, 0))
         desc = _desc_with_event_indicators(kind, item)
-        rows.append(f"| {emoji} | {ov} | {st} | {en} | {desc} | {proj_md} |")
+        rows.append(f"| {emoji} | {bell} | {ov} | {st} | {en} | {desc} | {proj_md} |")
     for kind, item, _pdir, proj_md in untimed:
         emoji = KIND_EMOJI[kind]
+        bell = bell_cell(item)
         desc = _desc_with_event_indicators(kind, item)
-        rows.append(f"| {emoji} |  |  |  | {desc} | {proj_md} |")
+        rows.append(f"| {emoji} | {bell} |  |  |  | {desc} | {proj_md} |")
     return rows
 
 
@@ -245,7 +249,7 @@ def _today_block(today_items, overdue, pendings_today) -> list:
     for project_dir, t in overdue[:OVERDUE_CAP]:
         rows.append(_render_overdue_row(project_dir, t))
     if overflow:
-        rows.append(f"| ⚠️ |  |  |  | *…y {overflow} más vencidas* |  |")
+        rows.append(f"| ⚠️ |  |  |  |  | *…y {overflow} más vencidas* |  |")
 
     for project_dir, t in pendings_today:
         rows.append(_render_pending_row(project_dir, t))

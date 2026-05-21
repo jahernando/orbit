@@ -300,3 +300,58 @@ class TestGenerate:
         assert f"### {d}" in text
         assert "| ⏩ |" in text
         assert "Triar futuro" in text
+
+
+class TestBellColumn:
+    """Columna 🔔 en la tabla de citas. Lee de la verdad (agenda.md), no
+    de ring.json: muestra 🔔 si el item de proyecto lleva ring en su .md."""
+
+    def test_event_with_ring_shows_bell(self, agenda_env):
+        today = date.today()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "## 📅 Eventos\n"
+                f"{today.isoformat()} — Reunión ⏰10:00 🔔5m\n"
+            ),
+        )
+        out = agenda_env["tmp"] / "agenda.md"
+        sec_agenda.generate(out)
+        text = out.read_text()
+        # Fila con bell. La columna está justo después del kind-emoji.
+        assert "| 📅 | 🔔 |" in text
+
+    def test_event_without_ring_empty_bell(self, agenda_env):
+        today = date.today()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "## 📅 Eventos\n"
+                f"{today.isoformat()} — Sin alarma ⏰10:00\n"
+            ),
+        )
+        out = agenda_env["tmp"] / "agenda.md"
+        sec_agenda.generate(out)
+        text = out.read_text()
+        # Sin ring: celda vacía.
+        assert "| 📅 |  |" in text
+        assert "| 📅 | 🔔 |" not in text
+
+    def test_pending_rows_have_empty_bell(self, agenda_env):
+        """⏩ y ⚠️ filas mantienen la columna 🔔 (vacía) para alineación."""
+        today = date.today()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=f"## ✅ Tareas\n- [ ] Decidir X ⏩{today.isoformat()}\n",
+        )
+        out = agenda_env["tmp"] / "agenda.md"
+        sec_agenda.generate(out)
+        text = out.read_text()
+        # ⏩ row: 7 columnas (con bell vacío).
+        # Cuenta los pipes en la línea de la fila para confirmar 8 (= 7 cols).
+        for line in text.splitlines():
+            if line.startswith("| ⏩ |"):
+                assert line.count("|") == 8, f"row mal alineada: {line!r}"
+                break
+        else:
+            pytest.fail("no encontré la fila ⏩")
