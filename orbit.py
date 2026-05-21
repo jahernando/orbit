@@ -865,8 +865,7 @@ def run_dash_cold(silent: bool = False):
     día (day_open), arranque del shell, o `orbit dash` manual. NO se
     dispara en background tras mutaciones.
     """
-    from views.ring import ring_next as ring_next_view
-    from views.ring import ring_today as ring_today_view
+    from views.ring import rings as rings_view
     from views.secretary import calendar as sec_calendar
     from views.secretary import projects as sec_projects
     from views.secretary import report_summary as sec_report
@@ -876,11 +875,10 @@ def run_dash_cold(silent: bool = False):
     sec_projects.generate(SECRETARY_DIR / "projects.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
     sec_report.generate(SECRETARY_DIR / "report-summary.md")
-    ring_today_view.generate(RING_PANEL_DIR / "ring-today.md")
-    ring_next_view.generate(RING_PANEL_DIR / "ring-next.md")
+    rings_view.generate(RING_PANEL_DIR / "rings.md")
 
     if not silent:
-        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,calendar,report-summary}.md + 📊panel/ring/{ring-today,ring-next}.md)")
+        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,calendar,report-summary}.md + 📊panel/ring/rings.md)")
     return 0
 
 
@@ -928,11 +926,11 @@ def _run_full_refresh_coalesced(project_hint=None) -> None:
 
     Replica en bg el orden del chain `commit_post` (ring → secretary →
     ics) sin render, que se reserva para save. Ring va primero porque
-    `ring.json` es input de los viewers `ring-today/next` de secretary;
-    si dash se ejecutara antes, los viewers leerían el ring.json del
-    refresh anterior. Cada paso fail-isolated: un fallo en ring no
-    impide dash, etc. project_hint se propaga solo a ics (único writer
-    con per-project artifacts); dash y ring no soportan filtro útil
+    `ring.json` es input del viewer `rings.md` de panel/ring; si dash
+    se ejecutara antes, el viewer leería el ring.json del refresh
+    anterior. Cada paso fail-isolated: un fallo en ring no impide dash,
+    etc. project_hint se propaga solo a ics (único writer con
+    per-project artifacts); dash y ring no soportan filtro útil
     (artefactos workspace-agregados).
 
     F2 (2026-05-19): la parte de dash ahora es hot only (sólo agenda.md).

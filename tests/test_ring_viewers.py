@@ -1,9 +1,9 @@
-"""Tests for `views/ring/ring_today.py` + `ring_next.py` + helper.
+"""Tests for `views/ring/rings.py` + helper `_ring_table`.
 
 Cubre:
 - helper `_format_offset`, `cita_and_suena`, `ring_dt`
 - viewer behaviour: sin ring.json → mensaje;
-  con ring.json → tabla; filtrado por día-de-alarma.
+  con ring.json → tabla; filtrado por día-de-alarma; secciones por día.
 """
 
 import json
@@ -85,7 +85,7 @@ class TestRingDt:
         assert ring_dt({}) is None
 
 
-# ── viewers ─────────────────────────────────────────────────────────────
+# ── viewer ──────────────────────────────────────────────────────────────
 
 
 def _write_ring_json(tmp_path: Path, items: list, **extras) -> None:
@@ -102,24 +102,28 @@ def _write_ring_json(tmp_path: Path, items: list, **extras) -> None:
     (tmp_path / ".reminders" / "ring.json").write_text(json.dumps(payload))
 
 
-class TestRingTodayViewer:
+class TestRingsViewer:
     def test_no_ring_json_message(self, orbit_env):
-        from views.ring import ring_today
-        out = orbit_env["tmp"] / "ring-today.md"
-        ring_today.generate(out)
+        from views.ring import rings
+        out = orbit_env["tmp"] / "rings.md"
+        rings.generate(out)
         text = out.read_text()
         assert "Sin `ring.json`" in text
 
-    def test_no_items_today_message(self, orbit_env):
-        from views.ring import ring_today
+    def test_no_items_at_all(self, orbit_env):
+        from views.ring import rings
         _write_ring_json(orbit_env["tmp"], [])
-        out = orbit_env["tmp"] / "ring-today.md"
-        ring_today.generate(out)
+        out = orbit_env["tmp"] / "rings.md"
+        rings.generate(out)
         text = out.read_text()
-        assert "Sin alarmas programadas para hoy" in text
+        assert "Sin alarmas programadas" in text
+        # Hoy aparece como sección aunque esté vacía
+        assert "## 🔔 Hoy" in text
+        # Próximos días NO aparece si no hay items
+        assert "## 🔔 Próximos días" not in text
 
-    def test_item_today_renders(self, orbit_env):
-        from views.ring import ring_today
+    def test_item_today_renders_in_today_section(self, orbit_env):
+        from views.ring import rings
         today = date.today()
         due = datetime.combine(today, datetime.min.time()).replace(hour=13)
         _write_ring_json(orbit_env["tmp"], [{
@@ -131,17 +135,26 @@ class TestRingTodayViewer:
             "alarm_minutes": 5,
             "list":          "test-list",
         }])
-        out = orbit_env["tmp"] / "ring-today.md"
-        ring_today.generate(out)
+        out = orbit_env["tmp"] / "rings.md"
+        rings.generate(out)
         text = out.read_text()
-        assert "📅" in text
+        # Counter cuenta el item
+        assert "🔔 Hoy: 1" in text
+        # Item visible
         assert "comida con Xabi" in text
         assert "13:00" in text
         assert "(-5m)" in text
+        # Bajo "Hoy", no bajo "Próximos días"
+        hoy_idx = text.find("## 🔔 Hoy")
+        prox_idx = text.find("## 🔔 Próximos días")
+        comida_idx = text.find("comida con Xabi")
+        assert hoy_idx >= 0
+        assert hoy_idx < comida_idx
+        assert prox_idx == -1 or comida_idx < prox_idx
 
     def test_item_tomorrow_with_one_day_alarm_appears_today(self, orbit_env):
-        """alarm_minutes=1440 hace que un item de mañana suene HOY → debe aparecer."""
-        from views.ring import ring_today
+        """alarm_minutes=1440 hace que un item de mañana suene HOY → debe ir a Hoy."""
+        from views.ring import rings
         tomorrow = date.today() + timedelta(days=1)
         due = datetime.combine(tomorrow, datetime.min.time()).replace(hour=9)
         _write_ring_json(orbit_env["tmp"], [{
@@ -153,16 +166,20 @@ class TestRingTodayViewer:
             "alarm_minutes": 1440,
             "list":          "test-list",
         }])
-        out = orbit_env["tmp"] / "ring-today.md"
-        ring_today.generate(out)
+        out = orbit_env["tmp"] / "rings.md"
+        rings.generate(out)
         text = out.read_text()
         assert "deadline" in text
         assert "(-1d)" in text
         assert tomorrow.strftime("%d/%m") in text  # cita muestra día explícito
+        # Cae en Hoy (porque el ring suena hoy aunque cita sea mañana)
+        hoy_idx = text.find("## 🔔 Hoy")
+        deadline_idx = text.find("deadline")
+        assert hoy_idx >= 0 and hoy_idx < deadline_idx
 
-    def test_item_tomorrow_with_5m_alarm_not_in_today(self, orbit_env):
-        """alarm a 5m de un item de mañana NO aparece hoy."""
-        from views.ring import ring_today
+    def test_item_tomorrow_with_5m_alarm_goes_to_proximos(self, orbit_env):
+        """alarm a 5m de un item de mañana → sección Próximos días, no Hoy."""
+        from views.ring import rings
         tomorrow = date.today() + timedelta(days=1)
         due = datetime.combine(tomorrow, datetime.min.time()).replace(hour=9)
         _write_ring_json(orbit_env["tmp"], [{
@@ -174,31 +191,21 @@ class TestRingTodayViewer:
             "alarm_minutes": 5,
             "list":          "test-list",
         }])
-        out = orbit_env["tmp"] / "ring-today.md"
-        ring_today.generate(out)
+        out = orbit_env["tmp"] / "rings.md"
+        rings.generate(out)
         text = out.read_text()
-        assert "tarea mañana" not in text
-        assert "Sin alarmas programadas para hoy" in text
-
-    def test_disabled_ring_shows_in_header(self, orbit_env):
-        from views.ring import ring_today
-        _write_ring_json(orbit_env["tmp"], [], enabled=False)
-        out = orbit_env["tmp"] / "ring-today.md"
-        ring_today.generate(out)
-        text = out.read_text()
-        assert "ring deshabilitado" in text
-
-
-class TestRingNextViewer:
-    def test_no_ring_json_message(self, orbit_env):
-        from views.ring import ring_next
-        out = orbit_env["tmp"] / "ring-next.md"
-        ring_next.generate(out)
-        text = out.read_text()
-        assert "Sin `ring.json`" in text
+        assert "tarea mañana" in text
+        # Counter
+        assert "Próximos 7d: 1" in text
+        # Sección Próximos días presente, con sub-header del día
+        assert "## 🔔 Próximos días" in text
+        assert f"### {tomorrow.isoformat()}" in text
+        prox_idx = text.find("## 🔔 Próximos días")
+        tarea_idx = text.find("tarea mañana")
+        assert prox_idx >= 0 and prox_idx < tarea_idx
 
     def test_groups_by_ring_day(self, orbit_env):
-        from views.ring import ring_next
+        from views.ring import rings
         today = date.today()
         d2 = today + timedelta(days=2)
         items = [
@@ -224,19 +231,20 @@ class TestRingNextViewer:
             },
         ]
         _write_ring_json(orbit_env["tmp"], items)
-        out = orbit_env["tmp"] / "ring-next.md"
-        ring_next.generate(out)
+        out = orbit_env["tmp"] / "rings.md"
+        rings.generate(out)
         text = out.read_text()
-        # dos sub-headers de día
-        assert f"## {today.isoformat()}" in text
-        assert f"## {d2.isoformat()}" in text
-        # ambos items presentes
+        # Sub-header del día d2 bajo Próximos días
+        assert f"### {d2.isoformat()}" in text
+        # Item de hoy en Hoy, item futuro en Próximos
         assert "hoy" in text
         assert "pasado mañana" in text
+        assert "🔔 Hoy: 1" in text
+        assert "Próximos 7d: 1" in text
 
     def test_ring_in_past_excluded(self, orbit_env):
-        """Item cuyo ring ya pasó NO aparece en ring-next."""
-        from views.ring import ring_next
+        """Item cuyo ring ya pasó NO aparece en rings.md."""
+        from views.ring import rings
         yesterday = date.today() - timedelta(days=1)
         due = datetime.combine(yesterday, datetime.min.time()).replace(hour=9)
         _write_ring_json(orbit_env["tmp"], [{
@@ -248,8 +256,16 @@ class TestRingNextViewer:
             "alarm_minutes": 5,
             "list":          "test-list",
         }])
-        out = orbit_env["tmp"] / "ring-next.md"
-        ring_next.generate(out)
+        out = orbit_env["tmp"] / "rings.md"
+        rings.generate(out)
         text = out.read_text()
         assert "antiguo" not in text
         assert "Sin alarmas programadas" in text
+
+    def test_disabled_ring_shows_in_header(self, orbit_env):
+        from views.ring import rings
+        _write_ring_json(orbit_env["tmp"], [], enabled=False)
+        out = orbit_env["tmp"] / "rings.md"
+        rings.generate(out)
+        text = out.read_text()
+        assert "ring deshabilitado" in text
