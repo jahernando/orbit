@@ -854,6 +854,28 @@ Tres fricciones reales:
 
 ---
 
+## ADR-042 — Vista anual `mission/notes/YYYY-focus.md` como agregación de los semanales
+
+**Estado**: aceptada (2026-05-22).
+
+**Contexto**: tras un mes de uso de `orbit focus week` (ADR-038), el usuario pide tracking longitudinal — el "Tracking longitudinal `reviews/tracking.md`" que estaba en el parking lot v2 del diseño original ([[project-orbit-focus]]). Los contadores semanales (`done/total` por carril) responden a "cómo va esta semana" pero no a "cómo se sostiene un anchor a lo largo del año" ni "qué % de bloques push se acaban haciendo".
+
+**Decisión**: añadir `orbit focus year [--year YYYY]` que produce `mission/notes/YYYY-focus.md`: tabla con una fila por semana ISO (52 ó 53) y celdas con un emoji por bloque (🍅 hecho / ❌ no hecho) agrupados por proyecto dentro de cada carril. Status por semana: 🟢 normal / 🟡 especial / `—` sin fichero. Footer con totales por carril, excluyendo semanas `especial`. La función agregadora `_collect_year` y el renderer `_format_year_file` son puras y testeables sin I/O.
+
+**Refresh**: la vista anual se regenera automáticamente al cerrar `orbit focus week` (best-effort, vía `_refresh_year_silent` que se traga las excepciones para no abortar el flujo semanal) y bajo demanda con `orbit focus year`. El fichero es **view** — `run_focus_year` sobrescribe sin preguntar.
+
+**Consecuencias**:
+- Pros: lectura única del año cabe en una pantalla; muestra patrones de sostén (qué anchor aguantó N semanas, qué joy se evaporó). Reusa `_parse_week_file` + `_parse_week_blocks_detailed` + `_build_id_status_index` ya existentes — cero parser nuevo. Daltónico-safe (memoria [[user-colorblind]]): 🟢/🟡 son los únicos colores y el usuario los distingue; 🍅 vs ❌ tienen forma propia.
+- Contras: 52-53 filas por año caben en md pero la tabla es ancha; con multi-proyecto en push se usa `<br>` dentro de celda (renderiza bien en Obsidian y GitHub, no en todos los markdowns). Si crece, se puede partir por trimestre — no es urgente en MVP.
+
+**Tradeoff considerado**:
+- *Resumen por carril (`2/2`) en vez de emoji por bloque*: más compacto pero pierde la información de "hice 1 de 2 bloques" — peor para detectar patrones.
+- *Auto-refresh en `commit_post`*: invasivo para algo que cambia sólo al cerrar semanas (~1/semana).
+- *Una tabla por trimestre*: más navegable pero 4× la complejidad del renderer; aplazado a v3 si la única tabla duele al usar.
+- *Incluir semanas `especial` en el agregado*: contradice la regla "targets aparcados en especial" del diseño original ([[project-orbit-focus]]).
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

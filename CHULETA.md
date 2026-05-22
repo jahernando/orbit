@@ -583,6 +583,19 @@ Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` 
 
 Los bloques aparecen automáticamente en Calendar.app (vía `.ics`) por ser tasks normales de mission.
 
+### Vista anual
+
+```bash
+orbit focus year              # regenera mission/notes/YYYY-focus.md (año actual)
+orbit focus year --year 2025  # otro año
+```
+
+Construye una tabla con una fila por semana ISO (52 ó 53) y columnas `Semana | Status | Anchor | Push | Joy`. La celda de cada carril muestra el proyecto y un tomate 🍅 por bloque hecho o una cruz ❌ por bloque planificado-no-hecho (`[[paper-neutrinos]] 🍅🍅`); con dos proyectos en push se renderizan en líneas separadas (`<br>`). La columna `Status` usa 🟢 para semana normal, 🟡 para `especial` y `—` para semanas sin fichero.
+
+Footer `## Totales` agrega bloques hechos / planificados por carril; **las semanas `especial` se excluyen del agregado** (sus targets están aparcados por diseño).
+
+Refresh: además del verbo explícito, la vista anual se regenera automáticamente al cerrar `orbit focus week` (creación inicial o menú opciones 1 y 3). El fichero anual es **vista derivada** — `orbit focus year` lo sobrescribe sin preguntar; edita los semanales, no el anual.
+
 ---
 
 ## report — informe de actividad

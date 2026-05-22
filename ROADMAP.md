@@ -87,6 +87,8 @@ generador HTML, integración con `orbit` CLI y test).
 
 **Estado**: ✅ IMPLEMENTADO 2026-05-18. Plan F0–F9 completo. Commits `e866a3d` → `597f51a` + docs en este commit. Ver [ADR-038](DECISIONS.md#adr-038--focus-en-corefocuspy-bloques-como-tasks-en-mission-con-id-propio) para el detalle de las cinco decisiones estructurales tomadas durante la implementación (carril por sección del fichero semanal en vez de campo, contador por orbit-id en vez de wikilink, plantilla per-workspace en bullets, etc.). Diseño original (parcialmente superado por la implementación) en la memoria `project-orbit-focus`.
 
+**Extensión 2026-05-22** ✅: vista anual `orbit focus year` — tabla con una fila por semana ISO, tomates 🍅 / cruces ❌ por bloque, status 🟢/🟡, totales por carril. Cierra el "Tracking longitudinal" del parking lot v2. Plan F1-F5 en 5 commits. Ver [ADR-042](DECISIONS.md#adr-042--vista-anual-missionnotesyyyy-focusmd-como-agregación-de-los-semanales).
+
 **Objetivo**: codificar el sistema de planificación semanal por carriles que el usuario ha validado manualmente durante meses. Un bloque = una task en `mission/agenda.md` con `[[wikilink-a-proyecto]]` + `time HH:MM-HH:MM` (≥90 min). El carril (anchor/push/joy) no es campo: se deriva del archivo semanal `mission/notes/2026-WNN-focus.md`.
 
 **Comando tentativo**:
