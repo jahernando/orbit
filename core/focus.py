@@ -994,6 +994,78 @@ def _regenerate_counter(week_file: Path, mission_dir: Path) -> tuple[int, int]:
     return done, total
 
 
+# ── Vista anual: agregación + render ─────────────────────────────────────
+
+def _weeks_in_iso_year(year: int) -> int:
+    """Return the number of ISO weeks in *year* (52 or 53).
+
+    Trick: Dec 28 always falls in the last ISO week of the calendar year.
+    """
+    return date(year, 12, 28).isocalendar()[1]
+
+
+def _year_file_path(mission_dir: Path, year: int) -> Path:
+    """Return ``mission/notes/<YYYY>-focus.md``."""
+    return mission_dir / "notes" / f"{year}-focus.md"
+
+
+def _collect_year(mission_dir: Path, year: int) -> list[dict]:
+    """Aggregate per-week focus state across *year*.
+
+    Returns a list with one entry per ISO week (W01..W52/53). Each entry::
+
+        {
+          "week_label": "2026-W22",
+          "week_num":   22,
+          "status":     "normal" | "especial" | "—",   # "—" if no file
+          "has_file":   bool,
+          "rails":      {"anchor": [(project, [done?, ...]), ...],
+                         "push":   [...],
+                         "joy":    [...]},
+        }
+
+    A block is "done" iff its orbit_id maps to ``status == "done"`` in
+    ``mission/agenda.md``. Order of projects within a rail is preserved
+    from the week file.
+    """
+    n_weeks = _weeks_in_iso_year(year)
+    id_status = _build_id_status_index(mission_dir)
+    rows: list[dict] = []
+    for w in range(1, n_weeks + 1):
+        label = f"{year}-W{w:02d}"
+        week_file = mission_dir / "notes" / f"{label}-focus.md"
+        if not week_file.exists():
+            rows.append({
+                "week_label": label,
+                "week_num":   w,
+                "status":     "—",
+                "has_file":   False,
+                "rails":      {r: [] for r in _RAILS},
+            })
+            continue
+        text = week_file.read_text()
+        parsed = _parse_week_file(text)
+        detailed = _parse_week_blocks_detailed(text)
+        rails: dict[str, list[tuple[str, list[bool]]]] = {r: [] for r in _RAILS}
+        idx_in_rail: dict[tuple[str, str], int] = {}
+        for rail, proj, oid in detailed:
+            done = id_status.get(oid) == "done"
+            key = (rail, proj)
+            if key in idx_in_rail:
+                rails[rail][idx_in_rail[key]][1].append(done)
+            else:
+                idx_in_rail[key] = len(rails[rail])
+                rails[rail].append((proj, [done]))
+        rows.append({
+            "week_label": label,
+            "week_num":   w,
+            "status":     parsed["status"],
+            "has_file":   True,
+            "rails":      rails,
+        })
+    return rows
+
+
 # ── Public entry point ───────────────────────────────────────────────────
 
 def run_focus_week(next_week: bool = False, review: bool = False) -> int:

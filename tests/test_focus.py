@@ -508,3 +508,123 @@ class TestEdgeCases:
         _feed_inputs(monkeypatch, ["2"])  # libre
         rc = run_focus_week()
         assert rc == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Vista anual (focus year)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _write_week_file_raw(mission_dir: Path, week_label: str,
+                          blocks: list[tuple[str, str, str]],
+                          status: str = "normal") -> Path:
+    """Write a minimal week file with the given (rail, project, orbit_id) blocks."""
+    lines = [f"# Focus {week_label}", "",
+             "- Fechas: …",
+             f"- Status: {status}", "",
+             "## Carriles", "",
+             "- ⚓ Anchor: —", "- 🔥 Push: —", "- 🌿 Joy: —", "",
+             "## Bloques", ""]
+    rail_emoji = {"anchor": "⚓", "push": "🔥", "joy": "🌿"}
+    grouped: dict[tuple[str, str], list[str]] = {}
+    order: list[tuple[str, str]] = []
+    for rail, proj, oid in blocks:
+        key = (rail, proj)
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        grouped[key].append(oid)
+    for rail, proj in order:
+        lines.append(f"### {rail_emoji[rail]} {proj}")
+        for oid in grouped[(rail, proj)]:
+            lines.append(f"- [orbit:{oid}]")
+        lines.append("")
+    lines += ["## Contador (autogenerado)", "", "## Retrospectiva", ""]
+    path = mission_dir / "notes" / f"{week_label}-focus.md"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text("\n".join(lines))
+    return path
+
+
+class TestWeeksInIsoYear:
+    def test_short_year(self):
+        from core.focus import _weeks_in_iso_year
+        # 2025 has 52 ISO weeks.
+        assert _weeks_in_iso_year(2025) == 52
+
+    def test_long_year(self):
+        from core.focus import _weeks_in_iso_year
+        # 2026 has 53 ISO weeks (starts Mon Dec 29 2025; ends Sun Jan 3 2027).
+        assert _weeks_in_iso_year(2026) == 53
+
+
+class TestCollectYear:
+    def test_empty_year_returns_all_weeks_blank(self, workspace, mission):
+        from core.focus import _collect_year, _weeks_in_iso_year
+        rows = _collect_year(mission, 2026)
+        assert len(rows) == _weeks_in_iso_year(2026)
+        assert all(r["status"] == "—" for r in rows)
+        assert all(r["has_file"] is False for r in rows)
+        assert all(r["rails"]["anchor"] == [] for r in rows)
+        # First and last labels are well-formed.
+        assert rows[0]["week_label"] == "2026-W01"
+        assert rows[-1]["week_label"] == f"2026-W{_weeks_in_iso_year(2026):02d}"
+
+    def test_aggregates_done_per_orbit_id(self, workspace, mission):
+        from core.focus import _collect_year
+        from core import api
+        # 3 blocks: 2 done, 1 pending.
+        api.add_task(project="mission", text="A",
+                     date="2026-05-18", time="09:00-10:30", orbit_id="aaaaaaaa")
+        api.add_task(project="mission", text="B",
+                     date="2026-05-19", time="09:00-10:30", orbit_id="bbbbbbbb")
+        api.add_task(project="mission", text="C",
+                     date="2026-05-20", time="09:00-10:30", orbit_id="cccccccc")
+        # Mark A and C as done.
+        agp = _agenda_path(mission)
+        txt = agp.read_text()
+        txt = txt.replace("- [ ] A", "- [x] A")
+        txt = txt.replace("- [ ] C", "- [x] C")
+        agp.write_text(txt)
+        _write_week_file_raw(mission, "2026-W21", [
+            ("anchor", "paper-neutrinos", "aaaaaaaa"),
+            ("anchor", "paper-neutrinos", "bbbbbbbb"),
+            ("push",   "propuesta-itaca", "cccccccc"),
+        ])
+        rows = _collect_year(mission, 2026)
+        w21 = next(r for r in rows if r["week_num"] == 21)
+        assert w21["has_file"] is True
+        assert w21["status"] == "normal"
+        assert w21["rails"]["anchor"] == [("paper-neutrinos", [True, False])]
+        assert w21["rails"]["push"] == [("propuesta-itaca", [True])]
+        assert w21["rails"]["joy"] == []
+
+    def test_especial_status_propagates(self, workspace, mission):
+        from core.focus import _collect_year
+        _write_week_file_raw(mission, "2026-W23", [], status="especial")
+        rows = _collect_year(mission, 2026)
+        w23 = next(r for r in rows if r["week_num"] == 23)
+        assert w23["status"] == "especial"
+        assert w23["has_file"] is True
+
+    def test_push_two_projects_preserves_order(self, workspace, mission):
+        from core.focus import _collect_year
+        from core import api
+        api.add_task(project="mission", text="A",
+                     date="2026-05-18", time="09:00-10:30", orbit_id="11111111")
+        api.add_task(project="mission", text="B",
+                     date="2026-05-19", time="09:00-10:30", orbit_id="22222222")
+        _write_week_file_raw(mission, "2026-W21", [
+            ("push", "proj-a", "11111111"),
+            ("push", "proj-b", "22222222"),
+        ])
+        rows = _collect_year(mission, 2026)
+        w21 = next(r for r in rows if r["week_num"] == 21)
+        assert [p for p, _ in w21["rails"]["push"]] == ["proj-a", "proj-b"]
+
+    def test_other_years_ignored(self, workspace, mission):
+        """Files from another year shouldn't bleed into the requested year."""
+        from core.focus import _collect_year
+        _write_week_file_raw(mission, "2025-W30", [])
+        rows = _collect_year(mission, 2026)
+        # No week in 2026 should be marked as has_file.
+        assert all(r["has_file"] is False for r in rows)
