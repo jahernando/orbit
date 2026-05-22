@@ -1104,6 +1104,13 @@ def _year_totals(rows: list[dict]) -> dict[str, tuple[int, int]]:
     return {r: (totals[r][0], totals[r][1]) for r in _RAILS}
 
 
+def _week_dates_short(year: int, week_num: int) -> str:
+    """Return ``MM-DD/MM-DD`` for Mon/Fri of the given ISO week."""
+    mon = date.fromisocalendar(year, week_num, 1)
+    fri = date.fromisocalendar(year, week_num, 5)
+    return f"{mon.strftime('%m-%d')}/{fri.strftime('%m-%d')}"
+
+
 def _format_year_file(rows: list[dict], year: int) -> str:
     """Compose the year-view markdown.
 
@@ -1111,13 +1118,17 @@ def _format_year_file(rows: list[dict], year: int) -> str:
 
         # Focus · año YYYY
         <leyenda>
-        | Semana | Status | Anchor | Push | Joy |
-        |---|---|---|---|---|
-        | [[2026-W21-focus\\|W21]] | 🟢 | [[paper]] 🍅🍅 | … | — |
+        | Semana | Fechas | Status | Anchor | Push | Joy |
+        |---|---|---|---|---|---|
+        | [[2026-W21-focus\\|W21]] | 05-18/05-22 | 🟢 | [[paper]] 🍅🍅 | … | — |
+        | W22                     | 05-25/05-29 | —  | —              | — | — |
         …
         ## Totales
         - ⚓ anchor: 18/24 🍅 (75%)
         …
+
+    Weeks without a focus file render the label as plain text (no
+    wikilink) to avoid broken wikilinks in Obsidian.
     """
     out = [
         f"# Focus · año {year}",
@@ -1125,15 +1136,19 @@ def _format_year_file(rows: list[dict], year: int) -> str:
         "Vista anual de bloques focus. 🍅 = bloque hecho · ❌ = no hecho.",
         "Status: 🟢 normal · 🟡 especial · — sin planificar.",
         "",
-        "| Semana | Status | Anchor | Push | Joy |",
-        "|---|---|---|---|---|",
+        "| Semana | Fechas | Status | Anchor | Push | Joy |",
+        "|---|---|---|---|---|---|",
     ]
     for row in rows:
         wlabel = f"W{row['week_num']:02d}"
-        link = f"[[{row['week_label']}-focus\\|{wlabel}]]"
+        if row["has_file"]:
+            week_cell = f"[[{row['week_label']}-focus\\|{wlabel}]]"
+        else:
+            week_cell = wlabel
+        fechas = _week_dates_short(year, row["week_num"])
         status_icon = _STATUS_ICON.get(row["status"], row["status"])
         cells = [_render_rail_cell(row["rails"][r]) for r in _RAILS]
-        out.append(f"| {link} | {status_icon} | "
+        out.append(f"| {week_cell} | {fechas} | {status_icon} | "
                    f"{cells[0]} | {cells[1]} | {cells[2]} |")
 
     out += ["", "## Totales", "",

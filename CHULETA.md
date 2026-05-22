@@ -590,7 +590,7 @@ orbit focus year              # regenera mission/notes/YYYY-focus.md (año actua
 orbit focus year --year 2025  # otro año
 ```
 
-Construye una tabla con una fila por semana ISO (52 ó 53) y columnas `Semana | Status | Anchor | Push | Joy`. La celda de cada carril muestra el proyecto y un tomate 🍅 por bloque hecho o una cruz ❌ por bloque planificado-no-hecho (`[[paper-neutrinos]] 🍅🍅`); con dos proyectos en push se renderizan en líneas separadas (`<br>`). La columna `Status` usa 🟢 para semana normal, 🟡 para `especial` y `—` para semanas sin fichero.
+Construye una tabla con una fila por semana ISO (52 ó 53) y columnas `Semana | Fechas | Status | Anchor | Push | Joy`. La columna `Fechas` muestra `MM-DD/MM-DD` (lun-vie) y se rellena siempre, incluso para semanas sin planificar. La celda de cada carril muestra el proyecto y un tomate 🍅 por bloque hecho o una cruz ❌ por bloque planificado-no-hecho (`[[paper-neutrinos]] 🍅🍅`); con N proyectos en un carril se renderizan en líneas separadas (`<br>`) — anchor/push/joy admiten cualquier cantidad. La columna `Status` usa 🟢 para semana normal, 🟡 para `especial` y `—` para semanas sin fichero. Las semanas sin fichero aparecen como `WNN` plano (sin wikilink) para evitar links fantasma en Obsidian.
 
 Footer `## Totales` agrega bloques hechos / planificados por carril; **las semanas `especial` se excluyen del agregado** (sus targets están aparcados por diseño).
 

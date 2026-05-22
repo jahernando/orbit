@@ -665,10 +665,14 @@ class TestFormatYearFile:
         rows = self._blank_rows(2025, 52)
         out = _format_year_file(rows, 2025)
         assert "# Focus · año 2025" in out
-        assert "| Semana | Status | Anchor | Push | Joy |" in out
-        # All 52 weeks have a data row (link + 4 dashes for status+3 rails).
+        assert "| Semana | Fechas | Status | Anchor | Push | Joy |" in out
+        # All 52 weeks have a data row. Without files they start with `| WNN`
+        # (no wikilink fantasma) and have 4 em-dashes (status + 3 rails);
+        # the Fechas column carries actual dates, not an em-dash.
         data_rows = [ln for ln in out.splitlines()
-                     if ln.startswith("| [[2025-W")]
+                     if ln.startswith("| W")
+                     and not ln.startswith("| Week")
+                     and "Semana" not in ln]
         assert len(data_rows) == 52
         assert all(ln.count("| —") == 4 for ln in data_rows)
         # Totals zero with em-dash percentage.
@@ -735,6 +739,68 @@ class TestFormatYearFile:
         out = _format_year_file(rows, 2026)
         assert "[[proj-a]] 🍅<br>[[proj-b]] ❌" in out
 
+    def test_any_rail_supports_n_projects(self):
+        """Anchor/push/joy admite N proyectos libremente — no hay tope por carril."""
+        from core.focus import _format_year_file
+        rows = self._blank_rows(2026, 53)
+        rows[20] = {
+            "week_label": "2026-W21",
+            "week_num":   21,
+            "status":     "normal",
+            "has_file":   True,
+            "rails": {
+                "anchor": [("a1", [True, True]), ("a2", [True]),
+                           ("a3", [False])],
+                "push":   [],
+                "joy":    [("j1", [True]), ("j2", [False])],
+            },
+        }
+        out = _format_year_file(rows, 2026)
+        assert "[[a1]] 🍅🍅<br>[[a2]] 🍅<br>[[a3]] ❌" in out
+        assert "[[j1]] 🍅<br>[[j2]] ❌" in out
+
+    def test_no_wikilink_when_file_missing(self):
+        from core.focus import _format_year_file
+        rows = self._blank_rows(2026, 53)
+        out = _format_year_file(rows, 2026)
+        # No wikilink fantasma en ninguna fila.
+        assert "[[2026-W" not in out
+        # Pero el label plano sí está.
+        assert "| W01 " in out
+        assert "| W53 " in out
+
+    def test_wikilink_only_when_file_present(self):
+        from core.focus import _format_year_file
+        rows = self._blank_rows(2026, 53)
+        rows[20] = {
+            "week_label": "2026-W21",
+            "week_num":   21,
+            "status":     "normal",
+            "has_file":   True,
+            "rails": {"anchor": [], "push": [], "joy": []},
+        }
+        out = _format_year_file(rows, 2026)
+        assert "[[2026-W21-focus\\|W21]]" in out
+        # Ninguna otra semana lleva wikilink.
+        assert out.count("[[2026-W") == 1
+
+    def test_dates_column_present_and_formatted(self):
+        from core.focus import _format_year_file
+        rows = self._blank_rows(2026, 53)
+        out = _format_year_file(rows, 2026)
+        # Cabecera nueva.
+        assert "| Semana | Fechas | Status | Anchor | Push | Joy |" in out
+        # W21/2026 = lun 2026-05-18 → vie 2026-05-22.
+        assert "| 05-18/05-22 |" in out
+
+    def test_dates_column_crosses_year_boundary(self):
+        """W01 puede empezar en diciembre del año anterior."""
+        from core.focus import _format_year_file
+        rows = self._blank_rows(2026, 53)
+        out = _format_year_file(rows, 2026)
+        # ISO 2026-W01: Mon 2025-12-29 → Fri 2026-01-02.
+        assert "| W01 | 12-29/01-02 |" in out
+
 
 class TestRunFocusYear:
     def test_no_mission_returns_error(self, workspace):
@@ -749,7 +815,7 @@ class TestRunFocusYear:
         assert out_path.exists()
         text = out_path.read_text()
         assert "# Focus · año 2026" in text
-        assert "| Semana | Status | Anchor | Push | Joy |" in text
+        assert "| Semana | Fechas | Status | Anchor | Push | Joy |" in text
 
     def test_writes_default_year_is_current(self, workspace, mission):
         from core.focus import run_focus_year
