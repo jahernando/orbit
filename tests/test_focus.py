@@ -628,3 +628,109 @@ class TestCollectYear:
         rows = _collect_year(mission, 2026)
         # No week in 2026 should be marked as has_file.
         assert all(r["has_file"] is False for r in rows)
+
+
+class TestRenderRailCell:
+    def test_empty_rail(self):
+        from core.focus import _render_rail_cell
+        assert _render_rail_cell([]) == "—"
+
+    def test_single_project_all_done(self):
+        from core.focus import _render_rail_cell
+        assert _render_rail_cell([("paper", [True, True])]) == "[[paper]] 🍅🍅"
+
+    def test_single_project_mix(self):
+        from core.focus import _render_rail_cell
+        assert _render_rail_cell([("paper", [True, False])]) == "[[paper]] 🍅❌"
+
+    def test_multiple_projects_br_joined(self):
+        from core.focus import _render_rail_cell
+        out = _render_rail_cell([("a", [True]), ("b", [False, False])])
+        assert out == "[[a]] 🍅<br>[[b]] ❌❌"
+
+
+class TestFormatYearFile:
+    def _blank_rows(self, year: int, n: int):
+        from core.focus import _RAILS
+        return [{
+            "week_label": f"{year}-W{i:02d}",
+            "week_num":   i,
+            "status":     "—",
+            "has_file":   False,
+            "rails":      {r: [] for r in _RAILS},
+        } for i in range(1, n + 1)]
+
+    def test_empty_year_table_and_totals(self):
+        from core.focus import _format_year_file
+        rows = self._blank_rows(2025, 52)
+        out = _format_year_file(rows, 2025)
+        assert "# Focus · año 2025" in out
+        assert "| Semana | Status | Anchor | Push | Joy |" in out
+        # All 52 weeks have a data row (link + 4 dashes for status+3 rails).
+        data_rows = [ln for ln in out.splitlines()
+                     if ln.startswith("| [[2025-W")]
+        assert len(data_rows) == 52
+        assert all(ln.count("| —") == 4 for ln in data_rows)
+        # Totals zero with em-dash percentage.
+        assert "⚓ anchor: 0/0 🍅 (—)" in out
+
+    def test_normal_week_renders_tomatoes(self):
+        from core.focus import _format_year_file
+        rows = self._blank_rows(2026, 53)
+        rows[20] = {
+            "week_label": "2026-W21",
+            "week_num":   21,
+            "status":     "normal",
+            "has_file":   True,
+            "rails": {
+                "anchor": [("paper-neutrinos", [True, True])],
+                "push":   [("propuesta-itaca", [True, False])],
+                "joy":    [],
+            },
+        }
+        out = _format_year_file(rows, 2026)
+        assert "[[2026-W21-focus\\|W21]]" in out
+        assert "🟢" in out
+        assert "[[paper-neutrinos]] 🍅🍅" in out
+        assert "[[propuesta-itaca]] 🍅❌" in out
+        # Totals: 2 anchor done / 2 total; 1 push done / 2 total.
+        assert "⚓ anchor: 2/2 🍅 (100%)" in out
+        assert "🔥 push: 1/2 🍅 (50%)" in out
+
+    def test_especial_week_status_icon_and_excluded_from_totals(self):
+        from core.focus import _format_year_file
+        rows = self._blank_rows(2026, 53)
+        rows[22] = {
+            "week_label": "2026-W23",
+            "week_num":   23,
+            "status":     "especial",
+            "has_file":   True,
+            "rails": {
+                "anchor": [("congreso", [True])],
+                "push":   [],
+                "joy":    [],
+            },
+        }
+        out = _format_year_file(rows, 2026)
+        assert "🟡" in out
+        # Block in especial week renders (truth-fidelity).
+        assert "[[congreso]] 🍅" in out
+        # But it's excluded from totals → still 0/0.
+        assert "⚓ anchor: 0/0 🍅 (—)" in out
+
+    def test_push_two_projects_rendered_with_br(self):
+        from core.focus import _format_year_file
+        rows = self._blank_rows(2026, 53)
+        rows[20] = {
+            "week_label": "2026-W21",
+            "week_num":   21,
+            "status":     "normal",
+            "has_file":   True,
+            "rails": {
+                "anchor": [],
+                "push":   [("proj-a", [True]), ("proj-b", [False])],
+                "joy":    [],
+            },
+        }
+        out = _format_year_file(rows, 2026)
+        assert "[[proj-a]] 🍅<br>[[proj-b]] ❌" in out

@@ -1066,6 +1066,87 @@ def _collect_year(mission_dir: Path, year: int) -> list[dict]:
     return rows
 
 
+_STATUS_ICON = {"normal": "🟢", "especial": "🟡", "—": "—"}
+
+
+def _render_rail_cell(rail_data: list[tuple[str, list[bool]]]) -> str:
+    """Render the contents of one rail cell in the year table.
+
+    Empty rail → ``—``. One project → ``[[proj]] 🍅❌``. Multiple projects
+    → one line per project joined with ``<br>`` (renders inside markdown
+    tables in both Obsidian and GitHub).
+    """
+    if not rail_data:
+        return "—"
+    parts = []
+    for proj, done_list in rail_data:
+        marks = "".join("🍅" if d else "❌" for d in done_list)
+        parts.append(f"[[{proj}]] {marks}")
+    return "<br>".join(parts)
+
+
+def _year_totals(rows: list[dict]) -> dict[str, tuple[int, int]]:
+    """Sum (done, total) per rail across all rows whose status ≠ especial.
+
+    Semanas especiales se excluyen del agregado anual: por diseño sus
+    targets están aparcados (memoria [[project-orbit-focus]]).
+    """
+    totals = {r: [0, 0] for r in _RAILS}
+    for row in rows:
+        if row["status"] == "especial":
+            continue
+        for rail, projs in row["rails"].items():
+            for _, done_list in projs:
+                totals[rail][0] += sum(done_list)
+                totals[rail][1] += len(done_list)
+    return {r: (totals[r][0], totals[r][1]) for r in _RAILS}
+
+
+def _format_year_file(rows: list[dict], year: int) -> str:
+    """Compose the year-view markdown.
+
+    Layout::
+
+        # Focus · año YYYY
+        <leyenda>
+        | Semana | Status | Anchor | Push | Joy |
+        |---|---|---|---|---|
+        | [[2026-W21-focus\\|W21]] | 🟢 | [[paper]] 🍅🍅 | … | — |
+        …
+        ## Totales
+        - ⚓ anchor: 18/24 🍅 (75%)
+        …
+    """
+    out = [
+        f"# Focus · año {year}",
+        "",
+        "Vista anual de bloques focus. 🍅 = bloque hecho · ❌ = no hecho.",
+        "Status: 🟢 normal · 🟡 especial · — sin planificar.",
+        "",
+        "| Semana | Status | Anchor | Push | Joy |",
+        "|---|---|---|---|---|",
+    ]
+    for row in rows:
+        wlabel = f"W{row['week_num']:02d}"
+        link = f"[[{row['week_label']}-focus\\|{wlabel}]]"
+        status_icon = _STATUS_ICON.get(row["status"], row["status"])
+        cells = [_render_rail_cell(row["rails"][r]) for r in _RAILS]
+        out.append(f"| {link} | {status_icon} | "
+                   f"{cells[0]} | {cells[1]} | {cells[2]} |")
+
+    out += ["", "## Totales", "",
+            "(semanas `especial` excluidas del agregado)",
+            ""]
+    totals = _year_totals(rows)
+    for rail in _RAILS:
+        d, t = totals[rail]
+        pct = f"({100 * d // t}%)" if t > 0 else "(—)"
+        out.append(f"- {_RAIL_EMOJI[rail]} {_RAIL_LABEL[rail].lower()}: "
+                   f"{d}/{t} 🍅 {pct}")
+    out.append("")
+    return "\n".join(out)
+
+
 # ── Public entry point ───────────────────────────────────────────────────
 
 def run_focus_week(next_week: bool = False, review: bool = False) -> int:
