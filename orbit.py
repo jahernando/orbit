@@ -867,6 +867,8 @@ def run_dash_cold(silent: bool = False):
     """
     from views.ring import rings as rings_view
     from views.secretary import calendar as sec_calendar
+    from views.secretary import cronos as sec_cronos
+    from views.secretary import logbook as sec_logbook
     from views.secretary import projects as sec_projects
     from views.secretary import report_summary as sec_report
 
@@ -874,11 +876,13 @@ def run_dash_cold(silent: bool = False):
     RING_PANEL_DIR.mkdir(parents=True, exist_ok=True)
     sec_projects.generate(SECRETARY_DIR / "projects.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
+    sec_cronos.generate(SECRETARY_DIR / "cronos.md")
+    sec_logbook.generate(SECRETARY_DIR / "logbook.md")
     sec_report.generate(SECRETARY_DIR / "report-summary.md")
     rings_view.generate(RING_PANEL_DIR / "rings.md")
 
     if not silent:
-        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,calendar,report-summary}.md + 📊panel/ring/rings.md)")
+        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,calendar,cronos,logbook,report-summary}.md + 📊panel/ring/rings.md)")
     return 0
 
 
@@ -895,7 +899,7 @@ def run_dash(silent: bool = False):
     run_dash_cold(silent=True)
 
     if not silent:
-        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,calendar,report-summary}.md + 📊panel/ring/{ring-today,ring-next}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,calendar,cronos,logbook,report-summary}.md + 📊panel/ring/{ring-today,ring-next}.md)")
     return 0
 
 
@@ -1252,15 +1256,18 @@ def cmd_organize(args):
 
 
 def cmd_focus(args):
-    from core.focus import run_focus_week
     action = getattr(args, "action", None) or "week"
-    if action != "week":
-        print(f"⚠️  Subcomando desconocido para focus: {action}")
-        return 1
-    return run_focus_week(
-        next_week=getattr(args, "next", False),
-        review=getattr(args, "review", False),
-    )
+    if action == "week":
+        from core.focus import run_focus_week
+        return run_focus_week(
+            next_week=getattr(args, "next", False),
+            review=getattr(args, "review", False),
+        )
+    if action == "year":
+        from core.focus import run_focus_year
+        return run_focus_year(year=getattr(args, "year", None))
+    print(f"⚠️  Subcomando desconocido para focus: {action}")
+    return 1
 
 
 def cmd_mail(args):
@@ -2128,6 +2135,10 @@ def _build_parser():
                             help="Planifica la semana siguiente en lugar de la actual")
     foc_week_p.add_argument("--review", action="store_true", dest="review",
                             help="Abre el archivo semanal en $EDITOR")
+    foc_year_p = foc_sub.add_parser("year",
+                            help="Regenera la vista anual mission/notes/YYYY-focus.md")
+    foc_year_p.add_argument("--year", type=int, default=None,
+                            help="Año ISO a regenerar (defecto: el actual)")
 
     # --- undo ---
     subparsers.add_parser("undo", help="Undo the last operation")

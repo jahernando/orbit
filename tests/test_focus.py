@@ -734,3 +734,62 @@ class TestFormatYearFile:
         }
         out = _format_year_file(rows, 2026)
         assert "[[proj-a]] 🍅<br>[[proj-b]] ❌" in out
+
+
+class TestRunFocusYear:
+    def test_no_mission_returns_error(self, workspace):
+        from core.focus import run_focus_year
+        assert run_focus_year(year=2026) == 1
+
+    def test_writes_year_file_with_explicit_year(self, workspace, mission):
+        from core.focus import run_focus_year
+        rc = run_focus_year(year=2026)
+        assert rc == 0
+        out_path = mission / "notes" / "2026-focus.md"
+        assert out_path.exists()
+        text = out_path.read_text()
+        assert "# Focus · año 2026" in text
+        assert "| Semana | Status | Anchor | Push | Joy |" in text
+
+    def test_writes_default_year_is_current(self, workspace, mission):
+        from core.focus import run_focus_year
+        rc = run_focus_year()
+        assert rc == 0
+        # Current year file should exist.
+        yr = date.today().year
+        out_path = mission / "notes" / f"{yr}-focus.md"
+        assert out_path.exists()
+
+    def test_silent_suppresses_print(self, workspace, mission, capsys):
+        from core.focus import run_focus_year
+        run_focus_year(year=2026, silent=True)
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_overwrites_existing_file(self, workspace, mission):
+        """File is a view: regenerating should fully replace it."""
+        from core.focus import run_focus_year
+        out_path = mission / "notes" / "2026-focus.md"
+        out_path.parent.mkdir(exist_ok=True)
+        out_path.write_text("stale content from a previous run")
+        run_focus_year(year=2026)
+        assert "stale content" not in out_path.read_text()
+        assert "# Focus · año 2026" in out_path.read_text()
+
+    def test_reflects_done_blocks(self, workspace, mission):
+        from core.focus import run_focus_year
+        from core import api
+        api.add_task(project="mission", text="A",
+                     date="2026-05-18", time="09:00-10:30", orbit_id="aaaaaaaa")
+        agp = _agenda_path(mission)
+        agp.write_text(agp.read_text().replace("- [ ] A", "- [x] A"))
+        _write_week_file_raw(mission, "2026-W21", [
+            ("anchor", "paper-neutrinos", "aaaaaaaa"),
+        ])
+        run_focus_year(year=2026)
+        text = (mission / "notes" / "2026-focus.md").read_text()
+        # The W21 row has anchor cell with tomato.
+        w21_row = next(ln for ln in text.splitlines()
+                       if "[[2026-W21-focus" in ln)
+        assert "[[paper-neutrinos]] 🍅" in w21_row
+        assert "🟢" in w21_row

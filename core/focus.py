@@ -1200,3 +1200,33 @@ def run_focus_week(next_week: bool = False, review: bool = False) -> int:
         # on a block before this command finished).
         _regenerate_counter(week_file, mission_dir)
     return rc
+
+
+def run_focus_year(year: Optional[int] = None, silent: bool = False) -> int:
+    """Regenerate the year view ``mission/notes/<YYYY>-focus.md``.
+
+    *year*: ISO year to render. ``None`` → current year.
+    *silent*: skip the success print (used by ``run_focus_week`` to refresh
+              the year file as a side-effect without noise).
+
+    Returns a CLI-style exit code.
+    """
+    mission_dir = _resolve_mission_dir()
+    if mission_dir is None:
+        if not silent:
+            print("⚠️  No existe el proyecto 'mission' en este workspace.")
+        return 1
+    yr = year if year is not None else date.today().year
+    rows = _collect_year(mission_dir, yr)
+    text = _format_year_file(rows, yr)
+    out_path = _year_file_path(mission_dir, yr)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(text)
+    if not silent:
+        totals = _year_totals(rows)
+        summary = " · ".join(
+            f"{_RAIL_EMOJI[r]} {totals[r][0]}/{totals[r][1]}"
+            for r in _RAILS
+        )
+        print(f"✓ Archivo anual: {out_path.relative_to(mission_dir.parent)} ({summary})")
+    return 0
