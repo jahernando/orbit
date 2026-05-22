@@ -793,3 +793,45 @@ class TestRunFocusYear:
                        if "[[2026-W21-focus" in ln)
         assert "[[paper-neutrinos]] 🍅" in w21_row
         assert "🟢" in w21_row
+
+
+class TestYearRefreshOnWeekClose:
+    def test_menu_regenerate_counter_refreshes_year(self, workspace, mission,
+                                                     monkeypatch):
+        """Menu option 1 (regenerar contador) on existing week file → year file
+        regenerated as side-effect.
+        """
+        from core import api, focus
+        import datetime as _dt
+        # Fix today to a Monday in W21/2026 so run_focus_week targets that file.
+        fixed_today = _dt.date(2026, 5, 18)
+
+        class _FixedDate(_dt.date):
+            @classmethod
+            def today(cls):
+                return fixed_today
+        monkeypatch.setattr(focus, "date", _FixedDate)
+        _write_template_file(mission)
+        api.add_task(project="mission", text="A",
+                     date="2026-05-18", time="09:00-10:30", orbit_id="aaaaaaaa")
+        _write_week_file_raw(mission, "2026-W21", [
+            ("anchor", "paper-neutrinos", "aaaaaaaa"),
+        ])
+        _feed_inputs(monkeypatch, ["1"])  # regenerar contador
+        rc = focus.run_focus_week()
+        assert rc == 0
+        year_file = mission / "notes" / "2026-focus.md"
+        assert year_file.exists()
+        assert "# Focus · año 2026" in year_file.read_text()
+
+    def test_refresh_helper_swallows_errors(self, workspace, mission, capsys,
+                                              monkeypatch):
+        """If run_focus_year raises, the helper prints a warning, no exception."""
+        from core import focus
+        def _boom(*a, **kw):
+            raise RuntimeError("nope")
+        monkeypatch.setattr(focus, "run_focus_year", _boom)
+        # Should not raise.
+        focus._refresh_year_silent(mission, 2026)
+        captured = capsys.readouterr()
+        assert "No se pudo refrescar" in captured.out

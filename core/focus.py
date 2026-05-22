@@ -740,6 +740,7 @@ def _menu_existing_week(week_file: Path, mission_dir: Path,
     if choice == "1":
         done, total = _regenerate_counter(week_file, mission_dir)
         print(f"✓ Contador regenerado: {done}/{total} bloques completados.")
+        _refresh_year_silent(mission_dir, target.year)
         return 0
     if choice == "2":
         import os
@@ -753,6 +754,7 @@ def _menu_existing_week(week_file: Path, mission_dir: Path,
                               initial_status=status)
         if rc == 0:
             _regenerate_counter(week_file, mission_dir)
+            _refresh_year_silent(mission_dir, target.year)
         return rc
     if choice == "4":
         return 0
@@ -1199,7 +1201,16 @@ def run_focus_week(next_week: bool = False, review: bool = False) -> int:
         # single source of truth (avoids drift if the user did `task done`
         # on a block before this command finished).
         _regenerate_counter(week_file, mission_dir)
+        _refresh_year_silent(mission_dir, target.year)
     return rc
+
+
+def _refresh_year_silent(mission_dir: Path, year: int) -> None:
+    """Side-effect refresh of the year view; never raises to caller."""
+    try:
+        run_focus_year(year=year, silent=True)
+    except Exception as e:
+        print(f"⚠️  No se pudo refrescar la vista anual: {e}")
 
 
 def run_focus_year(year: Optional[int] = None, silent: bool = False) -> int:
