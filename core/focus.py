@@ -730,6 +730,7 @@ def _menu_existing_week(week_file: Path, mission_dir: Path,
     print("  2) abrir en $EDITOR")
     print("  3) añadir bloques")
     print("  4) abortar")
+    print("  5) escribir retrospectiva")
     try:
         raw = input("  selección [1]: ").strip()
     except (EOFError, KeyboardInterrupt):
@@ -757,6 +758,17 @@ def _menu_existing_week(week_file: Path, mission_dir: Path,
             _refresh_year_silent(mission_dir, target.year)
         return rc
     if choice == "4":
+        return 0
+    if choice == "5":
+        import os
+        editor = os.environ.get("EDITOR", "vi")
+        base = os.path.basename(editor.split()[0])
+        if base in ("vi", "vim", "nvim"):
+            # Posiciona el cursor en la sección Retrospectiva al abrir.
+            os.system(f"{editor} '+/^## Retrospectiva' '{week_file}'")
+        else:
+            print("→ Sección '## Retrospectiva' al final del fichero")
+            os.system(f"{editor} '{week_file}'")
         return 0
     print(f"  ⚠️  Selección no válida: {choice!r}")
     return 1
@@ -830,7 +842,11 @@ def _format_week_file(target: date, status: str,
         out.append(f"- {_RAIL_EMOJI[rail]} {_RAIL_LABEL[rail].lower()}: "
                    f"0/{total}  (regenera con `orbit focus week`)")
     out += ["", "## Retrospectiva", "",
-            "(rellena el viernes apoyándote en `orbit report --summary mission`)",
+            "<!-- Apóyate en `orbit report --summary mission`. Preguntas guía:",
+            "     · ¿Qué sostuvo la semana?",
+            "     · ¿Qué cedió y por qué?",
+            "     · ¿Qué pruebo distinto la W siguiente?",
+            "-->",
             ""]
     return "\n".join(out)
 

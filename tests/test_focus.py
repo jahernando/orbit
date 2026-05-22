@@ -465,6 +465,48 @@ class TestF7Menu:
         _feed_inputs(monkeypatch, ["1"])
         assert run_focus_week() == 0
 
+    def test_retrospectiva_option_invokes_editor_with_vim_jump(
+            self, workspace, mission, other_project, monkeypatch):
+        """F7 menu option 5 abre $EDITOR; con vim añade `+/regex` para saltar."""
+        from core.focus import run_focus_week
+        _write_template_file(mission)
+        _feed_inputs(monkeypatch, [
+            "2", "paper-neutrinos", "", "lun", "09:00", "mar", "09:00",
+            "", "", "",
+        ])
+        assert run_focus_week() == 0
+        # Captura el comando que se le pasa a os.system.
+        captured = {}
+        def _fake_system(cmd):
+            captured["cmd"] = cmd
+            return 0
+        monkeypatch.setattr("os.system", _fake_system)
+        monkeypatch.setenv("EDITOR", "vim")
+        _feed_inputs(monkeypatch, ["5"])
+        assert run_focus_week() == 0
+        assert "vim" in captured["cmd"]
+        assert "+/^## Retrospectiva" in captured["cmd"]
+        assert "2026-W" in captured["cmd"]  # path del fichero semanal
+
+    def test_retrospectiva_option_other_editor_no_jump(
+            self, workspace, mission, other_project, monkeypatch, capsys):
+        """Editor distinto de vi/vim/nvim: abre sin flag de salto + hint."""
+        from core.focus import run_focus_week
+        _write_template_file(mission)
+        _feed_inputs(monkeypatch, [
+            "2", "paper-neutrinos", "", "lun", "09:00", "mar", "09:00",
+            "", "", "",
+        ])
+        assert run_focus_week() == 0
+        captured = {}
+        monkeypatch.setattr("os.system", lambda cmd: captured.setdefault("cmd", cmd) or 0)
+        monkeypatch.setenv("EDITOR", "nano")
+        _feed_inputs(monkeypatch, ["5"])
+        assert run_focus_week() == 0
+        assert "nano" in captured["cmd"]
+        assert "+/" not in captured["cmd"]
+        assert "## Retrospectiva" in capsys.readouterr().out
+
     def test_add_blocks_option_preserves_existing(self, workspace, mission,
                                                   other_project, monkeypatch):
         """F7 menu option 3 extends an existing week file without duplicating."""
@@ -492,6 +534,28 @@ class TestF7Menu:
         agenda_after = _agenda_path(mission).read_text()
         ids_after = agenda_after.count("[orbit:")
         assert ids_after == ids_before + 1
+
+
+class TestRetrospectivaGuide:
+    def test_new_week_file_has_guiding_questions(self, workspace, mission,
+                                                  other_project, monkeypatch):
+        """El fichero recién creado lleva las 3 preguntas guía en comentario HTML."""
+        from core.focus import run_focus_week
+        _write_template_file(mission)
+        _feed_inputs(monkeypatch, [
+            "2", "paper-neutrinos", "", "lun", "09:00", "mar", "09:00",
+            "", "", "",
+        ])
+        assert run_focus_week() == 0
+        # Localiza el fichero semanal — patrón YYYY-WNN-focus.md.
+        week_files = list((mission / "notes").glob("*-W*-focus.md"))
+        assert len(week_files) == 1
+        text = week_files[0].read_text()
+        assert "## Retrospectiva" in text
+        assert "<!--" in text and "-->" in text
+        assert "¿Qué sostuvo la semana?" in text
+        assert "¿Qué cedió y por qué?" in text
+        assert "¿Qué pruebo distinto la W siguiente?" in text
 
 
 class TestEdgeCases:

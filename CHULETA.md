@@ -576,10 +576,13 @@ Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` 
 **Status: especial** (vacaciones, congreso) → contador muestra `—` en lugar de `done/total`. Edita a mano en el frontmatter.
 
 **Sobre una semana ya creada**, el comando muestra menú:
-1. regenerar contador
+1. regenerar contador (default)
 2. abrir en $EDITOR (== `--review`)
 3. añadir bloques (extiende el flujo libre con el estado existente)
 4. abortar
+5. escribir retrospectiva — abre `$EDITOR` saltando a la sección `## Retrospectiva` (vim/nvim usan `+/regex`; otros editores abren con un hint)
+
+**Retrospectiva guiada**: cada fichero semanal recién creado lleva tres preguntas en un comentario HTML (invisible en render, visible al editar): "¿Qué sostuvo la semana?", "¿Qué cedió y por qué?", "¿Qué pruebo distinto la W siguiente?". Texto libre debajo, sin formulario.
 
 Los bloques aparecen automáticamente en Calendar.app (vía `.ics`) por ser tasks normales de mission.
 
