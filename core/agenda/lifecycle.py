@@ -697,26 +697,36 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
                     from views.ring.parse import _delete_reminder
                     _delete_reminder(item_desc, project_dir.name, kind="reminder",
                                       background=True)
-                print(f"✓ [{project_dir.name}] Recordatorio avanzado: {item_desc} → {next_due}")
+                from core.agenda.display import format_item_block
+                print(format_item_block(type_name, item,
+                                        banner=f"{type_name} drop · {project_dir.name}",
+                                        state="avanzada"))
+                print(f"  ↻ avanzado → {next_due}")
                 return 0
         else:
             next_info, next_item = _advance_recurrence(item, items, cfg)
 
     _write_agenda(agenda_path, data)
 
-    # Logbook + print
+    # Logbook + print. Hybrid echo (design §4): item-block for a single
+    # resulting item; series-delete keeps the prose note (no item left).
+    from core.agenda.display import format_item_block
     if drop_series:
         if cfg["has_status"]:
             add_orbit_entry(project_dir, f"[serie cancelada] {cfg['label']}: {item_desc} ({item['recur']})", "apunte")
-            print(f"✓ [{project_dir.name}] [serie cancelada] {item_desc} ({item['recur']})")
+        print(f"━━━ {type_name} drop · {project_dir.name} · serie ━━━")
+        if cfg["has_status"]:
+            print(f"  [serie cancelada] {item_desc} ({item['recur']})")
         else:
-            print(f"✓ [{project_dir.name}] Serie eliminada: {display} ({item['recur']})")
+            print(f"  Serie eliminada: {display} ({item['recur']})")
     else:
         if cfg["has_status"]:
             add_orbit_entry(project_dir, f"[{cfg['drop_verb']}] {cfg['label']}: {item_desc}{next_info}", "apunte")
-            print(f"✓ [{project_dir.name}] [{cfg['drop_verb']}] {item_desc}{next_info}")
-        else:
-            print(f"✓ [{project_dir.name}] {cfg['label']} {cfg['drop_verb']}: {display}{next_info}")
+        print(format_item_block(type_name, item,
+                                banner=f"{type_name} drop · {project_dir.name}",
+                                state=cfg["drop_verb"]))
+        if next_info:
+            print(f"  ↻{next_info}")
     # Ring cleanup
     if cfg["has_ring"]:
         _delete_ring_if_today(item_desc, project_dir, item.get("date"),
@@ -802,7 +812,12 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
             new_item, next_info = _make_edit_occurrence(item, items, cfg, edits,
                                                         type_name=type_name)
             _write_agenda(agenda_path, data)
-            print(f"✓ [{project_dir.name}] Ocurrencia editada: {new_item['desc']}{next_info}")
+            from core.agenda.display import format_item_block
+            print(format_item_block(type_name, new_item,
+                                    banner=f"{type_name} edit · {project_dir.name}",
+                                    state="ocurrencia"))
+            if next_info:
+                print(f"  ↻{next_info}")
             if cfg["has_gsync"]:
                 _sync_to_google(project_dir, new_item, cfg["kind"])
                 _sync_to_google(project_dir, item, cfg["kind"])
@@ -826,15 +841,9 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
                                        _ROOM_NOTE_PREFIX, new_room)
 
     _write_agenda(agenda_path, data)
-    if type_name == "event":
-        print(f"✓ [{project_dir.name}] {cfg['label']} actualizado: {item['date']} — {item['desc']}")
-    elif type_name == "reminder":
-        attrs = f"({item.get('date', '?')}) ⏰{item.get('time', '?')}"
-        if item.get("recur"):
-            attrs += f" 🔄{item['recur']}"
-        print(f"✓ [{project_dir.name}] {cfg['label']} actualizado: {item['desc']} {attrs}")
-    else:
-        print(f"✓ [{project_dir.name}] {cfg['label']} actualizada: {item['desc']}")
+    from core.agenda.display import format_item_block
+    print(format_item_block(type_name, item,
+                            banner=f"{type_name} edit · {project_dir.name}"))
 
     # Ring update
     if cfg["has_ring"]:

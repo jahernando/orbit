@@ -364,6 +364,16 @@ class TestRunTaskPlan:
         assert rc == 1
         assert "fecha" in capsys.readouterr().out.lower()
 
+    def test_echo_uses_item_block_with_action(self, proj, capsys):
+        # Fase 3 extend: plan echoes the item-block; kind_msg → banner state.
+        from core.agenda_cmds import run_task_plan
+        self._add_pending(proj, "Revisar paper", "2026-05-20")
+        capsys.readouterr()
+        run_task_plan(project=proj.name, text="Revisar", date_val="2026-07-01")
+        out = capsys.readouterr().out
+        assert "task plan · " in out and "planeada" in out
+        assert "- [ ] Revisar paper (2026-07-01)" in out
+
 
 class TestRunTaskPending:
     """task pending: demote planned→pending or snooze pending."""
@@ -1944,7 +1954,8 @@ class TestEditOccurrenceSeriesTask:
         assert one_off[0]["desc"] == "Edited sync"
         assert one_off[0]["date"] == "2026-03-09"
         out = capsys.readouterr().out
-        assert "Ocurrencia editada" in out
+        assert "ocurrencia" in out          # action folded into the item-block banner
+        assert "Edited sync" in out
 
     def test_edit_s_edits_series_in_place(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_task_add, run_task_edit, _read_agenda
@@ -2214,7 +2225,8 @@ class TestReminderEdit:
         data = _read_agenda(proj / "test-project-agenda.md")
         assert data["reminders"][0]["desc"] == "New title"
         out = capsys.readouterr().out
-        assert "actualizado" in out
+        assert "reminder edit" in out       # item-block banner replaces the prose echo
+        assert "New title" in out
 
     def test_edit_date(self, proj, projects_dir):
         from core.agenda_cmds import run_reminder_add, run_reminder_edit, _read_agenda

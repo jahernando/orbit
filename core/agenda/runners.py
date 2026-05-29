@@ -74,7 +74,11 @@ def run_task_done(project: Optional[str], text: Optional[str]) -> int:
                      f"({completed.get('until')})")
 
     add_orbit_entry(project_dir, f"[completada] Tarea: {task_desc}{next_info}", "apunte")
-    print(f"✓ [{project_dir.name}] [completada] {task_desc}{next_info}")
+    from core.agenda.display import format_item_block
+    print(format_item_block("task", completed,
+                            banner=f"task done · {project_dir.name}", state="completada"))
+    if next_info:
+        print(f"  ↻{next_info}")
 
     return 0
 
@@ -161,9 +165,10 @@ def run_task_plan(project: Optional[str], text: Optional[str],
 
     _write_agenda(agenda_path, data)
 
-    desc = task["desc"]
-    add_orbit_entry(project_dir, f"[{kind_msg}] Tarea: {desc} → {date_val}", "apunte")
-    print(f"✓ [{project_dir.name}] {kind_msg}: {desc} → {date_val}")
+    add_orbit_entry(project_dir, f"[{kind_msg}] Tarea: {task['desc']} → {date_val}", "apunte")
+    from core.agenda.display import format_item_block
+    print(format_item_block("task", task,
+                            banner=f"task plan · {project_dir.name}", state=kind_msg))
     return 0
 
 
@@ -215,9 +220,10 @@ def run_task_pending(project: Optional[str], text: Optional[str],
 
     _write_agenda(agenda_path, data)
 
-    desc = task["desc"]
-    add_orbit_entry(project_dir, f"[{kind_msg}] Tarea: {desc} ⏩{target_ff}", "apunte")
-    print(f"✓ [{project_dir.name}] {kind_msg}: {desc} ⏩{target_ff}")
+    add_orbit_entry(project_dir, f"[{kind_msg}] Tarea: {task['desc']} ⏩{target_ff}", "apunte")
+    from core.agenda.display import format_item_block
+    print(format_item_block("task", task,
+                            banner=f"task pending · {project_dir.name}", state=kind_msg))
     return 0
 
 
@@ -356,7 +362,11 @@ def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
                      f"({completed.get('until')})")
 
     add_orbit_entry(project_dir, f"[alcanzado] Hito: {ms_desc}{next_info}", "resultado")
-    print(f"✓ [{project_dir.name}] [alcanzado] {ms_desc}{next_info}")
+    from core.agenda.display import format_item_block
+    print(format_item_block("milestone", completed,
+                            banner=f"ms done · {project_dir.name}", state="alcanzado"))
+    if next_info:
+        print(f"  ↻{next_info}")
 
     return 0
 
@@ -592,7 +602,11 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
                     from views.ring.parse import _delete_reminder
                     _delete_reminder(rem["desc"], project_dir.name,
                                       kind="reminder", background=True)
-                print(f"✓ [{project_dir.name}] Recordatorio avanzado: {rem['desc']} → {next_due}")
+                from core.agenda.display import format_item_block
+                print(format_item_block("reminder", rem,
+                                        banner=f"reminder drop · {project_dir.name}",
+                                        state="avanzada"))
+                print(f"  ↻ avanzado → {next_due}")
                 return 0
 
         # Cancel
@@ -602,10 +616,14 @@ def run_reminder_drop(project: Optional[str], text: Optional[str],
             from views.ring.parse import _delete_reminder
             _delete_reminder(rem["desc"], project_dir.name, kind="reminder",
                               background=True)
+        from core.agenda.display import format_item_block
         if drop_series:
-            print(f"✓ [{project_dir.name}] Serie eliminada: {rem['desc']} ({rem['recur']})")
+            print(f"━━━ reminder drop · {project_dir.name} · serie ━━━")
+            print(f"  Serie eliminada: {rem['desc']} ({rem['recur']})")
         else:
-            print(f"✓ [{project_dir.name}] Recordatorio eliminado: {rem['desc']}")
+            print(format_item_block("reminder", rem,
+                                    banner=f"reminder drop · {project_dir.name}",
+                                    state="eliminado"))
         return 0
 
     print("No se encontró el recordatorio.")
