@@ -140,6 +140,23 @@ def register_cita(subparsers):
     cita_fup.add_argument("--drop", action="store_true",
                           help="Remove the followup with this date instead of adding")
 
+    cita_done = cita_sub.add_parser(
+        "done", help="Mark a task/milestone done (located cross-type)")
+    cita_done.add_argument("project", help="Project name")
+    cita_done.add_argument("text", nargs="?", default=None,
+                           help="Substring match on cita desc (omit for selector)")
+
+    cita_drop = cita_sub.add_parser(
+        "drop", help="Cancel any cita (located cross-type)")
+    cita_drop.add_argument("project", help="Project name")
+    cita_drop.add_argument("text", nargs="?", default=None,
+                           help="Substring match on cita desc (omit for selector)")
+    cita_drop.add_argument("--force", action="store_true", help="Skip confirmation")
+    cita_drop.add_argument("-o", dest="occurrence", action="store_true",
+                           help="Drop this occurrence only")
+    cita_drop.add_argument("-s", dest="series", action="store_true",
+                           help="Drop the entire series")
+
     # Atajo directo equivalente a `cita log`.
     clog_p = subparsers.add_parser(
         "clog", help="Alias de `cita log` — logbook entry de la cita activa")

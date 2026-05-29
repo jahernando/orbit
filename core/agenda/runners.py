@@ -865,6 +865,56 @@ def run_cita_fup(project: Optional[str], text: Optional[str],
     return 0
 
 
+def run_cita_done(project: Optional[str], text: Optional[str]) -> int:
+    """Mark a task/milestone done, located cross-type (design §1).
+
+    `done` only applies to task/ms (the typed citas with status); events and
+    reminders have no done — they are cancelled with `cita drop`. Locates via
+    the shared locator, rejects ev/reminder with a clear message, then
+    delegates to the per-type runner (full reuse of its logbook/ring logic).
+    """
+    project_dir = _resolve_project(project)
+    if project_dir is None:
+        return 1
+    data  = _read_agenda(resolve_file(project_dir, "agenda"))
+    found = _cita_locate(project_dir, data, text)
+    if found is None:
+        return 1
+    kind, idx = found
+    if kind not in ("tasks", "milestones"):
+        emoji = _CITA_KIND_EMOJI[kind]
+        print(f"⚠️  `done` solo aplica a tareas/hitos, no a {emoji}. "
+              f"Usa `cita drop` para cancelar.")
+        return 1
+    desc   = data[kind][idx]["desc"]
+    runner = run_task_done if kind == "tasks" else run_ms_done
+    return runner(project=project_dir.name, text=desc)
+
+
+def run_cita_drop(project: Optional[str], text: Optional[str],
+                  force: bool = False, occurrence: bool = False,
+                  series: bool = False) -> int:
+    """Cancel any appointment, located cross-type (design §1).
+
+    Works on all four types. Locates via the shared locator, then delegates
+    to the per-type drop runner so recurrence handling (-o/-s/--force), ring
+    deletion and logbook all behave identically to `<type> drop`.
+    """
+    project_dir = _resolve_project(project)
+    if project_dir is None:
+        return 1
+    data  = _read_agenda(resolve_file(project_dir, "agenda"))
+    found = _cita_locate(project_dir, data, text)
+    if found is None:
+        return 1
+    kind, idx = found
+    desc   = data[kind][idx]["desc"]
+    runner = {"tasks": run_task_drop, "milestones": run_ms_drop,
+              "events": run_ev_drop, "reminders": run_reminder_drop}[kind]
+    return runner(project=project_dir.name, text=desc,
+                  force=force, occurrence=occurrence, series=series)
+
+
 def run_cita_log(text: Optional[str] = None) -> int:
     """Crea entrada de logbook de la cita activa ahora (o selector).
 

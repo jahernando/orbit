@@ -592,6 +592,15 @@ def cmd_cita(args):
         return run_cita_fup(project=_ga(args, "project"), text=_ga(args, "text"),
                             date_val=_ga(args, "date"), desc=_ga(args, "desc"),
                             drop=_ga(args, "drop"))
+    if action == "done":
+        from core.agenda.runners import run_cita_done
+        return run_cita_done(project=_ga(args, "project"), text=_ga(args, "text"))
+    if action == "drop":
+        from core.agenda.runners import run_cita_drop
+        return run_cita_drop(project=_ga(args, "project"), text=_ga(args, "text"),
+                             force=_ga(args, "force", False),
+                             occurrence=_ga(args, "occurrence", False),
+                             series=_ga(args, "series", False))
     return 1
 
 

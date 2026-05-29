@@ -719,6 +719,82 @@ class TestRunCitaFup:
         assert "fecha" in capsys.readouterr().out.lower()
 
 
+class TestRunCitaDoneDrop:
+    """cita done / cita drop: cross-type locate, delegate to per-type runner."""
+
+    def _read(self, proj):
+        from core.agenda_cmds import _read_agenda
+        return _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
+
+    def test_done_marks_task(self, proj):
+        from core import api
+        from core.agenda.runners import run_cita_done
+        api.add_task(project=proj.name, text="Escribir informe")
+        rc = run_cita_done(project=proj.name, text="informe")
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1]["status"] == "done"
+
+    def test_done_marks_milestone(self, proj):
+        from core import api
+        from core.agenda.runners import run_cita_done
+        api.add_milestone(project=proj.name, text="Entrega v1", date="2026-07-01")
+        rc = run_cita_done(project=proj.name, text="Entrega")
+        assert rc == 0
+        assert self._read(proj)["milestones"][-1]["status"] == "done"
+
+    def test_done_rejects_event(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_cita_done
+        api.add_event(project=proj.name, text="Charla", date="2026-07-01")
+        rc = run_cita_done(project=proj.name, text="Charla")
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "done" in out.lower() and "drop" in out.lower()
+        # Event remains untouched.
+        assert self._read(proj)["events"][-1]["desc"] == "Charla"
+
+    def test_done_rejects_reminder(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_cita_done
+        api.add_reminder(project=proj.name, text="Avisar", date="2026-07-01", time="09:00")
+        rc = run_cita_done(project=proj.name, text="Avisar")
+        assert rc == 1
+        assert "drop" in capsys.readouterr().out.lower()
+
+    def test_drop_cancels_event(self, proj):
+        from core import api
+        from core.agenda.runners import run_cita_drop
+        api.add_event(project=proj.name, text="Charla", date="2026-07-01")
+        rc = run_cita_drop(project=proj.name, text="Charla", force=True)
+        assert rc == 0
+        assert self._read(proj)["events"] == []
+
+    def test_drop_cancels_reminder(self, proj):
+        from core import api
+        from core.agenda.runners import run_cita_drop
+        api.add_reminder(project=proj.name, text="Avisar", date="2026-07-01", time="09:00")
+        rc = run_cita_drop(project=proj.name, text="Avisar", force=True)
+        assert rc == 0
+        rems = self._read(proj)["reminders"]
+        assert rems == [] or rems[-1].get("cancelled")
+
+    def test_drop_cancels_task(self, proj):
+        from core import api
+        from core.agenda.runners import run_cita_drop
+        api.add_task(project=proj.name, text="Tarea X")
+        rc = run_cita_drop(project=proj.name, text="Tarea X", force=True)
+        assert rc == 0
+        tasks = self._read(proj)["tasks"]
+        assert tasks == [] or tasks[-1]["status"] == "cancelled"
+
+    def test_not_found_returns_1(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_cita_done
+        api.add_task(project=proj.name, text="Existe")
+        rc = run_cita_done(project=proj.name, text="No existe")
+        assert rc == 1
+
+
 class TestNextOccurrence:
     def test_daily(self):
         from core.agenda_cmds import _next_occurrence
