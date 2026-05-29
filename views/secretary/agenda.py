@@ -122,6 +122,35 @@ def _collect_pendings_in_ff_range(start_iso, end_iso):
     return out
 
 
+def _collect_followups_in_range(start_iso, end_iso):
+    """Returns [(project_dir, kind, item, fup)] for ⏩ followups whose date
+    falls in [start_iso, end_iso], across all four appointment types.
+
+    Followups are the body-line analogue of ``ff`` (design §2): the "Decidir
+    hoy" surface is the union of pending-``ff`` tasks and citas carrying a
+    followup ≤ today — same mechanism, two sources during coexistence (§6).
+    Skips done/cancelled and ``someday``. Locals only.
+    """
+    from core.agenda.display import item_followups
+    out = []
+    for project_dir in _iter_local_projects():
+        data = _read_agenda_safe(project_dir)
+        if data is None:
+            continue
+        for kind in ("tasks", "milestones", "events", "reminders"):
+            for item in data.get(kind, []):
+                if item.get("status") in ("done", "cancelled") or item.get("cancelled"):
+                    continue
+                for fup in item_followups(item):
+                    d = fup.get("date") or ""
+                    if d == "someday":
+                        continue
+                    if start_iso <= d <= end_iso:
+                        out.append((project_dir, kind, item, fup))
+    out.sort(key=lambda r: r[3]["date"])
+    return out
+
+
 def _count_milestones_window(today, days=MILESTONES_WINDOW) -> int:
     """Count pending milestones con today<=date<=today+days. Incluye federados."""
     from core.config import iter_federated_project_dirs
@@ -144,11 +173,51 @@ def _count_milestones_window(today, days=MILESTONES_WINDOW) -> int:
     return count
 
 
-def _counter_lines(today_items, overdue, pendings_today, n_milestones) -> list:
-    """Build adaptive counter blockquote (1-2 líneas).
+CRONOS_URGENT_DAYS = 7
+
+
+def _count_cronos(today) -> tuple:
+    """Count open cronogramas + urgentes (deadline vencido o ≤ CRONOS_URGENT_DAYS).
+
+    Returns (n_active, n_urgent). Reutiliza el collector compartido con
+    `secretary.cronos` (single source of truth).
+    """
+    from core.panel import _collect_cronogramas
+    cronogramas = _collect_cronogramas()
+    n_active = len(cronogramas)
+    urgent_cutoff = today + timedelta(days=CRONOS_URGENT_DAYS)
+    n_urgent = sum(
+        1 for _, _, _, _, deadline in cronogramas
+        if deadline is not None and deadline <= urgent_cutoff
+    )
+    return n_active, n_urgent
+
+
+def _count_log_entries_today(today) -> int:
+    """Count logbook entries with date==today across all projects (own+federated)."""
+    from core.config import iter_federated_project_dirs
+    from core.log import find_logbook_file
+    from core.project import _is_new_project
+    from core.stats import _scan_logbook
+    n = 0
+    for p in iter_federated_project_dirs(include_federated=True):
+        if not _is_new_project(p):
+            continue
+        logbook_path = find_logbook_file(p)
+        if not logbook_path or not logbook_path.exists():
+            continue
+        _, entries, _, _ = _scan_logbook(logbook_path, today, today)
+        n += len(entries)
+    return n
+
+
+def _counter_lines(today_items, overdue, pendings_today, n_milestones,
+                   cronos_counts=(0, 0), n_log_today=0,
+                   followups_today=()) -> list:
+    """Build adaptive counter blockquote (1-4 líneas).
 
     Categorías con N=0 se omiten. Si todas vacías, "sin compromisos".
-    Línea de hitos desaparece si N=0.
+    Línea de hitos / cronogramas / logbook desaparece si N=0.
     """
     # Hoy: 4 categorías (📅 ✅ ⚠️ ⏩). Milestones de hoy aparecen en la
     # tabla con 🏁 pero NO en el counter; los hitos viven en la línea
@@ -157,7 +226,9 @@ def _counter_lines(today_items, overdue, pendings_today, n_milestones) -> list:
     n_events = sum(1 for it in today_items if it[0] == "events")
     n_tasks  = sum(1 for it in today_items if it[0] == "tasks")
     n_overdue = len(overdue)
-    n_ff      = len(pendings_today)
+    # "Por triar" = pending-ff tasks + citas con followup ≤ hoy (misma
+    # superficie ⏩, dos fuentes durante la coexistencia ff/followup).
+    n_ff      = len(pendings_today) + len(followups_today)
 
     parts = []
     if n_events:
@@ -176,6 +247,12 @@ def _counter_lines(today_items, overdue, pendings_today, n_milestones) -> list:
         lines.append("> 🗓 Hoy: sin compromisos")
     if n_milestones:
         lines.append(f"> 🏁 Próximos {MILESTONES_WINDOW} días: {n_milestones} hitos")
+    n_cronos, n_urgent_cronos = cronos_counts
+    if n_cronos:
+        urgent_tag = f" (⚠️ {n_urgent_cronos} urgente{'s' if n_urgent_cronos != 1 else ''})" if n_urgent_cronos else ""
+        lines.append(f"> 📊 Cronogramas activos: {n_cronos}{urgent_tag} · [detalle](cronos.md)")
+    if n_log_today:
+        lines.append(f"> 📓 Logbook hoy: {n_log_today} entrada{'s' if n_log_today != 1 else ''} · [detalle](logbook.md)")
     return lines
 
 
@@ -192,6 +269,18 @@ def _render_pending_row(project_dir, t) -> str:
     if failed:
         extras += f" ❌{failed}"
     desc = (desc_raw + extras).replace("|", "\\|")
+    return f"| ⏩ |  |  |  |  | {desc} | {proj_link_md(project_dir)} |"
+
+
+def _render_followup_row(project_dir, kind, item, fup) -> str:
+    """Fila ⏩ para un followup de cualquier cita (task/ms/ev/reminder)."""
+    emoji    = KIND_EMOJI.get(kind, "")
+    desc_raw = item.get("desc", "") or ""
+    label    = f"{emoji} {desc_raw}".strip()
+    note     = fup.get("desc")
+    if note:
+        label += f" — {note}"
+    desc = label.replace("|", "\\|")
     return f"| ⏩ |  |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
@@ -221,25 +310,25 @@ def _render_items_table(items) -> list:
     rows = []
     for idx, (kind, item, _pdir, proj_md) in enumerate(timed):
         emoji = KIND_EMOJI[kind]
-        bell = bell_cell(item)
+        bell = bell_cell(kind, item)
         st, en = time_pair(item, DEFAULT_MIN.get(kind))
         ov = "" if kind == "reminders" else overlap_char(overlaps.get(idx, 0))
         desc = _desc_with_event_indicators(kind, item)
         rows.append(f"| {emoji} | {bell} | {ov} | {st} | {en} | {desc} | {proj_md} |")
     for kind, item, _pdir, proj_md in untimed:
         emoji = KIND_EMOJI[kind]
-        bell = bell_cell(item)
+        bell = bell_cell(kind, item)
         desc = _desc_with_event_indicators(kind, item)
         rows.append(f"| {emoji} | {bell} |  |  |  | {desc} | {proj_md} |")
     return rows
 
 
-def _today_block(today_items, overdue, pendings_today) -> list:
+def _today_block(today_items, overdue, pendings_today, followups_today=()) -> list:
     """Tabla única de Hoy: citas + ⚠️ vencidas (cap) + ⏩ por triar.
 
     Si todo está vacío, devuelve un texto placeholder.
     """
-    if not today_items and not overdue and not pendings_today:
+    if not today_items and not overdue and not pendings_today and not followups_today:
         return ["*Sin citas para hoy.*"]
 
     rows = [TABLE_HEADER]
@@ -254,22 +343,28 @@ def _today_block(today_items, overdue, pendings_today) -> list:
     for project_dir, t in pendings_today:
         rows.append(_render_pending_row(project_dir, t))
 
+    for project_dir, kind, item, fup in followups_today:
+        rows.append(_render_followup_row(project_dir, kind, item, fup))
+
     return rows
 
 
-def _next_days_block(today, items_by_day, pendings_by_day) -> list:
+def _next_days_block(today, items_by_day, pendings_by_day,
+                     followups_by_day=None) -> list:
     """Una tabla por día en [today+1, today+7]. Días vacíos se omiten.
 
     Devuelve sólo los bloques per-día (sin el H2 "Próximos días"); el
     caller decide si emite el H2 según haya o no contenido.
     """
+    followups_by_day = followups_by_day or {}
     blocks = []
     for offset in range(1, NEXT_DAYS_WINDOW + 1):
         d = today + timedelta(days=offset)
         day_iso = d.isoformat()
         items = items_by_day.get(day_iso, [])
         pendings = pendings_by_day.get(day_iso, [])
-        if not items and not pendings:
+        followups = followups_by_day.get(day_iso, [])
+        if not items and not pendings and not followups:
             continue
         blocks.append(f"### {day_iso} · {_WEEKDAYS_ES[d.weekday()]}")
         blocks.append("")
@@ -277,6 +372,8 @@ def _next_days_block(today, items_by_day, pendings_by_day) -> list:
         rows.extend(_render_items_table(items))
         for project_dir, t in pendings:
             rows.append(_render_pending_row(project_dir, t))
+        for project_dir, kind, item, fup in followups:
+            rows.append(_render_followup_row(project_dir, kind, item, fup))
         blocks.extend(rows)
         blocks.append("")
     return blocks
@@ -301,17 +398,36 @@ def generate(out_path: Path) -> None:
     for proj_dir, t in pendings_next:
         pendings_by_day.setdefault(t["ff"], []).append((proj_dir, t))
 
+    followups_today = _collect_followups_in_range(
+        _date.min.isoformat(), today.isoformat(),
+    )
+    followups_next = _collect_followups_in_range(
+        (today + timedelta(days=1)).isoformat(), end.isoformat(),
+    )
+    followups_by_day: dict = {}
+    for proj_dir, kind, item, fup in followups_next:
+        followups_by_day.setdefault(fup["date"], []).append(
+            (proj_dir, kind, item, fup))
+
     n_milestones = _count_milestones_window(today)
+    cronos_counts = _count_cronos(today)
+    n_log_today = _count_log_entries_today(today)
 
     lines = [autogen_banner("secretary.agenda").rstrip(), ""]
-    lines.extend(_counter_lines(today_items, overdue, pendings_today, n_milestones))
+    lines.extend(_counter_lines(today_items, overdue, pendings_today,
+                                n_milestones,
+                                cronos_counts=cronos_counts,
+                                n_log_today=n_log_today,
+                                followups_today=followups_today))
     lines.append("")
     lines.append(f"## 📅 Hoy — {_short_date_es(today)}")
     lines.append("")
-    lines.extend(_today_block(today_items, overdue, pendings_today))
+    lines.extend(_today_block(today_items, overdue, pendings_today,
+                              followups_today))
     lines.append("")
 
-    next_blocks = _next_days_block(today, by_day, pendings_by_day)
+    next_blocks = _next_days_block(today, by_day, pendings_by_day,
+                                   followups_by_day)
     if next_blocks:
         lines.append("## 📅 Próximos días")
         lines.append("")

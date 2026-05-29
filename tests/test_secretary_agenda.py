@@ -142,6 +142,84 @@ class TestCollectPendingsByFf:
         assert out == []
 
 
+class TestCollectFollowups:
+    """⏩ followups (body lines) surface alongside ff — design §2/§6."""
+
+    def test_includes_followup_in_range_on_task(self, agenda_env):
+        today = date.today()
+        d = (today + timedelta(days=2)).isoformat()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=f"## ✅ Tareas\n- [ ] Inscripción\n    ⏩ {d}\n",
+        )
+        out = sec_agenda._collect_followups_in_range(
+            (today + timedelta(days=1)).isoformat(),
+            (today + timedelta(days=7)).isoformat(),
+        )
+        assert len(out) == 1
+        _proj, kind, item, fup = out[0]
+        assert kind == "tasks"
+        assert fup["date"] == d
+        assert item["desc"] == "Inscripción"
+
+    def test_followup_on_event_carries_desc(self, agenda_env):
+        today = date.today()
+        d = (today + timedelta(days=2)).isoformat()
+        ev_date = (today + timedelta(days=30)).isoformat()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=f"## 📅 Eventos\n{ev_date} — Workshop\n    ⏩ {d} deadline inscripción\n",
+        )
+        out = sec_agenda._collect_followups_in_range(
+            (today + timedelta(days=1)).isoformat(),
+            (today + timedelta(days=7)).isoformat(),
+        )
+        assert len(out) == 1
+        _proj, kind, _item, fup = out[0]
+        assert kind == "events"
+        assert fup["desc"] == "deadline inscripción"
+
+    def test_excludes_done_and_out_of_range(self, agenda_env):
+        today = date.today()
+        in_range = (today + timedelta(days=2)).isoformat()
+        far      = (today + timedelta(days=99)).isoformat()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "## ✅ Tareas\n"
+                f"- [x] Done\n    ⏩ {in_range}\n"
+                f"- [ ] Live\n    ⏩ {far}\n"
+            ),
+        )
+        out = sec_agenda._collect_followups_in_range(
+            date.min.isoformat(), (today + timedelta(days=7)).isoformat(),
+        )
+        assert out == []   # done excluded; live one is out of the 7d window
+
+
+class TestFollowupSurfacing:
+    """Followups feed the counter and the Hoy table like ff pendings."""
+
+    def test_counter_counts_followups_as_por_triar(self):
+        followups = [(None, "events", {"desc": "x"}, {"date": "2026-01-01"})]
+        out = sec_agenda._counter_lines([], [], [], 0, followups_today=followups)
+        assert out == ["> 🗓 Hoy: ⏩1 por triar"]
+
+    def test_today_block_renders_followup_row(self, agenda_env):
+        today = date.today()
+        d = today.isoformat()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=f"## ✅ Tareas\n- [ ] Inscripción\n    ⏩ {d} ojo\n",
+        )
+        followups = sec_agenda._collect_followups_in_range(date.min.isoformat(), d)
+        block = sec_agenda._today_block([], [], [], followups)
+        fup_rows = [l for l in block if l.startswith("| ⏩ |")]
+        assert len(fup_rows) == 1
+        assert "Inscripción" in fup_rows[0]
+        assert "ojo" in fup_rows[0]
+
+
 class TestCountMilestonesWindow:
 
     def test_counts_within_30d(self, agenda_env):
@@ -303,10 +381,11 @@ class TestGenerate:
 
 
 class TestBellColumn:
-    """Columna 🔔 en la tabla de citas. Lee de la verdad (agenda.md), no
-    de ring.json: muestra 🔔 si el item de proyecto lleva ring en su .md."""
+    """Columna 🔔 en la tabla de citas. Display-only: reminders siempre,
+    task/ms/event si tienen `time` (regla en `bell_cell`). La cabecera
+    no lleva 🔔 — el icono sólo aparece en filas con alarma."""
 
-    def test_event_with_ring_shows_bell(self, agenda_env):
+    def test_event_with_time_shows_bell(self, agenda_env):
         today = date.today()
         _make_project(
             agenda_env["type_dir"],
@@ -321,21 +400,52 @@ class TestBellColumn:
         # Fila con bell. La columna está justo después del kind-emoji.
         assert "| 📅 | 🔔 |" in text
 
-    def test_event_without_ring_empty_bell(self, agenda_env):
+    def test_event_with_time_no_ring_still_shows_bell(self, agenda_env):
+        """Display-only: evento con hora pero sin ring explícito → 🔔."""
         today = date.today()
         _make_project(
             agenda_env["type_dir"],
             agenda_extra=(
                 "## 📅 Eventos\n"
-                f"{today.isoformat()} — Sin alarma ⏰10:00\n"
+                f"{today.isoformat()} — Sin ring explícito ⏰10:00\n"
             ),
         )
         out = agenda_env["tmp"] / "agenda.md"
         sec_agenda.generate(out)
         text = out.read_text()
-        # Sin ring: celda vacía.
-        assert "| 📅 |  |" in text
-        assert "| 📅 | 🔔 |" not in text
+        assert "| 📅 | 🔔 |" in text
+
+    def test_reminder_always_shows_bell(self, agenda_env):
+        """Reminders siempre 🔔 (reminder == ring por construcción)."""
+        today = date.today()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "## 💬 Recordatorios\n"
+                f"- Llamar ({today.isoformat()}) ⏰15:00\n"
+            ),
+        )
+        out = agenda_env["tmp"] / "agenda.md"
+        sec_agenda.generate(out)
+        text = out.read_text()
+        assert "| 💬 | 🔔 |" in text
+
+    def test_header_has_no_bell(self, agenda_env):
+        """Cabecera de la tabla no lleva 🔔; sólo aparece en filas."""
+        today = date.today()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "## 📅 Eventos\n"
+                f"{today.isoformat()} — Reunión ⏰10:00 🔔5m\n"
+            ),
+        )
+        out = agenda_env["tmp"] / "agenda.md"
+        sec_agenda.generate(out)
+        text = out.read_text()
+        # La línea de header NO tiene 🔔.
+        assert "| | | | Inicio | Fin | Descripción | Proyecto |" in text
+        assert "| 🔔 | | Inicio" not in text
 
     def test_pending_rows_have_empty_bell(self, agenda_env):
         """⏩ y ⚠️ filas mantienen la columna 🔔 (vacía) para alineación."""
