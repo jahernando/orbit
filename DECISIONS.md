@@ -876,6 +876,50 @@ Tres fricciones reales:
 
 ---
 
+## ADR-043 — Followups (`⏩` body) como capa semántica sobre `notes` + paraguas `cita` tipado/genérico
+
+**Estado**: aceptada (2026-05-29). Implementada F0–F4; la retirada de `ff`/plan/pending (F5) es **planeada, gated**. Deroga parcialmente el modelo de [[project_orbit_items_taxonomy]] (campo `ff`, verbos plan/pending, contadores 💤/❌). Diseño en `claude/notes/2026-05-29_cli_citas.md`, impl en [[project_orbit_cli_citas_impl]].
+
+**Contexto**: el campo `⏩` de cabecera (`ff`, fast-forward) existía solo para hacer aflorar una task sin compromiso firme en una fecha (ADR del taxonomy). Un **followup** escueto generaliza eso: hace lo mismo para *cualquiera* de las 4 citas y con *varias* fechas. Además la propuesta original (`app add … --type [task/ms/ev/rem]`, deprecar los 4 verbos) escondía la asimetría real de las citas y empujaba validación de argparse (estática) a runtime.
+
+**Decisión**:
+1. **Followup = `⏩ FECHA [desc]` en una línea de cuerpo indentada** de cualquier cita. Es un empujón blando: aflora en "Decidir hoy" del secretario cuando `fecha <= hoy`, **sin** marcar la cita vencida (❗) y **sin estado** (no acumula contadores). Se implementa como **capa semántica sobre el `notes` existente** (accessors `item_followups`/`add_followup`/`drop_followup`), no como campo nuevo del modelo → byte-fidelidad y escritura mínima gratis. El `⏩` de cuerpo es inequívocamente followup; el `⏩` de cabecera es `ff` — desambiguación **por posición** (el parser ya separa header de body).
+2. **Corte CLI tipado vs genérico**: crear/editar son **por tipo** (`task/ms/ev/rem add|edit`) porque ahí vive la asimetría de flags; ciclo de vida y anotación son **genéricos** sobre el paraguas `cita` (`cita fup/done/drop/log`), que localiza cross-tipo con un único helper (`_cita_locate`). `cita done` solo aplica a task/ms; `cita drop` delega en el runner per-tipo. No se deprecan los verbos por tipo.
+3. **Interrogador `-i`/`--ask` en `add`**: rellena huecos opcionales (ring/desc/room/date-time + followups en bucle), TTY-guard, inline-no-pregunta, defaults mostrados; required-by-type sigue en argparse. Knob `orbit.json "add_mode"`.
+4. **F5 (gated)**: cuando el followup demuestre cubrir los casos de `ff` (tras 1–2 semanas de uso real, [[feedback_live_a_day_before_delete]]), retirar `ff` + verbos plan/pending + contadores 💤/❌; migrar pendings vivas `ff:DATE`→`⏩DATE` body, `someday`/sin-fecha→reposo. Entonces `⏩` queda inequívoco (fin de coexistencia).
+
+**Consecuencias**:
+- Pros: una sola superficie ("Decidir hoy" = citas con followup ≤ hoy) y un solo mecanismo para los 4 tipos; el emoji ⏩ deja de tener doble sentido tras F5; captura blanda sin date cae en reposo (cierra el cabo de [[project_orbit_task_strict]]).
+- Contras: coexistencia transitoria de los dos sentidos de ⏩ hasta F5; se pierden `snooze_count`/`failed_count` (decisión del usuario: amortizados, nunca los usó).
+
+**Tradeoff considerado**:
+- *`app add --type`* (propuesta original): rechazado — esconde la asimetría, empuja validación a runtime, contradice "verbos CLI existentes se mantienen".
+- *Followup como campo del modelo* (no sobre `notes`): rechazado — reestructurar el dict arriesga reordenar el body de items editados a mano; la capa sobre `notes` preserva byte-fidelidad.
+- *Replicar fecha/desc/links de cabecera al body* ("preparar el futuro"): rechazado — doble verdad → desync + mete una *vista* en la verdad (choca con ADR-039). Solo links son body-nativos (ya existían como `📋/🚪/✉️`).
+
+---
+
+## ADR-044 — Echo del orbit-item desde el serializador único de la verdad
+
+**Estado**: aceptada (2026-05-29). Parte de CLI-citas ([[project_orbit_cli_citas_impl]]).
+
+**Contexto**: los verbos que mutan una cita confirmaban con prosa (`✓ [proj] Tarea pending: …`) construida por un **formateador paralelo** (`_format_add_attrs`) distinto del writer de la verdad. Eso puede desincronizarse del fichero y, sobre todo, **no muestra el cuerpo** (followups/links) — justo lo que el usuario querría verificar sin abrir Obsidian.
+
+**Decisión**: todo verbo que muta (`add`, `edit`, `done`, `drop`, `plan`, `pending`, `cita fup`) confirma imprimiendo el orbit-item con `format_item_block`, que serializa la línea con el **mismo** `_format_*_line` que escribe `agenda.md` (fidelidad byte a byte, imposible desincronizar) + el cuerpo indentado. El `[orbit:id]` se oculta salvo `-v`/`--verbose` (fidelidad con la vista de Obsidian). El estado/acción deducido (planeada/completada/cancelada…) va al **banner**, preservando el contrato de [[feedback_cli_explicit_confirmations]].
+
+**Política híbrida en recurrencia**: en caminos simples → item-block; el side-info de recurrencia (→ próxima: DATE, avance) va a una sub-línea `↻`; **serie-eliminada conserva su nota en prosa** (no queda un item único que mostrar). El **logbook mantiene su prosa** verbatim (superficie aparte del echo).
+
+**Consecuencias**:
+- Pros: un solo serializador → el echo enseña la sintaxis real (incl. body) y nunca miente; verificación + confirmación en uno.
+- Contras: rompió 2 aserciones de tests (reformateadas); el matiz de recurrencia obligó a la política híbrida en vez de un echo uniforme puro.
+
+**Tradeoff considerado**:
+- *Mantener prosa y añadir el block*: redundante (el block ya dice lo que la prosa).
+- *Folddar TODO (incl. serie/ocurrencia) al banner*: pierde matiz en serie-eliminada (no hay item) y más churn de tests.
+- *`format_item_block` solo en caminos simples*: el echo no sería uniforme cuando hay recurrencia — la sub-línea `↻` lo resuelve sin aplastar información.
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:
