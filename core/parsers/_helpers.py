@@ -65,6 +65,8 @@ def _add_add_args(p, date_required=False, time_required=False, has_ring=True):
     p.add_argument("--desc", default=None, help="Description (links, notes)")
     if has_ring:
         p.add_argument("--ring", default=None, help="Reminder: 1d, 2h, HH:MM, YYYY-MM-DD HH:MM")
+    p.add_argument("-i", "--ask", dest="ask", action="store_true",
+                   help="Guided mode: prompt for the optional gaps (ring/desc/room/followups); TTY only")
 
 
 def _add_edit_args(p, has_end=False, has_end_time=False):

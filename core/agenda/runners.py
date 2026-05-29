@@ -30,10 +30,10 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
                  recur: Optional[str] = None, until: Optional[str] = None,
                  ring: Optional[str] = None, time_val: Optional[str] = None,
                  desc: Optional[str] = None,
-                 ff: Optional[str] = None) -> int:
+                 ff: Optional[str] = None, ask: bool = False) -> int:
     return _generic_add("task", project, text, date_val=date_val, recur=recur,
                         until=until, ring=ring, time_val=time_val, desc=desc,
-                        ff=ff)
+                        ff=ff, ask=ask)
 
 
 def run_task_done(project: Optional[str], text: Optional[str]) -> int:
@@ -319,9 +319,9 @@ def run_task_log(project: Optional[str], text: Optional[str]) -> int:
 def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
                recur: Optional[str] = None, until: Optional[str] = None,
                ring: Optional[str] = None, time_val: Optional[str] = None,
-               desc: Optional[str] = None) -> int:
+               desc: Optional[str] = None, ask: bool = False) -> int:
     return _generic_add("milestone", project, text, date_val=date_val, recur=recur,
-                        until=until, ring=ring, time_val=time_val, desc=desc)
+                        until=until, ring=ring, time_val=time_val, desc=desc, ask=ask)
 
 
 def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
@@ -460,10 +460,10 @@ def run_ev_add(project: str, text: str, date_val: str,
                until: Optional[str] = None, ring: Optional[str] = None,
                desc: Optional[str] = None,
                agenda: Optional[str] = None,
-               room: Optional[str] = None) -> int:
+               room: Optional[str] = None, ask: bool = False) -> int:
     return _generic_add("event", project, text, date_val=date_val, end_date=end_date,
                         recur=recur, until=until, ring=ring, time_val=time_val,
-                        desc=desc, agenda=agenda, room=room)
+                        desc=desc, agenda=agenda, room=room, ask=ask)
 
 
 def run_ev_drop(project: Optional[str], text: Optional[str],
@@ -552,10 +552,11 @@ def run_reminder_add(project: str, text: str, date_val: str,
                      time_val: str,
                      recur: Optional[str] = None,
                      until: Optional[str] = None,
-                     desc: Optional[str] = None) -> int:
+                     desc: Optional[str] = None, ask: bool = False) -> int:
     """Add a reminder to a project's agenda."""
     return _generic_add("reminder", project, text, date_val=date_val,
-                        time_val=time_val, recur=recur, until=until, desc=desc)
+                        time_val=time_val, recur=recur, until=until, desc=desc,
+                        ask=ask)
 
 
 def run_reminder_drop(project: Optional[str], text: Optional[str],

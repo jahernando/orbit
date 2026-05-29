@@ -75,6 +75,7 @@ def _add_args(args):
         date_val=_d(_ga(args, "date")), recur=_ga(args, "recur"),
         until=_d(_ga(args, "until")), ring=_ga(args, "ring"),
         time_val=_ga(args, "time"), desc=_ga(args, "desc"),
+        ask=_ga(args, "ask", False),
     )
 
 
@@ -618,7 +619,7 @@ def cmd_reminder(args):
             project=args.project, text=args.text,
             date_val=_d(args.date), time_val=args.time,
             recur=_ga(args, "recur"), until=_d(_ga(args, "until")),
-            desc=_ga(args, "desc"))
+            desc=_ga(args, "desc"), ask=_ga(args, "ask", False))
     if action == "drop":   return run_reminder_drop(**_drop_args(args))
     if action == "edit":
         return run_reminder_edit(

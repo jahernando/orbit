@@ -816,6 +816,75 @@ class TestRunCitaDoneDrop:
         assert rc == 1
 
 
+class TestGuidedAdd:
+    """`-i` guided interrogator (Fase 4): TTY-guarded gap-filling on add."""
+
+    def test_guided_off_when_not_tty(self, monkeypatch):
+        from core.agenda import lifecycle
+        monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: False)
+        assert lifecycle._resolve_add_guided(ask=True) is False
+
+    def test_guided_on_with_ask_and_tty(self, monkeypatch):
+        from core.agenda import lifecycle
+        monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: True)
+        assert lifecycle._resolve_add_guided(ask=True) is True
+
+    def test_guided_on_with_config_knob(self, monkeypatch):
+        from core.agenda import lifecycle
+        monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr("core.config._load_orbit_json",
+                            lambda: {"add_mode": "guided"})
+        assert lifecycle._resolve_add_guided(ask=False) is True
+
+    def test_interrogate_fills_gaps_and_followups(self, monkeypatch):
+        from core.agenda import lifecycle
+        answers = iter(["2026-07-01", "10:00", "1d", "mi desc",
+                        "2026-06-11 ojo", "2026-06-20", ""])
+        monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+        cfg = lifecycle._TYPE_CONFIG["task"]
+        date_val, time_val, ring, desc, room, followups = lifecycle._interrogate_add(
+            "task", cfg, date_val=None, time_val=None, ring=None, desc=None, room=None)
+        assert (date_val, time_val, ring, desc) == ("2026-07-01", "10:00", "1d", "mi desc")
+        assert followups == ["⏩ 2026-06-11 ojo", "⏩ 2026-06-20"]
+
+    def test_interrogate_skips_inline_values(self, monkeypatch):
+        # All non-fup fields supplied inline → only the followup prompt fires
+        # (iterator would raise StopIteration if anything else were asked).
+        from core.agenda import lifecycle
+        answers = iter([""])
+        monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+        cfg = lifecycle._TYPE_CONFIG["task"]
+        out = lifecycle._interrogate_add(
+            "task", cfg, date_val="2026-05-01", time_val="09:00",
+            ring="1d", desc="d", room=None)
+        assert out[:4] == ("2026-05-01", "09:00", "1d", "d")
+        assert out[5] == []
+
+    def test_run_task_add_guided_appends_followup(self, proj, monkeypatch):
+        from core.agenda import lifecycle
+        from core.agenda_cmds import run_task_add, _read_agenda
+        monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: True)
+        answers = iter(["", "", "", "", "2026-06-11", ""])   # skip all, one fup
+        monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+        run_task_add("test-project", "Guided task", ask=True)
+        t = _read_agenda(proj / "test-project-agenda.md")["tasks"][-1]
+        assert t["desc"] == "Guided task"
+        assert t["notes"] == ["⏩ 2026-06-11"]
+
+    def test_run_task_add_no_ask_is_silent(self, proj, monkeypatch):
+        # Without -i, even on a TTY, the interrogator must not fire.
+        from core.agenda import lifecycle
+        from core.agenda_cmds import run_task_add, _read_agenda
+        monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: True)
+        def _boom(*a):
+            raise AssertionError("interrogator prompted without -i")
+        monkeypatch.setattr("builtins.input", _boom)
+        run_task_add("test-project", "Quiet task")
+        t = _read_agenda(proj / "test-project-agenda.md")["tasks"][-1]
+        assert t["desc"] == "Quiet task"
+        assert t.get("notes") in (None, [])
+
+
 class TestFormatItemBlock:
     """format_item_block: single-serializer echo + body, ID hidden — Fase 3."""
 

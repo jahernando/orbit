@@ -533,13 +533,82 @@ def _translate_api_error(msg: str) -> str:
     return f"⚠️  {msg}" if not msg.startswith("⚠️") else msg
 
 
+def _ask_line(prompt: str, default: Optional[str] = None) -> Optional[str]:
+    """Prompt showing *default*; Enter accepts it. Returns the entry or default.
+
+    No prompt is ever indismissable — Enter (or EOF/Ctrl-C) yields *default*.
+    """
+    suffix = f" [{default}]" if default else ""
+    try:
+        raw = input(f"  {prompt}{suffix}: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return default
+    return raw or default
+
+
+def _resolve_add_guided(ask: bool) -> bool:
+    """Guided interrogator runs only on a TTY, and only when -i/--ask is set
+    or ``orbit.json`` has ``"add_mode": "guided"`` (design §3 calibration).
+
+    The TTY guard means scripts/pipes never hang — they fall through to
+    defaults/skip.
+    """
+    if not sys.stdin.isatty():
+        return False
+    if ask:
+        return True
+    from core.config import _load_orbit_json
+    return _load_orbit_json().get("add_mode", "minimal") == "guided"
+
+
+def _interrogate_add(type_name, cfg, *, date_val, time_val, ring, desc, room):
+    """Fill the optional gaps interactively (design §3). Only asks for fields
+    not already supplied inline; required-by-type fields stay enforced by
+    argparse/api. Returns ``(date_val, time_val, ring, desc, room, followups)``
+    where *followups* is a list of ``⏩ DATE [desc]`` body lines.
+    """
+    from core.dateparse import parse_date
+    from core.agenda.display import _followup_line
+
+    print(f"━━━ {type_name} add · modo guiado (Enter = saltar) ━━━")
+    # Date — only task/ms can reach here without one (ev/reminder require it).
+    if not date_val and cfg.get("has_status"):
+        raw = _ask_line("Fecha (YYYY-MM-DD, today, mañana…)")
+        if raw:
+            date_val = parse_date(raw)
+    if not time_val:
+        time_val = _ask_line("Hora (HH:MM)") or None
+    if cfg["has_ring"] and not ring:
+        ring = _ask_line("Aviso/ring (1d, 2h, HH:MM…)") or None
+    if not desc:
+        desc = _ask_line("Descripción") or None
+    if type_name == "event" and not room:
+        room = _ask_line("Sala / enlace") or None
+
+    # Followups — always offered in guided mode, repeats until empty (§3).
+    followups = []
+    while True:
+        raw = _ask_line("Followup (fecha [desc], vacío = fin)")
+        if not raw:
+            break
+        parts = raw.split(None, 1)
+        fdate = parse_date(parts[0])
+        if not _valid_date(fdate):
+            print(f"  ⚠️  Fecha '{parts[0]}' no reconocida, followup omitido.")
+            continue
+        followups.append(_followup_line(fdate, parts[1] if len(parts) > 1 else None))
+    return date_val, time_val, ring, desc, room, followups
+
+
 def _generic_add(type_name: str, project: str, text: str,
                  date_val=None, recur=None, until=None,
                  ring=None, time_val=None, desc=None,
                  end_date=None,
                  ff: Optional[str] = None,
                  agenda: Optional[str] = None,
-                 room: Optional[str] = None) -> int:
+                 room: Optional[str] = None,
+                 ask: bool = False) -> int:
     """CLI wrapper around :mod:`core.api` ``add_*`` functions.
 
     Handles the CLI-only concerns the API doesn't (Phase 4.B, ADR-032):
@@ -562,6 +631,14 @@ def _generic_add(type_name: str, project: str, text: str,
               f"<proyecto> \"<texto>\" ...")
         return 1
 
+    # Guided interrogator (-i / add_mode=guided): fill optional gaps before
+    # validation. TTY-guarded, inline values never re-asked (design §3).
+    followups: list = []
+    if _resolve_add_guided(ask):
+        date_val, time_val, ring, desc, room, followups = _interrogate_add(
+            type_name, cfg, date_val=date_val, time_val=time_val,
+            ring=ring, desc=desc, room=room)
+
     # Past-date confirmation (CLI-only, never raised by the API).
     if date_val and _valid_date(date_val) and not recur:
         if date.fromisoformat(date_val) < date.today() and sys.stdin.isatty():
@@ -577,7 +654,7 @@ def _generic_add(type_name: str, project: str, text: str,
     if cfg["has_ring"] and date_val and time_val and not ring:
         ring = _prompt_and_validate_ring()
 
-    notes_in = [desc] if desc else None
+    notes_in = ([desc] if desc else []) + followups or None
 
     try:
         if type_name == "task":
