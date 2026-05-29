@@ -142,6 +142,20 @@ orbit ev add next-kr "WG12" --date 2026-05-08 --time 12:00 \
 
 `--agenda` (📋) y `--room` se guardan como notas indentadas bajo el evento. Si `--room` es una URL (Zoom/Meet/Teams) se promueve a la propiedad `url` del evento → en orbit y en Calendar.app aparece como 📹 (botón cámara). Si es texto plano (`Aula A1-01`) se queda como 🚪 en las notas. En `edit`, `none` quita el campo; un `--desc` no borra estos campos estructurados.
 
+El interrogador `add … -i` rellena los huecos opcionales (ring/desc/room/fecha + followups) de forma guiada (solo en terminal interactiva). Todo verbo que muta una cita confirma imprimiendo el orbit-item resultante tal cual queda en `agenda.md`.
+
+### Citas — paraguas `cita` y followups
+
+`cita` opera sobre cualquiera de las 4 citas sin indicar el tipo (localiza por proyecto + texto). Un **followup** (`⏩ FECHA` colgado bajo la cita) es un empujón blando que la hace aflorar en "Decidir hoy" cuando vence, sin marcarla atrasada y sin estado.
+
+```bash
+orbit cita fup  next-kr "Inscripción" 2026-06-11 --desc "deadline"   # añade followup
+orbit cita fup  next-kr "Inscripción" 2026-06-11 --drop              # borra ese followup
+orbit cita done next-kr "Reproducir"        # marca hecha (task/ms; rechaza ev/reminder)
+orbit cita drop next-kr "Congreso"          # cancela cualquier tipo
+orbit clog                                  # logbook de la cita activa ahora
+```
+
 ### Recordatorios
 
 ```bash

@@ -228,6 +228,32 @@ reminder log next-kr "correo"        # → #apunte en logbook
 
 Útil para anotar qué se hizo cuando se completó una tarea, se alcanzó un hito, se asistió a un evento o se atendió un recordatorio.
 
+### El paraguas `cita` y los followups
+
+`cita` opera sobre cualquiera de las 4 citas sin que digas el tipo: localiza por proyecto + texto (lista numerada si hay varias). Es cómodo para el ciclo de vida cuando no recuerdas si era tarea, hito, evento o recordatorio.
+
+```bash
+cita done next-kr "Reproducir"      # marca hecha (solo task/ms)
+cita drop next-kr "Congreso"        # cancela cualquier tipo
+```
+
+Un **followup** es un empujón blando que cuelgas bajo cualquier cita con una fecha: la cita reaparece en "Decidir hoy" cuando esa fecha llega, pero **no** se marca como atrasada (a diferencia de una fecha de compromiso) y no acumula contadores. Puedes poner varios.
+
+```bash
+cita fup next-kr "Inscripción XENON" 2026-06-11 --desc "deadline"   # recuérdamela el 11-jun
+cita fup next-kr "Inscripción XENON" 2026-06-11 --drop              # quita ese aviso
+```
+
+En el `agenda.md` queda como una línea indentada bajo la cita: `⏩ 2026-06-11 deadline`.
+
+### Modo guiado al crear (`-i`)
+
+Si no recuerdas los flags, `add … -i` te pregunta los opcionales (aviso/ring, descripción, sala, fecha/hora) y te ofrece añadir followups uno tras otro hasta que pulses Enter en blanco. Solo funciona en terminal interactiva (en scripts no pregunta); lo que ya pasaste en la línea no se vuelve a preguntar.
+
+```bash
+task add next-kr "Revisar paper" -i
+```
+
 ### Recordatorios
 
 Los recordatorios son notificaciones simples: tienen fecha, hora y texto, pero no tienen estado (no se completan ni vencen). Orbit los programa en Reminders.app de macOS para que te llegue la notificación.

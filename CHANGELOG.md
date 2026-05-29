@@ -10,6 +10,24 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### v0.40.0 (2026-05-29) — CLI-citas: followups ⏩ · paraguas `cita` · echo item-block · interrogador `-i`
+
+Plan **CLI-citas** (diseño en `claude/notes/2026-05-29_cli_citas.md`). Dos ejes independientes — la sintaxis del orbit-item (truth) y la superficie de comandos (CLI); esto es el CLI. Aditivo: `ff`/`plan`/`pending`/contadores siguen vivos en paralelo (su retirada es una fase destructiva posterior, gated).
+
+**Fase 0 — fix body-notes en reminders (`core/agenda/io.py`)** — `_write_agenda` descartaba en silencio las líneas de cuerpo indentadas de los recordatorios (⏩ followups, 📋 links): task/ms/ev las re-emitían, reminder no. Gate de todo lo demás (los followups cuelgan de cualquiera de las 4 citas).
+
+**Fase 1 — followups + el paraguas aflora (`display.py`, `runners.py`, `views/secretary/agenda.py`)** — un **followup** es `⏩ FECHA [desc]` en una línea de cuerpo de cualquier cita: empujón blando que la hace aflorar en "Decidir hoy" del secretario cuando `fecha <= hoy`, sin marcarla vencida y sin estado. Verbo `cita fup <proj> "<text>" <date> [--desc] [--drop]` (mutación silenciosa, `--drop` con clave = fecha). Accessors `item_followups`/`add_followup`/`drop_followup` sobre `notes`; el `⏩` de cuerpo es inequívocamente followup (≠ `ff` de cabecera, desambiguado por posición). El secretario suma followups ≤ hoy a la superficie "por triar" junto a los pending-`ff`.
+
+**Fase 2 — `cita done` / `cita drop` (`runners.py`)** — verbos genéricos del paraguas sobre el localizador compartido (`_cita_locate`): `done` (solo task/ms; rechaza ev/reminder) y `drop` (los 4 tipos). Delegan en el runner per-tipo → recurrencia (`-o`/`-s`/`--force`), ring y logbook idénticos a `<tipo> drop`.
+
+**Fase 3 — echo del orbit-item (`format_item_block` en `display.py`)** — todo verbo que muta confirma imprimiendo la cita tal cual se escribe en `agenda.md`, desde el **mismo** serializador (sin formateador paralelo → no se desincroniza), con el cuerpo indentado; `[orbit:id]` oculto salvo `-v`. Aplicado a add/fup/edit/done/drop/plan/pending. Política híbrida en recurrencia: la acción va al banner, el side-info (→ próxima / serie / avance) a una sub-línea `↻`, y serie-eliminada conserva su nota en prosa. El logbook mantiene su prosa.
+
+**Fase 4 — interrogador `-i`/`--ask` en add (`lifecycle.py`)** — rellena los huecos opcionales (ring/desc/room/date-time + followups en bucle), TTY-guard (scripts no cuelgan), inline-no-pregunta, defaults mostrados; required-by-type intacto. Knob `orbit.json "add_mode": "guided"` invierte el defecto.
+
+Tests: +~60 (followups, cita verbs, item-block echo, interrogador). Suite: 1876 passed (2 fallos preexistentes date-dependent en `test_panel.py`).
+
+---
+
 ### v0.39.0 (2026-05-21) — Ring fix: orbit_id backfill · columna 🔔 · rings.md unificado
 
 Bug: alarmas no se programaban para items con `🔔` pero sin `[orbit:XXXX]` — el daemon necesita el id para idempotencia, y `views/ring/export.py:_iter_kind_items` los descartaba silenciosamente. Causa típica: eventos pegados a mano / importados, no creados por `ev add`.

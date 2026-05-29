@@ -35,7 +35,7 @@ orbit project type drop <name>              # elimina tipo
 ## task — tareas
 
 ```bash
-orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--ff DATE|someday]
+orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--ff DATE|someday] [-i]
 orbit task plan    [<project>] ["<text>"]  <date> [<time>]    # promueve pending→planned o reschedule planned
 orbit task pending [<project>] ["<text>"] [<ff>|someday]      # degrada planned→pending o snooze pending
 orbit task done    [<project>] ["<text>"]
@@ -121,12 +121,26 @@ Sin `--time`, se usa 09:00 como ancla por defecto.
 
 Si al crear una tarea, hito o evento con `--time` no se indica `--ring`, Orbit pregunta interactivamente (defecto `5m`, `0` para no añadir ring).
 
+### Modo guiado (`-i` / `--ask`)
+
+`add … -i` activa un interrogador que rellena los huecos **opcionales** de forma interactiva: ring, descripción, sala/enlace (eventos), fecha/hora si faltan, y **followups** en bucle (`⏩ FECHA [desc]`, repite hasta Enter vacío). Calibrado para no molestar:
+
+- Solo en terminal interactiva (TTY): en scripts/pipes nunca pregunta (usa defaults/salta) → no cuelga.
+- Lo pasado inline **no** se vuelve a preguntar; solo rellena lo que falta.
+- Todo prompt muestra su default; Enter lo acepta.
+- Los campos obligatorios por tipo (ev→`--date`, reminder→`--date`+`--time`) siguen siendo obligatorios en línea.
+- Por defecto el modo es **mínimo** (sin `-i` no pregunta nada extra). En `orbit.json`, `"add_mode": "guided"` invierte el defecto (sobreescribible por invocación).
+
+### Echo del item al mutar
+
+Todos los verbos que modifican una cita (`add`, `edit`, `done`, `drop`, `plan`, `pending`, `cita fup`) confirman imprimiendo el **orbit-item resultante** tal cual queda en `agenda.md` (mismo serializador → fiel byte a byte), incluido su cuerpo (followups/links). El `[orbit:id]` se oculta salvo con `-v`/`--verbose`.
+
 ---
 
 ## ms — hitos
 
 ```bash
-orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC]
+orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [-i]
 orbit ms done   [<project>] ["<text>"]
 orbit ms drop   [<project>] ["<text>"] [--force] [-o] [-s]
 orbit ms log    [<project>] ["<text>"]
@@ -138,7 +152,7 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--ti
 ## ev — eventos
 
 ```bash
-orbit ev add  <project> "<text>" --date DATE [--end DATE] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--agenda URL] [--room URL]
+orbit ev add  <project> "<text>" --date DATE [--end DATE] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--agenda URL] [--room URL] [-i]
 orbit ev drop [<project>] ["<text>"] [--force] [-o] [-s]
 orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--agenda URL|none] [--room URL|none]
 ```
@@ -159,7 +173,7 @@ orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|
 ## reminder (rem) — recordatorios
 
 ```bash
-orbit reminder add  <project> "<text>" --date DATE --time HH:MM [--recur FREQ] [--until DATE] [--desc DESC]
+orbit reminder add  <project> "<text>" --date DATE --time HH:MM [--recur FREQ] [--until DATE] [--desc DESC] [-i]
 orbit reminder drop [<project>] ["<text>"] [--force] [-o] [-s]
 orbit reminder log  [<project>] ["<text>"]
 orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--desc DESC|none]
@@ -173,6 +187,32 @@ orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [
 - Al iniciar la shell, `ring` programa los recordatorios del día como notificaciones en Reminders.app de macOS
 - `--date` y `--time` son obligatorios
 - `--recur` y `--until` funcionan igual que en tareas/eventos
+
+---
+
+## cita — paraguas de las 4 citas
+
+`cita` opera sobre cualquiera de las 4 citas (task / ms / ev / reminder) **sin que indiques el tipo**: localiza por proyecto + texto (lista numerada si hay varias coincidencias). Útil para ciclo de vida y anotación cuando no quieres recordar de qué tipo es la cita.
+
+```bash
+orbit cita log  ["<text>"]                                 # = clog: logbook de la cita activa ahora
+orbit cita fup  <project> "<text>" <date> [--desc DESC]    # añade un followup ⏩ a la cita
+orbit cita fup  <project> "<text>" <date> --drop           # borra ESE followup (clave = fecha)
+orbit cita done <project> ["<text>"]                       # marca hecha (solo task/ms)
+orbit cita drop <project> ["<text>"] [--force] [-o] [-s]   # cancela cualquier tipo
+```
+
+- `clog` es atajo de `cita log`.
+- `cita done` rechaza eventos y recordatorios (no tienen "done" → se cancelan con `cita drop`).
+- `cita drop` delega en el `drop` del tipo correspondiente: misma gestión de recurrencia (`-o`/`-s`/`--force`), ring y logbook.
+
+### Followups (`⏩` en el cuerpo)
+
+Un **followup** es un empujón blando colgado bajo cualquier cita como línea de cuerpo indentada `⏩ FECHA [desc]`. Hace aflorar la cita en "Decidir hoy" del secretario cuando su fecha `<= hoy`, **sin** marcarla vencida (❗) y **sin** estado (no acumula contadores). Una cita puede llevar varios followups.
+
+- Se añaden/borran con `cita fup` (mutación silenciosa: no escribe en el logbook, pero el comando muestra el item resultante).
+- `date` acepta `YYYY-MM-DD`, `today`, `mañana`, `+N`, … (se normaliza a ISO).
+- No confundir con el campo `⏩` de **cabecera** de una *task* (el `ff` del modelo planned/pending): el followup va en una **línea de cuerpo** y aplica a las 4 citas.
 
 ---
 
