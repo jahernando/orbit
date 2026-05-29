@@ -568,6 +568,26 @@ class TestAgendaIO:
         assert len(data2["milestones"]) == 1
         assert data2["tasks"][0]["recur"] == "weekly"
 
+    def test_body_notes_roundtrip_all_four_types(self, proj):
+        """Body lines (⏩ followups, 📋 links) survive a write→read on every
+        appointment type — reminders included (regression: the reminder write
+        loop used to drop notes silently)."""
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        notes = ["⏩ 2026-06-11", "📋 https://example.com"]
+        data = _read_agenda(proj / "test-project-agenda.md")
+        data["tasks"]      = [{"status": "pending", "desc": "T", "date": None,
+                               "recur": None, "ring": None, "notes": list(notes)}]
+        data["milestones"] = [{"status": "pending", "desc": "M", "date": "2026-07-01",
+                               "recur": None, "ring": None, "notes": list(notes)}]
+        data["events"]     = [{"date": "2026-04-10", "desc": "E", "end": None,
+                               "notes": list(notes)}]
+        data["reminders"]  = [{"desc": "R", "date": "2026-06-01", "time": "10:00",
+                               "cancelled": False, "notes": list(notes)}]
+        _write_agenda(proj / "test-project-agenda.md", data)
+        data2 = _read_agenda(proj / "test-project-agenda.md")
+        for kind in ("tasks", "milestones", "events", "reminders"):
+            assert data2[kind][0].get("notes") == notes, kind
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # _next_occurrence

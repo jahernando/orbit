@@ -438,6 +438,8 @@ def _write_agenda(path: Path, data: dict) -> None:
         out.append(_REM_HEADER)
         for rem in sorted(data["reminders"], key=lambda r: (r["date"], r["time"])):
             out.append(_format_reminder_line(rem))
+            for note in rem.get("notes") or []:
+                out.append(f"    {note}")
         out.append("")
 
     if data.get("cronos"):
