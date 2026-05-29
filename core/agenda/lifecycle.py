@@ -563,7 +563,7 @@ def _resolve_add_guided(ask: bool) -> bool:
 
 
 def _interrogate_add(type_name, cfg, *, date_val, time_val, ring, desc, room):
-    """Fill the optional gaps interactively (design §3). Only asks for fields
+    """Fill the optional gaps interactively (design §3, ADR-043). Only asks for fields
     not already supplied inline; required-by-type fields stay enforced by
     argparse/api. Returns ``(date_val, time_val, ring, desc, room, followups)``
     where *followups* is a list of ``⏩ DATE [desc]`` body lines.

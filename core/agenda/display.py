@@ -100,6 +100,7 @@ def event_indicators(item: dict, markdown: bool = False) -> str:
 # fast-forward field (``item['ff']``), which is emitted inline on the item's
 # own line and never lives in ``notes`` — so a ``⏩`` found inside ``notes``
 # is unambiguously a followup (positional disambiguation, design §6).
+# See ADR-043 (followups as a semantic layer over `notes`).
 
 _FOLLOWUP_NOTE_PREFIX = "⏩"
 
@@ -145,7 +146,7 @@ def drop_followup(item: dict, date_val: str) -> list:
     return removed
 
 
-# ── Orbit-item echo (single serializer, design §4) ─────────────────────────
+# ── Orbit-item echo (single serializer, design §4 / ADR-044) ───────────────
 
 _ORBIT_ID_TOKEN = re.compile(r"\s*\[orbit:[0-9a-f]{8}\]")
 

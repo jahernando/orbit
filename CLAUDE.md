@@ -59,6 +59,8 @@ El sistema de citas es uniforme. Las cuatro comparten la misma interfaz:
 Comandos uniformes: `add`, `drop`, `edit`, `list`, `log` (crear entrada de logbook desde cita).
 Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 
+**Paraguas `cita`** (v0.40, [ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico)): opera sobre las 4 citas sin indicar el tipo (localiza por proyecto+texto). `cita fup` añade/borra **followups** (`⏩ FECHA [desc]` en línea de cuerpo: empujón blando que aflora la cita ≤ su fecha, sin estado, generaliza el `ff` de cabecera); `cita done` (solo task/ms), `cita drop` (los 4), `cita log`/`clog`. `add … -i` = interrogador guiado. Verbos que mutan imprimen el orbit-item desde el serializador de la verdad ([ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)).
+
 ### Recurrencia
 - Todos soportan `--recur` y `--until`
 - `drop` en recurrentes: `-o` (avanza ocurrencia), `-s` (elimina serie), interactivo sin flags
@@ -99,11 +101,13 @@ Una sola dirección: orbit es source-of-truth, los backends consumen.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.38.0, 2026-05-16)
+## Estado actual (v0.40.0, 2026-05-29)
 
-Pulido arquitectónico mayor — 5 ADRs nuevos, separación core/views/, save flow unificado, secretary como tercera familia (junto a cartero y ring-daemon), wrap CLI completo, watchdog daemon, modo pretty para hooks.
+**CLI-citas** ([ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico) + [ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)): followups (`⏩` en cuerpo) como capa sobre `notes`; paraguas `cita` (fup/done/drop) con corte tipado vs genérico; echo del orbit-item desde el serializador único; interrogador `-i` en `add`. La retirada de `ff`/plan/pending (F5) queda **planeada/gated**. Detalle en [CHANGELOG.md](CHANGELOG.md) (v0.40) y en [project_orbit_cli_citas_impl] (memoria).
 
-### Tres ejes principales
+Versiones intermedias (detalle en [CHANGELOG.md](CHANGELOG.md)): **v0.39** ring fix (orbit_id backfill, columna 🔔, rings.md unificado).
+
+### Base arquitectónica (v0.38) — tres ejes principales
 
 **1. Separación `core/` vs `views/`** ([ADR-033](DECISIONS.md#adr-033--separación-core-writers-vs-views-readers))
 `render`, `doctor`, `ics`, `ring` salen de `core/` a `views/{render,doctor,cal,ring}/`. Writers (core) escriben la verdad; viewers (views) leen y proyectan derivados. Regla: core no importa views salvo lazy. Más [ADR-034](DECISIONS.md#adr-034--save-como-verbo-de-cierre--chain-commit_post-unificado): `save` como verbo primario (alias legacy `commit`); chains `commit_pre`/`commit_post` con todas las acciones declarativas.

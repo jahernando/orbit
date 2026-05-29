@@ -840,9 +840,9 @@ def run_cita_fup(project: Optional[str], text: Optional[str],
                  drop: bool = False) -> int:
     """Add or drop a ⏩ followup on any appointment (cross-type) in *project*.
 
-    Followups are soft nudges (design §2): they surface the cita on/after
-    *date_val* without marking it ❗ and carry no state. Mutations are
-    silent — no logbook entry, no side-effect (§0.5) — but echo what
+    Followups are soft nudges (design §2, ADR-043): they surface the cita
+    on/after *date_val* without marking it ❗ and carry no state. Mutations
+    are silent — no logbook entry, no side-effect (§0.5) — but echo what
     changed. The key for ``--drop`` is the date.
     """
     from core.agenda.display import add_followup, drop_followup, format_item_block
