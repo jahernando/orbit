@@ -131,6 +131,15 @@ def register_cita(subparsers):
     cita_log.add_argument("text", nargs="?", default=None,
                           help="Optional filter text (substring match on desc)")
 
+    cita_fup = cita_sub.add_parser(
+        "fup", help="Add/drop a ⏩ followup on any cita (cross-type)")
+    cita_fup.add_argument("project", help="Project name")
+    cita_fup.add_argument("text", help="Substring match on cita desc")
+    cita_fup.add_argument("date", help="Followup date (YYYY-MM-DD, today, mañana, ...)")
+    cita_fup.add_argument("--desc", default=None, help="Optional followup note")
+    cita_fup.add_argument("--drop", action="store_true",
+                          help="Remove the followup with this date instead of adding")
+
     # Atajo directo equivalente a `cita log`.
     clog_p = subparsers.add_parser(
         "clog", help="Alias de `cita log` — logbook entry de la cita activa")

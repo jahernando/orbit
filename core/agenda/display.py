@@ -91,6 +91,59 @@ def event_indicators(item: dict, markdown: bool = False) -> str:
     return " " + " ".join(parts)
 
 
+# ── Followups (⏩ body lines) ──────────────────────────────────────────────
+#
+# A followup is a soft nudge: ⏩ DATE [desc] hung as an indented body line
+# under any appointment. It surfaces the cita on/after DATE without marking
+# it overdue and carries no state (design §0.5/§2). Distinct from the header
+# fast-forward field (``item['ff']``), which is emitted inline on the item's
+# own line and never lives in ``notes`` — so a ``⏩`` found inside ``notes``
+# is unambiguously a followup (positional disambiguation, design §6).
+
+_FOLLOWUP_NOTE_PREFIX = "⏩"
+
+
+def item_followups(item: dict) -> list:
+    """Return followups attached to *item* as ``[{'date':.., 'desc':..}]``."""
+    out = []
+    for n in (item.get("notes") or []):
+        if n.startswith(_FOLLOWUP_NOTE_PREFIX):
+            rest  = n[len(_FOLLOWUP_NOTE_PREFIX):].strip()
+            parts = rest.split(None, 1)
+            out.append({"date": parts[0] if parts else "",
+                        "desc": parts[1] if len(parts) > 1 else None})
+    return out
+
+
+def _followup_line(date_val: str, desc: str = None) -> str:
+    line = f"{_FOLLOWUP_NOTE_PREFIX} {date_val}"
+    if desc:
+        line += f" {desc}"
+    return line
+
+
+def add_followup(item: dict, date_val: str, desc: str = None) -> str:
+    """Append a ``⏩ DATE [desc]`` body line to *item*. Returns the line."""
+    line = _followup_line(date_val, desc)
+    item.setdefault("notes", []).append(line)
+    return line
+
+
+def drop_followup(item: dict, date_val: str) -> list:
+    """Drop every followup whose date == *date_val* (the key). Returns the
+    removed lines, empty if none matched."""
+    removed, kept = [], []
+    for n in (item.get("notes") or []):
+        if n.startswith(_FOLLOWUP_NOTE_PREFIX):
+            tok = n[len(_FOLLOWUP_NOTE_PREFIX):].strip().split(None, 1)
+            if tok and tok[0] == date_val:
+                removed.append(n)
+                continue
+        kept.append(n)
+    item["notes"] = kept
+    return removed
+
+
 # ── Line displays ─────────────────────────────────────────────────────────
 
 def _display_task(t: dict) -> str:

@@ -795,6 +795,76 @@ def _cita_pick(items, label: str, text: Optional[str]):
     return None
 
 
+def _cita_locate(project_dir, data, text: Optional[str]):
+    """Locate one appointment in *data* by *text* across the 4 types.
+
+    Returns ``(kind, index)`` or ``None``. Reuses :func:`_cita_pick` for
+    disambiguation, so a unique substring resolves directly and ambiguity
+    opens the numbered selector (single shared locator, design §1).
+    """
+    candidates, index_map = [], []
+    for kind in ("tasks", "milestones", "events", "reminders"):
+        for i, item in enumerate(data.get(kind, [])):
+            candidates.append((kind, project_dir, item))
+            index_map.append((kind, i))
+    if not candidates:
+        print("No hay citas en este proyecto.")
+        return None
+    pick = _cita_pick(candidates, "Citas del proyecto", text)
+    if pick is None:
+        return None
+    return index_map[pick]
+
+
+def run_cita_fup(project: Optional[str], text: Optional[str],
+                 date_val: Optional[str], desc: Optional[str] = None,
+                 drop: bool = False) -> int:
+    """Add or drop a ⏩ followup on any appointment (cross-type) in *project*.
+
+    Followups are soft nudges (design §2): they surface the cita on/after
+    *date_val* without marking it ❗ and carry no state. Mutations are
+    silent — no logbook entry, no side-effect (§0.5) — but echo what
+    changed. The key for ``--drop`` is the date.
+    """
+    from core.agenda.display import add_followup, drop_followup
+    from core.dateparse import parse_date
+
+    project_dir = _resolve_project(project)
+    if project_dir is None:
+        return 1
+    if not date_val:
+        print("Error: especifica fecha (ej. cita fup <proyecto> <texto> <YYYY-MM-DD>)")
+        return 1
+    date_norm = parse_date(date_val)
+    if not _valid_date(date_norm):
+        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, ...")
+        return 1
+
+    agenda_path = resolve_file(project_dir, "agenda")
+    data  = _read_agenda(agenda_path)
+    found = _cita_locate(project_dir, data, text)
+    if found is None:
+        return 1
+    kind, idx = found
+    item  = data[kind][idx]
+    emoji = _CITA_KIND_EMOJI[kind]
+
+    if drop:
+        removed = drop_followup(item, date_norm)
+        if not removed:
+            print(f"No hay followup ⏩{date_norm} en {emoji} {item['desc']}.")
+            return 1
+        _write_agenda(agenda_path, data)
+        for line in removed:
+            print(f"✓ [{project_dir.name}] followup borrado: {emoji} {item['desc']} — {line}")
+        return 0
+
+    line = add_followup(item, date_norm, desc)
+    _write_agenda(agenda_path, data)
+    print(f"✓ [{project_dir.name}] followup: {emoji} {item['desc']} — {line}")
+    return 0
+
+
 def run_cita_log(text: Optional[str] = None) -> int:
     """Crea entrada de logbook de la cita activa ahora (o selector).
 

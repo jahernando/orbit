@@ -593,6 +593,132 @@ class TestAgendaIO:
 # _next_occurrence
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Followups (⏩ body lines) + cita fup  — CLI-citas Fase 1
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestFollowupAccessors:
+    """item_followups / add_followup / drop_followup over item['notes']."""
+
+    def test_empty(self):
+        from core.agenda.display import item_followups
+        assert item_followups({}) == []
+        assert item_followups({"notes": ["📋 https://x"]}) == []
+
+    def test_parse_date_and_desc(self):
+        from core.agenda.display import item_followups
+        item = {"notes": ["⏩ 2026-06-11", "⏩ 2026-07-01 deadline inscripción"]}
+        assert item_followups(item) == [
+            {"date": "2026-06-11", "desc": None},
+            {"date": "2026-07-01", "desc": "deadline inscripción"},
+        ]
+
+    def test_add_returns_line_and_mutates(self):
+        from core.agenda.display import add_followup
+        item = {}
+        line = add_followup(item, "2026-06-11", "ojo")
+        assert line == "⏩ 2026-06-11 ojo"
+        assert item["notes"] == ["⏩ 2026-06-11 ojo"]
+
+    def test_drop_by_date_key(self):
+        from core.agenda.display import drop_followup
+        item = {"notes": ["📋 https://x", "⏩ 2026-06-11 a", "⏩ 2026-07-01"]}
+        removed = drop_followup(item, "2026-06-11")
+        assert removed == ["⏩ 2026-06-11 a"]
+        assert item["notes"] == ["📋 https://x", "⏩ 2026-07-01"]
+
+    def test_drop_nonexistent_is_noop(self):
+        from core.agenda.display import drop_followup
+        item = {"notes": ["⏩ 2026-07-01"]}
+        assert drop_followup(item, "2026-06-11") == []
+        assert item["notes"] == ["⏩ 2026-07-01"]
+
+    def test_followup_does_not_collide_with_header_ff(self):
+        # Header ff lives in item['ff'], never in notes → no false positive.
+        from core.agenda.display import item_followups
+        assert item_followups({"ff": "2026-06-11", "notes": []}) == []
+
+
+class TestRunCitaFup:
+    """cita fup: add/drop a followup on any appointment, cross-type."""
+
+    def _read(self, proj):
+        from core.agenda_cmds import _read_agenda
+        return _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
+
+    def test_add_followup_to_task(self, proj):
+        from core import api
+        from core.agenda.runners import run_cita_fup
+        api.add_task(project=proj.name, text="Inscripción XENON")
+        rc = run_cita_fup(project=proj.name, text="XENON", date_val="2026-06-11")
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1]["notes"] == ["⏩ 2026-06-11"]
+
+    def test_add_followup_to_event_with_desc(self, proj):
+        from core import api
+        from core.agenda.runners import run_cita_fup
+        api.add_event(project=proj.name, text="Xenon workshop", date="2026-09-14")
+        rc = run_cita_fup(project=proj.name, text="workshop",
+                          date_val="2026-06-11", desc="deadline inscripción")
+        assert rc == 0
+        notes = self._read(proj)["events"][-1]["notes"]
+        assert "⏩ 2026-06-11 deadline inscripción" in notes
+
+    def test_add_followup_to_reminder(self, proj):
+        # Reminders are the type whose body used to be dropped (Fase 0 fix).
+        from core import api
+        from core.agenda.runners import run_cita_fup
+        api.add_reminder(project=proj.name, text="Pagar cuota",
+                         date="2026-06-01", time="10:00")
+        rc = run_cita_fup(project=proj.name, text="cuota", date_val="2026-06-11")
+        assert rc == 0
+        assert self._read(proj)["reminders"][-1]["notes"] == ["⏩ 2026-06-11"]
+
+    def test_natural_date_is_normalized_to_iso(self, proj):
+        from core import api
+        from core.agenda.runners import run_cita_fup
+        from datetime import date
+        api.add_task(project=proj.name, text="X")
+        run_cita_fup(project=proj.name, text="X", date_val="today")
+        notes = self._read(proj)["tasks"][-1]["notes"]
+        assert notes == [f"⏩ {date.today().isoformat()}"]
+
+    def test_drop_followup(self, proj):
+        from core import api
+        from core.agenda.runners import run_cita_fup
+        api.add_task(project=proj.name, text="X")
+        run_cita_fup(project=proj.name, text="X", date_val="2026-06-11")
+        rc = run_cita_fup(project=proj.name, text="X",
+                          date_val="2026-06-11", drop=True)
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1].get("notes") in (None, [])
+
+    def test_drop_nonexistent_returns_1(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_cita_fup
+        api.add_task(project=proj.name, text="X")
+        rc = run_cita_fup(project=proj.name, text="X",
+                          date_val="2026-06-11", drop=True)
+        assert rc == 1
+        assert "No hay followup" in capsys.readouterr().out
+
+    def test_invalid_date_returns_1(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_cita_fup
+        api.add_task(project=proj.name, text="X")
+        rc = run_cita_fup(project=proj.name, text="X", date_val="garbage-xyz")
+        assert rc == 1
+        assert "no reconocida" in capsys.readouterr().out.lower()
+
+    def test_missing_date_returns_1(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_cita_fup
+        api.add_task(project=proj.name, text="X")
+        rc = run_cita_fup(project=proj.name, text="X", date_val=None)
+        assert rc == 1
+        assert "fecha" in capsys.readouterr().out.lower()
+
+
 class TestNextOccurrence:
     def test_daily(self):
         from core.agenda_cmds import _next_occurrence

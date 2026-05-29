@@ -582,11 +582,16 @@ def cmd_ev(args):
 
 
 def cmd_cita(args):
-    """Cita umbrella dispatcher: `cita log [text]`."""
+    """Cita umbrella dispatcher: `cita log [text]` / `cita fup ...`."""
     action = _ga(args, "action") or "log"
     if action == "log":
         from core.agenda.runners import run_cita_log
         return run_cita_log(text=_ga(args, "text"))
+    if action == "fup":
+        from core.agenda.runners import run_cita_fup
+        return run_cita_fup(project=_ga(args, "project"), text=_ga(args, "text"),
+                            date_val=_ga(args, "date"), desc=_ga(args, "desc"),
+                            drop=_ga(args, "drop"))
     return 1
 
 
@@ -2186,7 +2191,7 @@ _COMMANDS = {
 #   resto en _DASH_TRIGGERS → solo dash  (log/hl/project no afectan ics
 #                     ni ring, sólo a los viewers markdown).
 _CITA_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
-                  "ics-import", "email", "focus"}
+                  "ics-import", "email", "focus", "cita"}
 _DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project"}
 
 
