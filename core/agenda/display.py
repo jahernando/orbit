@@ -9,6 +9,7 @@ Holds:
 """
 from __future__ import annotations
 
+import re
 import sys
 from typing import Optional
 
@@ -142,6 +143,46 @@ def drop_followup(item: dict, date_val: str) -> list:
         kept.append(n)
     item["notes"] = kept
     return removed
+
+
+# ── Orbit-item echo (single serializer, design §4) ─────────────────────────
+
+_ORBIT_ID_TOKEN = re.compile(r"\s*\[orbit:[0-9a-f]{8}\]")
+
+
+def format_item_block(kind: str, item: dict, *, verbose: bool = False,
+                      banner: Optional[str] = None,
+                      state: Optional[str] = None) -> str:
+    """Render an orbit-item exactly as written to the truth, plus its body.
+
+    Confirmation + verification in one: the line comes from the *same*
+    serializer that writes ``agenda.md`` (``_format_*_line``), so it can
+    never desync from the file — no parallel formatter (design §4). Body
+    notes (⏩ followups, 📋 links) are hung indented. The ``[orbit:id]``
+    token is hidden unless *verbose* (display fidelity with Obsidian, cabo #2).
+
+    *kind* accepts singular or plural ('task'/'tasks', …). *banner* and
+    *state* build an optional ``━━━ banner · state ━━━`` header.
+    """
+    from core.agenda.io import (_format_task_line, _format_event_line,
+                                _format_reminder_line)
+    k = kind.rstrip("s")
+    if k in ("task", "milestone"):
+        line = _format_task_line(item)
+    elif k == "event":
+        line = _format_event_line(item)
+    else:
+        line = _format_reminder_line(item)
+    if not verbose:
+        line = _ORBIT_ID_TOKEN.sub("", line)
+    out = []
+    if banner:
+        head = banner + (f" · {state}" if state else "")
+        out.append(f"━━━ {head} ━━━")
+    out.append(f"  {line}")
+    for note in item.get("notes") or []:
+        out.append(f"      {note}")
+    return "\n".join(out)
 
 
 # ── Line displays ─────────────────────────────────────────────────────────

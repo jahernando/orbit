@@ -826,7 +826,7 @@ def run_cita_fup(project: Optional[str], text: Optional[str],
     silent — no logbook entry, no side-effect (§0.5) — but echo what
     changed. The key for ``--drop`` is the date.
     """
-    from core.agenda.display import add_followup, drop_followup
+    from core.agenda.display import add_followup, drop_followup, format_item_block
     from core.dateparse import parse_date
 
     project_dir = _resolve_project(project)
@@ -856,12 +856,14 @@ def run_cita_fup(project: Optional[str], text: Optional[str],
             return 1
         _write_agenda(agenda_path, data)
         for line in removed:
-            print(f"✓ [{project_dir.name}] followup borrado: {emoji} {item['desc']} — {line}")
+            print(f"  ⏩ borrado: {line}")
+        print(format_item_block(kind, item,
+                                banner=f"cita fup --drop · {project_dir.name}"))
         return 0
 
-    line = add_followup(item, date_norm, desc)
+    add_followup(item, date_norm, desc)
     _write_agenda(agenda_path, data)
-    print(f"✓ [{project_dir.name}] followup: {emoji} {item['desc']} — {line}")
+    print(format_item_block(kind, item, banner=f"cita fup · {project_dir.name}"))
     return 0
 
 

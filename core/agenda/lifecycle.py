@@ -615,24 +615,14 @@ def _generic_add(type_name: str, project: str, text: str,
     recur = new_item.get("recur")
     project_dir = _find_new_project(project)
 
-    # Print confirmation
-    if type_name == "event":
-        attrs = _format_add_attrs(date_val, time_val, recur, until, ring,
-                                  end_date=end_date, is_event=True)
-        print(f"✓ [{project_dir.name}] {cfg['label']}: {date_val} — {text}{attrs}")
-    elif type_name == "reminder":
-        attrs = f"({date_val}) ⏰{time_val}"
-        if recur:
-            recur_s = recur + (f":{until}" if until else "")
-            attrs += f" 🔄{recur_s}"
-        print(f"✓ [{project_dir.name}] {cfg['label']}: {text} {attrs}")
-    else:
-        attrs = _format_add_attrs(date_val, time_val, recur, until, ring)
-        if type_name == "task":
-            state = api.task_state(new_item)
-            print(f"✓ [{project_dir.name}] {cfg['label']} {state}: {text}{attrs}")
-        else:
-            print(f"✓ [{project_dir.name}] {cfg['label']}: {text}{attrs}")
+    # Print confirmation: the orbit-item as written, from the same serializer
+    # (byte-faithful, no parallel formatter) + body notes (design §4). Banner
+    # echoes type · destination · deduced state (feedback_cli_explicit_confirmations).
+    from core.agenda.display import format_item_block
+    state = api.task_state(new_item) if type_name == "task" else None
+    print(format_item_block(type_name, new_item,
+                            banner=f"{type_name} add · {project_dir.name}",
+                            state=state))
 
     # Ring scheduling
     if cfg["has_ring"]:

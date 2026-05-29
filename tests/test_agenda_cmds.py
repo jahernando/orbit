@@ -683,6 +683,17 @@ class TestRunCitaFup:
         notes = self._read(proj)["tasks"][-1]["notes"]
         assert notes == [f"⏩ {date.today().isoformat()}"]
 
+    def test_echo_shows_followup_body(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_cita_fup
+        api.add_task(project=proj.name, text="Inscripción")
+        capsys.readouterr()   # discard the add echo
+        run_cita_fup(project=proj.name, text="Inscripción", date_val="2026-06-11")
+        out = capsys.readouterr().out
+        assert "cita fup" in out               # banner
+        assert "⏩ 2026-06-11" in out           # body line echoed
+        assert "orbit:" not in out             # id hidden by default
+
     def test_drop_followup(self, proj):
         from core import api
         from core.agenda.runners import run_cita_fup
@@ -793,6 +804,46 @@ class TestRunCitaDoneDrop:
         api.add_task(project=proj.name, text="Existe")
         rc = run_cita_done(project=proj.name, text="No existe")
         assert rc == 1
+
+
+class TestFormatItemBlock:
+    """format_item_block: single-serializer echo + body, ID hidden — Fase 3."""
+
+    def test_serializes_task_line_and_body(self):
+        from core.agenda.display import format_item_block
+        item = {"status": "pending", "desc": "Inscripción", "date": None,
+                "recur": None, "ring": None,
+                "notes": ["⏩ 2026-06-11", "📋 https://x"]}
+        block = format_item_block("task", item)
+        assert "- [ ] Inscripción" in block
+        assert "      ⏩ 2026-06-11" in block
+        assert "      📋 https://x" in block
+
+    def test_hides_orbit_id_by_default(self):
+        from core.agenda.display import format_item_block
+        item = {"status": "pending", "desc": "X", "date": None,
+                "recur": None, "ring": None, "orbit_id": "abcd1234"}
+        assert "orbit:" not in format_item_block("task", item)
+
+    def test_verbose_shows_orbit_id(self):
+        from core.agenda.display import format_item_block
+        item = {"status": "pending", "desc": "X", "date": None,
+                "recur": None, "ring": None, "orbit_id": "abcd1234"}
+        assert "[orbit:abcd1234]" in format_item_block("task", item, verbose=True)
+
+    def test_banner_with_state(self):
+        from core.agenda.display import format_item_block
+        item = {"status": "pending", "desc": "X", "date": None,
+                "recur": None, "ring": None}
+        block = format_item_block("task", item, banner="task add · proj",
+                                  state="pending")
+        assert block.splitlines()[0] == "━━━ task add · proj · pending ━━━"
+
+    def test_plural_kind_and_event(self):
+        from core.agenda.display import format_item_block
+        ev = {"date": "2026-09-14", "desc": "Workshop", "end": None}
+        block = format_item_block("events", ev)   # plural accepted
+        assert "2026-09-14 — Workshop" in block
 
 
 class TestNextOccurrence:
@@ -975,27 +1026,28 @@ class TestRunTaskAdd:
         future = (_date.today() + timedelta(days=7)).isoformat()
         run_task_add("test-project", "Future review", ff=future)
         out = capsys.readouterr().out
-        assert "Tarea pending:" in out
+        assert "· pending ━━━" in out      # state echoed in the item-block banner
+        assert "Future review" in out
 
     def test_output_includes_state_planned(self, proj, projects_dir, capsys):
         # date set → state should be 'planned'
         from core.agenda_cmds import run_task_add
         run_task_add("test-project", "Anchored", date_val="2026-12-01")
         out = capsys.readouterr().out
-        assert "Tarea planned:" in out
+        assert "· planned ━━━" in out
 
     def test_output_includes_state_someday(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_task_add
         run_task_add("test-project", "Maybe later", ff="someday")
         out = capsys.readouterr().out
-        assert "Tarea someday:" in out
+        assert "· someday ━━━" in out
 
     def test_output_includes_state_due_for_raw_capture(self, proj, projects_dir, capsys):
         # No date / no ff / no recur → api defaults ff=today → state 'due'
         from core.agenda_cmds import run_task_add
         run_task_add("test-project", "Decide now")
         out = capsys.readouterr().out
-        assert "Tarea due:" in out
+        assert "· due ━━━" in out
 
 
 # ══════════════════════════════════════════════════════════════════════════════
