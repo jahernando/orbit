@@ -151,13 +151,16 @@ def _collect_followups_in_range(start_iso, end_iso):
     return out
 
 
-def _count_milestones_window(today, days=MILESTONES_WINDOW) -> int:
-    """Count pending milestones con today<=date<=today+days. Incluye federados."""
+def _collect_milestones(lo_iso, hi_iso) -> list:
+    """[(project_dir, milestone)] pending con lo_iso<=date<=hi_iso (str ISO).
+
+    Incluye federados. Ordenado por fecha asc. Fuente única del contador de
+    hitos del header (ventana próxima) y del viewer cold `hitos.md`
+    (vencidos + próximos).
+    """
     from core.config import iter_federated_project_dirs
     from core.project import _is_new_project
-    today_iso = today.isoformat()
-    end_iso = (today + timedelta(days=days)).isoformat()
-    count = 0
+    out = []
     for p in iter_federated_project_dirs(include_federated=True):
         if not _is_new_project(p):
             continue
@@ -168,9 +171,27 @@ def _count_milestones_window(today, days=MILESTONES_WINDOW) -> int:
             if m.get("status") != "pending":
                 continue
             d = m.get("date")
-            if d and today_iso <= d <= end_iso:
-                count += 1
-    return count
+            if d and lo_iso <= d <= hi_iso:
+                out.append((p, m))
+    out.sort(key=lambda r: r[1]["date"])
+    return out
+
+
+def _collect_milestones_window(today, days=MILESTONES_WINDOW) -> list:
+    """[(project_dir, milestone)] pending en [today, today+days]. Incluye federados."""
+    return _collect_milestones(today.isoformat(),
+                               (today + timedelta(days=days)).isoformat())
+
+
+def _collect_overdue_milestones(today) -> list:
+    """[(project_dir, milestone)] pending con date<today. Incluye federados."""
+    return _collect_milestones(_date.min.isoformat(),
+                               (today - timedelta(days=1)).isoformat())
+
+
+def _count_milestones_window(today, days=MILESTONES_WINDOW) -> int:
+    """Count pending milestones con today<=date<=today+days. Incluye federados."""
+    return len(_collect_milestones_window(today, days))
 
 
 CRONOS_URGENT_DAYS = 7
@@ -246,7 +267,7 @@ def _counter_lines(today_items, overdue, pendings_today, n_milestones,
     else:
         lines.append("> 🗓 Hoy: sin compromisos")
     if n_milestones:
-        lines.append(f"> 🏁 Próximos {MILESTONES_WINDOW} días: {n_milestones} hitos")
+        lines.append(f"> 🏁 Próximos {MILESTONES_WINDOW} días: {n_milestones} hitos · [detalle](hitos.md)")
     n_cronos, n_urgent_cronos = cronos_counts
     if n_cronos:
         urgent_tag = f" (⚠️ {n_urgent_cronos} urgente{'s' if n_urgent_cronos != 1 else ''})" if n_urgent_cronos else ""

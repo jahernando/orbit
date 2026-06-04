@@ -883,6 +883,7 @@ def run_dash_cold(silent: bool = False):
     from views.ring import rings as rings_view
     from views.secretary import calendar as sec_calendar
     from views.secretary import cronos as sec_cronos
+    from views.secretary import hitos as sec_hitos
     from views.secretary import logbook as sec_logbook
     from views.secretary import projects as sec_projects
     from views.secretary import report_summary as sec_report
@@ -892,12 +893,13 @@ def run_dash_cold(silent: bool = False):
     sec_projects.generate(SECRETARY_DIR / "projects.md")
     sec_calendar.generate(SECRETARY_DIR / "calendar.md")
     sec_cronos.generate(SECRETARY_DIR / "cronos.md")
+    sec_hitos.generate(SECRETARY_DIR / "hitos.md")
     sec_logbook.generate(SECRETARY_DIR / "logbook.md")
     sec_report.generate(SECRETARY_DIR / "report-summary.md")
     rings_view.generate(RING_PANEL_DIR / "rings.md")
 
     if not silent:
-        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,calendar,cronos,logbook,report-summary}.md + 📊panel/ring/rings.md)")
+        print("  ✓ cold dash actualizado (📊panel/secretary/{projects,calendar,cronos,hitos,logbook,report-summary}.md + 📊panel/ring/rings.md)")
     return 0
 
 

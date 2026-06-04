@@ -268,7 +268,10 @@ class TestCounterLines:
 
     def test_milestones_line_shown_when_positive(self):
         out = sec_agenda._counter_lines([], [], [], 3)
-        assert out[-1] == f"> 🏁 Próximos {sec_agenda.MILESTONES_WINDOW} días: 3 hitos"
+        assert out[-1] == (
+            f"> 🏁 Próximos {sec_agenda.MILESTONES_WINDOW} días: 3 hitos "
+            "· [detalle](hitos.md)"
+        )
 
     def test_reminders_excluded_from_counter(self):
         today_items = [("reminders", {}, None, "")]

@@ -1063,9 +1063,12 @@ orbit panel --open code           # abre en VS Code
 El dashboard fijo del workspace es `📊panel/secretary/agenda.md`, regenerado
 en cada mutación de cita / log / hl / project (carril hot). `orbit dash`
 refresca además los viewers cold: `📊panel/secretary/{projects,calendar,
-report-summary}.md` + `📊panel/ring/rings.md`. Outputs agrupados por
-backend (`secretary/` lee la verdad de proyectos; `ring/` lee `ring.json`).
-Ventanas configurables en `orbit.json`:
+cronos,hitos,logbook,report-summary}.md` + `📊panel/ring/rings.md`. Outputs
+agrupados por backend (`secretary/` lee la verdad de proyectos; `ring/` lee
+`ring.json`). El header de `agenda.md` enlaza `hitos.md` (detalle de los
+hitos vencidos + próximos 30 días: emoji ⚠️/🏁, fecha, proyecto, hito y barra
+del cronograma asociado si su `deadline:` nombra el hito). Ventanas
+configurables en `orbit.json`:
 
 ```json
 "secretary": {
