@@ -271,9 +271,24 @@ class TestCounterLines:
     def test_milestones_line_shown_when_positive(self):
         out = sec_agenda._counter_lines([], [], [], 3)
         assert out[-1] == (
-            f"> 🏁 Próximos {sec_agenda.MILESTONES_WINDOW} días: 3 hitos "
+            f"> 🏁 Hitos: 3 próximos {sec_agenda.MILESTONES_WINDOW} días "
             "· [detalle](hitos.md)"
         )
+
+    def test_milestones_line_includes_overdue(self):
+        out = sec_agenda._counter_lines([], [], [], 3, n_overdue_ms=2)
+        assert out[-1] == (
+            f"> 🏁 Hitos: ⚠️2 vencidos · 3 próximos "
+            f"{sec_agenda.MILESTONES_WINDOW} días · [detalle](hitos.md)"
+        )
+
+    def test_milestones_line_only_overdue(self):
+        out = sec_agenda._counter_lines([], [], [], 0, n_overdue_ms=2)
+        assert out[-1] == "> 🏁 Hitos: ⚠️2 vencidos · [detalle](hitos.md)"
+
+    def test_milestones_line_omitted_when_both_zero(self):
+        out = sec_agenda._counter_lines([], [], [], 0, n_overdue_ms=0)
+        assert all("Hitos" not in line for line in out)
 
     def test_reminders_excluded_from_counter(self):
         today_items = [("reminders", {}, None, "")]

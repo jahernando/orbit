@@ -234,16 +234,19 @@ def _count_log_entries_today(today) -> int:
 
 def _counter_lines(today_items, overdue, pendings_today, n_milestones,
                    cronos_counts=(0, 0), n_log_today=0,
-                   followups_today=()) -> list:
+                   followups_today=(), n_overdue_ms=0) -> list:
     """Build adaptive counter blockquote (1-4 líneas).
 
     Categorías con N=0 se omiten. Si todas vacías, "sin compromisos".
     Línea de hitos / cronogramas / logbook desaparece si N=0.
+
+    La línea de hitos combina vencidos (⚠️) + próximos en la ventana; cada
+    sub-parte aparece sólo si su N>0 (la línea entera desaparece si ambos 0).
     """
     # Hoy: 4 categorías (📅 ✅ ⚠️ ⏩). Milestones de hoy aparecen en la
     # tabla con 🏁 pero NO en el counter; los hitos viven en la línea
-    # "Próximos 30 días" para evitar la duplicidad. Reminders excluidos
-    # (ambient).
+    # "🏁 Hitos" (vencidos + próximos) para evitar la duplicidad.
+    # Reminders excluidos (ambient).
     n_events = sum(1 for it in today_items if it[0] == "events")
     n_tasks  = sum(1 for it in today_items if it[0] == "tasks")
     n_overdue = len(overdue)
@@ -266,8 +269,13 @@ def _counter_lines(today_items, overdue, pendings_today, n_milestones,
         lines.append("> 🗓 Hoy: " + " · ".join(parts))
     else:
         lines.append("> 🗓 Hoy: sin compromisos")
+    ms_parts = []
+    if n_overdue_ms:
+        ms_parts.append(f"⚠️{n_overdue_ms} vencidos")
     if n_milestones:
-        lines.append(f"> 🏁 Próximos {MILESTONES_WINDOW} días: {n_milestones} hitos · [detalle](hitos.md)")
+        ms_parts.append(f"{n_milestones} próximos {MILESTONES_WINDOW} días")
+    if ms_parts:
+        lines.append("> 🏁 Hitos: " + " · ".join(ms_parts) + " · [detalle](hitos.md)")
     n_cronos, n_urgent_cronos = cronos_counts
     if n_cronos:
         urgent_tag = f" (⚠️ {n_urgent_cronos} urgente{'s' if n_urgent_cronos != 1 else ''})" if n_urgent_cronos else ""
@@ -435,6 +443,7 @@ def generate(out_path: Path) -> None:
             (proj_dir, kind, item, fup))
 
     n_milestones = _count_milestones_window(today)
+    n_overdue_ms = len(_collect_overdue_milestones(today))
     cronos_counts = _count_cronos(today)
     n_log_today = _count_log_entries_today(today)
 
@@ -443,7 +452,8 @@ def generate(out_path: Path) -> None:
                                 n_milestones,
                                 cronos_counts=cronos_counts,
                                 n_log_today=n_log_today,
-                                followups_today=followups_today))
+                                followups_today=followups_today,
+                                n_overdue_ms=n_overdue_ms))
     lines.append("")
     lines.append(f"## 📅 Hoy — {_short_date_es(today)}")
     lines.append("")
