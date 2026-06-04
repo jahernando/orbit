@@ -100,18 +100,19 @@ class TestFechaCell:
         today = date(2026, 6, 1)
         assert sec_hitos._fecha_cell(date(2026, 6, 12), today) == "06-12 (11d)"
 
-    def test_near_warning(self):
+    def test_near_no_warning(self):
+        # Inminente pero no vencido: sin ⚠️ (⚠️ = solo vencido).
         today = date(2026, 6, 1)
-        assert sec_hitos._fecha_cell(date(2026, 6, 3), today) == "⚠️ 06-03 (2d)"
+        assert sec_hitos._fecha_cell(date(2026, 6, 3), today) == "06-03 (2d)"
 
-    def test_today_warning(self):
+    def test_today_no_warning(self):
         today = date(2026, 6, 1)
-        assert sec_hitos._fecha_cell(today, today) == "⚠️ 06-01 (0d)"
+        assert sec_hitos._fecha_cell(today, today) == "06-01 (0d)"
 
-    def test_overdue_no_inline_warning(self):
+    def test_overdue_warning_in_fecha(self):
         today = date(2026, 6, 8)
-        # Vencido: la ⚠️ vive en la columna emoji, no en la fecha.
-        assert sec_hitos._fecha_cell(date(2026, 6, 1), today) == "06-01 (vencido 7d)"
+        # Vencido: ⚠️ en la columna fecha.
+        assert sec_hitos._fecha_cell(date(2026, 6, 1), today) == "⚠️ 06-01 (vencido 7d)"
 
 
 # ── _crono_cell ─────────────────────────────────────────────────────────────
@@ -184,9 +185,11 @@ class TestGenerate:
         rows = [l for l in out.read_text().splitlines() if "|" in l and "(" in l]
         vencido_row = [l for l in rows if "Vencido" in l][0]
         pronto_row = [l for l in rows if "Pronto" in l][0]
-        assert vencido_row.startswith("| ⚠️ |")
-        assert "vencido 5d" in vencido_row
+        # col1 siempre 🏁 (tipo); el estado vencido va en la fecha con ⚠️.
+        assert vencido_row.startswith("| 🏁 |")
         assert pronto_row.startswith("| 🏁 |")
+        assert "⚠️" in vencido_row and "vencido 5d" in vencido_row
+        assert "⚠️" not in pronto_row
         # Vencido va antes que próximo (orden por fecha asc).
         assert rows.index(vencido_row) < rows.index(pronto_row)
 

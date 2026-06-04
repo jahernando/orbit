@@ -214,8 +214,10 @@ class TestFollowupSurfacing:
         )
         followups = sec_agenda._collect_followups_in_range(date.min.isoformat(), d)
         block = sec_agenda._today_block([], [], [], followups)
-        fup_rows = [l for l in block if l.startswith("| ⏩ |")]
+        # col1 = tipo (☐ task), col2 = ⏩.
+        fup_rows = [l for l in block if "| ⏩ |" in l]
         assert len(fup_rows) == 1
+        assert fup_rows[0].startswith("| ☐ |")
         assert "Inscripción" in fup_rows[0]
         assert "ojo" in fup_rows[0]
 
@@ -301,8 +303,8 @@ class TestOverdueCap:
         )
         overdue = sec_agenda._collect_overdue(today)
         block = sec_agenda._today_block([], overdue, [])
-        # Header + 10 filas ⚠️ + 1 fila resumen = 12 líneas
-        warn_rows = [l for l in block if l.startswith("| ⚠️ |")]
+        # Header + 10 filas vencidas (☐ tipo, ⚠️ estado) + 1 resumen = 12 líneas
+        warn_rows = [l for l in block if "| ⚠️ |" in l]
         assert len(warn_rows) == 11
         assert any("…y 2 más vencidas" in l for l in warn_rows)
 
@@ -450,8 +452,8 @@ class TestBellColumn:
         assert "| | | | Inicio | Fin | Descripción | Proyecto |" in text
         assert "| 🔔 | | Inicio" not in text
 
-    def test_pending_rows_have_empty_bell(self, agenda_env):
-        """⏩ y ⚠️ filas mantienen la columna 🔔 (vacía) para alineación."""
+    def test_pending_rows_aligned_state_in_col2(self, agenda_env):
+        """Filas por-triar: col1=tipo, col2=⏩ (la col estado), 7 cols alineadas."""
         today = date.today()
         _make_project(
             agenda_env["type_dir"],
@@ -460,10 +462,11 @@ class TestBellColumn:
         out = agenda_env["tmp"] / "agenda.md"
         sec_agenda.generate(out)
         text = out.read_text()
-        # ⏩ row: 7 columnas (con bell vacío).
+        # ⏩ row: col1=tipo (☐), col2=⏩, 7 columnas.
         # Cuenta los pipes en la línea de la fila para confirmar 8 (= 7 cols).
         for line in text.splitlines():
-            if line.startswith("| ⏩ |"):
+            if "| ⏩ |" in line:
+                assert line.startswith("| ☐ |"), f"col1 no es tipo: {line!r}"
                 assert line.count("|") == 8, f"row mal alineada: {line!r}"
                 break
         else:

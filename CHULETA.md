@@ -1066,9 +1066,11 @@ refresca además los viewers cold: `📊panel/secretary/{projects,calendar,
 cronos,hitos,logbook,report-summary}.md` + `📊panel/ring/rings.md`. Outputs
 agrupados por backend (`secretary/` lee la verdad de proyectos; `ring/` lee
 `ring.json`). El header de `agenda.md` enlaza `hitos.md` (detalle de los
-hitos vencidos + próximos 30 días: emoji ⚠️/🏁, fecha, proyecto, hito y barra
-del cronograma asociado si su `deadline:` nombra el hito). Ventanas
-configurables en `orbit.json`:
+hitos vencidos + próximos 30 días: 🏁, fecha (con ⚠️ si vencido), proyecto,
+hito y barra del cronograma asociado si su `deadline:` nombra el hito).
+Convención de columnas en todas las tablas de citas: **col1 = tipo**
+(📅/☐/🏁/💬), **col2 = estado/alerta** (🔔 alarma · ⏩ por-triar · ⚠️
+vencida). Ventanas configurables en `orbit.json`:
 
 ```json
 "secretary": {

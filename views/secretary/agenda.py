@@ -278,7 +278,7 @@ def _counter_lines(today_items, overdue, pendings_today, n_milestones,
 
 
 def _render_pending_row(project_dir, t) -> str:
-    """Fila ⏩ para pending tasks. Incluye marcas snooze."""
+    """Fila por-triar de pending tasks. col1=tipo (☐), col2=⏩. Incluye snooze."""
     desc_raw = t.get("desc", "") or ""
     snooze = t.get("snooze_count", 0) or 0
     extras = ""
@@ -290,27 +290,31 @@ def _render_pending_row(project_dir, t) -> str:
     if failed:
         extras += f" ❌{failed}"
     desc = (desc_raw + extras).replace("|", "\\|")
-    return f"| ⏩ |  |  |  |  | {desc} | {proj_link_md(project_dir)} |"
+    return f"| {KIND_EMOJI['tasks']} | ⏩ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
 def _render_followup_row(project_dir, kind, item, fup) -> str:
-    """Fila ⏩ para un followup de cualquier cita (task/ms/ev/reminder)."""
+    """Fila followup de cualquier cita. col1=tipo, col2=⏩.
+
+    El emoji de tipo va en col1 (no en la descripción): la columna estado
+    porta ⏩ uniformemente con vencidas (⚠️) y campana (🔔).
+    """
     emoji    = KIND_EMOJI.get(kind, "")
     desc_raw = item.get("desc", "") or ""
-    label    = f"{emoji} {desc_raw}".strip()
+    label    = desc_raw
     note     = fup.get("desc")
     if note:
         label += f" — {note}"
     desc = label.replace("|", "\\|")
-    return f"| ⏩ |  |  |  |  | {desc} | {proj_link_md(project_dir)} |"
+    return f"| {emoji} | ⏩ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
 def _render_overdue_row(project_dir, t) -> str:
-    """Fila ⚠️ para tareas planned vencidas arrastradas a hoy."""
+    """Fila vencida (task planned arrastrada a hoy). col1=tipo (☐), col2=⚠️."""
     desc_raw = t.get("desc", "") or ""
     d = t.get("date", "")
     desc = f"{desc_raw} (📅{d})".replace("|", "\\|")
-    return f"| ⚠️ |  |  |  |  | {desc} | {proj_link_md(project_dir)} |"
+    return f"| {KIND_EMOJI['tasks']} | ⚠️ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
 def _render_items_table(items) -> list:
@@ -359,7 +363,7 @@ def _today_block(today_items, overdue, pendings_today, followups_today=()) -> li
     for project_dir, t in overdue[:OVERDUE_CAP]:
         rows.append(_render_overdue_row(project_dir, t))
     if overflow:
-        rows.append(f"| ⚠️ |  |  |  |  | *…y {overflow} más vencidas* |  |")
+        rows.append(f"|  | ⚠️ |  |  |  | *…y {overflow} más vencidas* |  |")
 
     for project_dir, t in pendings_today:
         rows.append(_render_pending_row(project_dir, t))

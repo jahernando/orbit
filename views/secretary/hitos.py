@@ -6,10 +6,10 @@ ventana próxima (today <= date <= today+30), propios + federados, y, si un
 cronograma del mismo proyecto lo referencia como deadline (por nombre),
 muestra su barra de progreso + link.
 
-Columnas: emoji · Fecha · Proyecto · Hito · Cronograma. La columna emoji es
-la señal primaria de urgencia (⚠️ vencido / 🏁 próximo); la Fecha añade ⚠️
-solo para los inminentes (≤3d) — así el mismo ⚠️ nunca coexiste con dos
-sentidos en una fila.
+Columnas: 🏁 (tipo) · Fecha · Proyecto · Hito · Cronograma. col1 es siempre el
+emoji de tipo (hito); la urgencia vive en la Fecha: ⚠️ delante si está
+vencido (date<today). Mismo criterio que las tablas de agenda (col1 tipo,
+col estado/fecha porta ⚠️).
 
 El vínculo hito↔cronograma no es un dato propio: se reconstruye invirtiendo
 la convención `deadline: <nombre-hito>` de la metadata del cronograma
@@ -26,14 +26,11 @@ from pathlib import Path
 
 
 def _fecha_cell(d: date, today: date) -> str:
-    """'06-12 (8d)'. Vencido → '(vencido Nd)' (sin ⚠️: lo lleva la columna
-    emoji). Inminente (≤3d) → ⚠️."""
+    """'06-12 (8d)'. Vencido (date<today) → '⚠️ MM-DD (vencido Nd)'."""
     days = (d - today).days
     base = f"{d.month:02d}-{d.day:02d}"
     if days < 0:
-        return f"{base} (vencido {-days}d)"
-    if days <= 3:
-        return f"⚠️ {base} ({days}d)"
+        return f"⚠️ {base} (vencido {-days}d)"
     return f"{base} ({days}d)"
 
 
@@ -86,7 +83,6 @@ def generate(out_path: Path) -> None:
                                         _collect_overdue_milestones)
 
     today = date.today()
-    today_iso = today.isoformat()
     # Vencidos primero (date<today), luego ventana próxima. Ambos vienen
     # ordenados asc y los rangos no se solapan → concatenación = orden global.
     milestones = _collect_overdue_milestones(today) + _collect_milestones_window(today)
@@ -103,11 +99,10 @@ def generate(out_path: Path) -> None:
     lines.append("|---|-------|----------|------|------------|")
     for project_dir, m in milestones:
         d = date.fromisoformat(m["date"])
-        emoji = "⚠️" if m["date"] < today_iso else "🏁"
         fecha = _fecha_cell(d, today)
         proj = proj_link_md(project_dir)
         desc = (m.get("desc") or "").replace("|", "\\|")
         crono = _crono_cell(project_dir, m.get("desc") or "")
-        lines.append(f"| {emoji} | {fecha} | {proj} | {desc} | {crono or '—'} |")
+        lines.append(f"| 🏁 | {fecha} | {proj} | {desc} | {crono or '—'} |")
 
     out_path.write_text("\n".join(lines) + "\n")
