@@ -28,11 +28,13 @@ def test_bootstrap_creates_when_missing(fake_ws):
     assert ws_md.exists()
     content = ws_md.read_text()
     assert "🚀 test-ws" in content
-    # F5: ring viewers viven en 📊panel/ring/, el resto en 📊panel/secretary/.
+    # ring viewers viven en 📊panel/ring/, el resto en 📊panel/secretary/.
+    # ring-today/ring-next se unificaron en rings.md (v0.39).
     assert "📊panel/secretary/agenda.md" in content
     assert "📊panel/secretary/projects.md" in content
-    assert "📊panel/ring/ring-today.md" in content
-    assert "📊panel/ring/ring-next.md" in content
+    assert "📊panel/ring/rings.md" in content
+    assert "📊panel/ring/ring-today.md" not in content
+    assert "📊panel/ring/ring-next.md" not in content
     assert "📊panel/secretary/calendar.md" in content
     assert "📊panel/secretary/report-summary.md" in content
     # F3: estos viewers se borraron; el bootstrap ya no debe referenciarlos.
