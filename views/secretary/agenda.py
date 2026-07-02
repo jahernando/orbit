@@ -38,7 +38,7 @@ from pathlib import Path
 from views import autogen_banner
 from views.secretary._agenda_table import (
     DEFAULT_MIN, KIND_EMOJI, TABLE_HEADER,
-    _desc_with_event_indicators, collect_items_by_day,
+    _desc_with_event_indicators, bell_cell, collect_items_by_day,
     detect_overlaps, overlap_char, proj_link_md, start_min, time_pair,
 )
 
@@ -232,9 +232,29 @@ def _count_log_entries_today(today) -> int:
     return n
 
 
+def _count_rings(today_items, by_day, today, end) -> tuple:
+    """(n_hoy, n_próximos) de citas que dispararán alarma, según la verdad.
+
+    Usa la misma heurística que la columna 🔔 de la tabla (`bell_cell`):
+    reminders siempre, task/ms/evento si llevan hora. NO lee `ring.json` —
+    `agenda.md` es viewer puro de la verdad; el contraste con lo que el
+    daemon tiene realmente programado vive en `rings.md`.
+    """
+    def _count(items):
+        return sum(1 for (kind, item, _, _) in items if bell_cell(kind, item))
+
+    n_today = _count(today_items)
+    n_next = 0
+    for offset in range(1, (end - today).days + 1):
+        day_str = (today + timedelta(days=offset)).isoformat()
+        n_next += _count(by_day.get(day_str, []))
+    return n_today, n_next
+
+
 def _counter_lines(today_items, overdue, pendings_today, n_milestones,
                    cronos_counts=(0, 0), n_log_today=0,
-                   followups_today=(), n_overdue_ms=0) -> list:
+                   followups_today=(), n_overdue_ms=0,
+                   ring_counts=(0, 0)) -> list:
     """Build adaptive counter blockquote (1-4 líneas).
 
     Categorías con N=0 se omiten. Si todas vacías, "sin compromisos".
@@ -269,6 +289,15 @@ def _counter_lines(today_items, overdue, pendings_today, n_milestones,
         lines.append("> 🗓 Hoy: " + " · ".join(parts))
     else:
         lines.append("> 🗓 Hoy: sin compromisos")
+    n_ring_today, n_ring_next = ring_counts
+    if n_ring_today or n_ring_next:
+        rparts = []
+        if n_ring_today:
+            rparts.append(f"{n_ring_today} hoy")
+        if n_ring_next:
+            rparts.append(f"{n_ring_next} próximos {NEXT_DAYS_WINDOW} días")
+        lines.append("> 🔔 Alarmas: " + " · ".join(rparts)
+                     + " · [detalle](../ring/rings.md)")
     ms_parts = []
     if n_overdue_ms:
         ms_parts.append(f"⚠️{n_overdue_ms} vencidos")
@@ -446,6 +475,7 @@ def generate(out_path: Path) -> None:
     n_overdue_ms = len(_collect_overdue_milestones(today))
     cronos_counts = _count_cronos(today)
     n_log_today = _count_log_entries_today(today)
+    ring_counts = _count_rings(today_items, by_day, today, end)
 
     lines = [autogen_banner("secretary.agenda").rstrip(), ""]
     lines.extend(_counter_lines(today_items, overdue, pendings_today,
@@ -453,7 +483,8 @@ def generate(out_path: Path) -> None:
                                 cronos_counts=cronos_counts,
                                 n_log_today=n_log_today,
                                 followups_today=followups_today,
-                                n_overdue_ms=n_overdue_ms))
+                                n_overdue_ms=n_overdue_ms,
+                                ring_counts=ring_counts))
     lines.append("")
     lines.append(f"## 📅 Hoy — {_short_date_es(today)}")
     lines.append("")

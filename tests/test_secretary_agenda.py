@@ -290,6 +290,50 @@ class TestCounterLines:
         out = sec_agenda._counter_lines([], [], [], 0, n_overdue_ms=0)
         assert all("Hitos" not in line for line in out)
 
+    def test_ring_line_omitted_when_zero(self):
+        out = sec_agenda._counter_lines([], [], [], 0, ring_counts=(0, 0))
+        assert all("Alarmas" not in line for line in out)
+
+    def test_ring_line_today_only(self):
+        out = sec_agenda._counter_lines([], [], [], 0, ring_counts=(2, 0))
+        assert out[-1] == "> 🔔 Alarmas: 2 hoy · [detalle](../ring/rings.md)"
+
+    def test_ring_line_next_only(self):
+        out = sec_agenda._counter_lines([], [], [], 0, ring_counts=(0, 3))
+        assert out[-1] == (
+            f"> 🔔 Alarmas: 3 próximos {sec_agenda.NEXT_DAYS_WINDOW} días "
+            "· [detalle](../ring/rings.md)"
+        )
+
+    def test_ring_line_today_and_next(self):
+        out = sec_agenda._counter_lines([], [], [], 0, ring_counts=(2, 3))
+        assert out[-1] == (
+            f"> 🔔 Alarmas: 2 hoy · 3 próximos {sec_agenda.NEXT_DAYS_WINDOW} días "
+            "· [detalle](../ring/rings.md)"
+        )
+
+    def test_count_rings_truth_heuristic(self):
+        today = date(2026, 6, 4)
+        end = today + timedelta(days=sec_agenda.NEXT_DAYS_WINDOW)
+        today_items = [
+            ("reminders", {}, None, ""),             # reminder → siempre
+            ("tasks", {"time": "10:00"}, None, ""),  # con hora → sí
+            ("tasks", {}, None, ""),                 # sin hora → no
+            ("events", {"time": "12:00"}, None, ""), # con hora → sí
+        ]
+        by_day = {
+            (today + timedelta(days=2)).isoformat(): [
+                ("events", {"time": "09:00"}, None, ""),
+                ("events", {}, None, ""),            # sin hora → no
+            ],
+            (today + timedelta(days=99)).isoformat(): [  # fuera de ventana
+                ("reminders", {}, None, ""),
+            ],
+        }
+        n_today, n_next = sec_agenda._count_rings(today_items, by_day, today, end)
+        assert n_today == 3
+        assert n_next == 1
+
     def test_reminders_excluded_from_counter(self):
         today_items = [("reminders", {}, None, "")]
         out = sec_agenda._counter_lines(today_items, [], [], 0)
