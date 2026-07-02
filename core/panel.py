@@ -179,9 +179,8 @@ def _collect_agenda(start, end, include_federated=True):
     """Collect agenda items + adapt to `_agenda_table` format.
 
     Returns dict ``{date_str: [(kind, item, project_dir, proj_md)]}`` listo
-    para `_agenda_table.render_day_rows` (mismo helper que usan
-    `agenda_today.py` y `agenda_next.py` → consistencia visual entre los
-    tres viewers).
+    para `_agenda_table.render_day_rows` (mismo helper que usa
+    `agenda.py` → consistencia visual entre las vistas de agenda).
 
     Comportamiento heredado del panel original:
     - Sólo items con `date` (dated_only=True) — los sin fecha no se
@@ -191,7 +190,7 @@ def _collect_agenda(start, end, include_federated=True):
       no mutar la caché de `_read_agenda`.
     - Recurrencia: heredada de `_collect_data` (que la expande).
     - Reminders: NO incluidos (preserva comportamiento previo del panel;
-      ver `agenda_today.md` si quieres reminders).
+      ver `agenda.md` si quieres reminders).
     """
     from core.agenda_view import _collect_data
     from views.secretary._agenda_table import proj_link_md
@@ -400,8 +399,8 @@ def run_panel(period=None, include_federated=True,
 
     # ── 2. Agenda ──
     # Usa `_agenda_table.render_day_rows` (helper compartido con
-    # `agenda_today.py` y `agenda_next.py`) para que las 3 vistas
-    # mantengan exactamente el mismo formato de tabla.
+    # `agenda.py`) para que las vistas mantengan exactamente el mismo
+    # formato de tabla.
     from views.secretary._agenda_table import render_day_rows
     by_day = _collect_agenda(start, end, include_federated)
 

@@ -390,7 +390,7 @@ def render_workspace_dashboard(cloud_root: Optional[Path] = None) -> int:
     """Render workspace.md + 📊panel/secretary/*.md a HTML en cloud_root.
 
     Fuente única de la verdad-derivada: los .md ya los generó secretary
-    (panel, agenda-next, calendar, projects, report-summary) en
+    (agenda, projects, calendar, cronos, hitos, logbook, report-summary) en
     `📊panel/secretary/`. Aquí sólo los proyectamos a HTML para el cloud.
 
     - workspace.md                    → cloud_root/workspace.html (front-page real)

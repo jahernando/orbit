@@ -250,7 +250,7 @@ def _action_code_update_check(ctx):
 
 
 def _action_secretary_refresh(ctx):
-    """Regenerate the secretary viewers: panel + agenda-next + calendar + projects.
+    """Regenerate the secretary + ring viewers (agenda, projects, calendar, cronos, hitos, logbook, report-summary, rings).
 
     Salida local únicamente — los .md viven en `📊panel/secretary/`. La
     proyección a HTML (cloud) es trabajo del action `render_to_cloud`,
@@ -314,7 +314,7 @@ def _run_shutdown():
     try:
         from orbit import run_dash
         run_dash(silent=True)
-        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,calendar,report-summary}.md + 📊panel/ring/{ring-today,ring-next}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,calendar,cronos,hitos,logbook,report-summary}.md + 📊panel/ring/rings.md)")
         print()
     except Exception:
         pass

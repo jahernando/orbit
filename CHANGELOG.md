@@ -10,6 +10,22 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### v0.40.1 (2026-07-02) — Limpieza del secretario · contador 🔔 en la cabecera de agenda.md
+
+Higiene tras el dashboard refactor (v0.38→v0.39) + una línea nueva en el header de la agenda.
+
+**Limpieza de huérfanos** — el refactor dejó ficheros derivados que ya nadie regenera. Borrados del vault: `📊panel/secretary/{agenda-next,agenda-today,decisions-next,panel,ring-next,ring-today,today}.md`, `📊panel/ring/{ring-next,ring-today}.md` y el directorio `📋secretary/` completo (set pre-refactor en la raíz). `run_dash` sólo escribe los 7 viewers actuales + `rings.md`; nada recrea lo borrado.
+
+**`workspace.md` → `rings.md`** (`core/setup.py`) — el template de bootstrap enlazaba `ring-today.md`/`ring-next.md` (huérfanos) → unificados en `[🔔 Alarmas](📊panel/ring/rings.md)`. El `workspace.md` real, con el bloque Dashboard entero apuntando al set pre-refactor, reescrito a los 5 enlaces vivos con `agenda.md` de portada.
+
+**Contador `🔔 Alarmas` en la cabecera de `agenda.md`** (`views/secretary/agenda.py`) — nueva línea tras `🗓 Hoy`: `🔔 Alarmas: N hoy · M próximos 7 días · [detalle](../ring/rings.md)`, enlazando el `rings.md` unificado (hoy + próximos). Conteos desde la **verdad** (heurística `bell_cell`: reminders siempre, task/ms/evento con hora), coherente con la columna 🔔; `rings.md` (ring.json) queda como contraste diagnóstico. Se omite si ambos son 0.
+
+**Barrido de referencias fósiles** — mensajes de éxito de `dash` (`orbit.py`, `core/shell.py`) y docstrings (`_agenda_table.py`, `render.py`, `core/panel.py`, `views/ring/_ring_table.py`) que nombraban viewers difuntos (`ring-today/next`, `agenda-today/next`, `decisions-next`, `panel`, `today`) → actualizados al set real.
+
+Tests: +5 (contador 🔔 + `_count_rings`), `test_workspace_bootstrap` actualizado. Suite: 1898 passed, 1 skipped.
+
+---
+
 ### v0.40.0 (2026-05-29) — CLI-citas: followups ⏩ · paraguas `cita` · echo item-block · interrogador `-i`
 
 Plan **CLI-citas** (diseño en `claude/notes/2026-05-29_cli_citas.md`). Dos ejes independientes — la sintaxis del orbit-item (truth) y la superficie de comandos (CLI); esto es el CLI. Aditivo: `ff`/`plan`/`pending`/contadores siguen vivos en paralelo (su retirada es una fase destructiva posterior, gated).

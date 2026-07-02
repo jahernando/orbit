@@ -1,8 +1,8 @@
 """views/ring/_ring_table — helpers compartidos para tablas de ring.
 
-Usado por `ring_today.py` (sólo hoy) y `ring_next.py` (toda la ventana del
-ring.json). Centraliza la lectura de `<workspace>/.reminders/ring.json` y
-el render de filas markdown para que ambas vistas mantengan exactamente
+Usado por `rings.py` (hoy + toda la ventana del ring.json en un único
+fichero). Centraliza la lectura de `<workspace>/.reminders/ring.json` y
+el render de filas markdown para que las secciones mantengan exactamente
 la misma estructura visual.
 
 Modelo de datos: `ring.json` ya está pre-cocinado por `views.ring.export`

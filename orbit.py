@@ -916,7 +916,7 @@ def run_dash(silent: bool = False):
     run_dash_cold(silent=True)
 
     if not silent:
-        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,calendar,cronos,logbook,report-summary}.md + 📊panel/ring/{ring-today,ring-next}.md)")
+        print("  ✓ dash actualizado (📊panel/secretary/{agenda,projects,calendar,cronos,hitos,logbook,report-summary}.md + 📊panel/ring/rings.md)")
     return 0
 
 
@@ -1667,7 +1667,7 @@ def _build_parser():
     _add_fed_args(pan_p)
 
     # --- dash ---
-    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,calendar,report-summary}.md + 📊panel/ring/{ring-today,ring-next}.md")
+    subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,calendar,cronos,hitos,logbook,report-summary}.md + 📊panel/ring/rings.md")
 
     # --- report ---
     rep_p = subparsers.add_parser("report", help="Activity report for projects in a time period")

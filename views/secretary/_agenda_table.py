@@ -1,7 +1,7 @@
 """views/secretary/_agenda_table — helpers compartidos para tablas de agenda.
 
-Usado por `agenda_today.py` (un día) y `agenda_next.py` (N días). Centraliza
-el modelo de datos + render de filas markdown para que las dos vistas
+Usado por `agenda.py` (hot único: día de hoy + próximos N días). Centraliza
+el modelo de datos + render de filas markdown para que las secciones
 mantengan exactamente la misma estructura visual.
 
 Estructura de la tabla:
