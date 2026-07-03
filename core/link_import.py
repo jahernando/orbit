@@ -52,6 +52,7 @@ def ask_mode() -> str:
 
     Interactive defaults:
         Enter / empty input → ``"import"``
+        q / quit            → raises ``ValueError("Cancelado.")``
         invalid input       → re-prompts with a hint
         EOF / Ctrl-C        → ``"import"``
 
@@ -65,7 +66,7 @@ def ask_mode() -> str:
         try:
             ans = input(
                 "  📦 ¿Cómo guardar este fichero? "
-                "[I]mportar (cloud, defecto) / [L]ink (fuente): "
+                "[I]mportar (cloud, defecto) / [L]ink (fuente) / [Q]uit: "
             ).strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()
@@ -74,8 +75,10 @@ def ask_mode() -> str:
             return "import"
         if ans in ("l", "link"):
             return "link"
+        if ans in ("q", "quit", "cancelar"):
+            raise ValueError("Cancelado.")
         print(f"  ⚠️  Respuesta no reconocida: '{ans}'. "
-              "Usa i/import o l/link, o Enter para import.")
+              "Usa i/import, l/link o q/quit, o Enter para import.")
 
 
 # ── NFD → ASCII for Obsidian-friendly filenames ────────────────────────────────

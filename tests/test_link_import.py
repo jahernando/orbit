@@ -263,3 +263,17 @@ class TestAskMode:
         def raise_eof(*a, **kw): raise EOFError
         monkeypatch.setattr("builtins.input", raise_eof)
         assert li.ask_mode() == "import"
+
+    def test_q_raises_cancel(self, monkeypatch):
+        import core.link_import as li
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a, **kw: "q")
+        with pytest.raises(ValueError, match="Cancelado"):
+            li.ask_mode()
+
+    def test_quit_word_raises_cancel(self, monkeypatch):
+        import core.link_import as li
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a, **kw: "quit")
+        with pytest.raises(ValueError, match="Cancelado"):
+            li.ask_mode()
