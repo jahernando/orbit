@@ -47,6 +47,19 @@ _EV_HEADER    = "## 📅 Eventos"
 _REM_HEADER   = "## 💬 Recordatorios"
 _CRONO_HEADER = "## 📊 Cronogramas"
 
+# Legacy detection: a file is old-format if it carries any cita-section
+# header; otherwise it's the new flat item format (core.agenda.newfmt).
+# During coexistence (F0) the writer still emits legacy, so every real file
+# routes to the legacy parser below; only migrated / new-format files lack
+# the section headers and go through the new parser.
+_OLD_SECTION_HEADERS = (_TASK_HEADER, _MS_HEADER, _EV_HEADER,
+                        _REM_HEADER, _CRONO_HEADER)
+
+
+def _is_new_format(text: str) -> bool:
+    """True if *text* has no legacy cita-section header (→ new flat format)."""
+    return not any(h in text for h in _OLD_SECTION_HEADERS)
+
 
 # ── Orbit-id tag (stable identity across user edits in markdown) ──────────
 #
@@ -326,7 +339,12 @@ def _read_agenda(path: Path) -> dict:
         return {"header": ["# Agenda"], "tasks": [], "milestones": [],
                 "events": [], "reminders": [], "cronos": []}
 
-    lines   = path.read_text().splitlines()
+    text = path.read_text()
+    if _is_new_format(text):
+        from core.agenda.newfmt import parse_agenda_new
+        return parse_agenda_new(text)
+
+    lines   = text.splitlines()
     result  = {"header": [], "tasks": [], "milestones": [],
                "events": [], "reminders": [], "cronos": []}
     section = None   # "tasks" | "milestones" | "events" | "reminders" | "cronos" | None
