@@ -507,6 +507,7 @@ Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untra
 orbit agenda [project...] [--date D] [--from D] [--to D] [--no-cal] [--summary] [--dated] [--order project|date] [--no-fed] [--open [EDITOR]]
 orbit agenda week                     # esta semana
 orbit agenda month                    # este mes
+orbit agenda future [project...]      # vista previa del formato nuevo de citas
 ```
 
 - Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
@@ -523,6 +524,7 @@ orbit agenda month                    # este mes
 - `--open` escribe a fichero transitorio (`cmd.md`) y lo abre; el dashboard fijo pineable es `📊panel/secretary/agenda.md`, regenerado en cada mutación.
 - Tareas vencidas se agrupan en el día de hoy con la fecha original: `(📅2026-03-22) ⚠️`
 - Compatible con `--log`
+- `future [project...]`: genera un `<project>-agenda_futura.md` por proyecto con la agenda en el **formato unificado nuevo** (header + cuerpo indentado: `▶️` fechas, `✏️` tareas, tags, followups `⏩`). Es una **vista derivada** de solo lectura para ver cómo quedará — no toca `agenda.md`. Sin proyectos: todos. (Transitorio durante la migración al formato nuevo.)
 
 ---
 

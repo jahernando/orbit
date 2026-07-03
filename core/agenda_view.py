@@ -597,6 +597,49 @@ def _week_overlaps(week, y, m, start, end):
     return False
 
 
+# ── Future-format viewer (unified items) ──────────────────────────────────────
+
+def run_agenda_future(projects: Optional[list] = None) -> int:
+    """Write a `<project>-agenda_futura.md` preview of each project's agenda in
+    the new unified "orbit-item" format (design claude/designs/items_unified.md).
+
+    Read-only over the truth: the source `agenda.md` is not touched — this is a
+    derived view (like the panel viewers) that lets you see the new syntax on
+    real data during the coexistence window before the writer adopts it (F1).
+    Federated projects are skipped (federation is read-only).
+    """
+    from core.agenda.newfmt import serialize_agenda_new
+    dirs = _resolve_dirs(projects, include_federated=False)
+    if projects and not dirs:
+        print("Error: no se encontró ningún proyecto de los indicados.")
+        return 1
+    if not dirs:
+        print("No hay proyectos.")
+        return 1
+
+    written = 0
+    for project_dir in dirs:
+        if get_federation_emoji(project_dir):
+            continue                      # federation is read-only
+        agenda_path = resolve_file(project_dir, "agenda")
+        if not agenda_path.exists():
+            continue
+        data = _read_agenda(agenda_path)
+        out_path = agenda_path.parent / (agenda_path.stem + "_futura.md")
+        out_path.write_text(serialize_agenda_new(data))
+        n = sum(len(data.get(k, [])) for k in
+                ("tasks", "milestones", "events", "reminders"))
+        rel = f"{project_dir.parent.name}/{project_dir.name}/{out_path.name}"
+        print(f"  ✓ [{project_dir.name}] → {rel}  ({n} citas)")
+        written += 1
+
+    if not written:
+        print("Ningún proyecto tenía agenda que convertir.")
+        return 0
+    print(f"\n{written} vista(s) generada(s). La verdad (agenda.md) queda intacta.")
+    return 0
+
+
 # ── Plain calendar (no agenda data) ──────────────────────────────────────────
 
 

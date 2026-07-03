@@ -188,3 +188,28 @@ class TestTolerantReader:
                   "status", "ff", "snooze_count", "failed_count",
                   "orbit_id", "cloud_verified", "notes"):
             assert k in t
+
+
+class TestAgendaFutureCommand:
+
+    def test_writes_derived_view_without_touching_truth(self, orbit_env, monkeypatch):
+        from core.log import resolve_file
+        from core import agenda_view
+        proj = orbit_env["proj_dir"]
+        agenda = resolve_file(proj, "agenda")
+        agenda.write_text("# Agenda — testproj\n\n## ✅ Tareas\n"
+                          "- [ ] Hacer algo (2026-07-30) ⏰12:00 [orbit:12345678]\n")
+
+        # project-name resolution is tested elsewhere; isolate the write logic.
+        monkeypatch.setattr(agenda_view, "_resolve_dirs",
+                            lambda projects, include_federated=True: [proj])
+        rc = agenda_view.run_agenda_future(["testproj"])
+        assert rc == 0
+
+        futura = agenda.parent / (agenda.stem + "_futura.md")
+        assert futura.exists()
+        text = futura.read_text()
+        assert "- [ ] ✏️ Hacer algo #tarea" in text
+        assert "▶️ 2026-07-30 · ⏰ 12:00" in text
+        assert "orbit:" not in text                 # id hidden in the viewer
+        assert "## ✅ Tareas" in agenda.read_text()  # truth untouched

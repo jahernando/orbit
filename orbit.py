@@ -26,7 +26,7 @@ from core.highlights import (
 from core.project_view import run_new_view, run_new_open
 from core.notes import run_note_create, run_note_open, run_note_list, run_note_drop
 from core.commit import run_commit
-from core.agenda_view import run_agenda, run_cal
+from core.agenda_view import run_agenda, run_cal, run_agenda_future
 from core.ls import run_ls_files, run_ls_notes
 # gsync CLI removed in v0.33 (DORMANT.md). core.gsync still imported
 # elsewhere (commit.py reconcile + drift, no-op when applescript_writes
@@ -725,6 +725,10 @@ def cmd_agenda(args):
     date_str = getattr(args, "date", None)
     date_from = getattr(args, "date_from", None)
     date_to = getattr(args, "date_to", None)
+
+    # `agenda future [proj...]` → write the new-format preview (agenda_futura.md)
+    if projects and projects[0].lower() == "future":
+        return run_agenda_future(projects=projects[1:] or None)
 
     # Allow "agenda week", "agenda month" as period shortcuts
     if projects and not date_str and not date_from and not date_to:
