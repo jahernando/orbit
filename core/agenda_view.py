@@ -640,6 +640,48 @@ def run_agenda_future(projects: Optional[list] = None) -> int:
     return 0
 
 
+def run_agenda_migrate(projects: Optional[list] = None) -> int:
+    """Migrate each project's `agenda.md` to the new unified item format, now.
+
+    The writer already migrates lazily (any command that rewrites an agenda
+    converts it), but this rewrites every own project's agenda in one pass so
+    the whole workspace is on the new format immediately — closing the gap
+    where a legacy inline ``⏩`` (parsed into the retired ``ff`` field) does
+    not surface in "Decidir hoy" until its file is first rewritten.
+
+    Only files still in the legacy format are touched (idempotent); each write
+    takes an undo snapshot. Federated projects are skipped (read-only).
+    """
+    from core.agenda.io import _is_new_format
+    dirs = _resolve_dirs(projects, include_federated=False)
+    if projects and not dirs:
+        print("Error: no se encontró ningún proyecto de los indicados.")
+        return 1
+    if not dirs:
+        print("No hay proyectos.")
+        return 1
+
+    migrated = skipped = 0
+    for project_dir in dirs:
+        if get_federation_emoji(project_dir):
+            continue                      # federation is read-only
+        agenda_path = resolve_file(project_dir, "agenda")
+        if not agenda_path.exists():
+            continue
+        if _is_new_format(agenda_path.read_text()):
+            skipped += 1
+            continue
+        # read (legacy) → write (new format); folds ff→⏩, drops cronos table.
+        from core.agenda_cmds import _write_agenda
+        _write_agenda(agenda_path, _read_agenda(agenda_path))
+        print(f"  ✓ [{project_dir.name}] migrado al formato nuevo")
+        migrated += 1
+
+    print(f"\n{migrated} agenda(s) migrada(s), {skipped} ya en formato nuevo. "
+          f"Cambios versionados en git (undo disponible).")
+    return 0
+
+
 # ── Plain calendar (no agenda data) ──────────────────────────────────────────
 
 

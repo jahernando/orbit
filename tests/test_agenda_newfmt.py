@@ -213,3 +213,50 @@ class TestAgendaFutureCommand:
         assert "▶️ 2026-07-30 · ⏰ 12:00" in text
         assert "orbit:" not in text                 # id hidden in the viewer
         assert "## ✅ Tareas" in agenda.read_text()  # truth untouched
+
+
+class TestAgendaMigrateCommand:
+
+    def test_migrates_truth_and_folds_ff(self, orbit_env, monkeypatch):
+        from core.log import resolve_file
+        from core import agenda_view
+        proj = orbit_env["proj_dir"]
+        agenda = resolve_file(proj, "agenda")
+        agenda.write_text(
+            "# Agenda — testproj\n\n## ✅ Tareas\n"
+            "- [ ] Revisar informe ⏩2026-07-09\n\n"
+            "## 📊 Cronogramas\n\n"
+            "| Cronograma | Progreso |   | Deadline |\n"
+            "|------------|----------|---|----------|\n"
+            "| [p](cronos/crono-p.md) | ██ | 1/2 | — |\n"
+        )
+        monkeypatch.setattr(agenda_view, "_resolve_dirs",
+                            lambda projects, include_federated=True: [proj])
+        rc = agenda_view.run_agenda_migrate(["testproj"])
+        assert rc == 0
+        text = agenda.read_text()
+        # truth rewritten to the new format
+        assert "## ✅ Tareas" not in text
+        assert "- [ ] ✏️ Revisar informe #tarea" in text
+        assert "⏩ 2026-07-09" in text                # ff folded to body followup
+        assert "## 📊 Cronogramas" not in text        # embedded table dropped
+        # ...and the followup now surfaces via item_followups (Decidir hoy).
+        from core.agenda_cmds import _read_agenda
+        from core.agenda.display import item_followups
+        task = _read_agenda(agenda)["tasks"][0]
+        assert task.get("ff") is None
+        assert item_followups(task) == [{"date": "2026-07-09", "desc": None}]
+
+    def test_idempotent_skips_new_format(self, orbit_env, monkeypatch):
+        from core.log import resolve_file
+        from core import agenda_view
+        proj = orbit_env["proj_dir"]
+        agenda = resolve_file(proj, "agenda")
+        agenda.write_text(
+            "# Agenda — testproj\n\n- [ ] ✏️ Ya migrada #tarea\n")
+        before = agenda.read_text()
+        monkeypatch.setattr(agenda_view, "_resolve_dirs",
+                            lambda projects, include_federated=True: [proj])
+        rc = agenda_view.run_agenda_migrate(["testproj"])
+        assert rc == 0
+        assert agenda.read_text() == before          # already-new file untouched

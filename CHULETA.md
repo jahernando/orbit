@@ -487,6 +487,7 @@ orbit agenda [project...] [--date D] [--from D] [--to D] [--no-cal] [--summary] 
 orbit agenda week                     # esta semana
 orbit agenda month                    # este mes
 orbit agenda future [project...]      # vista previa del formato nuevo de citas
+orbit agenda migrate [project...]     # reescribe agenda.md al formato nuevo (in situ)
 ```
 
 - Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
@@ -504,6 +505,7 @@ orbit agenda future [project...]      # vista previa del formato nuevo de citas
 - Tareas vencidas se agrupan en el día de hoy con la fecha original: `(📅2026-03-22) ⚠️`
 - Compatible con `--log`
 - `future [project...]`: genera un `<project>-agenda_futura.md` por proyecto con la agenda en el **formato unificado nuevo** (header + cuerpo indentado: `▶️` fechas, `✏️` tareas, tags, followups `⏩`). Es una **vista derivada** de solo lectura para ver cómo quedará — no toca `agenda.md`. Sin proyectos: todos. (Transitorio durante la migración al formato nuevo.)
+- `migrate [project...]`: reescribe **la verdad** `agenda.md` de cada proyecto propio al formato nuevo (in situ). Solo toca los que aún están en formato viejo (idempotente); pliega `⏩ff` inline → followup de cuerpo y descarta la tabla cronos incrustada. Cada escritura deja snapshot de undo y el cambio queda en git. Federados se saltan. Sin proyectos: todos. Útil para migrar el workspace de golpe en vez de esperar a la migración perezosa comando a comando.
 
 ---
 
