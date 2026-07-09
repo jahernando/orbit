@@ -78,12 +78,6 @@
       "fn": "_action_ring_refresh",
       "critical": false,
       "display": { "emoji": "🔔", "label": "Ring" }
-    },
-    "cronos_section_refresh": {
-      "module": "core.cronograma",
-      "fn": "_action_cronos_section_refresh",
-      "critical": false,
-      "display": { "emoji": "📊", "label": "Cronos section" }
     }
   },
   "chains": {
@@ -99,7 +93,6 @@
     "commit_post": {
       "trigger_type": "explicit",
       "post": [
-        "cronos_section_refresh",
         "ring_refresh",
         "secretary_refresh",
         "ics_emit_workspace",

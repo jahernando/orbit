@@ -18,7 +18,6 @@ from core.project import _find_new_project
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-_CRONO_HEADER = "## 📊 Cronogramas"
 _CRONO_DIR = "cronos"
 
 _INDEX_RE = re.compile(r"^(\d+(?:\.\d+)*)$")
@@ -1306,7 +1305,12 @@ def _format_gantt(data: dict, today: date = None, mode: str = None,
 # ── Commands ─────────────────────────────────────────────────────────────────
 
 def run_crono_add(project: str, name: str) -> int:
-    """Create a new cronograma file and register it in agenda.md."""
+    """Create a new cronograma file.
+
+    Cronogramas are decoupled from agenda.md (the truth lives in
+    ``cronos/crono-*.md``); the secretary/panel viewers read those files
+    directly. No table is written into agenda.md.
+    """
     project_dir = _find_new_project(project)
     if not project_dir:
         print(f"Proyecto no encontrado: {project}")
@@ -1331,104 +1335,8 @@ def run_crono_add(project: str, name: str) -> int:
     )
     crono_path.write_text(template, encoding="utf-8")
 
-    # Register in agenda.md via the idempotent generator (panel-style row).
-    _refresh_agenda_cronos_section(project_dir)
-
     print(f"✓ [{project_dir.name}] cronograma creado: {crono_path.name}")
     return 0
-
-
-def _refresh_agenda_cronos_section(project_dir: Path) -> bool:
-    """Rebuild the ``## 📊 Cronogramas`` section in this project's agenda.md.
-
-    Scans ``<project_dir>/cronos/crono-*.md``, computes leaf counts and
-    deadline for each, and writes a panel-style table into the cronos
-    blob (see :func:`core.agenda.io._read_agenda`). Idempotent.
-
-    Empty ``cronos/`` (or no parseable file) → blob cleared so the writer
-    skips the section header. Caller is responsible for federation
-    filtering — federated workspaces must stay read-only.
-
-    Returns True if the file changed, False if no-op.
-    """
-    from core.agenda.io import _read_agenda, _write_agenda
-
-    agenda_path = resolve_file(project_dir, "agenda")
-    if not agenda_path.exists():
-        return False
-
-    cronos_dir = project_dir / _CRONO_DIR
-    today = date.today()
-    rows = []
-    if cronos_dir.exists():
-        for crono_file in sorted(cronos_dir.glob("crono-*.md")):
-            cdata = _parse_crono_file(crono_file)
-            tasks = cdata["tasks"]
-            if not tasks:
-                continue
-            parents = _parent_indices(tasks)
-            leaves = [t for t in tasks if _is_leaf(t, parents)]
-            total = len(leaves)
-            done = sum(1 for t in leaves if t["done"])
-            deadline = _resolve_deadline(cdata["metadata"], project_dir, today)
-            rows.append({
-                "name": cdata["name"],
-                "file": crono_file.name,
-                "done": done,
-                "total": total,
-                "deadline": deadline,
-            })
-
-    if not rows:
-        blob = []
-    else:
-        blob = [
-            "",
-            "| Cronograma | Progreso |   | Deadline |",
-            "|------------|----------|---|----------|",
-        ]
-        for r in rows:
-            pct = r["done"] * 100 // r["total"] if r["total"] else 0
-            filled = round(pct / 10)
-            bar = "█" * filled + "░" * (10 - filled)
-            dl = _deadline_short_str(r["done"], r["total"], r["deadline"], today)
-            blob.append(
-                f"| [{r['name']}]({_CRONO_DIR}/{r['file']}) "
-                f"| {bar} | {r['done']}/{r['total']} ({pct}%) | {dl or '—'} |"
-            )
-
-    data = _read_agenda(agenda_path)
-    if data.get("cronos", []) == blob:
-        return False
-    data["cronos"] = blob
-    _write_agenda(agenda_path, data)
-    return True
-
-
-def _action_cronos_section_refresh(ctx):
-    """Hook action: refresh the ``## 📊 Cronogramas`` section in every own
-    project's agenda.md.
-
-    Fired by ``commit_post`` so render_to_cloud, which runs later in the
-    same chain, projects the updated agenda.md to HTML in one pass.
-    Federated workspaces are skipped (federation-readonly).
-    """
-    from core.config import iter_project_dirs
-    from core.project import _is_new_project
-    changed = 0
-    errors = []
-    for project_dir in iter_project_dirs():
-        if not _is_new_project(project_dir):
-            continue
-        try:
-            if _refresh_agenda_cronos_section(project_dir):
-                changed += 1
-        except Exception as e:
-            errors.append(f"{project_dir.name}: {type(e).__name__}: {e}")
-    if errors:
-        return {"ok": False,
-                "msg": f"{changed} updated; {len(errors)} error(s); first: {errors[0]}"}
-    return {"ok": True, "msg": f"{changed} updated"}
 
 
 def run_crono_show(project: str, name: str) -> int:
@@ -1609,7 +1517,6 @@ def run_crono_edit(project: str, name: str, editor: str = "") -> int:
         return 1
 
     rc = open_file(path, editor)
-    _refresh_agenda_cronos_section(project_dir)
     return rc
 
 
@@ -1692,10 +1599,6 @@ def run_crono_reindex(project: str, name: str) -> int:
 
     path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
-    # Reindex doesn't change done/total but the section may be stale
-    # from an earlier session without the auto-refresh.
-    _refresh_agenda_cronos_section(project_dir)
-
     for old, new in rename_map.items():
         if old != new:
             print(f"  {old} → {new}")
@@ -1767,9 +1670,6 @@ def run_crono_done(project: str, name: str, index: str = None) -> int:
             break
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    # Reflect new done/total in agenda.md's cronos section
-    _refresh_agenda_cronos_section(project_dir)
 
     # Log to logbook
     crono_name = _parse_crono_file(path)["name"]
