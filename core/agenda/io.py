@@ -57,8 +57,15 @@ _OLD_SECTION_HEADERS = (_TASK_HEADER, _MS_HEADER, _EV_HEADER,
 
 
 def _is_new_format(text: str) -> bool:
-    """True if *text* has no legacy cita-section header (→ new flat format)."""
-    return not any(h in text for h in _OLD_SECTION_HEADERS)
+    """True if *text* has no legacy cita-section header line (→ new flat format).
+
+    Matches a section header only as a full line (the legacy parser switches
+    sections on an exact header line), so the same strings appearing inside an
+    HTML comment or prose — e.g. the bootstrap "Secciones disponibles" hint that
+    lists ``## ✅ Tareas`` etc. — do not misclassify a migrated file as legacy.
+    """
+    return not any(line.strip() in _OLD_SECTION_HEADERS
+                   for line in text.splitlines())
 
 
 # ── Orbit-id tag (stable identity across user edits in markdown) ──────────

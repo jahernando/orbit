@@ -163,6 +163,29 @@ class TestTolerantReader:
         assert _is_new_format("## ✅ Tareas\n- [ ] X (2026-01-01)\n") is False
         assert _is_new_format("## 📊 Cronogramas\n| barra |\n") is False
 
+    def test_section_headers_inside_comment_dont_misclassify(self):
+        """A migrated agenda keeps the bootstrap 'Secciones disponibles' comment,
+        which lists `## ✅ Tareas` etc. as text. The detector must match a header
+        only as a full line, or the file reads as legacy and its items are lost."""
+        migrated = (
+            "# Agenda — x\n"
+            "<!-- Secciones disponibles:\n"
+            "     ## ✅ Tareas        — acciones\n"
+            "     ## 🏁 Hitos         — objetivos\n"
+            "     ## 📅 Eventos       — reuniones\n"
+            "     ## 💬 Recordatorios — avisos -->\n\n"
+            "- [x] 🏁 hito #hitos <!-- orbit:4a96266a -->\n"
+            "    ▶️ 2026-04-19 · ⏰ 17:00\n"
+        )
+        assert _is_new_format(migrated) is True
+        import tempfile, pathlib
+        p = pathlib.Path(tempfile.mkdtemp()) / "agenda.md"
+        p.write_text(migrated)
+        data = _read_agenda(p)
+        assert len(data["milestones"]) == 1        # parsed by the NEW parser
+        assert data["milestones"][0]["desc"] == "hito"
+        assert data["milestones"][0]["orbit_id"] == "4a96266a"
+
     def test_reads_new_format_file(self, tmp_path):
         p = tmp_path / "agenda.md"
         p.write_text(CANONICAL)
