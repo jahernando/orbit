@@ -132,7 +132,7 @@ class TestParseTaskLine:
                      date="2026-05-15", time="09:00-11:00")
         data = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
         assert data["tasks"][-1]["time"] == "09:00-11:00"
-        assert "⏰09:00-11:00" in _agenda_text(proj)
+        assert "⏰ 09:00-11:00" in _agenda_text(proj)
 
     def test_time_simple_still_accepted(self, proj):
         # Backwards compat: HH:MM (no range) still works on task.
@@ -236,265 +236,29 @@ class TestFfAndCounters:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Verbs: task plan / task pending — F2 of taxonomy plan
+# task add — raw capture lands dateless (someday / reposo); F5 retired ff
 # ══════════════════════════════════════════════════════════════════════════════
 
-class TestTaskAddDefaultFf:
-    """api.add_task without date defaults ff to today (raw capture)."""
+class TestTaskAddRawCapture:
+    """F5: add_task without a date is a dateless *someday* task (reposo).
+    There is no ``ff`` header field anymore, and no auto ⏩ today."""
 
-    def test_no_date_sets_ff_today(self, proj):
-        from datetime import date
+    def test_no_date_is_someday_no_ff(self, proj):
         from core import api
         from core.agenda_cmds import _read_agenda
         api.add_task(project=proj.name, text="Bare capture")
-        data = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
-        assert data["tasks"][-1]["ff"] == date.today().isoformat()
+        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
+        assert t.get("date") is None
+        assert t.get("ff") is None          # ff axis retired
+        assert api.task_state(t) == "someday"
 
-    def test_with_date_no_ff_default(self, proj):
+    def test_with_date_is_planned(self, proj):
         from core import api
         from core.agenda_cmds import _read_agenda
-        api.add_task(project=proj.name, text="Planned",
-                     date="2026-06-01")
+        api.add_task(project=proj.name, text="Planned", date="2026-06-01")
         t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
-        assert t["ff"] is None
-
-    def test_explicit_ff_overrides_default(self, proj):
-        from core import api
-        from core.agenda_cmds import _read_agenda
-        api.add_task(project=proj.name, text="Someday X", ff="someday")
-        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
-        assert t["ff"] == "someday"
-
-    def test_run_task_add_with_ff(self, proj):
-        from core.agenda_cmds import run_task_add, _read_agenda
-        # CLI surface: run_task_add accepts ff and propagates to api.
-        rc = run_task_add(project=proj.name, text="Esperar X", ff="2026-06-15")
-        assert rc == 0
-        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
-        assert t["ff"] == "2026-06-15"
-        assert t["date"] is None
-
-    def test_run_task_add_ff_someday(self, proj):
-        from core.agenda_cmds import run_task_add, _read_agenda
-        rc = run_task_add(project=proj.name, text="Quizá Y", ff="someday")
-        assert rc == 0
-        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
-        assert t["ff"] == "someday"
-
-    def test_run_task_add_ff_with_date_combined(self, proj):
-        # Both can coexist: a planned date with an earlier ff for internal review.
-        from core.agenda_cmds import run_task_add, _read_agenda
-        rc = run_task_add(project=proj.name, text="Charla viernes",
-                          date_val="2026-06-05", ff="2026-06-02")
-        assert rc == 0
-        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
-        assert t["date"] == "2026-06-05"
-        assert t["ff"] == "2026-06-02"
-
-    def test_add_invalid_ff_rejected(self, proj, capsys):
-        from core.agenda_cmds import run_task_add
-        rc = run_task_add(project=proj.name, text="Bad", ff="garbage")
-        assert rc == 1
-        # _generic_add translates api ValueError to CLI error wording
-        assert "ff" in capsys.readouterr().out.lower()
-
-
-class TestRunTaskPlan:
-    """task plan: promote pending→planned or reschedule planned."""
-
-    def _add_pending(self, proj, text, ff_val):
-        from core import api
-        api.add_task(project=proj.name, text=text, ff=ff_val)
-
-    def _add_planned(self, proj, text, date_val):
-        from core import api
-        api.add_task(project=proj.name, text=text, date=date_val)
-
-    def _tasks(self, proj):
-        from core.agenda_cmds import _read_agenda
-        return _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"]
-
-    def test_promote_pending_to_planned(self, proj):
-        from core.agenda_cmds import run_task_plan
-        self._add_pending(proj, "X", "2026-05-20")
-        run_task_plan(project=proj.name, text="X", date_val="2026-06-01")
-        t = self._tasks(proj)[-1]
         assert t["date"] == "2026-06-01"
-        assert t["ff"] is None
-        assert t["snooze_count"] == 0
-
-    def test_promote_resets_snooze_count(self, proj):
-        from core.agenda_cmds import run_task_plan, _read_agenda, _write_agenda
-        self._add_pending(proj, "X", "2026-05-20")
-        # bump snooze on the underlying item
-        agenda_path = proj / f"{_strip_emoji(proj.name)}-agenda.md"
-        data = _read_agenda(agenda_path)
-        data["tasks"][-1]["snooze_count"] = 5
-        _write_agenda(agenda_path, data)
-        run_task_plan(project=proj.name, text="X", date_val="2026-06-01")
-        assert self._tasks(proj)[-1]["snooze_count"] == 0
-
-    def test_reschedule_overdue_increments_failed_count(self, proj):
-        from core.agenda_cmds import run_task_plan
-        self._add_planned(proj, "X", "2020-01-01")   # very overdue
-        run_task_plan(project=proj.name, text="X", date_val="2026-06-01")
-        t = self._tasks(proj)[-1]
-        assert t["date"] == "2026-06-01"
-        assert t["failed_count"] == 1
-
-    def test_reschedule_future_does_not_increment(self, proj):
-        from core.agenda_cmds import run_task_plan
-        self._add_planned(proj, "X", "2099-01-01")   # future
-        run_task_plan(project=proj.name, text="X", date_val="2099-02-01")
-        t = self._tasks(proj)[-1]
-        assert t["failed_count"] == 0
-
-    def test_plan_with_time(self, proj):
-        from core.agenda_cmds import run_task_plan
-        self._add_pending(proj, "Focus block", "2026-05-20")
-        run_task_plan(project=proj.name, text="Focus block",
-                      date_val="2026-06-01", time_val="09:00-11:00")
-        t = self._tasks(proj)[-1]
-        assert t["time"] == "09:00-11:00"
-
-    def test_missing_date_returns_error(self, proj, capsys):
-        from core.agenda_cmds import run_task_plan
-        self._add_pending(proj, "X", "2026-05-20")
-        rc = run_task_plan(project=proj.name, text="X", date_val=None)
-        assert rc == 1
-        assert "fecha" in capsys.readouterr().out.lower()
-
-    def test_echo_uses_item_block_with_action(self, proj, capsys):
-        # Fase 3 extend: plan echoes the item-block; kind_msg → banner state.
-        from core.agenda_cmds import run_task_plan
-        self._add_pending(proj, "Revisar paper", "2026-05-20")
-        capsys.readouterr()
-        run_task_plan(project=proj.name, text="Revisar", date_val="2026-07-01")
-        out = capsys.readouterr().out
-        assert "task plan · " in out and "planeada" in out
-        assert "- [ ] Revisar paper (2026-07-01)" in out
-
-
-class TestRunTaskPending:
-    """task pending: demote planned→pending or snooze pending."""
-
-    def _add_pending(self, proj, text, ff_val):
-        from core import api
-        api.add_task(project=proj.name, text=text, ff=ff_val)
-
-    def _add_planned(self, proj, text, date_val):
-        from core import api
-        api.add_task(project=proj.name, text=text, date=date_val)
-
-    def _tasks(self, proj):
-        from core.agenda_cmds import _read_agenda
-        return _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"]
-
-    def test_snooze_pending_increments_snooze_count(self, proj):
-        from core.agenda_cmds import run_task_pending
-        self._add_pending(proj, "X", "2026-05-20")
-        run_task_pending(project=proj.name, text="X", target_ff="2026-05-25")
-        t = self._tasks(proj)[-1]
-        assert t["ff"] == "2026-05-25"
-        assert t["snooze_count"] == 1
-
-    def test_snooze_default_is_tomorrow(self, proj):
-        from datetime import date, timedelta
-        from core.agenda_cmds import run_task_pending
-        self._add_pending(proj, "X", "2026-05-20")
-        run_task_pending(project=proj.name, text="X", target_ff=None)
-        t = self._tasks(proj)[-1]
-        assert t["ff"] == (date.today() + timedelta(days=1)).isoformat()
-        assert t["snooze_count"] == 1
-
-    def test_snooze_to_someday(self, proj):
-        from core.agenda_cmds import run_task_pending
-        self._add_pending(proj, "X", "2026-05-20")
-        run_task_pending(project=proj.name, text="X", target_ff="someday")
-        t = self._tasks(proj)[-1]
-        assert t["ff"] == "someday"
-
-    def test_demote_planned_moves_date_to_ff(self, proj):
-        from core.agenda_cmds import run_task_pending
-        self._add_planned(proj, "X", "2026-06-01")
-        run_task_pending(project=proj.name, text="X", target_ff=None)
-        t = self._tasks(proj)[-1]
-        assert t["ff"] == "2026-06-01"
-        assert t["date"] is None
-        # demote is not a snooze: counter stays
-        assert t["snooze_count"] == 0
-
-    def test_demote_with_explicit_target(self, proj):
-        from core.agenda_cmds import run_task_pending
-        self._add_planned(proj, "X", "2026-06-01")
-        run_task_pending(project=proj.name, text="X", target_ff="2026-07-15")
-        t = self._tasks(proj)[-1]
-        assert t["ff"] == "2026-07-15"
-        assert t["date"] is None
-
-    def test_invalid_target_rejected(self, proj, capsys):
-        from core.agenda_cmds import run_task_pending
-        self._add_pending(proj, "X", "2026-05-20")
-        rc = run_task_pending(project=proj.name, text="X", target_ff="garbage")
-        assert rc == 1
-        assert "no reconocida" in capsys.readouterr().out.lower()
-
-
-class TestTaskEditFf:
-    """task edit --ff allows direct manipulation of the ff field."""
-
-    def test_edit_sets_ff(self, proj):
-        from core import api
-        from core.agenda_cmds import run_task_edit, _read_agenda
-        api.add_task(project=proj.name, text="X", date="2026-06-01")
-        run_task_edit(project=proj.name, text="X", new_ff="2026-05-25")
-        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
-        assert t["ff"] == "2026-05-25"
-
-    def test_edit_ff_none_clears(self, proj):
-        from core import api
-        from core.agenda_cmds import run_task_edit, _read_agenda
-        api.add_task(project=proj.name, text="X", ff="2026-05-24")
-        run_task_edit(project=proj.name, text="X", new_ff="none")
-        t = _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")["tasks"][-1]
-        assert t["ff"] is None
-
-    def test_edit_invalid_ff_rejected(self, proj, capsys):
-        from core import api
-        from core.agenda_cmds import run_task_edit
-        api.add_task(project=proj.name, text="X", date="2026-06-01")
-        rc = run_task_edit(project=proj.name, text="X", new_ff="garbage")
-        assert rc == 1
-        assert "fast-forward" in capsys.readouterr().out.lower()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# _parse_event_line / _format_event_line
-# ══════════════════════════════════════════════════════════════════════════════
-
-class TestParseEventLine:
-    def test_simple(self):
-        from core.agenda_cmds import _parse_event_line
-        e = _parse_event_line("2026-03-15 — Conference")
-        assert e["date"] == "2026-03-15"
-        assert e["desc"] == "Conference"
-        assert e["end"]  is None
-
-    def test_with_end(self):
-        from core.agenda_cmds import _parse_event_line
-        e = _parse_event_line("2026-03-15 — Conference [end:2026-03-17]")
-        assert e["end"] == "2026-03-17"
-        assert e["desc"] == "Conference"
-
-    def test_none_for_non_event(self):
-        from core.agenda_cmds import _parse_event_line
-        assert _parse_event_line("- [ ] task") is None
-        assert _parse_event_line("## 📅 Eventos") is None
-
-    def test_roundtrip(self):
-        from core.agenda_cmds import _parse_event_line, _format_event_line
-        line = "2026-06-01 — Summer school [end:2026-06-05]"
-        assert _format_event_line(_parse_event_line(line)) == "2026-06-01 — Summer school →2026-06-05"
+        assert api.task_state(t) == "planned"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -543,11 +307,15 @@ class TestAgendaIO:
         data["events"].append({"date": "2026-04-10", "desc": "Conference", "end": None})
         _write_agenda(proj / "test-project-agenda.md", data)
         text = _agenda_text(proj)
-        assert "## ✅ Tareas" in text
-        assert "## 🏁 Hitos" in text
-        assert "## 📅 Eventos" in text
+        # New unified format: flat items, no section headers.
+        assert "## ✅ Tareas" not in text
+        assert "- [ ] ✏️ Task A #tarea" in text
+        assert "- [ ] 🏁 Milestone A #hitos" in text
+        assert "- 📅 Conference #evento" in text
 
-    def test_events_sorted_by_date(self, proj):
+    def test_events_preserve_insertion_order(self, proj):
+        # New format keeps truth order (design §14: the writer does not
+        # re-sort items). Events round-trip in insertion order, not sorted.
         from core.agenda_cmds import _read_agenda, _write_agenda
         data = _read_agenda(proj / "test-project-agenda.md")
         data["events"] = [
@@ -556,8 +324,7 @@ class TestAgendaIO:
         ]
         _write_agenda(proj / "test-project-agenda.md", data)
         data2 = _read_agenda(proj / "test-project-agenda.md")
-        assert data2["events"][0]["date"] == "2026-03-01"
-        assert data2["events"][1]["date"] == "2026-05-01"
+        assert [e["desc"] for e in data2["events"]] == ["Later", "Earlier"]
 
     def test_roundtrip_complex(self, proj):
         from core.agenda_cmds import _read_agenda, _write_agenda
@@ -595,8 +362,10 @@ class TestAgendaIO:
                                "cancelled": False, "notes": list(notes)}]
         _write_agenda(proj / "test-project-agenda.md", data)
         data2 = _read_agenda(proj / "test-project-agenda.md")
+        # New format canonicalises body order (refs before followups), so
+        # compare as sets: what matters is that no note is dropped.
         for kind in ("tasks", "milestones", "events", "reminders"):
-            assert data2[kind][0].get("notes") == notes, kind
+            assert set(data2[kind][0].get("notes") or []) == set(notes), kind
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1098,16 +867,6 @@ class TestRunTaskAdd:
         out = capsys.readouterr().out
         assert "2026-05-01" in out
 
-    def test_output_includes_state_pending(self, proj, projects_dir, capsys):
-        # --ff in the future → state should be 'pending'
-        from core.agenda_cmds import run_task_add
-        from datetime import date as _date, timedelta
-        future = (_date.today() + timedelta(days=7)).isoformat()
-        run_task_add("test-project", "Future review", ff=future)
-        out = capsys.readouterr().out
-        assert "· pending ━━━" in out      # state echoed in the item-block banner
-        assert "Future review" in out
-
     def test_output_includes_state_planned(self, proj, projects_dir, capsys):
         # date set → state should be 'planned'
         from core.agenda_cmds import run_task_add
@@ -1116,17 +875,11 @@ class TestRunTaskAdd:
         assert "· planned ━━━" in out
 
     def test_output_includes_state_someday(self, proj, projects_dir, capsys):
+        # F5: raw capture (no date) → dateless someday task (reposo).
         from core.agenda_cmds import run_task_add
-        run_task_add("test-project", "Maybe later", ff="someday")
+        run_task_add("test-project", "Maybe later")
         out = capsys.readouterr().out
         assert "· someday ━━━" in out
-
-    def test_output_includes_state_due_for_raw_capture(self, proj, projects_dir, capsys):
-        # No date / no ff / no recur → api defaults ff=today → state 'due'
-        from core.agenda_cmds import run_task_add
-        run_task_add("test-project", "Decide now")
-        out = capsys.readouterr().out
-        assert "· due ━━━" in out
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1340,55 +1093,18 @@ class TestRunTaskList:
         run_task_list(projects=["test-project"])
         assert "My task" in capsys.readouterr().out
 
-    def test_pending_only_filter(self, proj, projects_dir, capsys):
-        from core import api
-        from core.agenda_cmds import run_task_list
-        api.add_task(project="test-project", text="Planned X", date="2026-06-01")
-        api.add_task(project="test-project", text="Pending Y", ff="2026-05-25")
-        api.add_task(project="test-project", text="Someday Z", ff="someday")
-        capsys.readouterr()  # discard add output
-        run_task_list(pending_only=True)
-        out = capsys.readouterr().out
-        assert "Pending Y" in out
-        assert "Planned X" not in out
-        assert "Someday Z" not in out
-
     def test_someday_only_filter(self, proj, projects_dir, capsys):
+        # F5: --someday = dateless open tasks (reposo). The ff axis is retired,
+        # so someday is now simply "no date".
         from core import api
         from core.agenda_cmds import run_task_list
-        api.add_task(project="test-project", text="Pending Y", ff="2026-05-25")
-        api.add_task(project="test-project", text="Someday Z", ff="someday")
+        api.add_task(project="test-project", text="Planned Y", date="2026-05-25")
+        api.add_task(project="test-project", text="Someday Z")
         capsys.readouterr()
         run_task_list(someday_only=True)
         out = capsys.readouterr().out
         assert "Someday Z" in out
-        assert "Pending Y" not in out
-
-    def test_display_shows_ff_and_counters(self, proj, projects_dir, capsys):
-        from core import api
-        from core.agenda_cmds import run_task_list, _read_agenda, _write_agenda
-        api.add_task(project="test-project", text="X", ff="2026-05-25")
-        # Bump counters directly to verify display.
-        from pathlib import Path
-        path = Path(proj) / f"{_strip_emoji(proj.name)}-agenda.md"
-        data = _read_agenda(path)
-        data["tasks"][-1]["snooze_count"] = 2
-        data["tasks"][-1]["failed_count"] = 1
-        _write_agenda(path, data)
-        capsys.readouterr()
-        run_task_list()
-        out = capsys.readouterr().out
-        assert "⏩2026-05-25" in out
-        assert "💤2" in out
-        assert "❌1" in out
-
-    def test_pending_only_empty_message(self, proj, projects_dir, capsys):
-        from core import api
-        from core.agenda_cmds import run_task_list
-        api.add_task(project="test-project", text="Planned X", date="2026-06-01")
-        capsys.readouterr()
-        run_task_list(pending_only=True)
-        assert "No hay tareas pending" in capsys.readouterr().out
+        assert "Planned Y" not in out
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2678,17 +2394,17 @@ class TestEventAgendaRoomFlags:
         ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
         assert "📋 https://indico/event/17950" in ev["notes"]
 
-    def test_add_with_desc_agenda_room_in_order(self, proj, projects_dir):
+    def test_add_with_desc_agenda_room_all_present(self, proj, projects_dir):
+        # New format canonicalises body order (refs grouped in the links:
+        # line), so assert membership rather than exact order.
         from core.agenda_cmds import run_ev_add, _read_agenda
         run_ev_add("test-project", "Mtg", "2026-05-08",
                    desc="Reunión semanal",
                    agenda="https://indico/x", room="https://zoom/y")
         ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
-        assert ev["notes"] == [
-            "Reunión semanal",
-            "📋 https://indico/x",
-            "🚪 https://zoom/y",
-        ]
+        assert "Reunión semanal" in ev["notes"]
+        assert "📋 https://indico/x" in ev["notes"]
+        assert "🚪 https://zoom/y" in ev["notes"]
 
     def test_edit_adds_room_to_event_without_one(self, proj, projects_dir):
         from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
@@ -2723,11 +2439,10 @@ class TestEventAgendaRoomFlags:
                    agenda="https://indico/x", room="https://zoom/y")
         run_ev_edit("test-project", "Mtg", new_desc="nueva desc")
         ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
-        assert ev["notes"] == [
-            "nueva desc",
-            "📋 https://indico/x",
-            "🚪 https://zoom/y",
-        ]
+        assert "nueva desc" in ev["notes"]
+        assert "vieja desc" not in ev["notes"]
+        assert "📋 https://indico/x" in ev["notes"]
+        assert "🚪 https://zoom/y" in ev["notes"]
 
     def test_edit_desc_on_task_does_not_preserve_anything(self, proj, projects_dir):
         """Tasks must keep the old replace-all semantics for --desc."""
@@ -2743,8 +2458,9 @@ class TestEventAgendaRoomFlags:
         run_ev_add("test-project", "X", "2026-05-10",
                    agenda="https://indico/z", room="https://meet/k")
         text = (proj / "test-project-agenda.md").read_text()
-        assert "📋 https://indico/z" in text
-        assert "🚪 https://meet/k" in text
+        # New format renders refs in a `links:` line (🚪 room → 📹 icon).
+        assert "[📋](https://indico/z)" in text
+        assert "[📹](https://meet/k)" in text
 
     def test_edit_room_on_recurring_occurrence(self, proj, projects_dir):
         """Editing room on a single occurrence of a recurring event keeps
@@ -2852,95 +2568,3 @@ class TestOrbitIdInMarkdown:
         assert "[orbit:" not in line
         assert "☁️" not in line
 
-
-class TestAgendaCronosSection:
-    """``## 📊 Cronogramas`` is a legacy opaque blob. The tolerant reader
-    keeps it intact across round-trips of the legacy writer so any
-    task/ms/ev/rem write does not destroy it. (The new-format writer drops
-    this section on migration — see F1.2.)"""
-
-    def test_preserves_cronos_block_round_trip(self, tmp_path):
-        from core.agenda.io import _read_agenda, _write_agenda
-        p = tmp_path / "x-agenda.md"
-        p.write_text(
-            "# Agenda\n\n"
-            "## ✅ Tareas\n"
-            "- [ ] foo (2026-05-15)\n\n"
-            "## 📊 Cronogramas\n"
-            "- [issues](cronos/crono-issues.md) — 3/8\n"
-            "- [informe](cronos/crono-informe.md) — 6/12\n"
-        )
-        data = _read_agenda(p)
-        assert data["cronos"] == [
-            "- [issues](cronos/crono-issues.md) — 3/8",
-            "- [informe](cronos/crono-informe.md) — 6/12",
-        ]
-        _write_agenda(p, data)
-        text = p.read_text()
-        assert "## 📊 Cronogramas" in text
-        assert "- [issues](cronos/crono-issues.md) — 3/8" in text
-        assert "- [informe](cronos/crono-informe.md) — 6/12" in text
-
-    def test_cronos_block_survives_task_only_file(self, tmp_path):
-        """Reproduces the original bomb: cronograma section silently lost
-        on the first agenda re-write."""
-        from core.agenda.io import _read_agenda, _write_agenda
-        p = tmp_path / "x-agenda.md"
-        p.write_text(
-            "\n"
-            "## ✅ Tareas\n"
-            "- [x] revision: Render\n"
-            "- [ ] task - taxonomi\n\n"
-            "## 📊 Cronogramas\n"
-            "- [issues](cronos/crono-issues.md)\n"
-        )
-        data = _read_agenda(p)
-        # Verify tasks still parse correctly
-        assert len(data["tasks"]) == 2
-        _write_agenda(p, data)
-        text = p.read_text()
-        assert "## 📊 Cronogramas" in text
-        assert "- [issues](cronos/crono-issues.md)" in text
-
-    def test_empty_cronos_emits_no_section(self, tmp_path):
-        from core.agenda.io import _read_agenda, _write_agenda
-        p = tmp_path / "x-agenda.md"
-        p.write_text("# Agenda\n\n## ✅ Tareas\n- [ ] foo (2026-05-15)\n")
-        data = _read_agenda(p)
-        assert data["cronos"] == []
-        _write_agenda(p, data)
-        assert "## 📊 Cronogramas" not in p.read_text()
-
-    def test_cronos_block_appears_after_reminders(self, tmp_path):
-        """Cronos is the last section — keeps it visually grouped as a
-        derived footer below the four cita sections."""
-        from core.agenda.io import _read_agenda, _write_agenda
-        p = tmp_path / "x-agenda.md"
-        p.write_text(
-            "## ✅ Tareas\n- [ ] t1 (2026-05-15)\n\n"
-            "## 💬 Recordatorios\n- r1 (2026-05-15) ⏰18:00\n\n"
-            "## 📊 Cronogramas\n- [x](cronos/crono-x.md)\n"
-        )
-        data = _read_agenda(p)
-        _write_agenda(p, data)
-        text = p.read_text()
-        assert text.index("## 💬 Recordatorios") < text.index("## 📊 Cronogramas")
-
-    def test_cronos_block_table_format_preserved(self, tmp_path):
-        """Multi-line content (table) is preserved verbatim."""
-        from core.agenda.io import _read_agenda, _write_agenda
-        p = tmp_path / "x-agenda.md"
-        p.write_text(
-            "## 📊 Cronogramas\n"
-            "\n"
-            "| Cronograma | Progreso |   | Deadline |\n"
-            "|------------|----------|---|----------|\n"
-            "| [issues](cronos/crono-issues.md) | ███░░░░░░░ | 3/8 (38%) | — |\n"
-        )
-        data = _read_agenda(p)
-        assert any("| Cronograma | Progreso" in ln for ln in data["cronos"])
-        assert any("| [issues]" in ln for ln in data["cronos"])
-        _write_agenda(p, data)
-        text = p.read_text()
-        assert "| Cronograma | Progreso |   | Deadline |" in text
-        assert "| [issues](cronos/crono-issues.md) | ███░░░░░░░ | 3/8 (38%) | — |" in text

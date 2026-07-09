@@ -420,51 +420,19 @@ def _read_agenda(path: Path) -> dict:
 
 
 def _write_agenda(path: Path, data: dict) -> None:
-    """Serialize data dict back to agenda.md."""
-    out = list(data["header"])
-    # Strip trailing blank lines from header block
-    while out and not out[-1].strip():
-        out.pop()
-    out.append("")
+    """Serialize data dict back to agenda.md in the unified item format.
 
-    if data["tasks"]:
-        out.append(_TASK_HEADER)
-        for t in data["tasks"]:
-            out.append(_format_task_line(t))
-            for note in t.get("notes") or []:
-                out.append(f"    {note}")
-        out.append("")
+    F1.2: the writer now emits the new *header + indented-body* grammar
+    (``core.agenda.newfmt``). This is the single pivot of the format flip —
+    nobody writes agenda.md by hand — so each file lazily migrates the first
+    time any command rewrites it. ``with_id=True`` keeps the invisible
+    ``<!-- orbit:xxxx -->`` identity comment (sync keys off orbit_id).
 
-    if data["milestones"]:
-        out.append(_MS_HEADER)
-        for ms in data["milestones"]:
-            out.append(_format_task_line(ms))
-            for note in ms.get("notes") or []:
-                out.append(f"    {note}")
-        out.append("")
-
-    if data["events"]:
-        out.append(_EV_HEADER)
-        # Sort events by date
-        for ev in sorted(data["events"], key=lambda e: e["date"]):
-            out.append(_format_event_line(ev))
-            for note in ev.get("notes") or []:
-                out.append(f"    {note}")
-        out.append("")
-
-    if data.get("reminders"):
-        out.append(_REM_HEADER)
-        for rem in sorted(data["reminders"], key=lambda r: (r["date"], r["time"])):
-            out.append(_format_reminder_line(rem))
-            for note in rem.get("notes") or []:
-                out.append(f"    {note}")
-        out.append("")
-
-    if data.get("cronos"):
-        out.append(_CRONO_HEADER)
-        out.extend(data["cronos"])
-        out.append("")
-
+    The legacy ``## 📊 Cronogramas`` blob (``data["cronos"]``) is dropped:
+    the new serializer omits it, so migration clears the embedded table.
+    Items are emitted in truth-order without re-sorting (design §14).
+    """
+    from core.agenda.newfmt import serialize_agenda_new
     from core.undo import save_snapshot
     save_snapshot(path)
-    path.write_text("\n".join(out) + "\n")
+    path.write_text(serialize_agenda_new(data, with_id=True))

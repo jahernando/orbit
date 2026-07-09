@@ -19,13 +19,13 @@ from pathlib import Path
 from typing import Optional
 
 from core.agenda_cmds import (
-    _read_agenda,
+    _read_agenda, _write_agenda,
     run_task_done, run_task_drop, run_task_edit,
-    run_task_plan, run_task_pending,
     run_ms_done, run_ms_drop, run_ms_edit,
     run_ev_drop, run_ev_edit,
     run_reminder_drop, run_reminder_edit,
 )
+from core.agenda.display import item_followups, add_followup, drop_followup
 from core.config import iter_project_dirs, normalize as _normalize
 from core.dateparse import parse_date as _parse_date
 from core.log import resolve_file
@@ -277,25 +277,6 @@ def _apply_action(action: str, kind: str, project_dir: Path, item: dict) -> bool
         elif kind == "reminder":
             run_reminder_edit(proj, desc, new_time=new_time, force=True)
         return True
-    if action == "p":
-        # Demote planned → pending (move date to ff, or use an explicit
-        # target). Only tasks support the ff field.
-        if kind != "task":
-            print(f"  (sólo tasks tienen ⏩; {_KIND_LABEL[kind]} no aplica.)")
-            return False
-        raw = _prompt("    ⏩ (YYYY-MM-DD/mañana/+N/someday, enter = keep date): ")
-        if not raw:
-            target = None
-        elif raw == "someday":
-            target = "someday"
-        else:
-            resolved = _parse_date(raw)
-            if resolved == raw and not _looks_iso(resolved):
-                print(f"  ⚠️  Fecha no reconocida: {raw!r}.")
-                return False
-            target = resolved
-        rc = run_task_pending(project=proj, text=desc, target_ff=target)
-        return rc == 0
     return False
 
 
@@ -306,7 +287,7 @@ def _action_for(idx: int, items: list) -> Optional[str]:
     kind, project_dir, item = items[idx - 1]
     print()
     print(_format_item_row(idx, kind, project_dir, item).strip())
-    print("  [d]rop  [n]done  [f]echa  [h]ora  [p]ending  [s]kip")
+    print("  [d]rop  [n]done  [f]echa  [h]ora  [s]kip")
     a = _prompt("  ?> ").lower()
     return a
 
@@ -331,11 +312,12 @@ def run_organize(type_filter: Optional[str] = None,
                    period: str = "today",
                    include_undated: bool = False,
                    triage: bool = False) -> int:
-    """Interactive loop to triage pending items.
+    """Interactive loop to triage agenda items.
 
-    ``triage=True`` switches the flow to pending tasks (``ff <= today``)
-    with the plan/pending/done/drop/skip verbs. Default mode processes
-    planned + overdue + ev/ms/reminder with the legacy verbs.
+    ``triage=True`` switches the flow to *followups* (``⏩ <= today``) across
+    all four cita types — the "Decidir hoy" surface after F5 retired the
+    ``ff`` axis. Default mode processes planned + overdue + ev/ms/reminder
+    with the date/time/done/drop verbs.
     """
     if triage:
         return _run_organize_triage(project_filter=project)
@@ -376,14 +358,28 @@ def run_organize(type_filter: Optional[str] = None,
             print(f"  ⚠️  Error: {exc}")
 
 
-# ── Triage mode (pending tasks with ff <= today) ────────────────────────────
+# ── Triage mode (followups ⏩ <= today across all citas) ─────────────────────
+#
+# After F5, "Decidir hoy" is driven by followups (⏩ body lines), not by the
+# retired ``ff`` header axis. A triage row is one followup ≤ today anchored to
+# a cita of any of the four types. Five actions resolve it:
+#   plan   → give the cita a date (edit) and clear this followup
+#   snooze → move the followup to a later date
+#   clear  → drop the followup (decided; cita stays dateless = reposo)
+#   done   → complete the cita (task/ms only)
+#   drop   → delete the cita entirely
 
-def _collect_pending_items(project_filter: Optional[str],
-                           today: date) -> list:
-    """Return pending tasks with ``ff <= today`` (excluding someday).
+_TRIAGE_KINDS = [("task", "tasks"), ("ms", "milestones"),
+                 ("ev", "events"), ("reminder", "reminders")]
 
-    Sorted ascending by ``ff`` (most overdue first), then by description
-    to keep the order deterministic across runs.
+
+def _collect_followup_items(project_filter: Optional[str],
+                            today: date) -> list:
+    """Return ``[(project_dir, kind, item, fup)]`` for followups ⏩ <= today,
+    across all four cita types, skipping done/cancelled items.
+
+    Sorted ascending by followup date (most overdue first), then by
+    description, so the order is deterministic across runs.
     """
     if project_filter:
         project_dir = _find_new_project(project_filter)
@@ -401,55 +397,105 @@ def _collect_pending_items(project_filter: Optional[str],
         if not agenda.exists():
             continue
         data = _read_agenda(agenda)
-        for t in data.get("tasks") or []:
-            if t.get("status") != "pending":
-                continue
-            ff = t.get("ff")
-            if not ff or ff == "someday":
-                continue
-            if ff > today_iso:
-                continue
-            out.append((project_dir, t))
+        for kind, key in _TRIAGE_KINDS:
+            for item in data.get(key) or []:
+                if item.get("status") in ("done", "cancelled"):
+                    continue
+                if item.get("cancelled"):   # reminders
+                    continue
+                for fup in item_followups(item):
+                    if fup["date"] and fup["date"] <= today_iso:
+                        out.append((project_dir, kind, item, fup))
 
-    out.sort(key=lambda r: (r[1]["ff"], r[1]["desc"]))
+    out.sort(key=lambda r: (r[3]["date"], r[2].get("desc", "")))
     return out
 
 
-def _format_triage_row(idx: int, project_dir: Path, task: dict,
-                       today_iso: str) -> str:
-    ff = task["ff"]
-    snooze = task.get("snooze_count", 0) or 0
-    failed = task.get("failed_count", 0) or 0
-    if snooze >= 3:
-        mark = "❗❗"
-    elif ff < today_iso:
-        mark = "❗ "
-    else:
-        mark = "  "
-    extras = ""
-    if snooze:
-        extras += f" 💤{snooze}"
-    if failed:
-        extras += f" ❌{failed}"
-    return f"  {idx:>3}. {mark} [{project_dir.name}] {task['desc']:<50.50} ⏩{ff}{extras}"
+def _format_triage_row(idx: int, project_dir: Path, kind: str,
+                       item: dict, fup: dict, today_iso: str) -> str:
+    mark = "❗ " if fup["date"] < today_iso else "  "
+    emoji = _KIND_EMOJI[kind]
+    extra = f" — {fup['desc']}" if fup.get("desc") else ""
+    return (f"  {idx:>3}. {mark}{emoji} [{project_dir.name}] "
+            f"{(item.get('desc') or ''):<50.50} ⏩{fup['date']}{extra}")
 
 
 def _print_triage_listing(items: list, today_iso: str):
     if not items:
         return
-    print("Decidir hoy — pending con ⏩ <= today")
+    print("Decidir hoy — followups ⏩ <= today")
     print("─" * 70)
-    for i, (pd, task) in enumerate(items, 1):
-        print(_format_triage_row(i, pd, task, today_iso))
+    for i, (pd, kind, item, fup) in enumerate(items, 1):
+        print(_format_triage_row(i, pd, kind, item, fup, today_iso))
     print("─" * 70)
 
 
-def _apply_triage_action(action: str, project_dir: Path,
-                          task: dict) -> bool:
-    """Run the matching CLI op for one pending task. Return True if changed."""
+def _edit_kind_date(kind: str, proj: str, desc: str,
+                    new_date: str, new_time: Optional[str]) -> None:
+    """Set date (and optional time) on a cita of any kind. force=True."""
+    if kind == "task":
+        run_task_edit(proj, desc, new_date=new_date, new_time=new_time, force=True)
+    elif kind == "ms":
+        run_ms_edit(proj, desc, new_date=new_date, new_time=new_time, force=True)
+    elif kind == "ev":
+        run_ev_edit(proj, desc, new_date=new_date, new_time=new_time, force=True)
+    elif kind == "reminder":
+        run_reminder_edit(proj, desc, new_date=new_date, new_time=new_time, force=True)
+
+
+def _drop_kind(kind: str, proj: str, desc: str) -> None:
+    if kind == "task":
+        run_task_drop(proj, desc, force=True)
+    elif kind == "ms":
+        run_ms_drop(proj, desc, force=True)
+    elif kind == "ev":
+        run_ev_drop(proj, desc, force=True)
+    elif kind == "reminder":
+        run_reminder_drop(proj, desc, force=True)
+
+
+def _locate_in_data(data: dict, item: dict) -> Optional[dict]:
+    """Find *item* in a freshly-read agenda dict by orbit_id, else by desc."""
+    oid, desc = item.get("orbit_id"), item.get("desc")
+    for key in ("tasks", "milestones", "events", "reminders"):
+        for it in data.get(key) or []:
+            if oid and it.get("orbit_id") == oid:
+                return it
+            if not oid and it.get("desc") == desc:
+                return it
+    return None
+
+
+def _mutate_followup(project_dir: Path, item: dict, *,
+                     drop_date: Optional[str] = None,
+                     add_date: Optional[str] = None,
+                     add_desc: Optional[str] = None) -> bool:
+    """Re-read the agenda, locate *item*, mutate its followups, write.
+
+    Direct body edit (no state, silent) — followups have no side effects
+    (design §0.5). Returns True if the file was written.
+    """
+    agenda = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda)
+    target = _locate_in_data(data, item)
+    if target is None:
+        return False
+    if drop_date:
+        drop_followup(target, drop_date)
+    if add_date:
+        add_followup(target, add_date, add_desc)
+    _write_agenda(agenda, data)
+    return True
+
+
+def _apply_triage_action(action: str, project_dir: Path, kind: str,
+                         item: dict, fup: dict) -> bool:
+    """Resolve one followup-triage row. Return True if something changed."""
     proj = project_dir.name
-    desc = task["desc"]
-    if action == "p":  # plan: promote to planned with a date
+    desc = item.get("desc")
+    fdate = fup["date"]
+
+    if action == "p":  # plan: give the cita a date, then clear this followup
         raw = _prompt("    fecha (today/mañana/viernes/+N/YYYY-MM-DD): ")
         if not raw:
             return False
@@ -458,40 +504,49 @@ def _apply_triage_action(action: str, project_dir: Path,
             print(f"  ⚠️  Fecha no reconocida: {raw!r}.")
             return False
         time_raw = _prompt("    hora (opcional, HH:MM[-HH:MM], enter para ninguna): ")
-        time_val = time_raw or None
-        rc = run_task_plan(project=proj, text=desc,
-                           date_val=new_date, time_val=time_val)
-        return rc == 0
-    if action == "f":  # ff: snooze to a new ff (or someday)
-        raw = _prompt("    nuevo ⏩ (YYYY-MM-DD/mañana/+N/someday, enter=tomorrow): ")
+        _edit_kind_date(kind, proj, desc, new_date, time_raw or None)
+        _mutate_followup(project_dir, item, drop_date=fdate)
+        return True
+
+    if action == "s":  # snooze: move the followup to a later date
+        raw = _prompt("    nuevo ⏩ (YYYY-MM-DD/mañana/+N, enter=mañana): ")
         if not raw:
-            target = None  # runner defaults to tomorrow on snooze
-        elif raw == "someday":
-            target = "someday"
+            new = (date.today() + timedelta(days=1)).isoformat()
         else:
-            resolved = _parse_date(raw)
-            if resolved == raw and not _looks_iso(resolved):
+            new = _parse_date(raw)
+            if new == raw and not _looks_iso(new):
                 print(f"  ⚠️  Fecha no reconocida: {raw!r}.")
                 return False
-            target = resolved
-        rc = run_task_pending(project=proj, text=desc, target_ff=target)
-        return rc == 0
-    if action == "d":
-        run_task_drop(proj, desc, force=True)
+        return _mutate_followup(project_dir, item, drop_date=fdate,
+                                add_date=new, add_desc=fup.get("desc"))
+
+    if action == "c":  # clear: drop the followup; cita stays (someday/reposo)
+        return _mutate_followup(project_dir, item, drop_date=fdate)
+
+    if action == "n":  # done: complete the cita (task/ms only)
+        if kind == "task":
+            run_task_done(proj, desc)
+        elif kind == "ms":
+            run_ms_done(proj, desc)
+        else:
+            print(f"  ({_KIND_LABEL[kind]} no tiene 'done'; usa [c]lear o [d]rop.)")
+            return False
         return True
-    if action == "n":
-        run_task_done(proj, desc)
+
+    if action == "d":  # drop: delete the whole cita
+        _drop_kind(kind, proj, desc)
         return True
+
     return False
 
 
 def _triage_action_for(idx: int, items: list, today_iso: str) -> Optional[str]:
     if idx < 1 or idx > len(items):
         return None
-    pd, task = items[idx - 1]
+    pd, kind, item, fup = items[idx - 1]
     print()
-    print(_format_triage_row(idx, pd, task, today_iso).strip())
-    print("  [p]lan-date  [f]f-snooze  [d]rop  do[n]e  [s]kip")
+    print(_format_triage_row(idx, pd, kind, item, fup, today_iso).strip())
+    print("  [p]lan-fecha  [s]nooze-⏩  [c]lear-⏩  do[n]e  [d]rop  s[k]ip")
     return _prompt("  ?> ").lower()
 
 
@@ -500,7 +555,7 @@ def _run_organize_triage(project_filter: Optional[str] = None) -> int:
     today_iso = today.isoformat()
     actions_applied = 0
     while True:
-        items = _collect_pending_items(project_filter, today)
+        items = _collect_followup_items(project_filter, today)
         if not items:
             if actions_applied:
                 _summary_and_refresh(actions_applied)
@@ -520,14 +575,14 @@ def _run_organize_triage(project_filter: Optional[str] = None) -> int:
             continue
 
         action = _triage_action_for(idx, items, today_iso)
-        if not action or action == "s":
+        if not action or action == "k":
             continue
         if action == "q":
             _summary_and_refresh(actions_applied)
             return 0
-        pd, task = items[idx - 1]
+        pd, kind, item, fup = items[idx - 1]
         try:
-            if _apply_triage_action(action, pd, task):
+            if _apply_triage_action(action, pd, kind, item, fup):
                 actions_applied += 1
         except Exception as exc:
             print(f"  ⚠️  Error: {exc}")

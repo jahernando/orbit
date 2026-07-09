@@ -713,8 +713,10 @@ class TestEmitEventFromEmail:
         assert rc == 0
         agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
         assert "WG12 reunion" in agenda_md
-        assert "🚪 https://cern.zoom.us/j/12345" in agenda_md
-        assert "📋 https://indico.cern.ch/event/9/" in agenda_md
+        # New format renders structured notes in a `links:` body line
+        # (🚪 room → 📹 display icon; 📋 agenda; ✉️ email).
+        assert "[📹](https://cern.zoom.us/j/12345)" in agenda_md
+        assert "[📋](https://indico.cern.ch/event/9/)" in agenda_md
 
     def test_event_uses_ics_when_present(self, env, monkeypatch):
         from core import email as email_mod
@@ -726,8 +728,8 @@ class TestEmitEventFromEmail:
         agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
         assert "Reunión WG12 de CNID" in agenda_md
         # ICS URL goes to agendas, ICS LOCATION (zoom) goes to rooms
-        assert "📋 https://indico.global/event/17950/" in agenda_md
-        assert "🚪 https://cern.zoom.us/j/8463658000" in agenda_md
+        assert "[📋](https://indico.global/event/17950/)" in agenda_md
+        assert "[📹](https://cern.zoom.us/j/8463658000)" in agenda_md
 
     def test_no_signal_returns_error(self, env, capsys):
         from core import email as email_mod
@@ -759,8 +761,8 @@ class TestEmitEventFromEmail:
         rc = email_mod._emit_event_from_email(env["proj"], em)
         assert rc == 0
         agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
-        assert "🚪 https://cern.zoom.us/j/111" in agenda_md
-        assert "🚪 https://meet.google.com/abc-defg-hij" in agenda_md
+        assert "[📹](https://cern.zoom.us/j/111)" in agenda_md
+        assert "[📹](https://meet.google.com/abc-defg-hij)" in agenda_md
 
     def test_email_link_attached_as_structured_note(self, env, monkeypatch):
         """The source email message:// URL is preserved as ✉️ note under the
@@ -772,7 +774,7 @@ class TestEmitEventFromEmail:
         rc = email_mod._emit_event_from_email(env["proj"], self._email())
         assert rc == 0
         agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
-        assert "✉️ message://%3Cevt@x.com%3E" in agenda_md
+        assert "[✉️](message://%3Cevt@x.com%3E)" in agenda_md
 
     def test_email_link_absent_when_no_msg_id(self, env, monkeypatch):
         """If the captured email has no Message-ID, no ✉️ note is added."""

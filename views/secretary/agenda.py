@@ -14,7 +14,7 @@ Layout:
 
     ## 📅 Próximos días
     ### 2026-05-20 · miércoles
-    | tabla con citas + ⏩ pendings con ff de ese día |
+    | tabla con citas + ⏩ followups de ese día |
     ...
 
 Reglas (decisiones en [[project-orbit-dashboard-refactor]]):
@@ -25,10 +25,9 @@ Reglas (decisiones en [[project-orbit-dashboard-refactor]]):
 - Hitos cuenta ventana 30 días; Próximos días = 7 días fijos.
 - Vencidas (tasks planned con date<today no done, no recurrentes) se
   arrastran a la tabla de Hoy con marker ⚠️, cap 10 → fila resumen.
-- Por triar = tasks pending con `ff`:
-  - ff <= today → fila ⏩ en tabla de Hoy.
-  - today < ff <= today+7 → fila ⏩ inline en tabla del día.
-- Por triar excluye `ff: someday`.
+- Por triar = citas con followup `⏩` (F5 retiró el eje `ff`):
+  - ⏩ <= today → fila ⏩ en tabla de Hoy.
+  - today < ⏩ <= today+7 → fila ⏩ inline en tabla del día.
 - Link al proyecto: `<project>-agenda.md` (cambia a `<project>.md` en F4).
 """
 
@@ -96,29 +95,6 @@ def _collect_overdue(today):
                 continue
             out.append((project_dir, t))
     out.sort(key=lambda r: r[1]["date"])
-    return out
-
-
-def _collect_pendings_in_ff_range(start_iso, end_iso):
-    """Returns [(project_dir, task)] de pending tasks con start_iso<=ff<=end_iso.
-
-    Excluye ff:someday y tasks sin ff. Locales sólo.
-    """
-    out = []
-    for project_dir in _iter_local_projects():
-        data = _read_agenda_safe(project_dir)
-        if data is None:
-            continue
-        for t in data.get("tasks", []):
-            if t.get("status") != "pending":
-                continue
-            ff = t.get("ff")
-            if not ff or ff == "someday":
-                continue
-            if ff < start_iso or ff > end_iso:
-                continue
-            out.append((project_dir, t))
-    out.sort(key=lambda r: r[1]["ff"])
     return out
 
 
@@ -251,7 +227,7 @@ def _count_rings(today_items, by_day, today, end) -> tuple:
     return n_today, n_next
 
 
-def _counter_lines(today_items, overdue, pendings_today, n_milestones,
+def _counter_lines(today_items, overdue, n_milestones,
                    cronos_counts=(0, 0), n_log_today=0,
                    followups_today=(), n_overdue_ms=0,
                    ring_counts=(0, 0)) -> list:
@@ -270,9 +246,8 @@ def _counter_lines(today_items, overdue, pendings_today, n_milestones,
     n_events = sum(1 for it in today_items if it[0] == "events")
     n_tasks  = sum(1 for it in today_items if it[0] == "tasks")
     n_overdue = len(overdue)
-    # "Por triar" = pending-ff tasks + citas con followup ≤ hoy (misma
-    # superficie ⏩, dos fuentes durante la coexistencia ff/followup).
-    n_ff      = len(pendings_today) + len(followups_today)
+    # "Por triar" = citas con followup ⏩ ≤ hoy (fuente única tras F5).
+    n_ff      = len(followups_today)
 
     parts = []
     if n_events:
@@ -312,22 +287,6 @@ def _counter_lines(today_items, overdue, pendings_today, n_milestones,
     if n_log_today:
         lines.append(f"> 📓 Logbook hoy: {n_log_today} entrada{'s' if n_log_today != 1 else ''} · [detalle](logbook.md)")
     return lines
-
-
-def _render_pending_row(project_dir, t) -> str:
-    """Fila por-triar de pending tasks. col1=tipo (☐), col2=⏩. Incluye snooze."""
-    desc_raw = t.get("desc", "") or ""
-    snooze = t.get("snooze_count", 0) or 0
-    extras = ""
-    if snooze >= 3:
-        extras = " ❗❗"
-    elif snooze:
-        extras = f" 💤{snooze}"
-    failed = t.get("failed_count", 0) or 0
-    if failed:
-        extras += f" ❌{failed}"
-    desc = (desc_raw + extras).replace("|", "\\|")
-    return f"| {KIND_EMOJI['tasks']} | ⏩ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
 def _render_followup_row(project_dir, kind, item, fup) -> str:
@@ -385,12 +344,12 @@ def _render_items_table(items) -> list:
     return rows
 
 
-def _today_block(today_items, overdue, pendings_today, followups_today=()) -> list:
+def _today_block(today_items, overdue, followups_today=()) -> list:
     """Tabla única de Hoy: citas + ⚠️ vencidas (cap) + ⏩ por triar.
 
     Si todo está vacío, devuelve un texto placeholder.
     """
-    if not today_items and not overdue and not pendings_today and not followups_today:
+    if not today_items and not overdue and not followups_today:
         return ["*Sin citas para hoy.*"]
 
     rows = [TABLE_HEADER]
@@ -402,17 +361,13 @@ def _today_block(today_items, overdue, pendings_today, followups_today=()) -> li
     if overflow:
         rows.append(f"|  | ⚠️ |  |  |  | *…y {overflow} más vencidas* |  |")
 
-    for project_dir, t in pendings_today:
-        rows.append(_render_pending_row(project_dir, t))
-
     for project_dir, kind, item, fup in followups_today:
         rows.append(_render_followup_row(project_dir, kind, item, fup))
 
     return rows
 
 
-def _next_days_block(today, items_by_day, pendings_by_day,
-                     followups_by_day=None) -> list:
+def _next_days_block(today, items_by_day, followups_by_day=None) -> list:
     """Una tabla por día en [today+1, today+7]. Días vacíos se omiten.
 
     Devuelve sólo los bloques per-día (sin el H2 "Próximos días"); el
@@ -424,16 +379,13 @@ def _next_days_block(today, items_by_day, pendings_by_day,
         d = today + timedelta(days=offset)
         day_iso = d.isoformat()
         items = items_by_day.get(day_iso, [])
-        pendings = pendings_by_day.get(day_iso, [])
         followups = followups_by_day.get(day_iso, [])
-        if not items and not pendings and not followups:
+        if not items and not followups:
             continue
         blocks.append(f"### {day_iso} · {_WEEKDAYS_ES[d.weekday()]}")
         blocks.append("")
         rows = [TABLE_HEADER]
         rows.extend(_render_items_table(items))
-        for project_dir, t in pendings:
-            rows.append(_render_pending_row(project_dir, t))
         for project_dir, kind, item, fup in followups:
             rows.append(_render_followup_row(project_dir, kind, item, fup))
         blocks.extend(rows)
@@ -450,15 +402,6 @@ def generate(out_path: Path) -> None:
     today_items = by_day.get(today.isoformat(), [])
 
     overdue = _collect_overdue(today)
-    pendings_today = _collect_pendings_in_ff_range(
-        _date.min.isoformat(), today.isoformat(),
-    )
-    pendings_next = _collect_pendings_in_ff_range(
-        (today + timedelta(days=1)).isoformat(), end.isoformat(),
-    )
-    pendings_by_day: dict = {}
-    for proj_dir, t in pendings_next:
-        pendings_by_day.setdefault(t["ff"], []).append((proj_dir, t))
 
     followups_today = _collect_followups_in_range(
         _date.min.isoformat(), today.isoformat(),
@@ -478,7 +421,7 @@ def generate(out_path: Path) -> None:
     ring_counts = _count_rings(today_items, by_day, today, end)
 
     lines = [autogen_banner("secretary.agenda").rstrip(), ""]
-    lines.extend(_counter_lines(today_items, overdue, pendings_today,
+    lines.extend(_counter_lines(today_items, overdue,
                                 n_milestones,
                                 cronos_counts=cronos_counts,
                                 n_log_today=n_log_today,
@@ -488,12 +431,10 @@ def generate(out_path: Path) -> None:
     lines.append("")
     lines.append(f"## 📅 Hoy — {_short_date_es(today)}")
     lines.append("")
-    lines.extend(_today_block(today_items, overdue, pendings_today,
-                              followups_today))
+    lines.extend(_today_block(today_items, overdue, followups_today))
     lines.append("")
 
-    next_blocks = _next_days_block(today, by_day, pendings_by_day,
-                                   followups_by_day)
+    next_blocks = _next_days_block(today, by_day, followups_by_day)
     if next_blocks:
         lines.append("## 📅 Próximos días")
         lines.append("")

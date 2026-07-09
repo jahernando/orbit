@@ -58,6 +58,26 @@ def _make_project(type_dir, name="💻test-project", prioridad="media",
     return proj
 
 
+def _add_followup(proj, kind_key, desc_match, fup_date, fup_desc=None):
+    """Attach a ``⏩ DATE [desc]`` body followup to the item in *proj* whose
+    ``desc`` contains *desc_match*, within ``data[kind_key]``.
+
+    Followups live as body lines (``item['notes']``), never inline on the
+    header — so this goes through `add_followup` + `_write_agenda` (the same
+    path the `cita fup` verb uses) rather than raw agenda text.
+    """
+    from core.agenda_cmds import _read_agenda, _write_agenda
+    from core.agenda.display import add_followup
+    from core.log import resolve_file
+
+    agenda_path = resolve_file(proj, "agenda")
+    data = _read_agenda(agenda_path)
+    for item in data[kind_key]:
+        if desc_match in item.get("desc", ""):
+            add_followup(item, fup_date, fup_desc)
+    _write_agenda(agenda_path, data)
+
+
 @pytest.fixture()
 def panel_env(tmp_path, monkeypatch):
     type_dir = tmp_path / "💻software"
@@ -261,46 +281,64 @@ class TestCollectActivity:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestCollectDecidirHoy:
+    """Post-F5: the "Decidir hoy" surface is driven by followups (⏩ body
+    lines) hung on any of the 4 cita types, not the retired ``ff`` axis.
+    `_collect_decidir_hoy` returns ``[(project_dir, kind, item, fup)]`` for
+    followups whose date ≤ today, ascending by followup date, skipping
+    done/cancelled citas.
+    """
 
     def test_includes_ff_today(self, panel_env):
         today = date.today()
-        _make_project(
+        proj = _make_project(
             panel_env["type_dir"],
-            agenda_extra=f"## ✅ Tareas\n- [ ] Decidir X ⏩{today.isoformat()}\n",
+            agenda_extra="## ✅ Tareas\n- [ ] Decidir X\n",
         )
+        _add_followup(proj, "tasks", "Decidir X", today.isoformat())
         items = _collect_decidir_hoy(today)
         assert len(items) == 1
-        assert items[0][1]["desc"] == "Decidir X"
+        project_dir, kind, item, fup = items[0]
+        assert kind == "task"
+        assert item["desc"] == "Decidir X"
+        assert fup["date"] == today.isoformat()
 
     def test_includes_ff_in_past(self, panel_env):
         today = date.today()
         past = (today - timedelta(days=5)).isoformat()
-        _make_project(
+        proj = _make_project(
             panel_env["type_dir"],
-            agenda_extra=f"## ✅ Tareas\n- [ ] Overdue Y ⏩{past}\n",
+            agenda_extra="## ✅ Tareas\n- [ ] Overdue Y\n",
         )
+        _add_followup(proj, "tasks", "Overdue Y", past)
         items = _collect_decidir_hoy(today)
         assert len(items) == 1
-        assert items[0][1]["ff"] == past
+        assert items[0][2]["desc"] == "Overdue Y"
+        assert items[0][3]["date"] == past
+
+    def test_includes_followup_on_milestone(self, panel_env):
+        # Followups surface on any of the 4 types, not just tasks.
+        today = date.today()
+        proj = _make_project(
+            panel_env["type_dir"],
+            agenda_extra="## 🏁 Hitos\n- [ ] Entregar informe\n",
+        )
+        _add_followup(proj, "milestones", "Entregar informe", today.isoformat())
+        items = _collect_decidir_hoy(today)
+        assert len(items) == 1
+        assert items[0][1] == "ms"
+        assert items[0][2]["desc"] == "Entregar informe"
 
     def test_excludes_ff_future(self, panel_env):
         today = date.today()
         future = (today + timedelta(days=5)).isoformat()
-        _make_project(
+        proj = _make_project(
             panel_env["type_dir"],
-            agenda_extra=f"## ✅ Tareas\n- [ ] Later Z ⏩{future}\n",
+            agenda_extra="## ✅ Tareas\n- [ ] Later Z\n",
         )
+        _add_followup(proj, "tasks", "Later Z", future)
         assert _collect_decidir_hoy(today) == []
 
-    def test_excludes_someday(self, panel_env):
-        today = date.today()
-        _make_project(
-            panel_env["type_dir"],
-            agenda_extra="## ✅ Tareas\n- [ ] Maybe ⏩someday\n",
-        )
-        assert _collect_decidir_hoy(today) == []
-
-    def test_excludes_planned_without_ff(self, panel_env):
+    def test_excludes_task_without_followup(self, panel_env):
         today = date.today()
         _make_project(
             panel_env["type_dir"],
@@ -310,26 +348,25 @@ class TestCollectDecidirHoy:
 
     def test_excludes_done(self, panel_env):
         today = date.today()
-        _make_project(
+        proj = _make_project(
             panel_env["type_dir"],
-            agenda_extra=f"## ✅ Tareas\n- [x] Done X ⏩{today.isoformat()}\n",
+            agenda_extra="## ✅ Tareas\n- [x] Done X\n",
         )
+        _add_followup(proj, "tasks", "Done X", today.isoformat())
         assert _collect_decidir_hoy(today) == []
 
     def test_orders_by_ff_ascending(self, panel_env):
         today = date.today()
         d1 = (today - timedelta(days=3)).isoformat()
         d2 = (today - timedelta(days=1)).isoformat()
-        _make_project(
+        proj = _make_project(
             panel_env["type_dir"],
-            agenda_extra=(
-                "## ✅ Tareas\n"
-                f"- [ ] Newer A ⏩{d2}\n"
-                f"- [ ] Older B ⏩{d1}\n"
-            ),
+            agenda_extra="## ✅ Tareas\n- [ ] Newer A\n- [ ] Older B\n",
         )
+        _add_followup(proj, "tasks", "Newer A", d2)
+        _add_followup(proj, "tasks", "Older B", d1)
         items = _collect_decidir_hoy(today)
-        assert [t["desc"] for _, t in items] == ["Older B", "Newer A"]
+        assert [it[2]["desc"] for it in items] == ["Older B", "Newer A"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -411,40 +448,45 @@ class TestRunPanel:
 
     def test_decidir_section_today_with_item(self, panel_env, capsys):
         today = date.today().isoformat()
-        _make_project(panel_env["type_dir"],
-                      agenda_extra=f"## ✅ Tareas\n- [ ] Esperar X ⏩{today}\n")
+        proj = _make_project(panel_env["type_dir"],
+                             agenda_extra="## ✅ Tareas\n- [ ] Esperar X\n")
+        _add_followup(proj, "tasks", "Esperar X", today)
         run_panel()
         out = capsys.readouterr().out
         # Section present, item rendered with the ☐ task icon and no ❗ marker
-        # (ff == today is not overdue).
+        # (followup date == today is not overdue).
         assert "## Decidir hoy" in out
         assert any("Esperar X" in line and line.startswith("| ☐ |") and "❗" not in line
                    for line in out.splitlines())
 
     def test_decidir_section_overdue_shows_exclamation(self, panel_env, capsys):
         past = (date.today() - timedelta(days=2)).isoformat()
-        _make_project(panel_env["type_dir"],
-                      agenda_extra=f"## ✅ Tareas\n- [ ] Overdue Y ⏩{past}\n")
+        proj = _make_project(panel_env["type_dir"],
+                             agenda_extra="## ✅ Tareas\n- [ ] Overdue Y\n")
+        _add_followup(proj, "tasks", "Overdue Y", past)
         run_panel()
         out = capsys.readouterr().out
         assert any("Overdue Y" in line and "❗" in line
                    for line in out.splitlines())
 
-    def test_decidir_section_three_snoozes_double_exclamation(self, panel_env, capsys):
+    def test_decidir_section_shows_followup_desc(self, panel_env, capsys):
+        # A followup may carry a theme (⏩ DATE desc); it renders as " — desc"
+        # after the cita title. (Replaces the retired snooze test — snooze/❌
+        # counters were dropped with the ff axis in F5.)
         today = date.today().isoformat()
-        _make_project(
-            panel_env["type_dir"],
-            agenda_extra=f"## ✅ Tareas\n- [ ] Tough Z ⏩{today} 💤3\n",
-        )
+        proj = _make_project(panel_env["type_dir"],
+                             agenda_extra="## ✅ Tareas\n- [ ] Tough Z\n")
+        _add_followup(proj, "tasks", "Tough Z", today, "revisar presupuesto")
         run_panel()
         out = capsys.readouterr().out
-        assert any("Tough Z" in line and "❗❗" in line
+        assert any("Tough Z" in line and "revisar presupuesto" in line and "—" in line
                    for line in out.splitlines())
 
     def test_decidir_section_omitted_on_week(self, panel_env, capsys):
         today = date.today().isoformat()
-        _make_project(panel_env["type_dir"],
-                      agenda_extra=f"## ✅ Tareas\n- [ ] X ⏩{today}\n")
+        proj = _make_project(panel_env["type_dir"],
+                             agenda_extra="## ✅ Tareas\n- [ ] X\n")
+        _add_followup(proj, "tasks", "X", today)
         run_panel(period="week")
         out = capsys.readouterr().out
         assert "## Decidir hoy" not in out

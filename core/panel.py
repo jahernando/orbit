@@ -253,17 +253,21 @@ def _collect_agenda(start, end, include_federated=True):
 # ── Activity ──────────────────────────────────────────────────────────────────
 
 def _collect_decidir_hoy(today, include_federated=True):
-    """Collect pending tasks with ``ff <= today`` across all projects.
+    """Collect followups ``⏩ <= today`` across all projects and cita types.
 
-    Used by the "Decidir hoy" section of the daily panel. Excludes
-    ``ff: someday`` (parked) and items already done/cancelled. Sorted
-    ascending by ``ff`` so the most overdue surface first.
+    Used by the "Decidir hoy" section of the daily panel. After F5 the
+    surface is driven by followups (⏩ body lines), not the retired ``ff``
+    axis. Skips done/cancelled citas. Sorted ascending by followup date so
+    the most overdue surface first.
 
-    Returns a list of ``(project_dir, task_dict)``.
+    Returns a list of ``(project_dir, kind, item, fup)``.
     """
     from core.agenda_cmds import _read_agenda
+    from core.agenda.display import item_followups
     from core.log import resolve_file
 
+    kinds = [("task", "tasks"), ("ms", "milestones"),
+             ("ev", "events"), ("reminder", "reminders")]
     today_iso = today.isoformat()
     results = []
     for project_dir in iter_federated_project_dirs(include_federated):
@@ -273,17 +277,15 @@ def _collect_decidir_hoy(today, include_federated=True):
         if not agenda_path or not agenda_path.exists():
             continue
         data = _read_agenda(agenda_path)
-        for t in data.get("tasks", []):
-            if t.get("status") != "pending":
-                continue
-            ff = t.get("ff")
-            if not ff or ff == "someday":
-                continue
-            if ff > today_iso:
-                continue
-            results.append((project_dir, t))
+        for kind, key in kinds:
+            for item in data.get(key, []):
+                if item.get("status") in ("done", "cancelled") or item.get("cancelled"):
+                    continue
+                for fup in item_followups(item):
+                    if fup["date"] and fup["date"] <= today_iso:
+                        results.append((project_dir, kind, item, fup))
 
-    results.sort(key=lambda r: r[1]["ff"])
+    results.sort(key=lambda r: r[3]["date"])
     return results
 
 
@@ -430,31 +432,22 @@ def run_panel(period=None, include_federated=True,
         print("(sin citas)")
     print("\n---")
 
-    # ── 2.5 Decidir hoy (pending tasks with ff <= today) ──
+    # ── 2.5 Decidir hoy (followups ⏩ <= today) ──
     today = date.today()
     if is_single_day and start == today:
         decidir = _collect_decidir_hoy(today, include_federated)
         print(f"\n## Decidir hoy\n")
         if decidir:
             today_iso = today.isoformat()
-            print("| | ff | Tarea | Proyecto |")
+            _KIND_EMOJI = {"task": "☐", "ms": "🏁", "ev": "📅", "reminder": "💬"}
+            print("| | ⏩ | Cita | Proyecto |")
             print("|---|----|------|----------|")
-            for project_dir, t in decidir:
-                ff_val = t["ff"]
-                snooze = t.get("snooze_count", 0) or 0
-                if snooze >= 3:
-                    mark = "❗❗ "
-                elif ff_val < today_iso:
-                    mark = "❗ "
-                else:
-                    mark = ""
-                extras = ""
-                if snooze:
-                    extras += f" 💤{snooze}"
-                failed = t.get("failed_count", 0) or 0
-                if failed:
-                    extras += f" ❌{failed}"
-                print(f"| ☐ | {ff_val} | {mark}{t['desc']}{extras} | {_project_link(project_dir)} |")
+            for project_dir, kind, item, fup in decidir:
+                fdate = fup["date"]
+                mark = "❗ " if fdate < today_iso else ""
+                note = f" — {fup['desc']}" if fup.get("desc") else ""
+                print(f"| {_KIND_EMOJI.get(kind, '☐')} | {fdate} | "
+                      f"{mark}{item.get('desc','')}{note} | {_project_link(project_dir)} |")
         else:
             print("(nada que decidir hoy)")
         print("\n---")

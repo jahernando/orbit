@@ -274,99 +274,152 @@ class TestFormatRow:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Triage mode — _collect_pending_items + _format_triage_row + _apply_triage_action
+# Triage mode (F5) — followups ⏩ <= today across the four cita types.
+#   _collect_followup_items + _format_triage_row + _apply_triage_action
 # ══════════════════════════════════════════════════════════════════════════════
 
-class TestCollectPendingItems:
+class TestCollectFollowupItems:
+    """`_collect_followup_items` surfaces one row per followup ⏩ <= today,
+    across all four cita types, skipping done/cancelled and future ones."""
 
-    def test_includes_ff_today_and_overdue(self, tmp_path, monkeypatch):
+    def test_includes_due_and_overdue_all_kinds(self, tmp_path, monkeypatch):
         proj = _make_proj(tmp_path, "🌀foo")
         today = date.today()
+        due = today.isoformat()
         past = (today - timedelta(days=4)).isoformat()
-        _seed(proj, {"tasks": [
-            {"desc": "Hoy",   "date": None, "status": "pending",
-             "ff": today.isoformat()},
-            {"desc": "Vieja", "date": None, "status": "pending", "ff": past},
-        ]})
+        _seed(proj, {
+            "tasks":      [{"desc": "T", "date": None, "status": "pending",
+                            "notes": [f"⏩ {due} rev"]}],
+            "milestones": [{"desc": "M", "date": None, "status": "pending",
+                            "notes": [f"⏩ {past}"]}],
+            "events":     [{"desc": "E", "date": due, "notes": [f"⏩ {due}"]}],
+            "reminders":  [{"desc": "R", "date": due, "notes": [f"⏩ {past}"]}],
+        })
         monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
         monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
-        items = organize._collect_pending_items(None, today)
-        # Most overdue first.
-        assert [t["desc"] for _, t in items] == ["Vieja", "Hoy"]
+        items = organize._collect_followup_items(None, today)
+        # (project_dir, kind, item, fup) — all four kinds surface.
+        assert sorted(k for _, k, _, _ in items) == ["ev", "ms", "reminder", "task"]
+        # Sorted ascending by followup date (most overdue first).
+        dates = [fup["date"] for _, _, _, fup in items]
+        assert dates == sorted(dates)
+        assert dates[0] == past
 
-    def test_excludes_ff_future(self, tmp_path, monkeypatch):
+    def test_ties_broken_by_description(self, tmp_path, monkeypatch):
+        proj = _make_proj(tmp_path, "🌀foo")
+        today = date.today()
+        past = (today - timedelta(days=2)).isoformat()
+        _seed(proj, {
+            "milestones": [{"desc": "M", "date": None, "status": "pending",
+                            "notes": [f"⏩ {past}"]}],
+            "reminders":  [{"desc": "R", "date": today.isoformat(),
+                            "notes": [f"⏩ {past}"]}],
+        })
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
+        items = organize._collect_followup_items(None, today)
+        # Same followup date → order is by item description ("M" before "R").
+        assert [it["desc"] for _, _, it, _ in items] == ["M", "R"]
+
+    def test_excludes_future_followups(self, tmp_path, monkeypatch):
         proj = _make_proj(tmp_path, "🌀foo")
         today = date.today()
         future = (today + timedelta(days=3)).isoformat()
         _seed(proj, {"tasks": [
-            {"desc": "Mañana", "date": None, "status": "pending", "ff": future},
+            {"desc": "Later", "date": None, "status": "pending",
+             "notes": [f"⏩ {future}"]},
         ]})
         monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
         monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
-        assert organize._collect_pending_items(None, today) == []
+        assert organize._collect_followup_items(None, today) == []
 
-    def test_excludes_someday(self, tmp_path, monkeypatch):
+    def test_excludes_done_and_cancelled(self, tmp_path, monkeypatch):
+        proj = _make_proj(tmp_path, "🌀foo")
+        today = date.today()
+        due = today.isoformat()
+        _seed(proj, {
+            "tasks":     [{"desc": "Done", "date": None, "status": "done",
+                           "notes": [f"⏩ {due}"]}],
+            "reminders": [{"desc": "Cxl", "date": due, "cancelled": True,
+                           "notes": [f"⏩ {due}"]}],
+        })
+        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
+        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
+        assert organize._collect_followup_items(None, today) == []
+
+    def test_item_without_followup_excluded(self, tmp_path, monkeypatch):
         proj = _make_proj(tmp_path, "🌀foo")
         today = date.today()
         _seed(proj, {"tasks": [
-            {"desc": "Quizá", "date": None, "status": "pending", "ff": "someday"},
+            {"desc": "Plain", "date": today.isoformat(), "status": "pending"},
         ]})
         monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
         monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
-        assert organize._collect_pending_items(None, today) == []
+        assert organize._collect_followup_items(None, today) == []
 
-    def test_excludes_planned_without_ff(self, tmp_path, monkeypatch):
+    def test_row_carries_item_and_followup(self, tmp_path, monkeypatch):
         proj = _make_proj(tmp_path, "🌀foo")
         today = date.today()
+        due = today.isoformat()
         _seed(proj, {"tasks": [
-            {"desc": "Planned", "date": today.isoformat(), "status": "pending"},
+            {"desc": "T", "date": None, "status": "pending",
+             "notes": [f"⏩ {due} llamar a Ana"]},
         ]})
         monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
         monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
-        assert organize._collect_pending_items(None, today) == []
-
-    def test_excludes_done(self, tmp_path, monkeypatch):
-        proj = _make_proj(tmp_path, "🌀foo")
-        today = date.today()
-        _seed(proj, {"tasks": [
-            {"desc": "Hecha", "date": None, "status": "done",
-             "ff": today.isoformat()},
-        ]})
-        monkeypatch.setattr(organize, "iter_project_dirs", lambda: [proj])
-        monkeypatch.setattr(organize, "_is_new_project", lambda d: True)
-        assert organize._collect_pending_items(None, today) == []
+        items = organize._collect_followup_items(None, today)
+        assert len(items) == 1
+        pd, kind, item, fup = items[0]
+        assert pd == proj and kind == "task"
+        assert item["desc"] == "T"
+        assert fup == {"date": due, "desc": "llamar a Ana"}
 
 
 class TestFormatTriageRow:
+    """New signature `(idx, project_dir, kind, item, fup, today_iso)`; no
+    snooze/failed marks after F5."""
+
+    def _fup(self, fdate, desc=None):
+        return {"date": fdate, "desc": desc}
+
+    def test_emoji_per_kind(self, tmp_path):
+        proj = tmp_path / "🌀foo"; proj.mkdir()
+        item = {"desc": "X"}
+        fup = self._fup("2026-07-09")
+        assert "✅" in organize._format_triage_row(1, proj, "task", item, fup, "2026-07-09")
+        assert "🏁" in organize._format_triage_row(1, proj, "ms", item, fup, "2026-07-09")
+        assert "📅" in organize._format_triage_row(1, proj, "ev", item, fup, "2026-07-09")
+        assert "💬" in organize._format_triage_row(1, proj, "reminder", item, fup, "2026-07-09")
 
     def test_today_no_mark(self, tmp_path):
         proj = tmp_path / "🌀foo"; proj.mkdir()
-        t = {"desc": "X", "ff": "2026-05-18", "snooze_count": 0, "failed_count": 0}
-        line = organize._format_triage_row(1, proj, t, "2026-05-18")
-        assert "X" in line and "⏩2026-05-18" in line
-        assert "❗" not in line and "💤" not in line
+        line = organize._format_triage_row(
+            1, proj, "task", {"desc": "X"}, self._fup("2026-07-09"), "2026-07-09")
+        assert "X" in line and "[🌀foo]" in line and "⏩2026-07-09" in line
+        assert "❗" not in line
 
     def test_overdue_marks_exclamation(self, tmp_path):
         proj = tmp_path / "🌀foo"; proj.mkdir()
-        t = {"desc": "X", "ff": "2026-05-15", "snooze_count": 0, "failed_count": 0}
-        line = organize._format_triage_row(1, proj, t, "2026-05-18")
-        assert "❗" in line and "❗❗" not in line
+        line = organize._format_triage_row(
+            1, proj, "task", {"desc": "X"}, self._fup("2026-07-05"), "2026-07-09")
+        assert "❗" in line
 
-    def test_three_snoozes_double_exclamation(self, tmp_path):
+    def test_desc_appended_as_extra(self, tmp_path):
         proj = tmp_path / "🌀foo"; proj.mkdir()
-        t = {"desc": "X", "ff": "2026-05-18", "snooze_count": 3, "failed_count": 0}
-        line = organize._format_triage_row(1, proj, t, "2026-05-18")
-        assert "❗❗" in line and "💤3" in line
+        line = organize._format_triage_row(
+            1, proj, "reminder", {"desc": "X"},
+            self._fup("2026-07-09", "revisar presupuesto"), "2026-07-09")
+        assert "— revisar presupuesto" in line
 
-    def test_failed_counter_shown(self, tmp_path):
+    def test_no_desc_no_dash(self, tmp_path):
         proj = tmp_path / "🌀foo"; proj.mkdir()
-        t = {"desc": "X", "ff": "2026-05-18", "snooze_count": 0, "failed_count": 2}
-        line = organize._format_triage_row(1, proj, t, "2026-05-18")
-        assert "❌2" in line
+        line = organize._format_triage_row(
+            1, proj, "task", {"desc": "X"}, self._fup("2026-07-09"), "2026-07-09")
+        assert " — " not in line
 
 
 class TestApplyTriageAction:
-    """Smoke-test that triage actions route to the correct runner."""
+    """The five followup-triage actions: p/s/c/n/d."""
 
     def _setup(self, tmp_path, monkeypatch):
         from core.agenda_cmds import _read_agenda
@@ -384,125 +437,105 @@ class TestApplyTriageAction:
         monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
         return proj, lambda: _read_agenda(proj / "foo-agenda.md")
 
-    def test_p_plan_promotes(self, tmp_path, monkeypatch):
+    def _attach_fup(self, proj, section_key, desc, fdate, fdesc=None):
+        """Hang a ⏩ followup on an already-written cita, via the real API."""
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        from core.agenda.display import add_followup
+        agenda = proj / "foo-agenda.md"
+        data = _read_agenda(agenda)
+        for it in data[section_key]:
+            if it["desc"] == desc:
+                add_followup(it, fdate, fdesc)
+        _write_agenda(agenda, data)
+
+    def _row(self, read, section_key):
+        """Return (item, fup) for the last cita in *section_key*."""
+        from core.agenda.display import item_followups
+        item = read()[section_key][-1]
+        return item, item_followups(item)[0]
+
+    def test_p_plan_sets_date_and_clears_followup(self, tmp_path, monkeypatch):
         from core import api
+        from core.agenda.display import item_followups
         proj, read = self._setup(tmp_path, monkeypatch)
-        api.add_task(project="💻foo", text="X", ff="2026-05-18")
-        # Feed: date prompt then time prompt (empty)
+        api.add_task(project="💻foo", text="X")
+        self._attach_fup(proj, "tasks", "X", "2026-07-01", "tema")
+        # Feed: date prompt then time prompt (empty).
         prompts = iter(["2026-06-01", ""])
-        monkeypatch.setattr(organize, "_prompt",
-                            lambda *a, **k: next(prompts))
-        task = read()["tasks"][-1]
-        ok = organize._apply_triage_action("p", proj, task)
+        monkeypatch.setattr(organize, "_prompt", lambda *a, **k: next(prompts))
+        item, fup = self._row(read, "tasks")
+        ok = organize._apply_triage_action("p", proj, "task", item, fup)
         assert ok is True
         new = read()["tasks"][-1]
         assert new["date"] == "2026-06-01"
-        assert new["ff"] is None
+        assert item_followups(new) == []   # the followup was cleared
 
-    def test_f_snooze_increments_count(self, tmp_path, monkeypatch):
+    def test_s_snooze_moves_followup(self, tmp_path, monkeypatch):
         from core import api
+        from core.agenda.display import item_followups
         proj, read = self._setup(tmp_path, monkeypatch)
-        api.add_task(project="💻foo", text="X", ff="2026-05-18")
-        monkeypatch.setattr(organize, "_prompt",
-                            lambda *a, **k: "2026-05-25")
-        task = read()["tasks"][-1]
-        ok = organize._apply_triage_action("f", proj, task)
+        api.add_task(project="💻foo", text="X")
+        self._attach_fup(proj, "tasks", "X", "2026-07-01", "tema")
+        monkeypatch.setattr(organize, "_prompt", lambda *a, **k: "2026-07-20")
+        item, fup = self._row(read, "tasks")
+        ok = organize._apply_triage_action("s", proj, "task", item, fup)
         assert ok is True
-        new = read()["tasks"][-1]
-        assert new["ff"] == "2026-05-25"
-        assert new["snooze_count"] == 1
+        fups = item_followups(read()["tasks"][-1])
+        assert len(fups) == 1
+        assert fups[0]["date"] == "2026-07-20"
+        assert fups[0]["desc"] == "tema"        # description preserved
 
-    def test_f_someday_keyword(self, tmp_path, monkeypatch):
+    def test_s_snooze_enter_defaults_tomorrow(self, tmp_path, monkeypatch):
         from core import api
+        from core.agenda.display import item_followups
         proj, read = self._setup(tmp_path, monkeypatch)
-        api.add_task(project="💻foo", text="X", ff="2026-05-18")
-        monkeypatch.setattr(organize, "_prompt",
-                            lambda *a, **k: "someday")
-        task = read()["tasks"][-1]
-        ok = organize._apply_triage_action("f", proj, task)
+        api.add_task(project="💻foo", text="X")
+        self._attach_fup(proj, "tasks", "X", "2026-07-01")
+        monkeypatch.setattr(organize, "_prompt", lambda *a, **k: "")
+        item, fup = self._row(read, "tasks")
+        ok = organize._apply_triage_action("s", proj, "task", item, fup)
         assert ok is True
-        assert read()["tasks"][-1]["ff"] == "someday"
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        assert item_followups(read()["tasks"][-1])[0]["date"] == tomorrow
 
-    def test_d_drop_cancels(self, tmp_path, monkeypatch):
+    def test_c_clear_drops_followup_keeps_cita(self, tmp_path, monkeypatch):
         from core import api
+        from core.agenda.display import item_followups
         proj, read = self._setup(tmp_path, monkeypatch)
-        api.add_task(project="💻foo", text="X", ff="2026-05-18")
-        task = read()["tasks"][-1]
-        ok = organize._apply_triage_action("d", proj, task)
+        api.add_task(project="💻foo", text="X")
+        self._attach_fup(proj, "tasks", "X", "2026-07-01")
+        item, fup = self._row(read, "tasks")
+        ok = organize._apply_triage_action("c", proj, "task", item, fup)
         assert ok is True
-        assert read()["tasks"][-1]["status"] == "cancelled"
+        cita = read()["tasks"][-1]
+        assert item_followups(cita) == []           # followup gone
+        assert cita["status"] == "pending"          # cita itself untouched
 
-    def test_n_done_marks_completed(self, tmp_path, monkeypatch):
+    def test_n_done_completes_task(self, tmp_path, monkeypatch):
         from core import api
         proj, read = self._setup(tmp_path, monkeypatch)
-        api.add_task(project="💻foo", text="X", ff="2026-05-18")
-        task = read()["tasks"][-1]
-        ok = organize._apply_triage_action("n", proj, task)
+        api.add_task(project="💻foo", text="X")
+        self._attach_fup(proj, "tasks", "X", "2026-07-01")
+        item, fup = self._row(read, "tasks")
+        ok = organize._apply_triage_action("n", proj, "task", item, fup)
         assert ok is True
         assert read()["tasks"][-1]["status"] == "done"
 
-
-class TestApplyActionPending:
-    """[p]ending verb in organize default mode (planned → pending)."""
-
-    def _setup(self, tmp_path, monkeypatch):
-        from core.agenda_cmds import _read_agenda
-        type_dir = tmp_path / "💻sw"
-        type_dir.mkdir()
-        proj = type_dir / "💻foo"
-        proj.mkdir()
-        (proj / "foo-project.md").write_text(
-            "# foo\n- Tipo: 💻 Software\n- Estado: [auto]\n- Prioridad: media\n")
-        (proj / "foo-logbook.md").write_text("# Logbook — foo\n\n")
-        (proj / "foo-agenda.md").write_text("# Agenda — foo\n\n<!-- -->\n")
-        monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
-        monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
-        monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
-        return proj, lambda: _read_agenda(proj / "foo-agenda.md")
-
-    def test_p_someday_degrades_planned(self, tmp_path, monkeypatch):
-        from core import api
-        proj, read = self._setup(tmp_path, monkeypatch)
-        api.add_task(project="💻foo", text="Old X", date="2020-01-01")
-        monkeypatch.setattr(organize, "_prompt",
-                            lambda *a, **k: "someday")
-        item = read()["tasks"][-1]
-        ok = organize._apply_action("p", "task", proj, item)
-        assert ok is True
-        new = read()["tasks"][-1]
-        assert new["ff"] == "someday"
-        assert new["date"] is None
-        assert new["time"] is None
-
-    def test_p_enter_keeps_date_as_ff(self, tmp_path, monkeypatch):
-        from core import api
-        proj, read = self._setup(tmp_path, monkeypatch)
-        api.add_task(project="💻foo", text="X", date="2020-01-01")
-        monkeypatch.setattr(organize, "_prompt",
-                            lambda *a, **k: "")
-        item = read()["tasks"][-1]
-        ok = organize._apply_action("p", "task", proj, item)
-        assert ok is True
-        assert read()["tasks"][-1]["ff"] == "2020-01-01"
-
-    def test_p_rejected_for_ms(self, tmp_path, monkeypatch, capsys):
+    def test_n_rejected_for_event(self, tmp_path, monkeypatch, capsys):
         proj, _ = self._setup(tmp_path, monkeypatch)
-        # No prompt should happen because we early-exit on kind!=task.
-        ok = organize._apply_action("p", "ms", proj,
-                                     {"desc": "M", "status": "pending"})
+        # ev/rem have no `done`: early-exit with a notice, no runner touched.
+        item = {"desc": "E"}
+        fup = {"date": "2026-07-01", "desc": None}
+        ok = organize._apply_triage_action("n", proj, "ev", item, fup)
         assert ok is False
-        assert "sólo tasks" in capsys.readouterr().out
+        assert "no tiene 'done'" in capsys.readouterr().out
 
-    def test_demote_planned_clears_ring(self, tmp_path, monkeypatch):
-        """Bug fix: degrading planned→pending must also drop ring (ring needs date+time)."""
+    def test_d_drop_cancels_cita(self, tmp_path, monkeypatch):
         from core import api
-        from core.agenda_cmds import run_task_pending
         proj, read = self._setup(tmp_path, monkeypatch)
-        api.add_task(project="💻foo", text="X",
-                     date="2020-01-01", time="10:00", ring="15m")
-        run_task_pending(project="💻foo", text="X", target_ff="someday")
-        t = read()["tasks"][-1]
-        assert t["date"] is None
-        assert t["time"] is None
-        assert t["ring"] is None
-        assert t["ff"] == "someday"
+        api.add_task(project="💻foo", text="X")
+        self._attach_fup(proj, "tasks", "X", "2026-07-01")
+        item, fup = self._row(read, "tasks")
+        ok = organize._apply_triage_action("d", proj, "task", item, fup)
+        assert ok is True
+        assert read()["tasks"][-1]["status"] == "cancelled"

@@ -133,36 +133,30 @@ def add_task(project: str, text: str, *,
              recur: Optional[str] = None,
              until: Optional[str] = None,
              ring: Optional[str] = None,
-             ff: Optional[str] = None,
              notes: Optional[list] = None,
              orbit_id: Optional[str] = None) -> dict:
     """Add a task to ``project``'s agenda. Returns the created task dict.
 
     Raises :class:`ValueError` for invalid args or unknown project.
 
-    Raw capture (no ``date`` and no ``recur``) defaults ``ff`` to today,
-    landing the task in the "Decidir hoy" lane until the user processes it.
+    Raw capture (no ``date``) lands the task dateless = *someday* (reposo):
+    it does not surface until the user plans a date or attaches a followup
+    (``cita fup``). This is the strict-task rule — ``task`` is a real
+    commitment, not soft capture (F5 retired the old ``ff=today`` default).
 
     ``orbit_id`` opcional: fija el id de la task al crearse (lo usa
     ``core/focus.py`` para poder referenciar el bloque desde el archivo
     semanal sin reabrir la agenda).
     """
-    from datetime import date as _date
     if not text or not str(text).strip():
         raise ValueError("text is required")
     project_dir = _resolve_project_or_raise(project)
     recur = _validate_common(date=date, time=time, recur=recur,
                              until=until, ring=ring, time_format="event")
-    if ff is not None and ff != "someday" and not _valid_date(ff):
-        raise ValueError(f"invalid ff: {ff!r}")
-    if ff is None and date is None and recur is None:
-        ff = _date.today().isoformat()
     item = _build_item("task", text=text, date=date, time=time,
                        recur=recur, until=until, ring=ring,
                        end_date=None, notes_in=notes,
                        agenda=None, room=None, orbit_id=orbit_id)
-    if ff is not None:
-        item["ff"] = ff
     return _append_and_write("task", project_dir, item)
 
 
@@ -240,12 +234,15 @@ def add_reminder(project: str, text: str, *,
 def task_state(item: dict, today: Optional[str] = None) -> str:
     """Classify a task by its display state. Pure, no I/O.
 
-    Returns one of ``planned``, ``pending``, ``someday``, ``due``,
-    ``done``, ``dropped``. Derived from ``status`` + ``date`` + ``ff``
-    per the items taxonomy (verbs ``plan/pending/drop/done``).
+    Returns one of ``planned``, ``someday``, ``done``, ``dropped``.
+    Derived from ``status`` + ``date`` (F5 retired the ``ff`` axis: the
+    triage/surfacing that ``ff`` used to drive now lives in followups
+    ``⏩``, an orthogonal body mechanism, not in the task's state).
 
-    ``today`` is the ISO date used to compare against ``ff``; defaults to
-    today. Passing it explicitly keeps the function deterministic in tests.
+    A dateless open task is *someday* (reposo); it surfaces only via a
+    followup ≤ today, handled separately by the "Decidir hoy" collectors.
+
+    ``today`` is accepted for signature stability but no longer used.
     """
     status = item.get("status")
     if status == "done":
@@ -254,14 +251,7 @@ def task_state(item: dict, today: Optional[str] = None) -> str:
         return "dropped"
     if item.get("date"):
         return "planned"
-    ff = item.get("ff")
-    if ff == "someday":
-        return "someday"
-    if ff is None:
-        return "pending"
-    if today is None:
-        today = date.today().isoformat()
-    return "due" if ff <= today else "pending"
+    return "someday"
 
 
 # ── Item identification ────────────────────────────────────────────────

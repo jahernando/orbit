@@ -15,7 +15,6 @@ from core.open import open_file, capture_output, open_cmd_output, log_cmd_output
 from core.dateparse import parse_date
 from core.agenda_cmds import (
     run_task_add, run_task_done, run_task_drop, run_task_edit, run_task_list, run_task_log,
-    run_task_plan, run_task_pending,
     run_ms_add, run_ms_done, run_ms_drop, run_ms_edit, run_ms_list, run_ms_log,
     run_ev_add, run_ev_drop, run_ev_edit, run_ev_list, run_ev_log,
     run_reminder_add, run_reminder_drop, run_reminder_edit, run_reminder_list, run_reminder_log,
@@ -504,32 +503,11 @@ def cmd_task_new(args):
     """Task subcommand dispatcher."""
     action = _ga(args, "action") or "add"
     if action == "add":
-        kw = _add_args(args)
-        ff_arg = _ga(args, "ff")
-        if ff_arg and ff_arg != "someday":
-            ff_arg = _d(ff_arg) or ff_arg
-        kw["ff"] = ff_arg
-        return run_task_add(**kw)
-    if action == "plan":
-        return run_task_plan(project=_ga(args, "project"), text=_ga(args, "text"),
-                             date_val=_d(_ga(args, "date")) or _ga(args, "date"),
-                             time_val=_ga(args, "time"))
-    if action == "pending":
-        ff_arg = _ga(args, "ff")
-        if ff_arg and ff_arg != "someday":
-            ff_arg = _d(ff_arg) or ff_arg
-        return run_task_pending(project=_ga(args, "project"), text=_ga(args, "text"),
-                                target_ff=ff_arg)
+        return run_task_add(**_add_args(args))
     if action == "done":   return run_task_done(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "drop":   return run_task_drop(**_drop_args(args))
     if action == "edit":
-        kw = _edit_args(args)
-        kw["new_ff"] = _ga(args, "new_ff")
-        # Resolve relative dates in --ff (today/tomorrow/...) to ISO; preserve
-        # "someday" and "none" sentinels.
-        if kw["new_ff"] and kw["new_ff"] not in ("none", "someday"):
-            kw["new_ff"] = _d(kw["new_ff"]) or kw["new_ff"]
-        return run_task_edit(**kw)
+        return run_task_edit(**_edit_args(args))
     if action == "log":    return run_task_log(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "crono":  return cmd_crono(args)
     return 1
@@ -1437,7 +1415,6 @@ def cmd_ls(args):
             date_filter=_d(getattr(args, "date", None)),
             dated_only=getattr(args, "dated", False),
             unplanned=getattr(args, "unplanned", False),
-            pending_only=getattr(args, "pending", False),
             someday_only=getattr(args, "someday", False),
             include_federated=_inc_fed)
         return _handle_output(args, fn, "ls tasks")
@@ -1581,8 +1558,7 @@ def _build_parser():
     ls_tasks.add_argument("--date",   default=None, help="Filter by date")
     ls_tasks.add_argument("--dated",     action="store_true", help="Only show tasks with a date")
     ls_tasks.add_argument("--unplanned", action="store_true", help="Only show tasks without a date")
-    ls_tasks.add_argument("--pending",   action="store_true", help="Only show tasks with ⏩ set (excludes someday)")
-    ls_tasks.add_argument("--someday",   action="store_true", help="Only show tasks with ⏩someday")
+    ls_tasks.add_argument("--someday",   action="store_true", help="Only show dateless open tasks (someday / reposo)")
     _add_output_args(ls_tasks)
     _add_log_args(ls_tasks)
     _add_fed_args(ls_tasks)
@@ -1743,7 +1719,7 @@ def _build_parser():
     org_p.add_argument("--undated", action="store_true", dest="undated",
                        help="Incluir tareas/hitos sin fecha (futuribles)")
     org_p.add_argument("--triage", action="store_true", dest="triage",
-                       help="Modo triage: procesa pending tasks con ⏩ <= today (verbos plan/ff-snooze/drop/done)")
+                       help="Modo triage: procesa followups ⏩ <= today (plan/snooze/clear/done/drop)")
 
     # --- gsync ---
     # `gsync` and `calsync` argparse parsers removed in v0.33; the

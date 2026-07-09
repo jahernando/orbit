@@ -3,7 +3,7 @@
 Cubre el comportamiento decidido en [[project-orbit-dashboard-refactor]]:
 - Counter telegráfico adaptativo (categorías con N=0 omitidas; línea de hitos
   desaparece si N=0; reminders excluidos del counter).
-- Tabla de Hoy mezcla citas + ⚠️ vencidas (cap 10) + ⏩ pendings ff<=today.
+- Tabla de Hoy mezcla citas + ⚠️ vencidas (cap 10) + ⏩ followups<=today.
 - Bloque "Próximos días" con tablas por día y ⏩ inline por día.
 - Smoke de `generate()` sobre workspace vacío.
 """
@@ -114,36 +114,9 @@ class TestCollectOverdue:
         assert [t["desc"] for _, t in out] == ["Ancient", "Recent"]
 
 
-class TestCollectPendingsByFf:
-
-    def test_includes_ff_in_range(self, agenda_env):
-        today = date.today()
-        d = (today + timedelta(days=2)).isoformat()
-        _make_project(
-            agenda_env["type_dir"],
-            agenda_extra=f"## ✅ Tareas\n- [ ] Decide later ⏩{d}\n",
-        )
-        out = sec_agenda._collect_pendings_in_ff_range(
-            (today + timedelta(days=1)).isoformat(),
-            (today + timedelta(days=7)).isoformat(),
-        )
-        assert len(out) == 1
-        assert out[0][1]["ff"] == d
-
-    def test_excludes_someday(self, agenda_env):
-        today = date.today()
-        _make_project(
-            agenda_env["type_dir"],
-            agenda_extra="## ✅ Tareas\n- [ ] Maybe ⏩someday\n",
-        )
-        out = sec_agenda._collect_pendings_in_ff_range(
-            date.min.isoformat(), (today + timedelta(days=30)).isoformat(),
-        )
-        assert out == []
-
-
 class TestCollectFollowups:
-    """⏩ followups (body lines) surface alongside ff — design §2/§6."""
+    """⏩ followups (body lines) son la fuente única de "por triar" tras F5
+    (el eje ``ff`` de cabecera fue retirado)."""
 
     def test_includes_followup_in_range_on_task(self, agenda_env):
         today = date.today()
@@ -196,13 +169,24 @@ class TestCollectFollowups:
         )
         assert out == []   # done excluded; live one is out of the 7d window
 
+    def test_excludes_someday(self, agenda_env):
+        today = date.today()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra="## ✅ Tareas\n- [ ] Maybe\n    ⏩ someday\n",
+        )
+        out = sec_agenda._collect_followups_in_range(
+            date.min.isoformat(), (today + timedelta(days=30)).isoformat(),
+        )
+        assert out == []
+
 
 class TestFollowupSurfacing:
-    """Followups feed the counter and the Hoy table like ff pendings."""
+    """Followups son la fuente única que alimenta el contador y la tabla de Hoy."""
 
     def test_counter_counts_followups_as_por_triar(self):
         followups = [(None, "events", {"desc": "x"}, {"date": "2026-01-01"})]
-        out = sec_agenda._counter_lines([], [], [], 0, followups_today=followups)
+        out = sec_agenda._counter_lines([], [], 0, followups_today=followups)
         assert out == ["> 🗓 Hoy: ⏩1 por triar"]
 
     def test_today_block_renders_followup_row(self, agenda_env):
@@ -213,7 +197,7 @@ class TestFollowupSurfacing:
             agenda_extra=f"## ✅ Tareas\n- [ ] Inscripción\n    ⏩ {d} ojo\n",
         )
         followups = sec_agenda._collect_followups_in_range(date.min.isoformat(), d)
-        block = sec_agenda._today_block([], [], [], followups)
+        block = sec_agenda._today_block([], [], followups)
         # col1 = tipo (☐ task), col2 = ⏩.
         fup_rows = [l for l in block if "| ⏩ |" in l]
         assert len(fup_rows) == 1
@@ -244,12 +228,12 @@ class TestCountMilestonesWindow:
 class TestCounterLines:
 
     def test_all_zero_shows_sin_compromisos(self):
-        out = sec_agenda._counter_lines([], [], [], 0)
+        out = sec_agenda._counter_lines([], [], 0)
         assert out == ["> 🗓 Hoy: sin compromisos"]
 
     def test_omits_zero_categories(self):
         today_items = [("events", {}, None, "")]
-        out = sec_agenda._counter_lines(today_items, [], [], 0)
+        out = sec_agenda._counter_lines(today_items, [], 0)
         assert out == ["> 🗓 Hoy: 📅1 eventos"]
 
     def test_includes_all_categories_when_present(self):
@@ -258,55 +242,56 @@ class TestCounterLines:
             ("tasks", {}, None, ""),
         ]
         overdue = [(None, {"desc": "x", "date": "2026-01-01"})]
-        pendings = [(None, {"desc": "y", "ff": "2026-01-01"})]
-        out = sec_agenda._counter_lines(today_items, overdue, pendings, 0)
+        followups = [(None, "tasks", {"desc": "y"}, {"date": "2026-01-01"})]
+        out = sec_agenda._counter_lines(today_items, overdue, 0,
+                                        followups_today=followups)
         assert out == [
             "> 🗓 Hoy: 📅2 eventos · ✅1 tareas · ⚠️1 vencidas · ⏩1 por triar"
         ]
 
     def test_milestones_line_omitted_when_zero(self):
-        out = sec_agenda._counter_lines([], [], [], 0)
+        out = sec_agenda._counter_lines([], [], 0)
         assert all("hitos" not in line for line in out)
 
     def test_milestones_line_shown_when_positive(self):
-        out = sec_agenda._counter_lines([], [], [], 3)
+        out = sec_agenda._counter_lines([], [], 3)
         assert out[-1] == (
             f"> 🏁 Hitos: 3 próximos {sec_agenda.MILESTONES_WINDOW} días "
             "· [detalle](hitos.md)"
         )
 
     def test_milestones_line_includes_overdue(self):
-        out = sec_agenda._counter_lines([], [], [], 3, n_overdue_ms=2)
+        out = sec_agenda._counter_lines([], [], 3, n_overdue_ms=2)
         assert out[-1] == (
             f"> 🏁 Hitos: ⚠️2 vencidos · 3 próximos "
             f"{sec_agenda.MILESTONES_WINDOW} días · [detalle](hitos.md)"
         )
 
     def test_milestones_line_only_overdue(self):
-        out = sec_agenda._counter_lines([], [], [], 0, n_overdue_ms=2)
+        out = sec_agenda._counter_lines([], [], 0, n_overdue_ms=2)
         assert out[-1] == "> 🏁 Hitos: ⚠️2 vencidos · [detalle](hitos.md)"
 
     def test_milestones_line_omitted_when_both_zero(self):
-        out = sec_agenda._counter_lines([], [], [], 0, n_overdue_ms=0)
+        out = sec_agenda._counter_lines([], [], 0, n_overdue_ms=0)
         assert all("Hitos" not in line for line in out)
 
     def test_ring_line_omitted_when_zero(self):
-        out = sec_agenda._counter_lines([], [], [], 0, ring_counts=(0, 0))
+        out = sec_agenda._counter_lines([], [], 0, ring_counts=(0, 0))
         assert all("Alarmas" not in line for line in out)
 
     def test_ring_line_today_only(self):
-        out = sec_agenda._counter_lines([], [], [], 0, ring_counts=(2, 0))
+        out = sec_agenda._counter_lines([], [], 0, ring_counts=(2, 0))
         assert out[-1] == "> 🔔 Alarmas: 2 hoy · [detalle](../ring/rings.md)"
 
     def test_ring_line_next_only(self):
-        out = sec_agenda._counter_lines([], [], [], 0, ring_counts=(0, 3))
+        out = sec_agenda._counter_lines([], [], 0, ring_counts=(0, 3))
         assert out[-1] == (
             f"> 🔔 Alarmas: 3 próximos {sec_agenda.NEXT_DAYS_WINDOW} días "
             "· [detalle](../ring/rings.md)"
         )
 
     def test_ring_line_today_and_next(self):
-        out = sec_agenda._counter_lines([], [], [], 0, ring_counts=(2, 3))
+        out = sec_agenda._counter_lines([], [], 0, ring_counts=(2, 3))
         assert out[-1] == (
             f"> 🔔 Alarmas: 2 hoy · 3 próximos {sec_agenda.NEXT_DAYS_WINDOW} días "
             "· [detalle](../ring/rings.md)"
@@ -336,14 +321,14 @@ class TestCounterLines:
 
     def test_reminders_excluded_from_counter(self):
         today_items = [("reminders", {}, None, "")]
-        out = sec_agenda._counter_lines(today_items, [], [], 0)
+        out = sec_agenda._counter_lines(today_items, [], 0)
         assert out == ["> 🗓 Hoy: sin compromisos"]
 
     def test_milestones_today_not_in_today_line(self):
         """Milestones de hoy aparecen en la tabla con 🏁 pero NO en el counter
         (los hitos viven en la línea "Próximos 30 días")."""
         today_items = [("milestones", {}, None, "")]
-        out = sec_agenda._counter_lines(today_items, [], [], 0)
+        out = sec_agenda._counter_lines(today_items, [], 0)
         assert out == ["> 🗓 Hoy: sin compromisos"]
 
 
@@ -361,7 +346,7 @@ class TestOverdueCap:
             agenda_extra=f"## ✅ Tareas\n{lines}\n",
         )
         overdue = sec_agenda._collect_overdue(today)
-        block = sec_agenda._today_block([], overdue, [])
+        block = sec_agenda._today_block([], overdue)
         # Header + 10 filas vencidas (☐ tipo, ⚠️ estado) + 1 resumen = 12 líneas
         warn_rows = [l for l in block if "| ⚠️ |" in l]
         assert len(warn_rows) == 11
@@ -412,11 +397,11 @@ class TestGenerate:
         assert "| ⚠️ |" in text
         assert f"(📅{past})" in text
 
-    def test_pending_ff_today_aparece_con_triaje(self, agenda_env):
+    def test_followup_today_aparece_con_triaje(self, agenda_env):
         today = date.today()
         _make_project(
             agenda_env["type_dir"],
-            agenda_extra=f"## ✅ Tareas\n- [ ] Decidir X ⏩{today.isoformat()}\n",
+            agenda_extra=f"## ✅ Tareas\n- [ ] Decidir X\n    ⏩ {today.isoformat()}\n",
         )
         out = agenda_env["tmp"] / "agenda.md"
         sec_agenda.generate(out)
@@ -425,12 +410,12 @@ class TestGenerate:
         assert "| ⏩ |" in text
         assert "Decidir X" in text
 
-    def test_pending_ff_future_aparece_en_proximos_dias(self, agenda_env):
+    def test_followup_future_aparece_en_proximos_dias(self, agenda_env):
         today = date.today()
         d = (today + timedelta(days=2)).isoformat()
         _make_project(
             agenda_env["type_dir"],
-            agenda_extra=f"## ✅ Tareas\n- [ ] Triar futuro ⏩{d}\n",
+            agenda_extra=f"## ✅ Tareas\n- [ ] Triar futuro\n    ⏩ {d}\n",
         )
         out = agenda_env["tmp"] / "agenda.md"
         sec_agenda.generate(out)
@@ -511,12 +496,12 @@ class TestBellColumn:
         assert "| | | | Inicio | Fin | Descripción | Proyecto |" in text
         assert "| 🔔 | | Inicio" not in text
 
-    def test_pending_rows_aligned_state_in_col2(self, agenda_env):
+    def test_followup_rows_aligned_state_in_col2(self, agenda_env):
         """Filas por-triar: col1=tipo, col2=⏩ (la col estado), 7 cols alineadas."""
         today = date.today()
         _make_project(
             agenda_env["type_dir"],
-            agenda_extra=f"## ✅ Tareas\n- [ ] Decidir X ⏩{today.isoformat()}\n",
+            agenda_extra=f"## ✅ Tareas\n- [ ] Decidir X\n    ⏩ {today.isoformat()}\n",
         )
         out = agenda_env["tmp"] / "agenda.md"
         sec_agenda.generate(out)

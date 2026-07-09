@@ -268,7 +268,7 @@ class TestCounter:
         # Mark "aaaaaaaa" as done via direct edit.
         agp = _agenda_path(mission)
         agp.write_text(agp.read_text().replace(
-            "- [ ] block A", "- [x] block A"))
+            "[ ] ✏️ block A", "[x] ✏️ block A"))
         # Week file referencing all three.
         week_file = mission / "notes" / "2026-W21-focus.md"
         week_file.parent.mkdir(exist_ok=True)
@@ -305,7 +305,7 @@ class TestCounter:
             "⚓ [[paper-neutrinos]] · focus W21",
             "rebautizada sin wikilink ni emoji")
         # Also mark done.
-        new = new.replace("- [ ] rebautizada", "- [x] rebautizada")
+        new = new.replace("[ ] ✏️ rebautizada", "[x] ✏️ rebautizada")
         agp.write_text(new)
         # Week file still has the id under anchor section.
         week_file = mission / "notes" / "2026-W21-focus.md"
@@ -361,7 +361,7 @@ class TestModeLibre:
         assert rc == 0
         # Two tasks created in mission/agenda.md.
         ag_text = _agenda_path(mission).read_text()
-        assert ag_text.count("[orbit:") == 2
+        assert ag_text.count("<!-- orbit:") == 2
         # El task title incluye el emoji del proyecto para coherencia visual
         # con el dashboard ("[🌀paper-neutrinos]" vs "[paper-neutrinos]").
         assert ag_text.count("[[🌀paper-neutrinos]]") == 2
@@ -519,7 +519,7 @@ class TestF7Menu:
         ])
         assert run_focus_week() == 0
         agenda_before = _agenda_path(mission).read_text()
-        ids_before = agenda_before.count("[orbit:")
+        ids_before = agenda_before.count("<!-- orbit:")
         # Now option 3 (add): add one more anchor block on wednesday.
         _feed_inputs(monkeypatch, [
             "3",  # menu option add
@@ -532,7 +532,7 @@ class TestF7Menu:
         ])
         assert run_focus_week() == 0
         agenda_after = _agenda_path(mission).read_text()
-        ids_after = agenda_after.count("[orbit:")
+        ids_after = agenda_after.count("<!-- orbit:")
         assert ids_after == ids_before + 1
 
 
@@ -646,8 +646,8 @@ class TestCollectYear:
         # Mark A and C as done.
         agp = _agenda_path(mission)
         txt = agp.read_text()
-        txt = txt.replace("- [ ] A", "- [x] A")
-        txt = txt.replace("- [ ] C", "- [x] C")
+        txt = txt.replace("[ ] ✏️ A ", "[x] ✏️ A ")
+        txt = txt.replace("[ ] ✏️ C ", "[x] ✏️ C ")
         agp.write_text(txt)
         _write_week_file_raw(mission, "2026-W21", [
             ("anchor", "paper-neutrinos", "aaaaaaaa"),
@@ -912,7 +912,7 @@ class TestRunFocusYear:
         api.add_task(project="mission", text="A",
                      date="2026-05-18", time="09:00-10:30", orbit_id="aaaaaaaa")
         agp = _agenda_path(mission)
-        agp.write_text(agp.read_text().replace("- [ ] A", "- [x] A"))
+        agp.write_text(agp.read_text().replace("[ ] ✏️ A ", "[x] ✏️ A "))
         _write_week_file_raw(mission, "2026-W21", [
             ("anchor", "paper-neutrinos", "aaaaaaaa"),
         ])

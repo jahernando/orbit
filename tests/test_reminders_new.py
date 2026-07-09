@@ -115,12 +115,15 @@ class TestAgendaReminders:
         }
         _write_agenda(agenda, data)
         text = agenda.read_text()
-        assert "## 💬 Recordatorios" in text
-        # Should be sorted by date
-        lines = text.splitlines()
-        rem_lines = [l for l in lines if l.startswith("- ") and "⏰" in l]
-        assert "2026-03-18" in rem_lines[0]
-        assert "2026-03-20" in rem_lines[1]
+        # New unified format: reminders are flat items tagged #recordatorio,
+        # no section header, in insertion order (design §14: no re-sorting).
+        assert "## 💬 Recordatorios" not in text
+        rem_lines = [l for l in text.splitlines() if l.startswith("- 💬")]
+        assert rem_lines[0] == "- 💬 B reminder #recordatorio"
+        assert rem_lines[1] == "- 💬 A reminder #recordatorio"
+        # ...and round-trips back to the model preserving order.
+        data2 = _read_agenda(agenda)
+        assert [r["date"] for r in data2["reminders"]] == ["2026-03-20", "2026-03-18"]
 
     def test_reminders_preserved_with_other_sections(self, tmp_path):
         agenda = tmp_path / "agenda.md"

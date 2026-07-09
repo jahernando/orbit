@@ -368,10 +368,11 @@ class TestBuildPayloadBackfill:
         payload = build_payload(tmp_path, today=date(2026, 5, 21))
 
         assert payload["backfilled"] == 1
-        # agenda.md should now carry an [orbit:XXXXXXXX] tag
+        # agenda.md should now carry an orbit-id (new format: invisible
+        # <!-- orbit:XXXXXXXX --> identity comment on the item header).
         text = agenda.read_text()
         import re
-        m = re.search(r"\[orbit:([0-9a-f]{8})\]", text)
+        m = re.search(r"<!-- orbit:([0-9a-f]{8}) -->", text)
         assert m is not None
         # And the item should have entered the payload
         assert len(payload["items"]) == 1
