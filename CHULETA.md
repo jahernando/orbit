@@ -35,43 +35,25 @@ orbit project type drop <name>              # elimina tipo
 ## task — tareas
 
 ```bash
-orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--ff DATE|someday] [-i]
-orbit task plan    [<project>] ["<text>"]  <date> [<time>]    # promueve pending→planned o reschedule planned
-orbit task pending [<project>] ["<text>"] [<ff>|someday]      # degrada planned→pending o snooze pending
+orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [-i]
 orbit task done    [<project>] ["<text>"]
 orbit task drop    [<project>] ["<text>"] [--force] [-o] [-s]
 orbit task log     [<project>] ["<text>"]
-orbit task edit    [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--ff DATE|someday|none]
+orbit task edit    [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
 ```
 
-### Modelo planned / pending / someday
+### Modelo planned / someday (F5: eje `ff` retirado)
 
-Una task vive en uno de tres estados, derivados del campo `⏩` (fast-forward) y `date`:
+Una task vive en uno de dos estados abiertos, derivados solo de `date`:
 
-| Estado | `date` | `time` | `ring` | `⏩` |
-|---|---|---|---|---|
-| planned | ✓ | opcional | opcional | — |
-| pending | — | — | — | fecha ISO |
-| someday | — | — | — | `someday` |
-
-- **planned**: compromiso firme. Aparece en Agenda del panel.
-- **pending**: blanda. Aparece en sección "Decidir hoy" cuando `⏩ <= today`.
-- **someday**: aparcada sin presión. No aparece en dashboard hasta que la promuevas.
-
-Verbos primarios y transiciones:
-
-| Verbo | Gesto | Contador |
+| Estado | `date` | significado |
 |---|---|---|
-| `add` (sin --date ni --ff) | captura cruda → pending con `⏩today` | — |
-| `add --ff DATE` | captura ya programada (esperar respuesta de alguien) | — |
-| `add --date DATE` | compromiso planeado | — |
-| `plan X DATE` | pending → planned, o reschedule planned | `❌` si reschedule de vencida |
-| `pending X DATE` | planned → pending, o snooze pending | `💤` si snooze |
-| `done X` | completa | reset al avanzar recurrente |
-| `drop X` | descarta | — |
-| `edit X --ff DATE` | edición directa del campo | — |
+| planned | ✓ | compromiso firme; aparece en la Agenda del panel |
+| someday | — | reposo, sin presión; no aflora hasta que le pongas fecha o un followup |
 
-Marcadores en línea: `⏩{fecha}` (next surface), `💤N` (snooze_count), `❌N` (failed_count). Doctor valida invariante `⏩ <= date`.
+- `task add --date DATE` → **planned**. `task add` sin fecha → **someday** (captura en reposo, ya no se auto-programa a hoy).
+- Para **planificar** una someday: `task edit --date DATE`. Para **posponer/triar** cualquier cita: un **followup** `cita fup` (`⏩ FECHA` en el cuerpo; ver sección Followups). El followup es lo que hace aflorar la cita en "Decidir hoy" cuando `⏩ <= today`.
+- Los verbos `plan`/`pending` y los campos `ff`/`💤`/`❌` se **retiraron en F5**: el eje de triaje es ahora el followup (línea de cuerpo, aplica a las 4 citas), no un campo de cabecera de la task.
 
 - `done` y `drop`: interactivos si no se especifica texto; `drop` pide confirmación
 - Si el texto coincide con varias citas, se muestra una lista numerada para elegir (aplica a task, ms, ev y reminder)
@@ -212,7 +194,7 @@ Un **followup** es un empujón blando colgado bajo cualquier cita como línea de
 
 - Se añaden/borran con `cita fup` (mutación silenciosa: no escribe en el logbook, pero el comando muestra el item resultante).
 - `date` acepta `YYYY-MM-DD`, `today`, `mañana`, `+N`, … (se normaliza a ISO).
-- No confundir con el campo `⏩` de **cabecera** de una *task* (el `ff` del modelo planned/pending): el followup va en una **línea de cuerpo** y aplica a las 4 citas.
+- El followup es el **único** mecanismo de triaje (F5 retiró el campo `ff` de cabecera): va en una **línea de cuerpo** indentada y aplica a las 4 citas.
 
 ---
 
@@ -479,7 +461,7 @@ orbit clip catedra notes/tramos.md --from complementos      # enlace relativo en
 ```bash
 orbit ls                              # lista proyectos (por defecto)
 orbit ls projects [--status S] [--type T] [--sort type|status|priority]
-orbit ls tasks    [project...] [--status pending|done|all] [--date D] [--dated] [--unplanned] [--pending] [--someday]
+orbit ls tasks    [project...] [--status pending|done|all] [--date D] [--dated] [--unplanned] [--someday]
 orbit ls ms       [project...] [--status pending|done|all] [--date D] [--dated]
 orbit ls ev         [project]    [--from D] [--to D]
 orbit ls reminders  [project]    # recordatorios activos (alias: ls rem)
@@ -489,11 +471,8 @@ orbit ls notes    [project]    # notas con estado git
 ```
 
 - `--unplanned`: solo tareas sin fecha asignada (futuribles)
-- `--pending`: solo tareas con ⏩ puesto (excluye someday)
-- `--someday`: solo tareas con ⏩someday
+- `--someday`: solo tareas sin fecha (reposo) — equivalente a `--unplanned` tras F5
 - `--no-fed`: excluye proyectos federados del listado
-
-El display de `ls tasks` muestra `⏩{fecha}` y los contadores `💤N` / `❌N` cuando están presentes.
 
 Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untracked · `✗` ignored
 
@@ -562,12 +541,16 @@ orbit organize ev -P week            # eventos de esta semana
 orbit organize -p next-kr            # solo proyecto next-kr
 orbit organize -P 2026-W22           # ISO week específica
 orbit organize -P 2026-05-15         # un día concreto
-orbit organize --triage              # pending tasks con ⏩ <= today
+orbit organize --triage              # followups ⏩ <= today (todas las citas)
 ```
 
 Modo default (planned + overdue): acciones `[d]rop [n]done [f]echa [h]ora [s]kip`.
 
-Modo `--triage` (pending): acciones `[p]lan-date  [f]f-snooze  [d]rop  do[n]e  [s]kip`. `p` promueve a planned con fecha (limpia ⏩, incrementa ❌ si vencida). `f` actualiza ⏩ (incrementa 💤, acepta `someday`, default `tomorrow`).
+Modo `--triage`: recorre los **followups** `⏩ <= today` de las 4 citas. Acciones `[p]lan-fecha  [s]nooze-⏩  [c]lear-⏩  do[n]e  [d]rop  s[k]ip`:
+- `p` pone fecha a la cita (la vuelve planned) y borra ese followup.
+- `s` mueve el followup a otra fecha (default mañana).
+- `c` borra el followup (triaje resuelto; la cita queda en reposo).
+- `n` completa la cita (task/ms). `d` borra la cita entera.
 
 Alias legacy: `orbit reorganize` sigue funcionando.
 

@@ -10,6 +10,22 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### v0.41.0 (2026-07-09) — Formato de item unificado como verdad · retirada del eje `ff` (F5)
+
+Flip del writer de `agenda.md` al **formato de item unificado** + retirada del campo `ff` y los verbos `plan`/`pending`. Diseño en `claude/designs/items_unified.md`; decisión completa en [ADR-045](DECISIONS.md#adr-045--formato-de-item-unificado-como-verdad--retirada-del-eje-ff).
+
+**F1.1 · cronogramas desacoplados de agenda** — la tabla `## 📊 Cronogramas` incrustada era redundante (secretario/panel leen la verdad `cronos/crono-*.md`). Retirada su maquinaria (`_refresh_agenda_cronos_section` + acción de hook + 4 call sites); el writer nuevo no la emite y migra sola. (commit F1.1)
+
+**F1.2 · flip del writer** — `_write_agenda` emite la gramática nueva (`core.agenda.newfmt`): `- [estado] <emoji> título #tag` + cuerpo indentado (`▶️`·`⏰`·`🔄`·`🔔`, desc, `links:`, followups `⏩`), sin cabeceras de sección. Lector tolerante (viejo+nuevo) → **migración perezosa** por fichero. `orbit_id` como comentario HTML invisible.
+
+**F5 · retirada de `ff`** — el triaje pasa a ser exclusivamente el **followup** (`⏩` de cuerpo). Retirados: campo `ff`, verbos `plan`/`pending` (→ `edit --date` + `cita fup`), contadores `snooze`/`failed`, flag `--ff`, filtro `--pending`. `task_state` = `planned`/`someday`/`done`/`dropped`. Captura cruda sin fecha = **someday/reposo** (fin del auto-`⏩today`). "Decidir hoy" (secretario/panel/`organize --triage`) se alimenta solo de followups `⏩ ≤ today` sobre las 4 citas; el triaje interactivo ofrece 5 acciones (`plan`/`snooze`/`clear`/`done`/`drop`).
+
+**Migración** — perezosa (cualquier reescritura convierte el fichero), validada end-to-end: secciones+`⏩ff`+tabla cronos → formato plano, `ff`→followup, tabla descartada. El lector viejo **no se retira** aún (vive hasta migración completa del workspace).
+
+Tests: ~90 reescritos/retirados (asserts de formato, triaje/panel/secretario sobre followups; borrados los de `ff`/plan/pending/snooze/cronos-embebido). Suite: 1862 passed, 1 skipped.
+
+---
+
 ### v0.40.1 (2026-07-02) — Limpieza del secretario · contador 🔔 en la cabecera de agenda.md
 
 Higiene tras el dashboard refactor (v0.38→v0.39) + una línea nueva en el header de la agenda.

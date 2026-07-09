@@ -920,6 +920,30 @@ Tres fricciones reales:
 
 ---
 
+## ADR-045 — Formato de item unificado como verdad + retirada del eje `ff`
+
+**Estado**: aceptada (2026-07-09). Implementa el diseño `claude/designs/items_unified.md` y cierra la F5 de [[project_orbit_cli_citas_impl]].
+
+**Contexto**: `agenda.md` usaba una gramática por secciones (`## ✅ Tareas`, `## 📅 Eventos`, …) con los atributos en la propia línea, y las tasks llevaban un campo de cabecera `ff` (fast-forward) que sostenía los sub-estados `pending`/`due`/`someday`, los verbos `plan`/`pending` y los contadores `snooze_count`/`failed_count`. En paralelo se introdujeron los **followups** (`⏩ FECHA` en el cuerpo, ADR-043): un empujón blando, sin estado, aplicable a las 4 citas. `ff` y followup coexistían como dos fuentes de "por triar" — redundante.
+
+**Decisión**:
+1. **Writer flip**: `_write_agenda` emite el formato unificado (`core.agenda.newfmt`): cada item es `- [estado] <emoji-tipo> título #tag` + cuerpo indentado (`▶️` fecha · `⏰` hora · `🔄` recur · `🔔` ring; luego desc, `links:` y followups `⏩`). Sin cabeceras de sección. El **lector es tolerante** (lee viejo y nuevo); cada `agenda.md` **migra de forma perezosa** la primera vez que un comando lo reescribe. El `orbit_id` viaja como comentario HTML invisible `<!-- orbit:xxxx -->`.
+2. **Retirada de `ff`** (F5): el eje de triaje pasa a ser **exclusivamente** el followup. Se retiran el campo `ff`, los verbos `plan`/`pending` (→ `edit --date` + `cita fup`), los contadores `snooze`/`failed`, el filtro `--pending` y el flag `--ff`. `task_state` colapsa a `planned`/`someday`/`done`/`dropped`. Captura cruda `task add` sin fecha = **someday/reposo** (se descarta el viejo auto-`⏩today`). La migración pliega cualquier `ff:DATE` vivo a un followup `⏩ DATE`; `ff:someday`/sin-fecha → reposo.
+3. **"Decidir hoy"** (secretario, panel, `organize --triage`) se alimenta solo de followups `⏩ ≤ today` sobre las 4 citas. El triaje interactivo ofrece 5 acciones: `plan` (poner fecha + limpiar el ⏩), `snooze` (mover el ⏩), `clear` (borrar el ⏩ → reposo), `done`, `drop`.
+4. **Cronogramas desacoplados de agenda** (F1.1): la tabla `## 📊 Cronogramas` incrustada era redundante (secretario/panel leen la verdad `cronos/crono-*.md`); se retira su maquinaria. El writer nuevo no la emite; migra sola al reescribir.
+
+**Consecuencias**:
+- Pros: una sola gramática para los 3 ficheros-verdad → parser/doctor unificables; una sola fuente de triaje (followup), sin el par redundante ff/followup; captura cruda coherente con "task = compromiso real" ([[project_orbit_task_strict]]). Migración sin pérdida, reversible por git, validada end-to-end.
+- Contras: cambio amplio (writer + api + runners + organize + panel + secretario + parsers) y ~90 tests reescritos/retirados; el orden de items en el fichero ya no se re-ordena (design §14 — el writer respeta el orden de la verdad, los eventos dejan de emitirse ordenados por fecha).
+
+**Coexistencia y retirada**: sigue [[feedback_live_a_day_before_delete]]. El **lector viejo NO se retira aquí**: vive hasta que el workspace esté 100% migrado (fase posterior, tras convivir una semana). El visor read-only `orbit agenda future` sigue disponible como contraste.
+
+**Tradeoff considerado**:
+- *Dos ficheros (`agenda.md` + `agenda_new.md`) en paralelo con doble escritura*: descartado 2026-07-09 — obliga a sincronizar los ~31 writers y convive con dos verdades divergentes; el lector tolerante + migración perezosa dan la misma red de seguridad sin ese coste.
+- *Flipar el writer dejando `ff`/plan/pending degradados una semana*: descartado — el flip vuelve inconsistente `task_state` (todo lo sin-fecha colapsa a un estado), rompiendo `list`/`triage`/panel en uso real; se hizo F5 junto al flip para dejar un estado coherente.
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

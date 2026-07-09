@@ -49,17 +49,21 @@ Reglas e invariantes del sistema en [RULES.md](RULES.md); decisiones arquitectó
 
 El sistema de citas es uniforme. Las cuatro comparten la misma interfaz:
 
-| Tipo | Emoji | Sección agenda.md | Tiene status | Tiene done |
+Desde v0.41 `agenda.md` es un **formato de item unificado** (header + cuerpo indentado, sin secciones — [ADR-045](DECISIONS.md#adr-045--formato-de-item-unificado-como-verdad--retirada-del-eje-ff)). El header de cada tipo:
+
+| Tipo | Emoji-tipo | Header en agenda.md | Tiene status | Tiene done |
 |------|-------|-------------------|-------------|------------|
-| task | ✅ | `## ✅ Tareas` | sí (pending/done/cancelled) | sí |
-| ms (milestone) | 🏁 | `## 🏁 Hitos` | sí | sí |
-| ev (event) | 📅 | `## 📅 Eventos` | no | no |
-| reminder | 💬 | `## 💬 Recordatorios` | no (cancelled) | no |
+| task | ✏️ | `- [ ] ✏️ título #tarea` | sí (pending/done/cancelled) | sí |
+| ms (milestone) | 🏁 | `- [ ] 🏁 título #hitos` | sí | sí |
+| ev (event) | 📅 | `- 📅 título #evento` | no | no |
+| reminder | 💬 | `- 💬 título #recordatorio` | no (cancelled) | no |
+
+(La fecha/hora/recur/ring y los followups `⏩` van en el **cuerpo** indentado, no en el header.)
 
 Comandos uniformes: `add`, `drop`, `edit`, `list`, `log` (crear entrada de logbook desde cita).
 Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 
-**Paraguas `cita`** (v0.40, [ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico)): opera sobre las 4 citas sin indicar el tipo (localiza por proyecto+texto). `cita fup` añade/borra **followups** (`⏩ FECHA [desc]` en línea de cuerpo: empujón blando que aflora la cita ≤ su fecha, sin estado, generaliza el `ff` de cabecera); `cita done` (solo task/ms), `cita drop` (los 4), `cita log`/`clog`. `add … -i` = interrogador guiado. Verbos que mutan imprimen el orbit-item desde el serializador de la verdad ([ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)).
+**Paraguas `cita`** (v0.40, [ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico)): opera sobre las 4 citas sin indicar el tipo (localiza por proyecto+texto). `cita fup` añade/borra **followups** (`⏩ FECHA [desc]` en línea de cuerpo: empujón blando que aflora la cita ≤ su fecha, sin estado; es el único eje de triaje desde que v0.41 retiró el `ff` de cabecera); `cita done` (solo task/ms), `cita drop` (los 4), `cita log`/`clog`. `add … -i` = interrogador guiado. Verbos que mutan imprimen el orbit-item desde el serializador de la verdad ([ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)).
 
 ### Recurrencia
 - Todos soportan `--recur` y `--until`
@@ -103,7 +107,9 @@ Una sola dirección: orbit es source-of-truth, los backends consumen.
 
 ## Estado actual (v0.40.0, 2026-05-29)
 
-**CLI-citas** ([ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico) + [ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)): followups (`⏩` en cuerpo) como capa sobre `notes`; paraguas `cita` (fup/done/drop) con corte tipado vs genérico; echo del orbit-item desde el serializador único; interrogador `-i` en `add`. La retirada de `ff`/plan/pending (F5) queda **planeada/gated**. Detalle en [CHANGELOG.md](CHANGELOG.md) (v0.40) y en [project_orbit_cli_citas_impl] (memoria).
+**CLI-citas** ([ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico) + [ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)): followups (`⏩` en cuerpo) como capa sobre `notes`; paraguas `cita` (fup/done/drop) con corte tipado vs genérico; echo del orbit-item desde el serializador único; interrogador `-i` en `add`.
+
+**Formato unificado + retirada de `ff`** (v0.41, [ADR-045](DECISIONS.md#adr-045--formato-de-item-unificado-como-verdad--retirada-del-eje-ff)): `agenda.md` es ahora el **formato de item unificado** (header `- [estado] <emoji> título #tag` + cuerpo indentado, sin secciones); lector tolerante + migración perezosa. **F5 hecha**: retirados el campo `ff`, los verbos `plan`/`pending`, los contadores snooze/failed y el flag `--ff`/`--pending`; el triaje es ahora exclusivamente el followup `⏩`. `task_state` = planned/someday/done/dropped. "Decidir hoy" (secretario/panel/`organize --triage`) sobre followups ≤ today. Detalle en [CHANGELOG.md](CHANGELOG.md) (v0.41).
 
 Versiones intermedias (detalle en [CHANGELOG.md](CHANGELOG.md)): **v0.39** ring fix (orbit_id backfill, columna 🔔, rings.md unificado).
 
