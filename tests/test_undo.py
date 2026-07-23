@@ -298,10 +298,10 @@ class TestUndoHighlight:
         run_hl_add("test-project", "Key result", hl_type="results")
         commit_operation("hl add")
         data = _read_highlights(proj / "test-project-highlights.md")
-        assert len(data["sections"]["results"]) == 1
+        assert len([it for it in data["items"] if it["type"] == "results"]) == 1
         run_undo(choice=1)
         data = _read_highlights(proj / "test-project-highlights.md")
-        assert len(data["sections"].get("results", [])) == 0
+        assert len([it for it in data["items"] if it["type"] == "results"]) == 0
 
 
 class TestUndoLog:
@@ -424,7 +424,7 @@ class TestUndoChain:
         # Undo highlight
         run_undo(choice=1)
         data_hl = _read_highlights(proj / "test-project-highlights.md")
-        assert len(data_hl["sections"].get("ideas", [])) == 0
+        assert len([it for it in data_hl["items"] if it["type"] == "ideas"]) == 0
 
         # Undo event
         run_undo(choice=1)

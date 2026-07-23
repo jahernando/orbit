@@ -58,10 +58,11 @@ class TestPlanTag:
         assert "#plan" in entry
         assert "2027-03-11" in entry
 
-    def test_plans_section_in_highlights(self):
-        from core.highlights import SECTION_MAP, VALID_TYPES
-        assert "plans" in SECTION_MAP
-        assert "🗓️" in SECTION_MAP["plans"]
+    def test_plans_type_in_highlights(self):
+        from core.highlights import TYPE_EMOJI, PRIMARY_TAG, VALID_TYPES
+        assert "plans" in TYPE_EMOJI
+        assert TYPE_EMOJI["plans"] == "🗓️"
+        assert PRIMARY_TAG["plans"] == "#plan"
         assert "plans" in VALID_TYPES
 
 

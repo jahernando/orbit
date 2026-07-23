@@ -136,10 +136,13 @@ def _scan_agenda(path: Path, end: date):
 # ── Highlights count ─────────────────────────────────────────────────────────
 
 def _count_highlights(path: Path) -> dict:
-    """Return {section_key: count} for highlights."""
+    """Return {type_key: count} for highlights."""
     from core.highlights import _read_highlights
     data = _read_highlights(path)
-    return {k: len(v) for k, v in data["sections"].items() if v}
+    counts: dict = {}
+    for item in data["items"]:
+        counts[item["type"]] = counts.get(item["type"], 0) + 1
+    return counts
 
 
 # ── Main report ──────────────────────────────────────────────────────────────

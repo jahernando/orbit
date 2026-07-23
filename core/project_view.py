@@ -15,7 +15,6 @@ from core.project import (
 )
 from core.config import iter_project_dirs
 from core.agenda_cmds import _read_agenda
-from core.highlights import _read_highlights, SECTION_MAP
 from core.log import find_logbook_file, resolve_file
 from core.open import open_file
 

@@ -1,23 +1,34 @@
-"""highlights.py — hl commands for new-format projects.
+"""highlights.py — hl commands (unified orbit-item format).
 
-highlights.md stores curated references, results, decisions, ideas and
-evaluations for a project, organized in optional sections.
+highlights.md stores curated references, results, decisions, ideas,
+evaluations, plans and contacts for a project as a **flat list of
+orbit-items** (same grammar as agenda.md, ADR-045). Sections disappeared
+from the truth: the type lives in the item itself (emoji + primary tag).
 
   hl add  <project> "<text>" --type TYPE [--link URL]
   hl drop [<project>] ["<text>"]
   hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL|none]
   hl list [<project>] [--type TYPE]
 
-Sections (--type values):
-  refs       → ## 📎 Referencias
-  results    → ## 📊 Resultados
-  decisions  → ## 📌 Decisiones
-  ideas      → ## 💡 Ideas
-  evals      → ## 🔍 Evaluaciones
+Item grammar (header at column 0, optional note indented 2 spaces):
 
-Format of an item line:
-  - [Title](url) — optional note
-  - Plain text entry — optional note
+  - 📎 [Title](url) #referencia
+  - 💡 Plain text idea #idea
+    optional note / body line
+
+Types (--type values) — emoji encodes the type, `#primary` mirrors it
+(redundant today; leaves room for extra free tags after it):
+
+  refs       📎  #referencia
+  results    📊  #resultado
+  decisions  📌  #decisión
+  ideas      💡  #idea
+  evals      🔍  #evaluación
+  plans      🗓️  #plan
+  contacts   👥  #contacto
+
+Legacy `## <emoji> <Word>` section files are migrated lazily: they are
+read tolerantly and rewritten flat on the first mutation.
 """
 import re
 import sys
@@ -29,22 +40,35 @@ from core.log import add_orbit_entry, resolve_file
 from core.config import iter_project_dirs
 from core.open import open_file
 
-# ── Section mapping ────────────────────────────────────────────────────────────
+# ── Type table ─────────────────────────────────────────────────────────────────
+#
+# Emoji is the discriminator on parse (like agenda's newfmt), so each type
+# needs a unique emoji. The primary tag mirrors the type — redundant with the
+# emoji today, but it is the seam for adding free thematic tags after it.
 
-SECTION_MAP = {
-    "refs":      "## 📎 Referencias",
-    "results":   "## 📊 Resultados",
-    "decisions": "## 📌 Decisiones",
-    "ideas":     "## 💡 Ideas",
-    "evals":     "## 🔍 Evaluaciones",
-    "plans":     "## 🗓️ Planes",
-    "contacts":  "## 👥 Contactos",
+TYPE_EMOJI = {
+    "refs":      "📎",
+    "results":   "📊",
+    "decisions": "📌",
+    "ideas":     "💡",
+    "evals":     "🔍",
+    "plans":     "🗓️",
+    "contacts":  "👥",
+}
+PRIMARY_TAG = {
+    "refs":      "#referencia",
+    "results":   "#resultado",
+    "decisions": "#decisión",
+    "ideas":     "#idea",
+    "evals":     "#evaluación",
+    "plans":     "#plan",
+    "contacts":  "#contacto",
 }
 
-# Reverse: heading text → type key
-_HEADING_TO_KEY = {v: k for k, v in SECTION_MAP.items()}
+VALID_TYPES = list(TYPE_EMOJI)
 
-VALID_TYPES = list(SECTION_MAP)
+# emoji → type key (for the parser).
+_EMOJI_TO_TYPE = {v: k for k, v in TYPE_EMOJI.items()}
 
 # Mapping from highlight type → logbook tipo (for the auto-log entry on hl add)
 _HL_TYPE_TO_LOG_TIPO = {
@@ -58,140 +82,245 @@ _HL_TYPE_TO_LOG_TIPO = {
 }
 
 
-# ── Item helpers ───────────────────────────────────────────────────────────────
+# ── Serializer (model → new format) ────────────────────────────────────────────
 
-def _format_item(text: str, link: Optional[str] = None) -> str:
-    """Format a single highlight item as a markdown list line."""
-    if link:
-        return f"- [{text}]({link})"
-    return f"- {text}"
+def _format_hl_item(item: dict) -> str:
+    """Render one highlight as ``- <emoji> <text/link> #primary [#free…]``.
+
+    An optional ``note`` is emitted as body lines indented two spaces.
+    """
+    typ   = item["type"]
+    emoji = TYPE_EMOJI[typ]
+    body  = f"[{item['text']}]({item['link']})" if item.get("link") else item["text"]
+
+    primary = PRIMARY_TAG[typ]
+    free    = [t for t in item.get("tags", []) if t != primary]
+    tags    = " ".join([primary] + free)
+
+    lines = [f"- {emoji} {body} {tags}".rstrip()]
+    note  = item.get("note")
+    if note:
+        lines.extend(f"  {nl}" for nl in note.split("\n"))
+    return "\n".join(lines)
 
 
-def _item_display(item: dict) -> str:
-    """Human-readable label for interactive selection."""
-    if item.get("link"):
-        return f"[{item['text']}]({item['link']})"
-    return item["text"]
+def serialize_highlights(data: dict) -> str:
+    """Serialize a highlights model → flat orbit-item text (header + items)."""
+    out = list(data.get("header", []))
+    while out and not out[-1].strip():
+        out.pop()
+    if out:
+        out.append("")
+    for item in data.get("items", []):
+        out.append(_format_hl_item(item))
+        out.append("")
+    return "\n".join(out).rstrip() + "\n"
 
 
-def _parse_item_line(line: str) -> Optional[dict]:
-    """Parse a `- ...` line into {text, link, raw}. Returns None if not an item."""
-    if not line.startswith("- "):
-        return None
-    rest = line[2:].strip()
-    # Try [text](url) pattern
-    m = re.match(r"^\[([^\]]+)\]\(([^)]+)\)(.*)?$", rest)
+# ── Parser (new format → model) ────────────────────────────────────────────────
+
+def _parse_hl_header(line: str) -> Optional[dict]:
+    """Parse a ``- <emoji> text/link #tags`` header → item dict, or None."""
+    rest = line[2:].strip()   # caller guarantees the "- " prefix
+    typ  = None
+    for emoji, t in _EMOJI_TO_TYPE.items():
+        if rest == emoji or rest.startswith(emoji + " "):
+            typ  = t
+            rest = rest[len(emoji):].strip()
+            break
+    if typ is None:
+        return None   # not a recognized highlight item
+
+    # Trailing #tokens are tags; the rest is the text (maybe a markdown link).
+    words = rest.split()
+    tags  = []
+    while words and words[-1].startswith("#"):
+        tags.insert(0, words.pop())
+    text_part = " ".join(words)
+
+    m = re.match(r"^\[([^\]]+)\]\(([^)]+)\)$", text_part)
     if m:
-        return {"text": m.group(1), "link": m.group(2),
-                "note": m.group(3).strip().lstrip("— ").strip(), "raw": line}
-    return {"text": rest, "link": None, "note": None, "raw": line}
+        text, link = m.group(1), m.group(2)
+    else:
+        text, link = text_part, None
+
+    free = [t for t in tags if t != PRIMARY_TAG[typ]]
+    return {"type": typ, "text": text, "link": link, "note": None, "tags": free}
+
+
+def parse_highlights_new(text: str) -> dict:
+    """Parse a flat orbit-item highlights file → {header, items}."""
+    data  = {"header": [], "items": []}
+    lines = text.splitlines()
+    i     = 0
+
+    # Header = everything before the first item bullet.
+    while i < len(lines) and not lines[i].startswith("- "):
+        data["header"].append(lines[i])
+        i += 1
+
+    while i < len(lines):
+        line = lines[i]
+        if not line.startswith("- "):
+            i += 1
+            continue
+        item = _parse_hl_header(line)
+        i += 1
+        body = []
+        while i < len(lines) and (lines[i].startswith("  ") or lines[i].startswith("\t")):
+            body.append(lines[i].strip())
+            i += 1
+        if item is None:
+            continue
+        if body:
+            item["note"] = "\n".join(body)
+        data["items"].append(item)
+
+    return data
+
+
+# ── Legacy reader (old `## Section` format → model, for lazy migration) ─────────
+
+# Match by the Spanish noun so emoji drift (📚/📎, 🔬/📊, 🏛️/📌, 📊/🔍…) can't
+# break migration of real files written before the unified format.
+_LEGACY_WORD = {
+    "Referencias":  "refs",
+    "Resultados":   "results",
+    "Decisiones":   "decisions",
+    "Ideas":        "ideas",
+    "Evaluaciones": "evals",
+    "Planes":       "plans",
+    "Contactos":    "contacts",
+}
+
+
+def _legacy_heading_type(stripped: str) -> Optional[str]:
+    """Return the type key for a legacy ``## <emoji> <Word>`` heading, else None."""
+    if not stripped.startswith("## "):
+        return None
+    for w in stripped[3:].split():
+        if w in _LEGACY_WORD:
+            return _LEGACY_WORD[w]
+    return None
+
+
+def _is_legacy_format(text: str) -> bool:
+    """A file is legacy if it carries any recognized ``## Section`` heading."""
+    return any(_legacy_heading_type(l.strip()) for l in text.splitlines())
+
+
+def _parse_legacy_item(stripped: str, typ: str) -> dict:
+    """Parse an old-format bullet (``- [text](url) — note`` / ``- text``)."""
+    rest = stripped[2:].strip()
+    m = re.match(r"^\[([^\]]+)\]\(([^)]+)\)(.*)$", rest)
+    if m:
+        text, link = m.group(1), m.group(2)
+        note = m.group(3).strip().lstrip("—").strip() or None
+    else:
+        text, link, note = rest, None, None
+    return {"type": typ, "text": text, "link": link, "note": note, "tags": []}
+
+
+def _read_highlights_legacy(text: str) -> dict:
+    """Read an old sectioned highlights file into the flat model."""
+    data    = {"header": [], "items": []}
+    current = None   # type key, or None while still in the header region
+
+    for line in text.splitlines():
+        s     = line.strip()
+        htype = _legacy_heading_type(s)
+        if htype:
+            current = htype
+            continue
+        if current is None:
+            data["header"].append(line)
+            continue
+        if s.startswith("#"):        # unknown heading closes the section run
+            current = None
+            data["header"].append(line)
+            continue
+        if s.startswith("- "):
+            data["items"].append(_parse_legacy_item(s, current))
+        # blank lines / comments inside a section are dropped
+
+    return data
 
 
 # ── File I/O ───────────────────────────────────────────────────────────────────
 
 def _read_highlights(path: Path) -> dict:
-    """Parse highlights.md → {header: [str], sections: {key: [item_dict]}}."""
-    result = {"header": [], "sections": {k: [] for k in SECTION_MAP}}
+    """Parse highlights.md → {header: [str], items: [item_dict]}.
 
+    Detects the on-disk format: legacy ``## Section`` files are read
+    tolerantly (migrated on the next write); new files are parsed flat.
+    """
     if not path.exists():
-        return result
-
-    lines   = path.read_text().splitlines()
-    current = None   # current section key
-
-    for line in lines:
-        if current is None:
-            # Check for a known section heading
-            matched = _HEADING_TO_KEY.get(line.strip())
-            if matched:
-                current = matched
-            else:
-                result["header"].append(line)
-        else:
-            matched = _HEADING_TO_KEY.get(line.strip())
-            if matched:
-                current = matched
-            elif line.startswith("## "):
-                current = None   # unknown section — stop tracking
-                result["header"].append(line)
-            elif not line.strip():
-                continue   # skip blank lines inside sections
-            else:
-                item = _parse_item_line(line)
-                if item:
-                    result["sections"][current].append(item)
-
-    return result
+        return {"header": [], "items": []}
+    text = path.read_text()
+    if _is_legacy_format(text):
+        return _read_highlights_legacy(text)
+    return parse_highlights_new(text)
 
 
 def _write_highlights(path: Path, data: dict) -> None:
-    """Serialize data back to highlights.md."""
-    out = list(data["header"])
-    # Strip trailing blanks from header
-    while out and not out[-1].strip():
-        out.pop()
-    out.append("")
-
-    for key, heading in SECTION_MAP.items():
-        items = data["sections"].get(key, [])
-        if not items:
-            continue
-        out.append(heading)
-        for item in items:
-            out.append(_format_item(item["text"], item.get("link")))
-        out.append("")
-
+    """Serialize the model back to highlights.md (always the new format)."""
     from core.undo import save_snapshot
     save_snapshot(path)
-    path.write_text("\n".join(out) + "\n")
+    path.write_text(serialize_highlights(data))
+
+
+# ── Item helpers ───────────────────────────────────────────────────────────────
+
+def _item_display(item: dict) -> str:
+    """Human-readable label for interactive selection / listings."""
+    if item.get("link"):
+        return f"[{item['text']}]({item['link']})"
+    return item["text"]
+
+
+def _is_url(ref: str) -> bool:
+    return ref.startswith("http://") or ref.startswith("https://")
 
 
 # ── Interactive selection ──────────────────────────────────────────────────────
 
 def _select_highlight(data: dict, hl_type: Optional[str],
-                      text: Optional[str]) -> Optional[tuple]:
-    """Return (section_key, item_index) for a selected item.
+                      text: Optional[str]) -> Optional[int]:
+    """Return the index into ``data['items']`` for a selected item.
 
-    If *hl_type* given: restrict to that section.
-    If *text* given: find by partial match.
-    Else: show numbered list across all (or typed) sections.
-    Returns None if nothing selected.
+    If *hl_type* given: restrict to that type. If *text* given: find by
+    partial match. Else: show a numbered list. Returns None if nothing picked.
     """
-    # Build flat list of (section_key, idx, item)
-    if hl_type:
-        if hl_type not in SECTION_MAP:
-            print(f"Error: tipo '{hl_type}' no válido. Opciones: {', '.join(VALID_TYPES)}")
-            return None
-        candidates = [(hl_type, i, item)
-                      for i, item in enumerate(data["sections"][hl_type])]
-    else:
-        candidates = [(k, i, item)
-                      for k in SECTION_MAP
-                      for i, item in enumerate(data["sections"][k])]
+    if hl_type and hl_type not in TYPE_EMOJI:
+        print(f"Error: tipo '{hl_type}' no válido. Opciones: {', '.join(VALID_TYPES)}")
+        return None
+
+    items = data["items"]
+    candidates = [(i, it) for i, it in enumerate(items)
+                  if hl_type is None or it["type"] == hl_type]
 
     if not candidates:
         print("No hay highlights disponibles.")
         return None
 
     if text:
-        matches = [(k, i, it) for k, i, it in candidates
+        matches = [(i, it) for i, it in candidates
                    if text.lower() in it["text"].lower()
                    or (it.get("link") and text.lower() in it["link"].lower())]
         if not matches:
             print(f"Error: no se encontró '{text}'")
             return None
         if len(matches) > 1:
-            descs = ", ".join(f'"{it["text"]}"' for _, _, it in matches)
+            descs = ", ".join(f'"{it["text"]}"' for _, it in matches)
             print(f"Ambiguo: {len(matches)} coincidencias: {descs}")
             return None
-        k, i, _ = matches[0]
-        return k, i
+        return matches[0][0]
 
     # Interactive numbered list
     print("\nHighlights:")
-    for n, (k, _, item) in enumerate(candidates, 1):
-        section_label = SECTION_MAP[k].split()[-1]   # last word of heading
-        print(f"  {n}. [{section_label}] {_item_display(item)}")
+    for n, (_, item) in enumerate(candidates, 1):
+        label = TYPE_EMOJI[item["type"]]
+        print(f"  {n}. {label} {_item_display(item)}")
     print()
 
     if not sys.stdin.isatty():
@@ -209,12 +338,11 @@ def _select_highlight(data: dict, hl_type: Optional[str],
     if raw.isdigit():
         idx = int(raw) - 1
         if 0 <= idx < len(candidates):
-            k, i, _ = candidates[idx]
-            return k, i
+            return candidates[idx][0]
         print(f"Fuera de rango (1–{len(candidates)})")
         return None
 
-    matches = [(k, i, it) for k, i, it in candidates
+    matches = [(i, it) for i, it in candidates
                if raw.lower() in it["text"].lower()]
     if not matches:
         print(f"Sin coincidencias para '{raw}'")
@@ -222,15 +350,10 @@ def _select_highlight(data: dict, hl_type: Optional[str],
     if len(matches) > 1:
         print(f"Ambiguo: {len(matches)} coincidencias")
         return None
-    k, i, _ = matches[0]
-    return k, i
+    return matches[0][0]
 
 
 # ── Commands ───────────────────────────────────────────────────────────────────
-
-def _is_url(ref: str) -> bool:
-    return ref.startswith("http://") or ref.startswith("https://")
-
 
 def run_hl_add(project: str, text: str, hl_type: str,
                link: Optional[str] = None,
@@ -238,7 +361,7 @@ def run_hl_add(project: str, text: str, hl_type: str,
                deliver: bool = False,
                as_link: bool = False,
                no_date: bool = False) -> int:
-    if hl_type not in SECTION_MAP:
+    if hl_type not in TYPE_EMOJI:
         print(f"Error: tipo '{hl_type}' no válido. Opciones: {', '.join(VALID_TYPES)}")
         return 1
 
@@ -296,15 +419,15 @@ def run_hl_add(project: str, text: str, hl_type: str,
 
     hl_path = resolve_file(project_dir, "highlights")
     data    = _read_highlights(hl_path)
-    data["sections"][hl_type].append({"text": text, "link": link, "note": None})
+    item    = {"type": hl_type, "text": text, "link": link, "note": None, "tags": []}
+    data["items"].append(item)
     _write_highlights(hl_path, data)
 
     add_orbit_entry(project_dir, f"Highlight: {text}",
                     tipo=_HL_TYPE_TO_LOG_TIPO.get(hl_type, "apunte"),
                     path=link, extra_tags=["headline"])
 
-    display = f"[{text}]({link})" if link else text
-    print(f"✓ [{project_dir.name}] Highlight ({hl_type}): {display}")
+    print(f"✓ [{project_dir.name}] {_format_hl_item(item).splitlines()[0]}")
     return 0
 
 
@@ -321,12 +444,11 @@ def run_hl_drop(project: Optional[str], text: Optional[str],
     hl_path = resolve_file(project_dir, "highlights")
     data    = _read_highlights(hl_path)
 
-    sel = _select_highlight(data, hl_type, text)
-    if sel is None:
+    idx = _select_highlight(data, hl_type, text)
+    if idx is None:
         return 1
-    k, i = sel
 
-    display = _item_display(data["sections"][k][i])
+    display = _item_display(data["items"][idx])
 
     if not force:
         if not sys.stdin.isatty():
@@ -341,7 +463,7 @@ def run_hl_drop(project: Optional[str], text: Optional[str],
             print("Cancelado.")
             return 0
 
-    data["sections"][k].pop(i)
+    data["items"].pop(idx)
     _write_highlights(hl_path, data)
 
     add_orbit_entry(project_dir, f"[borrada] Highlight: {display}", "apunte")
@@ -368,12 +490,11 @@ def run_hl_edit(project: Optional[str], text: Optional[str],
         return 0
 
     data = _read_highlights(hl_path)
-    sel  = _select_highlight(data, hl_type, text)
-    if sel is None:
+    idx  = _select_highlight(data, hl_type, text)
+    if idx is None:
         return 1
-    k, i = sel
 
-    item = data["sections"][k][i]
+    item = data["items"][idx]
     if new_text:
         item["text"] = new_text
     if new_link:
@@ -386,7 +507,7 @@ def run_hl_edit(project: Optional[str], text: Optional[str],
 
 def run_hl_list(project: Optional[str] = None,
                 hl_type: Optional[str] = None) -> int:
-    if hl_type and hl_type not in SECTION_MAP:
+    if hl_type and hl_type not in TYPE_EMOJI:
         print(f"Error: tipo '{hl_type}' no válido. Opciones: {', '.join(VALID_TYPES)}")
         return 1
 
@@ -400,32 +521,29 @@ def run_hl_list(project: Optional[str] = None,
 
     total = 0
     for project_dir in dirs:
-        data = _read_highlights(resolve_file(project_dir, "highlights"))
-        keys = [hl_type] if hl_type else list(SECTION_MAP)
+        data  = _read_highlights(resolve_file(project_dir, "highlights"))
+        items = [it for it in data["items"]
+                 if hl_type is None or it["type"] == hl_type]
+        if not items:
+            continue
 
         # Tracked highlights are marked with 🔄 next to their text.
         from core.tracked import load_registry
         tracked_names = set(load_registry(project_dir))  # {filename}
 
         proj_lines = []
-        for k in keys:
-            items = data["sections"].get(k, [])
-            if not items:
-                continue
-            proj_lines.append(f"  {SECTION_MAP[k]}")
-            for item in items:
-                marker = ""
-                link = item.get("link") or ""
-                # link like "./notes/DECISIONS.md" → match basename against registry
-                if link.startswith("./notes/") and link.removeprefix("./notes/") in tracked_names:
-                    marker = "🔄 "
-                proj_lines.append(f"    {marker}{_item_display(item)}")
-            total += len(items)
+        for item in items:
+            marker = ""
+            link = item.get("link") or ""
+            # link like "./notes/DECISIONS.md" → match basename against registry
+            if link.startswith("./notes/") and link.removeprefix("./notes/") in tracked_names:
+                marker = "🔄 "
+            proj_lines.append(f"  {TYPE_EMOJI[item['type']]} {marker}{_item_display(item)}")
+            total += 1
 
-        if proj_lines:
-            print(f"\n[{project_dir.name}]")
-            for line in proj_lines:
-                print(line)
+        print(f"\n[{project_dir.name}]")
+        for line in proj_lines:
+            print(line)
 
     if not total:
         sf = f" ({hl_type})" if hl_type else ""

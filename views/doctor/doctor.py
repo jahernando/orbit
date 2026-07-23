@@ -18,7 +18,7 @@ from core.agenda_cmds import (
     _parse_task_line, _parse_event_line,
     _TASK_HEADER, _MS_HEADER, _EV_HEADER, VALID_RECUR, is_valid_recur,
 )
-from core.highlights import SECTION_MAP
+from core.highlights import TYPE_EMOJI
 
 
 # ── Environment checks (workspace-level, run once in run_doctor) ─────────────
@@ -462,17 +462,16 @@ def _check_agenda(project_name: str, path: Path) -> list:
 
 # ── Highlights validation ─────────────────────────────────────────────────────
 
-_VALID_HEADINGS = set(SECTION_MAP.values())
+_HL_EMOJIS = set(TYPE_EMOJI.values())
 
 
 def _check_highlights(project_name: str, path: Path) -> list:
-    """Validate highlights.md sections and items."""
+    """Validate highlights.md orbit-items (flat unified format, ADR-045)."""
     if not path.exists():
         return []
 
     issues = []
     lines = path.read_text().splitlines()
-    in_section = False
     in_comment = False
 
     for i, line in enumerate(lines):
@@ -491,35 +490,29 @@ def _check_highlights(project_name: str, path: Path) -> list:
                 in_comment = True
             continue
 
-        if s.startswith("## "):
-            if s in _VALID_HEADINGS:
-                in_section = True
-            elif s.startswith("# "):
-                in_section = s.startswith("## ")
-            else:
-                issues.append(Issue(project_name, path.name, i + 1, line,
-                                    f"Sección no reconocida: {s}"))
-                in_section = True  # still parse items
+        # Markdown headers (# title) are header/structure, not items.
+        if s.startswith("#") and not s.startswith("- "):
             continue
 
-        if s.startswith("# "):
-            in_section = False
+        # Item bullets live at column 0; indented lines are item body/notes.
+        if not line.startswith("- "):
             continue
 
-        if in_section:
-            if not s.startswith("- "):
+        rest = line[2:].strip()
+        emoji = rest.split(" ", 1)[0] if rest else ""
+        if emoji not in _HL_EMOJIS:
+            issues.append(Issue(project_name, path.name, i + 1, line,
+                                f"Tipo de highlight no reconocido: {emoji or '(vacío)'}"))
+            # keep checking link balance below
+
+        # Check for malformed markdown links
+        if "[" in s and "]" in s:
+            if s.count("[") != s.count("]"):
                 issues.append(Issue(project_name, path.name, i + 1, line,
-                                    "Entrada debe empezar con '- '"))
-                continue
-            # Check for malformed markdown links
-            if "[" in s and "]" in s:
-                # Should have matching brackets and parens
-                if s.count("[") != s.count("]"):
-                    issues.append(Issue(project_name, path.name, i + 1, line,
-                                        "Corchetes desbalanceados en link"))
-                elif "](" in s and s.count("(") != s.count(")"):
-                    issues.append(Issue(project_name, path.name, i + 1, line,
-                                        "Paréntesis desbalanceados en link"))
+                                    "Corchetes desbalanceados en link"))
+            elif "](" in s and s.count("(") != s.count(")"):
+                issues.append(Issue(project_name, path.name, i + 1, line,
+                                    "Paréntesis desbalanceados en link"))
 
     return issues
 

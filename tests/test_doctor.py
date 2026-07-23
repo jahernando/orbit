@@ -328,43 +328,38 @@ class TestCheckHighlights:
         path = doctor_env["proj"] / "testproj-highlights.md"
         path.write_text(
             "# Highlights\n\n"
-            "## 📎 Referencias\n"
-            "- [Artículo](https://example.com) — Muy bueno\n"
-            "- Texto simple\n\n"
-            "## 💡 Ideas\n"
-            "- Idea interesante\n"
+            "- 📎 [Artículo](https://example.com) #referencia\n"
+            "- 📊 Texto simple #resultado\n"
+            "- 💡 Idea interesante #idea\n"
         )
         issues = _check_highlights("💻testproj", path)
         assert issues == []
 
-    def test_unknown_section(self, doctor_env):
+    def test_unrecognized_type(self, doctor_env):
         path = doctor_env["proj"] / "testproj-highlights.md"
         path.write_text(
             "# Highlights\n\n"
-            "## 🎯 Sección Inventada\n"
-            "- Item\n"
+            "- 🎯 Item de tipo inventado #foo\n"
         )
         issues = _check_highlights("💻testproj", path)
         assert len(issues) == 1
-        assert "no reconocida" in issues[0].msg
+        assert "no reconocido" in issues[0].msg
 
-    def test_item_without_dash(self, doctor_env):
+    def test_body_note_no_issue(self, doctor_env):
         path = doctor_env["proj"] / "testproj-highlights.md"
         path.write_text(
             "# Highlights\n\n"
-            "## 📎 Referencias\n"
-            "Texto sin guión\n"
+            "- 💡 Idea #idea\n"
+            "  nota indentada del cuerpo\n"
         )
         issues = _check_highlights("💻testproj", path)
-        assert len(issues) == 1
-        assert "empezar con '- '" in issues[0].msg
+        assert issues == []
 
     def test_unbalanced_brackets(self, doctor_env):
         path = doctor_env["proj"] / "testproj-highlights.md"
         path.write_text(
             "# Highlights\n\n"
-            "## 📎 Referencias\n"
-            "- [Link roto](https://example.com\n"
+            "- 📎 [Link roto](https://example.com #referencia\n"
         )
         issues = _check_highlights("💻testproj", path)
         assert len(issues) == 1
@@ -564,7 +559,7 @@ class TestCheckProject:
             "# Agenda\n\n## ✅ Tareas\n- [ ] Tarea\n"
         )
         (proj / "testproj-highlights.md").write_text(
-            "# Highlights\n\n## 📎 Referencias\n- Ref\n"
+            "# Highlights\n\n- 📎 Ref #referencia\n"
         )
         issues = check_project(proj)
         assert issues == []
@@ -578,7 +573,7 @@ class TestCheckProject:
             "# Agenda\n\n## 📅 Eventos\n2026-04-01 - Guión malo\n"
         )
         (proj / "testproj-highlights.md").write_text(
-            "# Highlights\n\n## 📎 Referencias\nSin guión\n"
+            "# Highlights\n\n- 🎯 Tipo inventado #foo\n"
         )
         issues = check_project(proj)
         assert len(issues) == 3
