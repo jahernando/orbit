@@ -10,6 +10,20 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### v0.43.0 (2026-07-23) — `highlights.md` al formato de item unificado (orbit-items, sin secciones)
+
+Segundo fichero-verdad que adopta la gramática orbit-item de `agenda.md` ([ADR-046](DECISIONS.md#adr-046--highlightsmd-al-formato-de-item-unificado-retirada-de-las-secciones-por-tipo), extiende [ADR-045](DECISIONS.md#adr-045--formato-de-item-unificado-como-verdad--retirada-del-eje-ff)).
+
+**Lista plana** — `highlights.md` deja de organizarse en secciones `## <emoji> <Tipo>` y pasa a una lista plana de orbit-items: `- <emoji-tipo> <texto|[link](url)> #primaria` a columna 0, con nota opcional indentada dos espacios (la nota ahora **sobrevive** al round-trip; antes se descartaba). El tipo vive en el ítem: el emoji lo discrimina y la etiqueta primaria lo duplica (redundante hoy, deja hueco a `#etiquetas` libres detrás).
+
+**Tabla canónica de tipos** (emoji único por tipo, resuelve la colisión `📊` Resultados/Evaluaciones y la discrepancia código/plantilla): `refs`📎`#referencia` · `results`📊`#resultado` · `decisions`📌`#decisión` · `ideas`💡`#idea` · `evals`🔍`#evaluación` · `plans`🗓️`#plan` · `contacts`👥`#contacto`.
+
+**Migración perezosa** — el lector reconoce las secciones legacy emparejando por la **palabra** del heading (no por el emoji, para absorber `📚/📎`, `🔬/📊`, `🏛️/📌`…) y reescribe plano en el primer `add/drop/edit`. Cabecera preservada.
+
+**Interno** — modelo `{header, items:[…]}` (antes `{header, sections}`); serializador/parser nuevos + lector legacy en `core/highlights.py`; `_count_highlights` (stats) y `_check_highlights` (doctor: valida emoji-tipo reconocido + links balanceados) adaptados; import muerto retirado en `project_view.py`; plantilla `📐templates/highlights.md` reescrita. El auto-log `#headline` se conserva. Suite: 1868 pass. Sin cambios de CLI (`hl add/drop/edit/list` idénticos).
+
+---
+
 ### v0.42.0 (2026-07-23) — Followups tipados: verbo `<type> fup`, `--fup` al alta/edición y `clean`
 
 Ergonomía de los followups (`⏩`), sin cambiar el modelo de datos (siguen siendo líneas de cuerpo `⏩ FECHA [desc]`, ADR-043). Motivación: antes solo se podían añadir con el paraguas `cita fup` (español+inglés) o el interrogador `-i`, y borrar exigía la fecha exacta (`--drop DATE`).

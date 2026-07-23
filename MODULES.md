@@ -60,7 +60,7 @@ graph TB
 
     subgraph TRUTH [B · md = verdad]
         log["log · 364"]
-        highlights["highlights · 457"]
+        highlights["highlights · 553"]
         notes["notes · 474"]
         agenda_cmds["agenda_cmds · 2245 ⚠️"]
         tasks["tasks · 318"]

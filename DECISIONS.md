@@ -944,6 +944,26 @@ Tres fricciones reales:
 
 ---
 
+## ADR-046 — `highlights.md` al formato de item unificado (retirada de las secciones por tipo)
+
+**Estado**: aceptada (2026-07-23). Extiende [[ADR-045]] al segundo fichero-verdad.
+
+**Contexto**: `highlights.md` organizaba los apuntes curados en **secciones por tipo** (`## 📎 Referencias`, `## 💡 Ideas`, …) con bullets planos `- [texto](link)` y sin etiquetas inline. Tras el flip de `agenda.md` a orbit-items (ADR-045), highlights quedaba como la excepción con su propia gramática. Además había una discrepancia larvada: los emojis de sección diferían entre el código (`SECTION_MAP`), la plantilla (`📚`/`🔬`/`🏛️`) y los ficheros reales, con una colisión (`📊` en Resultados y en Evaluaciones), y el parser sólo reconocía los del código.
+
+**Decisión**:
+1. **Lista plana de orbit-items**: `highlights.md` pasa a la misma gramática que `agenda.md` — un ítem por línea a columna 0: `- <emoji-tipo> <texto|[link](url)> #primaria [#libres…]`, con una nota opcional indentada dos espacios (que ahora **sí** sobrevive al round-trip; antes se perdía). Se **abandonan las secciones**; el tipo vive en el propio ítem.
+2. **Emoji = discriminador, `#primaria` lo duplica**: como en agenda (`✏️`+`#tarea`), el emoji codifica el tipo y la etiqueta primaria lo replica — redundante hoy, pero es la costura para colgar `#etiquetas` libres detrás en el futuro. Por eso cada tipo tiene **emoji único**; se fija la tabla canónica: `refs`📎`#referencia` · `results`📊`#resultado` · `decisions`📌`#decisión` · `ideas`💡`#idea` · `evals`🔍`#evaluación` · `plans`🗓️`#plan` · `contacts`👥`#contacto`.
+3. **Migración perezosa** (como ADR-045): lector tolerante que reconoce las secciones legacy **emparejando por la palabra** española del heading (no por el emoji, para absorber la discrepancia `📚/📎`, `🔬/📊`, `🏛️/📌`, `📊/🔍`); se reescribe plano en el primer `add/drop/edit`. Cabecera del fichero preservada verbatim.
+4. **Consumidores adaptados**: el modelo pasa de `{header, sections:{k:[…]}}` a `{header, items:[…]}` (cada ítem con su `type`); adaptados `core/stats.py` (`_count_highlights`) y `views/doctor/doctor.py` (`_check_highlights` valida emoji-tipo reconocido + links balanceados). El auto-log con `#headline` en el logbook es ortogonal y se conserva.
+
+**Consecuencias**:
+- Pros: las tres verdades editables (agenda + highlights + logbook pendiente) convergen a una gramática; se cierra la discrepancia de emojis y la colisión `📊`; la nota de cuerpo deja de perderse. Migración sin pérdida, reversible por git, validada sobre el fichero real de `mission`.
+- Contras: se pierde el agrupado visual por tipo dentro del fichero (aceptado explícitamente por el usuario — el tipo sigue legible por el emoji y filtrable por `#etiqueta`); `hl list` agrupa en la salida sólo como capa de presentación.
+
+**Coexistencia**: el lector legacy se queda (es el motor de migración), no hay fase destructiva que retirar.
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

@@ -216,11 +216,21 @@ orbit hl drop [<project>] ["<text>"] [--type TYPE] [--force]
 orbit hl edit [<project>] ["<text>"] [--text "<new>"] [--link URL] [--type TYPE] [--editor E]
 ```
 
+**Formato** (v0.43, ADR-046): `highlights.md` es una **lista plana de orbit-items** (misma gramática que `agenda.md`), sin secciones. Un ítem por línea a columna 0: guión, emoji-tipo, texto o `[link](url)`, y la etiqueta primaria; una nota opcional cuelga indentada dos espacios. El emoji **es** el discriminador de tipo (por eso cada tipo tiene emoji único) y `#etiqueta` lo duplica, dejando sitio a más `#etiquetas` libres detrás.
+
+```
+- 📎 [Paper](https://…) #referencia
+- 💡 Idea a conservar #idea
+  nota opcional del ítem
+```
+
+Ficheros antiguos con secciones `## <emoji> <Palabra>` se **migran perezosamente** (se leen tolerantes y se reescriben planos en el primer `add/drop/edit`).
+
 - `<file|url>`: argumento posicional opcional. URL → enlaza el texto. Fichero local → routing por extensión (`.md` va a `notes/`, resto va a `cloud/hls/`) y pregunta si import (copia) o link (symlink)
 - `--import`: copia el fichero al destino sin preguntar. Para no-md añade prefijo `YYYY-MM-DD_`
 - `--no-date`: con `--import` no-md, suprime el prefijo `YYYY-MM-DD_` (el nombre del fichero llega tal cual; el usuario asume el riesgo de colisión)
 - `--link`: symlink relativo al destino sin preguntar. Para `.md` además registra en `.orbit-tracked.json` (externa)
-- `--type`: `refs` (📎) · `results` (📊) · `decisions` (📌) · `ideas` (💡) · `evals` (🔍) · `plans` (🗓️)
+- `--type`: `refs` (📎 `#referencia`) · `results` (📊 `#resultado`) · `decisions` (📌 `#decisión`) · `ideas` (💡 `#idea`) · `evals` (🔍 `#evaluación`) · `plans` (🗓️ `#plan`) · `contacts` (👥 `#contacto`)
 - `--date`: añade fecha al final del texto — `--date` (hoy), `--date tomorrow`, `--date 2026-04-15`
 - `drop` pide confirmación (defecto **No**); `--force` la omite
 - **Auto-log**: cada `hl add` escribe también una entrada en el logbook con tag `#headline` + el tipo mapeado (`refs→#referencia`, `results→#resultado`, `decisions→#decision`, `ideas→#idea`, `evals→#evaluacion`, `plans→#plan`). Si la highlight tiene link, queda también en el log
@@ -886,7 +896,7 @@ orbit doctor --fix [<project>]  # revisa y ofrece corregir
 
 El doctor hace 3 tipos de check (mismo comando, salida segmentada):
 
-1. **Sintaxis por proyecto** — logbook (fechas, tipos, emojis), agenda (marcadores, recurrencia, eventos), highlights (secciones, items, links), cronogramas.
+1. **Sintaxis por proyecto** — logbook (fechas, tipos, emojis), agenda (marcadores, recurrencia, eventos), highlights (orbit-items: emoji-tipo reconocido, links balanceados), cronogramas.
 2. **Refs por proyecto** — para cada link `[…](target)` en logbook + highlights, verifica que el target existe:
    - `./cloud/...` → busca en `<workspace>/<proj>/cloud/...` (el symlink a cloud_root)
    - `./notes/...` → busca en `<proj>/notes/...` (propia o symlink a externa)

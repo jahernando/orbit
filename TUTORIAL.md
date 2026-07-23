@@ -292,7 +292,17 @@ hl add next-kr "Calibración relativa como estándar" --type decisions
 hl list next-kr
 ```
 
-Tipos: `refs` · `results` · `decisions` · `ideas` · `evals`
+Tipos: `refs` (📎) · `results` (📊) · `decisions` (📌) · `ideas` (💡) · `evals` (🔍) · `plans` (🗓️) · `contacts` (👥)
+
+En el fichero cada highlight es un **orbit-item** (la misma línea que en `agenda.md`): guión, emoji-tipo, texto o link, y etiqueta. Es una lista plana, sin secciones:
+
+```
+- 📎 [González 2024](./refs/g2024.pdf) #referencia
+- 📊 σ/E = 2.3% @ 1 MeV #resultado
+- 📌 Calibración relativa como estándar #decisión
+```
+
+El emoji marca el tipo (por eso lo puedes filtrar de un vistazo) y `#etiqueta` lo acompaña. Ficheros antiguos con secciones se migran solos la primera vez que editas. Puedes colgar una nota de un ítem indentándola dos espacios.
 
 Cada `hl add` deja también una entrada en el logbook con tag `#headline` + el tipo mapeado (refs→#referencia, results→#resultado, etc.). El link, si lo hay, queda en la entrada del log también — no necesitas hacer un `note` adicional.
 
