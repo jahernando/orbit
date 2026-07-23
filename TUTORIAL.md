@@ -239,12 +239,15 @@ cita drop next-kr "Congreso"        # cancela cualquier tipo
 
 Un **followup** es un empujón blando que cuelgas bajo cualquier cita con una fecha: la cita reaparece en "Decidir hoy" cuando esa fecha llega, pero **no** se marca como atrasada (a diferencia de una fecha de compromiso) y no acumula contadores. Puedes poner varios.
 
+Se gestionan con el verbo tipado `fup` (uno por cita: `task fup`, `ms fup`, `ev fup`, `rem fup`) o directamente al crear/editar con `--fup`:
+
 ```bash
-cita fup next-kr "Inscripción XENON" 2026-06-11 --desc "deadline"   # recuérdamela el 11-jun
-cita fup next-kr "Inscripción XENON" 2026-06-11 --drop              # quita ese aviso
+task add next-kr "Inscripción XENON" --fup 2026-06-11          # la creo ya con el aviso
+task fup next-kr "Inscripción XENON" 2026-06-11 --desc "deadline"   # se lo añado después
+task fup next-kr "Inscripción XENON" clean                     # lo quito (si hay varios, elijo por número)
 ```
 
-En el `agenda.md` queda como una línea indentada bajo la cita: `⏩ 2026-06-11 deadline`.
+La fecha admite proxies: `today`, `mañana`, `monday`, `+3`… En el `agenda.md` queda como una línea indentada bajo la cita: `⏩ 2026-06-11 deadline`.
 
 ### Modo guiado al crear (`-i`)
 

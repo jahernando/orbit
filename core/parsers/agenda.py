@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from core.parsers._helpers import (
     _add_project_text, _add_add_args, _add_edit_args, _add_drop_args,
-    _add_crono_subparsers,
+    _add_crono_subparsers, _add_fup_subparser,
 )
 
 
@@ -40,6 +40,8 @@ def register_task(subparsers):
 
     tn_log = tsknew_sub.add_parser("log", help="Create logbook entry from a task")
     _add_project_text(tn_log, project_required=False)
+
+    _add_fup_subparser(tsknew_sub)
 
     # composite task = cronograma. Decided 2026-05-15: cronograma is a
     # composite task. The flat `crono X` top-level remains as a daily-use
@@ -72,6 +74,8 @@ def register_ms(subparsers):
     ms_log = ms_sub.add_parser("log", help="Create logbook entry from a milestone")
     _add_project_text(ms_log, project_required=False)
 
+    _add_fup_subparser(ms_sub)
+
 
 def register_ev(subparsers):
     """``orbit ev {add,drop,edit,log}``."""
@@ -102,6 +106,8 @@ def register_ev(subparsers):
 
     ev_log = ev_sub.add_parser("log", help="Create logbook entry from an event")
     _add_project_text(ev_log, project_required=False)
+
+    _add_fup_subparser(ev_sub)
 
 
 def register_cita(subparsers):
@@ -172,3 +178,5 @@ def register_reminder(subparsers):
 
     rem_log = rem_sub.add_parser("log", help="Create logbook entry from a reminder")
     _add_project_text(rem_log, project_required=False)
+
+    _add_fup_subparser(rem_sub)

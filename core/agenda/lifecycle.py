@@ -607,6 +607,7 @@ def _generic_add(type_name: str, project: str, text: str,
                  end_date=None,
                  agenda: Optional[str] = None,
                  room: Optional[str] = None,
+                 fup: Optional[str] = None,
                  ask: bool = False) -> int:
     """CLI wrapper around :mod:`core.api` ``add_*`` functions.
 
@@ -652,6 +653,17 @@ def _generic_add(type_name: str, project: str, text: str,
 
     if cfg["has_ring"] and date_val and time_val and not ring:
         ring = _prompt_and_validate_ring()
+
+    # Inline followup (--fup DATE): one soft-nudge ⏩ attached at creation.
+    if fup:
+        from core.dateparse import parse_date as _parse_date
+        from core.agenda.display import _followup_line
+        fup_norm = _parse_date(fup)
+        if not _valid_date(fup_norm):
+            print(f"⚠️  Fecha --fup '{fup}' no reconocida. "
+                  "Usa: YYYY-MM-DD, today, mañana, ...")
+            return 1
+        followups = followups + [_followup_line(fup_norm)]
 
     notes_in = ([desc] if desc else []) + followups or None
 
@@ -830,9 +842,21 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
                   new_desc=None, new_end=None,
                   new_agenda: Optional[str] = None,
                   new_room: Optional[str] = None,
+                  fup: Optional[str] = None,
                   force=False, occurrence=False, series=False) -> int:
     """Generic edit for all 4 appointment types."""
     cfg = _TYPE_CONFIG[type_name]
+
+    # Inline followup (--fup DATE): normalise/validate up front so a bad date
+    # fails before any mutation. Attached to the item that gets written below.
+    fup_norm = None
+    if fup:
+        from core.dateparse import parse_date as _parse_date
+        fup_norm = _parse_date(fup)
+        if not _valid_date(fup_norm):
+            print(f"⚠️  Fecha --fup '{fup}' no reconocida. "
+                  "Usa: YYYY-MM-DD, today, mañana, ...")
+            return 1
 
     # Normalize recur
     if new_recur and new_recur != "none":
@@ -881,6 +905,9 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
             if new_room is not None: edits["room"] = new_room
             new_item, next_info = _make_edit_occurrence(item, items, cfg, edits,
                                                         type_name=type_name)
+            if fup_norm:
+                from core.agenda.display import add_followup
+                add_followup(new_item, fup_norm)
             _write_agenda(agenda_path, data)
             from core.agenda.display import format_item_block
             print(format_item_block(type_name, new_item,
@@ -908,6 +935,9 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
                                        _AGENDA_NOTE_PREFIX, new_agenda)
     item["notes"] = _upsert_emoji_note(item["notes"],
                                        _ROOM_NOTE_PREFIX, new_room)
+    if fup_norm:
+        from core.agenda.display import add_followup
+        add_followup(item, fup_norm)
 
     _write_agenda(agenda_path, data)
     from core.agenda.display import format_item_block

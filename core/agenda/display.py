@@ -146,6 +146,24 @@ def drop_followup(item: dict, date_val: str) -> list:
     return removed
 
 
+def drop_followup_at(item: dict, index: int) -> Optional[str]:
+    """Drop the *index*-th followup (0-based, in body order). Returns the
+    removed line, or ``None`` if the index is out of range.
+
+    Positional (not date-keyed) so ``clean`` can delete one exact followup
+    even when several share a date — the numbered selector maps to body
+    order, this removes that precise line.
+    """
+    notes = item.get("notes") or []
+    fup_positions = [i for i, n in enumerate(notes)
+                     if n.startswith(_FOLLOWUP_NOTE_PREFIX)]
+    if index < 0 or index >= len(fup_positions):
+        return None
+    removed = notes.pop(fup_positions[index])
+    item["notes"] = notes
+    return removed
+
+
 # ── Orbit-item echo (single serializer, design §4 / ADR-044) ───────────────
 
 _ORBIT_ID_TOKEN = re.compile(r"\s*\[orbit:[0-9a-f]{8}\]")

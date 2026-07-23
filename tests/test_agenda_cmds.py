@@ -509,6 +509,148 @@ class TestRunCitaFup:
         assert "fecha" in capsys.readouterr().out.lower()
 
 
+class TestDropFollowupAt:
+    """drop_followup_at: positional (index) removal, exact even on same date."""
+
+    def test_removes_nth_in_body_order(self):
+        from core.agenda.display import drop_followup_at
+        item = {"notes": ["📋 https://x", "⏩ 2026-06-11 a", "⏩ 2026-06-11 b"]}
+        removed = drop_followup_at(item, 1)          # second followup
+        assert removed == "⏩ 2026-06-11 b"
+        assert item["notes"] == ["📋 https://x", "⏩ 2026-06-11 a"]
+
+    def test_out_of_range_returns_none(self):
+        from core.agenda.display import drop_followup_at
+        item = {"notes": ["⏩ 2026-06-11"]}
+        assert drop_followup_at(item, 5) is None
+        assert item["notes"] == ["⏩ 2026-06-11"]
+
+
+class TestRunFupTyped:
+    """`<type> fup ...`: typed add/clean scoped to one appointment type."""
+
+    def _read(self, proj):
+        from core.agenda_cmds import _read_agenda
+        return _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
+
+    def test_add_scoped_to_type(self, proj):
+        from core import api
+        from core.agenda.runners import run_fup
+        api.add_task(project=proj.name, text="Inscripción XENON")
+        rc = run_fup("task", proj.name, "XENON", "2026-06-11", desc="ping")
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1]["notes"] == ["⏩ 2026-06-11 ping"]
+
+    def test_add_does_not_match_other_type(self, proj, capsys):
+        # A task and an event share the title; `task fup` must stay on the task.
+        from core import api
+        from core.agenda.runners import run_fup
+        api.add_task(project=proj.name, text="Revisar paper")
+        api.add_event(project=proj.name, text="Revisar paper", date="2026-09-01")
+        rc = run_fup("task", proj.name, "Revisar paper", "2026-06-11")
+        assert rc == 0
+        data = self._read(proj)
+        assert data["tasks"][-1]["notes"] == ["⏩ 2026-06-11"]
+        assert data["events"][-1].get("notes") in (None, [])
+
+    def test_add_natural_date_normalized(self, proj):
+        from core import api
+        from core.agenda.runners import run_fup
+        from datetime import date as _date
+        api.add_reminder(project=proj.name, text="Pagar", date="2026-06-01", time="10:00")
+        run_fup("reminder", proj.name, "Pagar", "today")
+        assert self._read(proj)["reminders"][-1]["notes"] == [f"⏩ {_date.today().isoformat()}"]
+
+    def test_add_invalid_date_returns_1(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_fup
+        api.add_task(project=proj.name, text="X")
+        rc = run_fup("task", proj.name, "X", "garbage-xyz")
+        assert rc == 1
+        assert "no reconocida" in capsys.readouterr().out.lower()
+
+    def test_clean_single_auto_deletes(self, proj):
+        from core import api
+        from core.agenda.runners import run_fup
+        api.add_task(project=proj.name, text="X")
+        run_fup("task", proj.name, "X", "2026-06-11")
+        rc = run_fup("task", proj.name, "X", "clean")
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1].get("notes") in (None, [])
+
+    def test_clean_multiple_numbered(self, proj, monkeypatch):
+        from core import api
+        from core.agenda.runners import run_fup
+        api.add_task(project=proj.name, text="X")
+        run_fup("task", proj.name, "X", "2026-06-11")
+        run_fup("task", proj.name, "X", "2026-07-01", desc="segundo")
+        # Pick #2 in the numbered list → removes the July followup.
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "2")
+        rc = run_fup("task", proj.name, "X", "clean")
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1]["notes"] == ["⏩ 2026-06-11"]
+
+    def test_clean_none_returns_1(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_fup
+        api.add_task(project=proj.name, text="X")
+        rc = run_fup("task", proj.name, "X", "clean")
+        assert rc == 1
+        assert "no hay followups" in capsys.readouterr().out.lower()
+
+
+class TestFupOnAddEdit:
+    """--fup DATE inline on add / edit for the four types."""
+
+    def _read(self, proj):
+        from core.agenda_cmds import _read_agenda
+        return _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
+
+    def test_fup_on_task_add(self, proj):
+        from core.agenda.runners import run_task_add
+        rc = run_task_add(proj.name, "Nueva tarea", fup="2026-08-01")
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1]["notes"] == ["⏩ 2026-08-01"]
+
+    def test_fup_on_event_add_with_desc(self, proj):
+        from core.agenda.runners import run_ev_add
+        rc = run_ev_add(proj.name, "Charla", date_val="2026-08-01",
+                        desc="sala 2", fup="2026-07-20")
+        assert rc == 0
+        notes = self._read(proj)["events"][-1]["notes"]
+        assert "sala 2" in notes
+        assert "⏩ 2026-07-20" in notes
+
+    def test_fup_on_add_invalid_date_returns_1(self, proj, capsys):
+        from core.agenda.runners import run_task_add
+        rc = run_task_add(proj.name, "T", fup="garbage-xyz")
+        assert rc == 1
+        assert "no reconocida" in capsys.readouterr().out.lower()
+
+    def test_fup_natural_date_on_add_normalized(self, proj):
+        from core.agenda.runners import run_task_add
+        from datetime import date as _date
+        run_task_add(proj.name, "Hoy", fup="today")
+        assert self._read(proj)["tasks"][-1]["notes"] == [f"⏩ {_date.today().isoformat()}"]
+
+    def test_fup_on_task_edit(self, proj):
+        from core import api
+        from core.agenda.runners import run_task_edit
+        api.add_task(project=proj.name, text="Editar")
+        rc = run_task_edit(proj.name, "Editar", fup="2026-08-05")
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1]["notes"] == ["⏩ 2026-08-05"]
+
+    def test_fup_on_edit_invalid_date_returns_1(self, proj, capsys):
+        from core import api
+        from core.agenda.runners import run_task_edit
+        api.add_task(project=proj.name, text="Editar")
+        rc = run_task_edit(proj.name, "Editar", fup="garbage-xyz")
+        assert rc == 1
+        assert "no reconocida" in capsys.readouterr().out.lower()
+
+
 class TestRunCitaDoneDrop:
     """cita done / cita drop: cross-type locate, delegate to per-type runner."""
 

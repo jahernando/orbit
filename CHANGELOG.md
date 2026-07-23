@@ -10,6 +10,22 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### v0.42.0 (2026-07-23) — Followups tipados: verbo `<type> fup`, `--fup` al alta/edición y `clean`
+
+Ergonomía de los followups (`⏩`), sin cambiar el modelo de datos (siguen siendo líneas de cuerpo `⏩ FECHA [desc]`, ADR-043). Motivación: antes solo se podían añadir con el paraguas `cita fup` (español+inglés) o el interrogador `-i`, y borrar exigía la fecha exacta (`--drop DATE`).
+
+**Verbo tipado `fup`** — `task fup` / `ms fup` / `ev fup` / `rem fup`: `<type> fup <project> "<text>" <DATE> [--desc]` añade un `⏩` acotado al tipo (un `task fup` nunca engancha un evento homónimo; localiza vía el mismo `_cita_locate` con filtro `kinds`). El tercer posicional doble como selector de verbo: la palabra reservada `clean` abre el **borrador numerado** (`clean` nunca es una fecha → sin colisión).
+
+**`clean`** — `<type> fup <project> "<text>" clean` lista los `⏩` de la cita numerados y borra el elegido; si solo hay uno, lo borra directo. Borrado **posicional** por índice de cuerpo (`drop_followup_at`), preciso aun cuando varios followups comparten fecha (a diferencia de `--drop`, que borra por clave-fecha).
+
+**`--fup DATE` al alta y edición** — flag nuevo en `add` y `edit` de los 4 tipos: cuelga **un** `⏩` (fecha sola, con proxies `today`/`monday`/`+N`) en la creación o edición no interactivas. Para varios o con descripción, el verbo `fup` o `-i`.
+
+**`--des`** — alias de `--desc` en `add`/`edit`/`fup`.
+
+Los verbos que mutan siguen imprimiendo el orbit-item desde el serializador único (ADR-044). Suite: 1880 passed, 1 skipped (+18 tests nuevos). El paraguas `cita fup` (cross-type, `--drop` por fecha) se mantiene por compatibilidad pero queda desaconsejado; su retirada + la del resto del umbrella `cita` (conservando `clog`) se hará en una entrega posterior tras validar los verbos tipados en uso.
+
+---
+
 ### v0.41.0 (2026-07-09) — Formato de item unificado como verdad · retirada del eje `ff` (F5)
 
 Flip del writer de `agenda.md` al **formato de item unificado** + retirada del campo `ff` y los verbos `plan`/`pending`. Diseño en `claude/designs/items_unified.md`; decisión completa en [ADR-045](DECISIONS.md#adr-045--formato-de-item-unificado-como-verdad--retirada-del-eje-ff).

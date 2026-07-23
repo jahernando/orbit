@@ -144,13 +144,20 @@ orbit ev add next-kr "WG12" --date 2026-05-08 --time 12:00 \
 
 El interrogador `add … -i` rellena los huecos opcionales (ring/desc/room/fecha + followups) de forma guiada (solo en terminal interactiva). Todo verbo que muta una cita confirma imprimiendo el orbit-item resultante tal cual queda en `agenda.md`.
 
-### Citas — paraguas `cita` y followups
+### Followups (`⏩`) y paraguas `cita`
 
-`cita` opera sobre cualquiera de las 4 citas sin indicar el tipo (localiza por proyecto + texto). Un **followup** (`⏩ FECHA` colgado bajo la cita) es un empujón blando que la hace aflorar en "Decidir hoy" cuando vence, sin marcarla atrasada y sin estado.
+Un **followup** (`⏩ FECHA` colgado bajo la cita) es un empujón blando que la hace aflorar en "Decidir hoy" cuando vence, sin marcarla atrasada y sin estado. Se gestiona con el verbo tipado `fup` (por cita) y con `--fup` al crear/editar:
 
 ```bash
-orbit cita fup  next-kr "Inscripción" 2026-06-11 --desc "deadline"   # añade followup
-orbit cita fup  next-kr "Inscripción" 2026-06-11 --drop              # borra ese followup
+orbit task add  next-kr "Inscripción" --fup 2026-06-11        # crea la tarea con un ⏩
+orbit task fup  next-kr "Inscripción" 2026-06-11 --desc "deadline"  # añade ⏩ a una cita
+orbit task fup  next-kr "Inscripción" clean                   # borra un ⏩ (listado si hay varios)
+orbit ev edit   next-kr "Congreso"   --fup monday             # añade un ⏩ al editar
+```
+
+`cita` opera además sobre cualquiera de las 4 citas sin indicar el tipo (localiza por proyecto + texto):
+
+```bash
 orbit cita done next-kr "Reproducir"        # marca hecha (task/ms; rechaza ev/reminder)
 orbit cita drop next-kr "Congreso"          # cancela cualquier tipo
 orbit clog                                  # logbook de la cita activa ahora

@@ -74,6 +74,7 @@ def _add_args(args):
         date_val=_d(_ga(args, "date")), recur=_ga(args, "recur"),
         until=_d(_ga(args, "until")), ring=_ga(args, "ring"),
         time_val=_ga(args, "time"), desc=_ga(args, "desc"),
+        fup=_ga(args, "fup"),
         ask=_ga(args, "ask", False),
     )
 
@@ -99,6 +100,7 @@ def _edit_args(args):
         new_ring=_ga(args, "new_ring"),
         new_time=_ga(args, "new_time"),
         new_desc=_ga(args, "new_desc"),
+        fup=_ga(args, "fup"),
         force=_ga(args, "force", False),
         occurrence=_ga(args, "occurrence", False),
         series=_ga(args, "series", False),
@@ -499,6 +501,13 @@ def cmd_commit(args):
                       skip_actions=skip)
 
 
+def _cmd_fup(kind, args):
+    """Dispatch the typed ``<type> fup <project> <title> <DATE|clean>`` verb."""
+    from core.agenda.runners import run_fup
+    return run_fup(kind, _ga(args, "project"), _ga(args, "text"),
+                   _ga(args, "target"), desc=_ga(args, "desc"))
+
+
 def cmd_task_new(args):
     """Task subcommand dispatcher."""
     action = _ga(args, "action") or "add"
@@ -509,6 +518,7 @@ def cmd_task_new(args):
     if action == "edit":
         return run_task_edit(**_edit_args(args))
     if action == "log":    return run_task_log(project=_ga(args, "project"), text=_ga(args, "text"))
+    if action == "fup":    return _cmd_fup("task", args)
     if action == "crono":  return cmd_crono(args)
     return 1
 
@@ -521,6 +531,7 @@ def cmd_ms(args):
     if action == "drop":   return run_ms_drop(**_drop_args(args))
     if action == "edit":   return run_ms_edit(**_edit_args(args))
     if action == "log":    return run_ms_log(project=_ga(args, "project"), text=_ga(args, "text"))
+    if action == "fup":    return _cmd_fup("milestone", args)
     return 1
 
 
@@ -557,6 +568,8 @@ def cmd_ev(args):
     # list: use "ls ev" instead
     if action == "log":
         return run_ev_log(project=_ga(args, "project"), text=_ga(args, "text"))
+    if action == "fup":
+        return _cmd_fup("event", args)
     return 1
 
 
@@ -597,7 +610,8 @@ def cmd_reminder(args):
             project=args.project, text=args.text,
             date_val=_d(args.date), time_val=args.time,
             recur=_ga(args, "recur"), until=_d(_ga(args, "until")),
-            desc=_ga(args, "desc"), ask=_ga(args, "ask", False))
+            desc=_ga(args, "desc"), fup=_ga(args, "fup"),
+            ask=_ga(args, "ask", False))
     if action == "drop":   return run_reminder_drop(**_drop_args(args))
     if action == "edit":
         return run_reminder_edit(
@@ -607,11 +621,12 @@ def cmd_reminder(args):
             new_time=_ga(args, "new_time"),
             new_recur=_ga(args, "new_recur"),
             new_until=_d(_ga(args, "new_until")) or _ga(args, "new_until"),
-            new_desc=_ga(args, "new_desc"),
+            new_desc=_ga(args, "new_desc"), fup=_ga(args, "fup"),
             force=_ga(args, "force", False),
             occurrence=_ga(args, "occurrence", False),
             series=_ga(args, "series", False))
     if action == "log":    return run_reminder_log(project=_ga(args, "project"), text=_ga(args, "text"))
+    if action == "fup":    return _cmd_fup("reminder", args)
     # list: use "ls reminders" instead
     return 1
 

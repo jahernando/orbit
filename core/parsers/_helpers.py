@@ -57,14 +57,16 @@ def _add_project_text(p, project_required=True):
 
 
 def _add_add_args(p, date_required=False, time_required=False, has_ring=True):
-    """``--date``, ``--recur``, ``--until``, ``--time``, ``--desc``, ``--ring``."""
+    """``--date``, ``--recur``, ``--until``, ``--time``, ``--desc``, ``--ring``, ``--fup``."""
     p.add_argument("--date", required=date_required, default=None, help="Date: YYYY-MM-DD, today, tomorrow...")
     p.add_argument("--recur", default=None, help="Recurrence: daily, weekly, monthly, weekdays, ...")
     p.add_argument("--until", default=None, help="End date for recurrence YYYY-MM-DD")
     p.add_argument("--time", required=time_required, default=None, help="Time HH:MM")
-    p.add_argument("--desc", default=None, help="Description (links, notes)")
+    p.add_argument("--desc", "--des", dest="desc", default=None, help="Description (links, notes)")
     if has_ring:
         p.add_argument("--ring", default=None, help="Reminder: 1d, 2h, HH:MM, YYYY-MM-DD HH:MM")
+    p.add_argument("--fup", default=None, metavar="DATE",
+                   help="Attach a ⏩ followup on this date (YYYY-MM-DD, monday, +3, ...)")
     p.add_argument("-i", "--ask", dest="ask", action="store_true",
                    help="Guided mode: prompt for the optional gaps (ring/desc/room/followups); TTY only")
 
@@ -77,7 +79,9 @@ def _add_edit_args(p, has_end=False, has_end_time=False):
     p.add_argument("--until", dest="new_until", default=None, help="End date (or 'none')")
     p.add_argument("--ring", dest="new_ring", default=None, help="New ring (or 'none')")
     p.add_argument("--time", dest="new_time", default=None, help="New time HH:MM (or 'none')")
-    p.add_argument("--desc", dest="new_desc", default=None, help="New description (or 'none')")
+    p.add_argument("--desc", "--des", dest="new_desc", default=None, help="New description (or 'none')")
+    p.add_argument("--fup", default=None, metavar="DATE",
+                   help="Attach a ⏩ followup on this date (YYYY-MM-DD, monday, +3, ...)")
     if has_end:
         p.add_argument("--end", "--end-date", dest="new_end", default=None, help="End date or 'none'")
     if has_end_time:
@@ -92,6 +96,22 @@ def _add_drop_args(p):
     p.add_argument("--force", action="store_true", help="Skip confirmation")
     p.add_argument("-o", dest="occurrence", action="store_true", help="Drop this occurrence only")
     p.add_argument("-s", dest="series", action="store_true", help="Drop the entire series")
+
+
+def _add_fup_subparser(sub):
+    """Add the typed ``fup`` verb to a type's ``add_subparsers()`` object.
+
+    ``<type> fup <project> <title> <DATE>``   → attach a ⏩ followup
+    ``<type> fup <project> <title> clean``    → numbered remover
+    The third positional doubles as verb selector (``clean`` is never a date).
+    """
+    fp = sub.add_parser("fup", help="Add a ⏩ followup (or `clean` to remove one)")
+    fp.add_argument("project", help="Project name")
+    fp.add_argument("text", help="Substring match on the cita title")
+    fp.add_argument("target", metavar="DATE|clean",
+                    help="Followup date (YYYY-MM-DD, monday, +3, ...) or 'clean' to remove one")
+    fp.add_argument("--desc", "--des", dest="desc", default=None,
+                    help="Optional followup note (ignored with 'clean')")
 
 
 def _add_crono_subparsers(sub):

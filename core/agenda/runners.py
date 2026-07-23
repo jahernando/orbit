@@ -29,10 +29,11 @@ from core.agenda.lifecycle import (
 def run_task_add(project: str, text: str, date_val: Optional[str] = None,
                  recur: Optional[str] = None, until: Optional[str] = None,
                  ring: Optional[str] = None, time_val: Optional[str] = None,
-                 desc: Optional[str] = None, ask: bool = False) -> int:
+                 desc: Optional[str] = None, fup: Optional[str] = None,
+                 ask: bool = False) -> int:
     return _generic_add("task", project, text, date_val=date_val, recur=recur,
                         until=until, ring=ring, time_val=time_val, desc=desc,
-                        ask=ask)
+                        fup=fup, ask=ask)
 
 
 def run_task_done(project: Optional[str], text: Optional[str]) -> int:
@@ -98,7 +99,7 @@ def run_task_edit(project: Optional[str], text: Optional[str],
                   new_text: Optional[str] = None, new_date: Optional[str] = None,
                   new_recur: Optional[str] = None, new_until: Optional[str] = None,
                   new_ring: Optional[str] = None, new_time: Optional[str] = None,
-                  new_desc: Optional[str] = None,
+                  new_desc: Optional[str] = None, fup: Optional[str] = None,
                   force: bool = False, occurrence: bool = False,
                   series: bool = False) -> int:
     project_dir = _resolve_project(project)
@@ -109,7 +110,7 @@ def run_task_edit(project: Optional[str], text: Optional[str],
     return _generic_edit("task", project_dir, data, agenda_path, text,
                          new_text=new_text, new_date=new_date, new_time=new_time,
                          new_recur=new_recur, new_until=new_until, new_ring=new_ring,
-                         new_desc=new_desc,
+                         new_desc=new_desc, fup=fup,
                          force=force, occurrence=occurrence, series=series)
 
 
@@ -197,9 +198,11 @@ def run_task_log(project: Optional[str], text: Optional[str]) -> int:
 def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
                recur: Optional[str] = None, until: Optional[str] = None,
                ring: Optional[str] = None, time_val: Optional[str] = None,
-               desc: Optional[str] = None, ask: bool = False) -> int:
+               desc: Optional[str] = None, fup: Optional[str] = None,
+               ask: bool = False) -> int:
     return _generic_add("milestone", project, text, date_val=date_val, recur=recur,
-                        until=until, ring=ring, time_val=time_val, desc=desc, ask=ask)
+                        until=until, ring=ring, time_val=time_val, desc=desc,
+                        fup=fup, ask=ask)
 
 
 def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
@@ -265,7 +268,7 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
                 new_text: Optional[str] = None, new_date: Optional[str] = None,
                 new_recur: Optional[str] = None, new_until: Optional[str] = None,
                 new_ring: Optional[str] = None, new_time: Optional[str] = None,
-                new_desc: Optional[str] = None,
+                new_desc: Optional[str] = None, fup: Optional[str] = None,
                 force: bool = False, occurrence: bool = False,
                 series: bool = False) -> int:
     project_dir = _resolve_project(project)
@@ -276,7 +279,8 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
     return _generic_edit("milestone", project_dir, data, agenda_path, text,
                          new_text=new_text, new_date=new_date, new_time=new_time,
                          new_recur=new_recur, new_until=new_until, new_ring=new_ring,
-                         new_desc=new_desc, force=force, occurrence=occurrence, series=series)
+                         new_desc=new_desc, fup=fup,
+                         force=force, occurrence=occurrence, series=series)
 
 
 def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
@@ -338,10 +342,11 @@ def run_ev_add(project: str, text: str, date_val: str,
                until: Optional[str] = None, ring: Optional[str] = None,
                desc: Optional[str] = None,
                agenda: Optional[str] = None,
-               room: Optional[str] = None, ask: bool = False) -> int:
+               room: Optional[str] = None, fup: Optional[str] = None,
+               ask: bool = False) -> int:
     return _generic_add("event", project, text, date_val=date_val, end_date=end_date,
                         recur=recur, until=until, ring=ring, time_val=time_val,
-                        desc=desc, agenda=agenda, room=room, ask=ask)
+                        desc=desc, agenda=agenda, room=room, fup=fup, ask=ask)
 
 
 def run_ev_drop(project: Optional[str], text: Optional[str],
@@ -363,7 +368,7 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
                 new_until: Optional[str] = None, new_ring: Optional[str] = None,
                 new_desc: Optional[str] = None,
                 new_agenda: Optional[str] = None,
-                new_room: Optional[str] = None,
+                new_room: Optional[str] = None, fup: Optional[str] = None,
                 force: bool = False, occurrence: bool = False,
                 series: bool = False) -> int:
     project_dir = _resolve_project(project)
@@ -375,7 +380,7 @@ def run_ev_edit(project: Optional[str], text: Optional[str],
                          new_text=new_text, new_date=new_date, new_end=new_end,
                          new_time=new_time, new_recur=new_recur, new_until=new_until,
                          new_ring=new_ring, new_desc=new_desc,
-                         new_agenda=new_agenda, new_room=new_room,
+                         new_agenda=new_agenda, new_room=new_room, fup=fup,
                          force=force, occurrence=occurrence, series=series)
 
 
@@ -430,11 +435,12 @@ def run_reminder_add(project: str, text: str, date_val: str,
                      time_val: str,
                      recur: Optional[str] = None,
                      until: Optional[str] = None,
-                     desc: Optional[str] = None, ask: bool = False) -> int:
+                     desc: Optional[str] = None, fup: Optional[str] = None,
+                     ask: bool = False) -> int:
     """Add a reminder to a project's agenda."""
     return _generic_add("reminder", project, text, date_val=date_val,
                         time_val=time_val, recur=recur, until=until, desc=desc,
-                        ask=ask)
+                        fup=fup, ask=ask)
 
 
 def run_reminder_drop(project: Optional[str], text: Optional[str],
@@ -513,7 +519,7 @@ def run_reminder_edit(project: Optional[str], text: Optional[str],
                       new_text: Optional[str] = None, new_date: Optional[str] = None,
                       new_time: Optional[str] = None, new_recur: Optional[str] = None,
                       new_until: Optional[str] = None,
-                      new_desc: Optional[str] = None,
+                      new_desc: Optional[str] = None, fup: Optional[str] = None,
                       force: bool = False, occurrence: bool = False,
                       series: bool = False) -> int:
     """Edit an existing reminder."""
@@ -538,7 +544,7 @@ def run_reminder_edit(project: Optional[str], text: Optional[str],
         return _generic_edit("reminder", project_dir, data, agenda_path, text,
                              new_text=new_text, new_date=new_date, new_time=new_time,
                              new_recur=new_recur, new_until=new_until,
-                             new_desc=new_desc, force=force,
+                             new_desc=new_desc, fup=fup, force=force,
                              occurrence=occurrence, series=series)
 
     print("No se encontró el recordatorio.")
@@ -692,15 +698,21 @@ def _cita_pick(items, label: str, text: Optional[str]):
     return None
 
 
-def _cita_locate(project_dir, data, text: Optional[str]):
+def _cita_locate(project_dir, data, text: Optional[str], kinds=None):
     """Locate one appointment in *data* by *text* across the 4 types.
 
     Returns ``(kind, index)`` or ``None``. Reuses :func:`_cita_pick` for
     disambiguation, so a unique substring resolves directly and ambiguity
     opens the numbered selector (single shared locator, design §1).
+
+    *kinds* optionally restricts the search to a subset of section keys
+    (e.g. ``("tasks",)`` for the typed ``task fup`` verb).
     """
+    order = ("tasks", "milestones", "events", "reminders")
+    if kinds:
+        order = tuple(k for k in order if k in kinds)
     candidates, index_map = [], []
-    for kind in ("tasks", "milestones", "events", "reminders"):
+    for kind in order:
         for i, item in enumerate(data.get(kind, [])):
             candidates.append((kind, project_dir, item))
             index_map.append((kind, i))
@@ -762,6 +774,115 @@ def run_cita_fup(project: Optional[str], text: Optional[str],
     _write_agenda(agenda_path, data)
     print(format_item_block(kind, item, banner=f"cita fup · {project_dir.name}"))
     return 0
+
+
+# ── Typed followup verb (`<type> fup ...`) ─────────────────────────────────
+#
+# Same soft-nudge followups as `cita fup`, but scoped to one appointment type
+# so `task fup` never matches an event of the same name. The date positional
+# doubles as the verb selector: a real date adds a ⏩, the literal `clean`
+# opens a numbered remover ("clean" is never a valid date, no collision).
+
+_FUP_KIND_SECTION = {
+    "task": "tasks", "milestone": "milestones", "ms": "milestones",
+    "event": "events", "ev": "events",
+    "reminder": "reminders", "rem": "reminders",
+}
+
+
+def _fup_open(project, text, kinds):
+    """Resolve project + locate one cita (within *kinds*). Returns
+    ``(project_dir, agenda_path, data, kind, idx)`` or ``None``."""
+    project_dir = _resolve_project(project)
+    if project_dir is None:
+        return None
+    agenda_path = resolve_file(project_dir, "agenda")
+    data  = _read_agenda(agenda_path)
+    found = _cita_locate(project_dir, data, text, kinds=kinds)
+    if found is None:
+        return None
+    kind, idx = found
+    return project_dir, agenda_path, data, kind, idx
+
+
+def _fup_add(project, text, date_val, desc, kinds):
+    from core.agenda.display import add_followup, format_item_block
+    from core.dateparse import parse_date
+
+    date_norm = parse_date(date_val)
+    if not _valid_date(date_norm):
+        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, ...")
+        return 1
+    opened = _fup_open(project, text, kinds)
+    if opened is None:
+        return 1
+    project_dir, agenda_path, data, kind, idx = opened
+    item = data[kind][idx]
+    add_followup(item, date_norm, desc)
+    _write_agenda(agenda_path, data)
+    print(format_item_block(kind, item, banner=f"fup · {project_dir.name}"))
+    return 0
+
+
+def _fup_clean(project, text, kinds):
+    import sys
+    from core.agenda.display import (item_followups, drop_followup_at,
+                                     format_item_block)
+
+    opened = _fup_open(project, text, kinds)
+    if opened is None:
+        return 1
+    project_dir, agenda_path, data, kind, idx = opened
+    item  = data[kind][idx]
+    emoji = _CITA_KIND_EMOJI[kind]
+    fups  = item_followups(item)
+    if not fups:
+        print(f"No hay followups ⏩ en {emoji} {item['desc']}.")
+        return 1
+
+    if len(fups) == 1:
+        sel = 0
+    else:
+        print(f"\nFollowups de {emoji} {item['desc']}:")
+        for i, f in enumerate(fups, 1):
+            extra = f" — {f['desc']}" if f.get("desc") else ""
+            print(f"  {i}. ⏩{f['date']}{extra}")
+        if not sys.stdin.isatty():
+            print("Varios followups: indica cuál (no interactivo). Cancelado.")
+            return 1
+        try:
+            raw = input("¿Cuál borrar? (#): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 1
+        if not raw.isdigit() or not (1 <= int(raw) <= len(fups)):
+            print("Cancelado.")
+            return 1
+        sel = int(raw) - 1
+
+    removed = drop_followup_at(item, sel)
+    _write_agenda(agenda_path, data)
+    print(f"  ⏩ borrado: {removed}")
+    print(format_item_block(kind, item, banner=f"fup clean · {project_dir.name}"))
+    return 0
+
+
+def run_fup(kind: str, project: Optional[str], text: Optional[str],
+            target: Optional[str], desc: Optional[str] = None) -> int:
+    """Typed followup verb: ``<kind> fup <project> <title> <date|clean>``.
+
+    *kind* is a singular type name (task/milestone/event/reminder). *target*
+    is a date (adds a ⏩) or the literal ``clean`` (numbered remover).
+    """
+    section = _FUP_KIND_SECTION.get(kind)
+    kinds   = (section,) if section else None
+    if target == "clean":
+        return _fup_clean(project, text, kinds)
+    if not target:
+        print("Error: especifica fecha o 'clean' "
+              "(ej. task fup <proyecto> <texto> <YYYY-MM-DD>)")
+        return 1
+    return _fup_add(project, text, target, desc, kinds)
 
 
 def run_cita_done(project: Optional[str], text: Optional[str]) -> int:

@@ -35,11 +35,12 @@ orbit project type drop <name>              # elimina tipo
 ## task — tareas
 
 ```bash
-orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [-i]
+orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE] [-i]
 orbit task done    [<project>] ["<text>"]
 orbit task drop    [<project>] ["<text>"] [--force] [-o] [-s]
 orbit task log     [<project>] ["<text>"]
-orbit task edit    [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
+orbit task edit    [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE]
+orbit task fup     <project> "<text>" <DATE|clean> [--desc DESC]      # añade/quita followup ⏩ (ver Followups)
 ```
 
 ### Modelo planned / someday (F5: eje `ff` retirado)
@@ -122,11 +123,12 @@ Todos los verbos que modifican una cita (`add`, `edit`, `done`, `drop`, `plan`, 
 ## ms — hitos
 
 ```bash
-orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [-i]
+orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE] [-i]
 orbit ms done   [<project>] ["<text>"]
 orbit ms drop   [<project>] ["<text>"] [--force] [-o] [-s]
 orbit ms log    [<project>] ["<text>"]
-orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none]
+orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE]
+orbit ms fup    <project> "<text>" <DATE|clean> [--desc DESC]
 ```
 
 ---
@@ -134,9 +136,10 @@ orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--ti
 ## ev — eventos
 
 ```bash
-orbit ev add  <project> "<text>" --date DATE [--end DATE] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--agenda URL] [--room URL] [-i]
+orbit ev add  <project> "<text>" --date DATE [--end DATE] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--agenda URL] [--room URL] [--fup DATE] [-i]
 orbit ev drop [<project>] ["<text>"] [--force] [-o] [-s]
-orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--agenda URL|none] [--room URL|none]
+orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|none] [--end-time HH:MM] [--time HH:MM|HH:MM-HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--agenda URL|none] [--room URL|none] [--fup DATE]
+orbit ev fup  <project> "<text>" <DATE|clean> [--desc DESC]
 ```
 
 - `--time`: hora del evento. `HH:MM` (solo inicio, 1h por defecto) o `HH:MM-HH:MM` (inicio-fin)
@@ -155,10 +158,11 @@ orbit ev edit [<project>] ["<text>"] [--text "<new>"] [--date DATE] [--end DATE|
 ## reminder (rem) — recordatorios
 
 ```bash
-orbit reminder add  <project> "<text>" --date DATE --time HH:MM [--recur FREQ] [--until DATE] [--desc DESC] [-i]
+orbit reminder add  <project> "<text>" --date DATE --time HH:MM [--recur FREQ] [--until DATE] [--desc DESC] [--fup DATE] [-i]
 orbit reminder drop [<project>] ["<text>"] [--force] [-o] [-s]
 orbit reminder log  [<project>] ["<text>"]
-orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--desc DESC|none]
+orbit reminder edit [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--desc DESC|none] [--fup DATE]
+orbit reminder fup  <project> "<text>" <DATE|clean> [--desc DESC]     # (rem = alias)
 ```
 
 - Los recordatorios son notificaciones programadas: no tienen estado (done/pending), solo se disparan en la fecha/hora indicada
@@ -192,9 +196,23 @@ orbit cita drop <project> ["<text>"] [--force] [-o] [-s]   # cancela cualquier t
 
 Un **followup** es un empujón blando colgado bajo cualquier cita como línea de cuerpo indentada `⏩ FECHA [desc]`. Hace aflorar la cita en "Decidir hoy" del secretario cuando su fecha `<= hoy`, **sin** marcarla vencida (❗) y **sin** estado (no acumula contadores). Una cita puede llevar varios followups.
 
-- Se añaden/borran con `cita fup` (mutación silenciosa: no escribe en el logbook, pero el comando muestra el item resultante).
-- `date` acepta `YYYY-MM-DD`, `today`, `mañana`, `+N`, … (se normaliza a ISO).
+Se gestionan con el **verbo tipado `fup`** (uno por tipo de cita) y con el flag `--fup` al crear/editar:
+
+```bash
+orbit <tipo> fup <project> "<text>" <date> [--desc DESC]   # añade ⏩ (tipo = task|ms|ev|rem)
+orbit <tipo> fup <project> "<text>" clean                  # borra un ⏩ (listado numerado si hay varios)
+orbit <tipo> add  <project> "<text>" ... --fup <date>      # crea la cita ya con un ⏩ colgado
+orbit <tipo> edit <project> "<text>" ... --fup <date>      # añade un ⏩ al editar
+```
+
+- `<tipo> fup` acota la búsqueda a ese tipo (un `task fup` nunca engancha un evento homónimo).
+- `clean` lista los `⏩` de la cita numerados y borra el que elijas; si solo hay uno, lo borra directo. `--desc` se ignora con `clean`.
+- `--fup <date>` (en `add`/`edit`) cuelga **una** fecha sola; para varios followups o poner descripción, usa el verbo `fup` o el interrogador `-i`.
+- `date` acepta `YYYY-MM-DD`, `today`, `mañana`, `monday`, `+N`, … (se normaliza a ISO). `--des` es alias de `--desc`.
+- Mutación silenciosa: no escribe en el logbook, pero el comando muestra el item resultante.
 - El followup es el **único** mecanismo de triaje (F5 retiró el campo `ff` de cabecera): va en una **línea de cuerpo** indentada y aplica a las 4 citas.
+
+> El paraguas `cita fup <project> "<text>" <date> [--desc] [--drop]` (cross-type, borrado por fecha exacta) sigue disponible pero queda desaconsejado frente a los verbos tipados + `clean`.
 
 ---
 
