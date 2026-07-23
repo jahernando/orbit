@@ -19,6 +19,7 @@ import markdown
 
 from core.config import ORBIT_HOME, SECRETARY_RELPATH, iter_project_dirs, get_type_emojis
 from core.deliver import _find_cloud_root, _project_cloud_dir
+from core.log import find_proyecto_file
 from core.project import _is_new_project
 
 _CSS_FILENAME = "orbit.css"
@@ -200,13 +201,15 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
         depth = _depth(rel)
         css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
         nav_links = f'<a href="{"../" * (depth + 2)}workspace.html">🏠 Inicio</a>'
-        project_html = list(project_dir.glob("*-project.md"))
+        _pf = find_proyecto_file(project_dir)
+        project_html = [_pf] if _pf else []
         if project_html:
             proj_name = project_html[0].stem + ".html"
             if depth > 0:
                 proj_name = "../" + proj_name
             nav_links += f' <a href="{proj_name}">📋 Proyecto</a>'
-        extra = tracked_section_md if src.name.endswith("-project.md") else ""
+        _is_index = src.name == "project.md" or src.name.endswith("-project.md")
+        extra = tracked_section_md if _is_index else ""
         _render_file(src, dest, css_rel, nav_links, extra_md=extra)
         rendered += 1
 
@@ -222,7 +225,8 @@ def render_project(project_dir: Path, cloud_root: Path) -> int:
         depth = _depth(rel)
         css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
         nav_links = f'<a href="{"../" * (depth + 2)}workspace.html">🏠 Inicio</a>'
-        project_html = list(project_dir.glob("*-project.md"))
+        _pf = find_proyecto_file(project_dir)
+        project_html = [_pf] if _pf else []
         if project_html:
             proj_name = project_html[0].stem + ".html"
             if depth > 0:
@@ -261,7 +265,8 @@ def render_delivered_md(project_dir: Path, dest_md: Path,
     depth = _depth(rel)
     css_rel = ("../" * (depth + 2)) + _CSS_FILENAME
     nav_links = f'<a href="{"../" * (depth + 2)}workspace.html">🏠 Inicio</a>'
-    project_html = list(project_dir.glob("*-project.md"))
+    _pf = find_proyecto_file(project_dir)
+    project_html = [_pf] if _pf else []
     if project_html:
         proj_name = project_html[0].stem + ".html"
         if depth > 0:

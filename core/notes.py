@@ -33,7 +33,7 @@ def _note_template(title: str, project_name: str, project_dir: Path = None) -> s
     from core.log import find_proyecto_file
     today = date.today().isoformat()
     # Resolve project link (relative from notes/ → ../)
-    proj_link = f"../{project_name}-project.md"
+    proj_link = "../project.md"
     if project_dir:
         pf = find_proyecto_file(project_dir)
         if pf:

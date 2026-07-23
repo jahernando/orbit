@@ -23,4 +23,4 @@ Cada regla apunta a su ADR en [DECISIONS.md](DECISIONS.md) con el razonamiento d
 
 Ver [ADR-033](DECISIONS.md#adr-033--separación-corewriters-vs-viewsreaders).
 
-**Excepción documentada — `views/ring/export.py` backfill de `orbit_id`**: el ring exporter reescribe la línea en `<project>-agenda.md` cuando un item lleva `🔔` pero no `[orbit:XXXX]`. Justificación y tradeoffs en [ADR-041](DECISIONS.md#adr-041--excepción-a-views-no-escriben-verdad-backfill-de-orbit_id-en-ring-export). Si añades otra excepción, primero pregúntate si no estás reintroduciendo escrituras en views por la puerta de atrás.
+**Excepción documentada — `views/ring/export.py` backfill de `orbit_id`**: el ring exporter reescribe la línea en `agenda.md` cuando un item lleva `🔔` pero no `[orbit:XXXX]`. Justificación y tradeoffs en [ADR-041](DECISIONS.md#adr-041--excepción-a-views-no-escriben-verdad-backfill-de-orbit_id-en-ring-export). Si añades otra excepción, primero pregúntate si no estás reintroduciendo escrituras en views por la puerta de atrás.

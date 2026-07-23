@@ -711,7 +711,7 @@ class TestEmitEventFromEmail:
         monkeypatch.setattr("builtins.input", lambda *_: "")  # accept default
         rc = email_mod._emit_event_from_email(env["proj"], self._email())
         assert rc == 0
-        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        agenda_md = (env["proj"] / "agenda.md").read_text()
         assert "WG12 reunion" in agenda_md
         # New format renders structured notes in a `links:` body line
         # (🚪 room → 📹 display icon; 📋 agenda; ✉️ email).
@@ -725,7 +725,7 @@ class TestEmitEventFromEmail:
         em = self._email(ics=_SAMPLE_ICS, body="")
         rc = email_mod._emit_event_from_email(env["proj"], em)
         assert rc == 0
-        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        agenda_md = (env["proj"] / "agenda.md").read_text()
         assert "Reunión WG12 de CNID" in agenda_md
         # ICS URL goes to agendas, ICS LOCATION (zoom) goes to rooms
         assert "[📋](https://indico.global/event/17950/)" in agenda_md
@@ -746,7 +746,7 @@ class TestEmitEventFromEmail:
         assert rc == 0
         assert "cancelado" in capsys.readouterr().out.lower()
         # No event should be created
-        agenda_path = env["proj"] / "test-project-agenda.md"
+        agenda_path = env["proj"] / "agenda.md"
         if agenda_path.exists():
             assert "WG12" not in agenda_path.read_text()
 
@@ -760,7 +760,7 @@ class TestEmitEventFromEmail:
         ))
         rc = email_mod._emit_event_from_email(env["proj"], em)
         assert rc == 0
-        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        agenda_md = (env["proj"] / "agenda.md").read_text()
         assert "[📹](https://cern.zoom.us/j/111)" in agenda_md
         assert "[📹](https://meet.google.com/abc-defg-hij)" in agenda_md
 
@@ -773,7 +773,7 @@ class TestEmitEventFromEmail:
         monkeypatch.setattr("builtins.input", lambda *_: "")
         rc = email_mod._emit_event_from_email(env["proj"], self._email())
         assert rc == 0
-        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        agenda_md = (env["proj"] / "agenda.md").read_text()
         assert "[✉️](message://%3Cevt@x.com%3E)" in agenda_md
 
     def test_email_link_absent_when_no_msg_id(self, env, monkeypatch):
@@ -784,7 +784,7 @@ class TestEmitEventFromEmail:
         em = self._email(msg_id="")
         rc = email_mod._emit_event_from_email(env["proj"], em)
         assert rc == 0
-        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        agenda_md = (env["proj"] / "agenda.md").read_text()
         assert "✉️" not in agenda_md
 
 
@@ -822,7 +822,7 @@ Content-Type: text/calendar; charset=utf-8
         assert not (env["proj"] / "notes" / "emails").exists()
         log = (env["proj"] / "test-project-logbook.md").read_text()
         assert "[Email: Invite](message://%3Cevt@x.com%3E)" in log
-        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        agenda_md = (env["proj"] / "agenda.md").read_text()
         assert "Reunión WG12 de CNID" in agenda_md
 
     def test_eml_with_ics_and_note(self, env, tmp_path, monkeypatch):
@@ -860,7 +860,7 @@ Content-Type: text/calendar; charset=utf-8
         assert "✉️ [original](message://%3Cevt2@x.com%3E)" in log
         notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
         assert len(notes) == 1
-        agenda_md = (env["proj"] / "test-project-agenda.md").read_text()
+        agenda_md = (env["proj"] / "agenda.md").read_text()
         assert "Reunión WG12 de CNID" in agenda_md
 
 

@@ -9,4 +9,4 @@
 *{{OBJECTIVE}}*
 
 ---
-[logbook](./{{BASE_NAME}}-logbook.md) · [highlights](./{{BASE_NAME}}-highlights.md) · [agenda](./{{BASE_NAME}}-agenda.md) · [notes](./notes/) · [cloud]({{CLOUD_DIR}})
+[logbook](./logbook.md) · [highlights](./highlights.md) · [agenda](./agenda.md) · [notes](./notes/) · [cloud]({{CLOUD_DIR}})

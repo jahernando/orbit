@@ -44,8 +44,8 @@ def _log_text(project_dir: Path) -> str:
 def _items(project_dir: Path, hl_type: Optional[str] = None) -> list:
     """Return the parsed items of a project's highlights, optionally by type."""
     from core.highlights import _read_highlights
-    base = _base_name(project_dir.name)
-    data = _read_highlights(project_dir / f"{base}-highlights.md")
+    from core.log import resolve_file
+    data = _read_highlights(resolve_file(project_dir, "highlights"))
     return [it for it in data["items"]
             if hl_type is None or it["type"] == hl_type]
 

@@ -10,6 +10,18 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### v0.44.0 (2026-07-23) — Nombres de fichero de proyecto genéricos (`agenda.md`, `logbook.md`, `highlights.md`, `project.md`)
+
+Los cuatro ficheros de cada proyecto pasan de `<proyecto>-<kind>.md` a **genéricos** ([ADR-047](DECISIONS.md#adr-047--nombres-de-fichero-de-proyecto-genéricos-agendamd-en-vez-de-proyecto-agendamd)). Motivación: el prefijo `<proyecto>-` es redundante (la carpeta ya lo nombra) y alarga las tabs/quick-switcher de Obsidian usado como bóveda.
+
+**Canónico genérico** — `project_file_path` devuelve `<kind>.md`; plantillas, bootstrap, pie de enlaces del índice y backlink de notas usan el genérico. Índice = `project.md` (no `main.md`: ya soportado y sin colisión con hermanos genéricos en el resolvedor).
+
+**Sin ventana rota** — los `find_*` de `core/log.py` prueban canónico y **caen al `<base>-<kind>.md` legacy** (helper `_legacy_path`); los proyectos sin migrar siguen funcionando con el código nuevo. Corregidos los dos `_is_new_project` (log + project) que asumían el nombre viejo.
+
+**Interno** — `_FILE_SUFFIXES` → `_FILE_NAMES`+`_LEGACY_SUFFIXES`; `find_proyecto_file` excluye stems genéricos en su glob-fallback; `render.py` localiza el índice vía `find_proyecto_file` (no `glob("*-project.md")`); `notes.py`/plantilla `project.md` con enlaces genéricos. Tests: fixtures legacy siguen pasando (validan el fallback), creación afirma genérico, +3 tests de naming. Suite 1872 pass. **Migración de datos** (renombrado + reescritura de enlaces embebidos) se hace aparte con `git mv` + verificación por `orbit doctor`.
+
+---
+
 ### v0.43.0 (2026-07-23) — `highlights.md` al formato de item unificado (orbit-items, sin secciones)
 
 Segundo fichero-verdad que adopta la gramática orbit-item de `agenda.md` ([ADR-046](DECISIONS.md#adr-046--highlightsmd-al-formato-de-item-unificado-retirada-de-las-secciones-por-tipo), extiende [ADR-045](DECISIONS.md#adr-045--formato-de-item-unificado-como-verdad--retirada-del-eje-ff)).

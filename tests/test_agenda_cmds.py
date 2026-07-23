@@ -824,9 +824,10 @@ class TestRunTaskAdd:
         from core.agenda_cmds import run_task_add, _read_agenda
         (proj / "test-project-agenda.md").unlink()
         rc = run_task_add("test-project", "New task")
-        # Agenda file is re-created on write
+        # Agenda file is re-created on write (canonical generic name)
         assert rc == 0
-        data = _read_agenda(proj / "test-project-agenda.md")
+        assert (proj / "agenda.md").exists()
+        data = _read_agenda(proj / "agenda.md")
         assert data["tasks"][0]["desc"] == "New task"
 
     def test_multiple_tasks(self, proj, projects_dir):

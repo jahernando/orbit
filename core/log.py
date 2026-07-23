@@ -25,8 +25,20 @@ def _base_name(project_dir: Path) -> str:
 
 
 # ── Standard project file names ──────────────────────────────────────────────
+#
+# Canonical naming is **generic** (`agenda.md`, `logbook.md`, `highlights.md`,
+# `project.md`): the project directory already carries the name, so the old
+# `<base>-<kind>.md` prefix was redundant and made Obsidian tabs long
+# ([[ADR-047]]). The old prefixed names are still *read* as a fallback so
+# un-migrated projects keep working; migration renames the files on disk.
 
-_FILE_SUFFIXES = {
+_FILE_NAMES = {
+    "project":    "project.md",
+    "logbook":    "logbook.md",
+    "highlights": "highlights.md",
+    "agenda":     "agenda.md",
+}
+_LEGACY_SUFFIXES = {
     "project":    "-project.md",
     "logbook":    "-logbook.md",
     "highlights": "-highlights.md",
@@ -35,70 +47,68 @@ _FILE_SUFFIXES = {
 
 
 def project_file_path(project_dir: Path, kind: str = "project") -> Path:
-    """Return the canonical path for a project file (new naming: {name}-{kind}.md)."""
-    return project_dir / f"{_base_name(project_dir)}{_FILE_SUFFIXES[kind]}"
+    """Canonical path for a project file (generic naming: {kind}.md)."""
+    return project_dir / _FILE_NAMES[kind]
+
+
+def _legacy_path(project_dir: Path, kind: str) -> Path:
+    """Pre-generic naming: {base}-{kind}.md (still read for un-migrated projects)."""
+    return project_dir / f"{_base_name(project_dir)}{_LEGACY_SUFFIXES[kind]}"
 
 
 def find_proyecto_file(project_dir: Path) -> Optional[Path]:
     """Find the project index file. Search order:
-    1. {name}-project.md  (new)
-    2. project.md         (new-generic)
-    3. proyecto.md        (legacy)
-    4. {emoji}{name}.md   (old)
+    1. project.md         (canonical, generic)
+    2. {name}-project.md  (legacy prefixed)
+    3. proyecto.md        (older)
+    4. single {emoji}{name}.md  (oldest)
     """
-    new = project_file_path(project_dir, "project")
-    if new.exists():
-        return new
-    generic = project_dir / "project.md"
-    if generic.exists():
-        return generic
-    legacy = project_dir / "proyecto.md"
+    canonical = project_file_path(project_dir, "project")
+    if canonical.exists():
+        return canonical
+    legacy = _legacy_path(project_dir, "project")
     if legacy.exists():
         return legacy
+    old = project_dir / "proyecto.md"
+    if old.exists():
+        return old
+    # Oldest form: a single index .md that is not a known sibling file.
+    generic_siblings = {"logbook", "highlights", "agenda"}
     candidates = [f for f in project_dir.glob("*.md")
                   if not f.name.startswith("📓")
-                  and not f.stem.endswith("-logbook")
-                  and not f.stem.endswith("-highlights")
-                  and not f.stem.endswith("-agenda")]
+                  and f.stem not in generic_siblings
+                  and not f.stem.endswith(("-logbook", "-highlights", "-agenda"))]
     return candidates[0] if len(candidates) == 1 else None
 
 
 def find_logbook_file(project_dir: Path) -> Optional[Path]:
-    """Find the logbook file. Search order:
-    1. {name}-logbook.md  (new)
-    2. logbook.md         (new-generic)
-    3. 📓{name}.md        (old)
-    """
-    new = project_file_path(project_dir, "logbook")
-    if new.exists():
-        return new
-    generic = project_dir / "logbook.md"
-    if generic.exists():
-        return generic
+    """Find the logbook file: logbook.md → {name}-logbook.md → 📓{name}.md."""
+    canonical = project_file_path(project_dir, "logbook")
+    if canonical.exists():
+        return canonical
+    legacy = _legacy_path(project_dir, "logbook")
+    if legacy.exists():
+        return legacy
     candidates = list(project_dir.glob("📓*.md"))
     return candidates[0] if candidates else None
 
 
 def find_highlights_file(project_dir: Path) -> Optional[Path]:
-    """Find the highlights file."""
-    new = project_file_path(project_dir, "highlights")
-    if new.exists():
-        return new
-    generic = project_dir / "highlights.md"
-    if generic.exists():
-        return generic
-    return None
+    """Find the highlights file: highlights.md → {name}-highlights.md."""
+    canonical = project_file_path(project_dir, "highlights")
+    if canonical.exists():
+        return canonical
+    legacy = _legacy_path(project_dir, "highlights")
+    return legacy if legacy.exists() else None
 
 
 def find_agenda_file(project_dir: Path) -> Optional[Path]:
-    """Find the agenda file."""
-    new = project_file_path(project_dir, "agenda")
-    if new.exists():
-        return new
-    generic = project_dir / "agenda.md"
-    if generic.exists():
-        return generic
-    return None
+    """Find the agenda file: agenda.md → {name}-agenda.md."""
+    canonical = project_file_path(project_dir, "agenda")
+    if canonical.exists():
+        return canonical
+    legacy = _legacy_path(project_dir, "agenda")
+    return legacy if legacy.exists() else None
 
 
 def resolve_file(project_dir: Path, kind: str) -> Path:
@@ -216,10 +226,10 @@ def init_logbook(logbook_path: Path, project_name: str) -> None:
 
 
 def _is_new_project(project_dir: Path) -> bool:
-    """New-model project: has {name}-project.md or project.md in root."""
+    """New-model project: has a project index (project.md or {name}-project.md)."""
     return find_proyecto_file(project_dir) is not None and (
         project_file_path(project_dir, "project").exists()
-        or (project_dir / "project.md").exists()
+        or _legacy_path(project_dir, "project").exists()
     )
 
 

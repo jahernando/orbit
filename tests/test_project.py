@@ -295,17 +295,17 @@ class TestRunProjectCreate:
         rc = run_project_create("myproject", "software", "alta")
         assert rc == 0
         proj = project_env["projects_dir"] / "💻myproject"
-        assert (proj / "myproject-project.md").exists()
-        assert (proj / "myproject-logbook.md").exists()
-        assert (proj / "myproject-highlights.md").exists()
-        assert (proj / "myproject-agenda.md").exists()
+        assert (proj / "project.md").exists()
+        assert (proj / "logbook.md").exists()
+        assert (proj / "highlights.md").exists()
+        assert (proj / "agenda.md").exists()
         assert (proj / "notes").is_dir()
 
     def test_substitutes_placeholders(self, project_env, monkeypatch):
         monkeypatch.setattr("builtins.input", lambda _: "Test objetivo")
         run_project_create("calibra", "investigacion", "media")
         proj    = project_env["tmp"] / "🌀investigacion" / "🌀calibra"
-        content = (proj / "calibra-project.md").read_text()
+        content = (proj / "project.md").read_text()
         assert "{{PROJECT_NAME}}" not in content
         assert "🌀calibra" in content
         assert "Investigación" in content
@@ -316,7 +316,7 @@ class TestRunProjectCreate:
         monkeypatch.setattr("builtins.input", lambda _: "")
         run_project_create("testlog", "software", "baja")
         proj    = project_env["projects_dir"] / "💻testlog"
-        content = (proj / "testlog-logbook.md").read_text()
+        content = (proj / "logbook.md").read_text()
         assert "{{PROJECT_NAME}}" not in content
         assert "💻testlog" in content
 
@@ -324,7 +324,7 @@ class TestRunProjectCreate:
         monkeypatch.setattr("builtins.input", lambda _: "")
         run_project_create("defaultobj", "personal", "baja")
         proj    = project_env["tmp"] / "🌿personal" / "🌿defaultobj"
-        content = (proj / "defaultobj-project.md").read_text()
+        content = (proj / "project.md").read_text()
         assert "Descripción breve del objetivo." in content
 
     def test_invalid_tipo_returns_error(self, project_env, monkeypatch, capsys):
@@ -348,7 +348,7 @@ class TestRunProjectCreate:
         monkeypatch.setattr("builtins.input", lambda _: "")
         run_project_create("autotest", "software", "media")
         proj    = project_env["projects_dir"] / "💻autotest"
-        content = (proj / "autotest-project.md").read_text()
+        content = (proj / "project.md").read_text()
         assert "- Estado: [auto]" in content
 
     def test_type_variants_accepted(self, project_env, monkeypatch):
@@ -581,3 +581,41 @@ class TestRunLink:
         assert "[tramos](" in out
         # From project root: one ../ up to type dir, then down to sibling
         assert "(../💻catedra/notes/tramos.md)" in out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# File naming: canonical generic vs legacy prefixed (ADR-047)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestFileNaming:
+
+    def test_canonical_creation_is_generic(self, project_env, monkeypatch):
+        from core.log import resolve_file
+        monkeypatch.setattr("builtins.input", lambda _: "")
+        run_project_create("gen", "software", "media")
+        proj = project_env["projects_dir"] / "💻gen"
+        for kind in ("project", "logbook", "highlights", "agenda"):
+            assert resolve_file(proj, kind).name == f"{kind}.md"
+        assert not (proj / "gen-agenda.md").exists()
+
+    def test_legacy_names_still_resolved(self, project_env):
+        from core.log import (find_proyecto_file, find_agenda_file,
+                              find_logbook_file, find_highlights_file)
+        proj = project_env["projects_dir"] / "💻leg"
+        proj.mkdir()
+        (proj / "leg-project.md").write_text("# leg\n- Estado: [auto]\n")
+        (proj / "leg-agenda.md").write_text("# Agenda\n")
+        (proj / "leg-logbook.md").write_text("# Logbook\n")
+        (proj / "leg-highlights.md").write_text("# Highlights\n")
+        assert find_proyecto_file(proj).name   == "leg-project.md"
+        assert find_agenda_file(proj).name     == "leg-agenda.md"
+        assert find_logbook_file(proj).name    == "leg-logbook.md"
+        assert find_highlights_file(proj).name == "leg-highlights.md"
+
+    def test_canonical_preferred_over_legacy(self, project_env):
+        from core.log import find_agenda_file
+        proj = project_env["projects_dir"] / "💻both"
+        proj.mkdir()
+        (proj / "both-agenda.md").write_text("# legacy\n")
+        (proj / "agenda.md").write_text("# canonical\n")
+        assert find_agenda_file(proj).name == "agenda.md"

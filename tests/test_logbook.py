@@ -158,7 +158,8 @@ class TestAddEntry:
         (logbook_env["proj"] / "testproj-logbook.md").unlink()
         rc = add_entry("testproj", "Primera", "apunte", None, None)
         assert rc == 0
-        assert (logbook_env["proj"] / "testproj-logbook.md").exists()
+        # Re-created with the canonical generic name.
+        assert (logbook_env["proj"] / "logbook.md").exists()
 
     def test_invalid_date_format(self, logbook_env, capsys):
         rc = add_entry("testproj", "Msg", "apunte", None, "not-a-date")
@@ -221,7 +222,7 @@ class TestAddOrbitEntry:
     def test_creates_logbook_if_missing(self, logbook_env):
         (logbook_env["proj"] / "testproj-logbook.md").unlink()
         add_orbit_entry(logbook_env["proj"], "Auto entry")
-        assert (logbook_env["proj"] / "testproj-logbook.md").exists()
+        assert (logbook_env["proj"] / "logbook.md").exists()
 
     def test_orbit_entry_with_path(self, logbook_env):
         add_orbit_entry(logbook_env["proj"], "Highlight: Paper",

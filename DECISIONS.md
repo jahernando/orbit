@@ -964,6 +964,26 @@ Tres fricciones reales:
 
 ---
 
+## ADR-047 — Nombres de fichero de proyecto genéricos (`agenda.md` en vez de `<proyecto>-agenda.md`)
+
+**Estado**: aceptada (2026-07-23).
+
+**Contexto**: cada proyecto vive en `espacio/tipo/<proyecto>/` y sus cuatro ficheros se llamaban `<proyecto>-project.md`, `<proyecto>-logbook.md`, `<proyecto>-highlights.md`, `<proyecto>-agenda.md`. El prefijo `<proyecto>-` es redundante (la carpeta ya nombra el proyecto) y, en Obsidian usado como bóveda del espacio, alarga las tabs, el quick-switcher y los títulos. El lector ya soportaba los nombres genéricos como fallback desde antaño (`find_*` en `core/log.py`).
+
+**Decisión**:
+1. **Canónico = genérico**: `project.md`, `logbook.md`, `highlights.md`, `agenda.md`. `project_file_path` (creación + path canónico) devuelve el genérico; las plantillas y el bootstrap crean genérico; el pie de enlaces del índice y el backlink de notas usan rutas relativas al genérico.
+2. **Lectura tolerante + migración**: los `find_*` prueban primero el canónico y caen al `<base>-<kind>.md` legacy (helper `_legacy_path`), así que **los proyectos sin migrar siguen funcionando** con el código nuevo — no hay ventana rota. La migración renombra en disco con `git mv` (preserva historial) y reescribe los enlaces estáticos embebidos.
+3. **Índice = `project.md`** (no `main.md`): ya estaba soportado como genérico y evita que el resolvedor lo confunda con sus hermanos genéricos (`agenda.md`/`logbook.md`/`highlights.md`); el glob-fallback de `find_proyecto_file` excluye explícitamente esos stems.
+4. **Enlaces**: los auto-generados (secretario/panel/render) se regeneran vía `resolve_file` en cada `save`/`dash`. Los estáticos ya escritos (pie del índice, backlink de notas, cross-refs) se reescriben en la migración quitando el prefijo `<base>-` del **nombre de fichero**, conservando la ruta → los cross-project no se rompen. Orbit usa enlaces markdown relativos, no wikilinks, así que el grafo de Obsidian se mantiene.
+
+**Consecuencias**:
+- Pros: tabs/quick-switcher/títulos de Obsidian cortos; nombres coherentes con la carpeta; menos ruido. Sin ventana rota (fallback legacy).
+- Contras: en Obsidian los basenames dejan de ser únicos en la bóveda → `[[wikilink]]` por nombre se vuelve ambiguo (se desambigua por carpeta). Aceptado: el usuario navega por carpetas/grafo, no por wikilinks-por-nombre. Cambio mecánico amplio (renombrado ~300 ficheros + reescritura de ~124 enlaces por workspace).
+
+**Verificación**: `orbit doctor` (`_check_refs`) marca cualquier enlace colgante tras la migración; git como red de seguridad.
+
+---
+
 ## Lo que se ha descartado explícitamente
 
 Lista breve de propuestas consideradas y rechazadas, para que no vuelvan a discutirse sin contexto:

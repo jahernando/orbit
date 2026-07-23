@@ -470,7 +470,7 @@ orbit clip catedra notes/tramos.md --from complementos      # enlace relativo en
 - `clip date [expr]`: fecha YYYY-MM-DD al portapapeles. Sin argumento: hoy
 - `clip week [expr]`: semana ISO YYYY-Wnn al portapapeles. Sin argumento: semana actual
 - `clip <project> [fichero]`: enlace markdown al proyecto o a un fichero del proyecto
-  - Sin fichero: `[⚙️catedra](⚙️gestion/⚙️catedra/catedra-project.md)`
+  - Sin fichero: `[⚙️catedra](⚙️gestion/⚙️catedra/project.md)`
   - Con fichero: busca por nombre parcial en el proyecto (interactivo si hay varias coincidencias)
   - `--from <proyecto>`: calcula ruta relativa desde la raíz del proyecto origen (para Obsidian)
 

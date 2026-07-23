@@ -46,10 +46,10 @@ _STATUS_NORM  = {
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _is_new_project(project_dir: Path) -> bool:
-    """New-model project: has {name}-project.md or project.md."""
-    from core.log import project_file_path
+    """New-model project: has project.md (canonical) or {name}-project.md (legacy)."""
+    from core.log import project_file_path, _legacy_path
     return (project_file_path(project_dir, "project").exists()
-            or (project_dir / "project.md").exists())
+            or _legacy_path(project_dir, "project").exists())
 
 
 def _infer_status(project_dir: Path) -> tuple:
