@@ -63,7 +63,7 @@ Desde v0.41 `agenda.md` es un **formato de item unificado** (header + cuerpo ind
 Comandos uniformes: `add`, `drop`, `edit`, `list`, `log` (crear entrada de logbook desde cita).
 Además: task/ms tienen `done`. Alias: `rem` = `reminder`.
 
-**Paraguas `cita`** (v0.40, [ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico)): opera sobre las 4 citas sin indicar el tipo (localiza por proyecto+texto). `cita fup` añade/borra **followups** (`⏩ FECHA [desc]` en línea de cuerpo: empujón blando que aflora la cita ≤ su fecha, sin estado; es el único eje de triaje desde que v0.41 retiró el `ff` de cabecera); `cita done` (solo task/ms), `cita drop` (los 4), `cita log`/`clog`. `add … -i` = interrogador guiado. Verbos que mutan imprimen el orbit-item desde el serializador de la verdad ([ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)).
+**Followups (`⏩`) — verbos tipados** (v0.42): `<tipo> fup <project> "<text>" <DATE|clean> [--desc]` añade/borra **followups** (`⏩ FECHA [desc]` en línea de cuerpo: empujón blando que aflora la cita ≤ su fecha, sin estado; es el único eje de triaje desde que v0.41 retiró el `ff` de cabecera), acotado al tipo; `clean` = borrador numerado. `--fup DATE` en `add`/`edit` cuelga un `⏩` inline. El paraguas `cita` (v0.40, ADR-043) se **retiró en v0.42**: `fup`/`done`/`drop` → verbos tipados (`task fup`, `task done`, `ev drop`, …); sobrevive **`clog`** (logbook de la cita activa ahora). `add … -i` = interrogador guiado. Verbos que mutan imprimen el orbit-item desde el serializador de la verdad ([ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)).
 
 ### Recurrencia
 - Todos soportan `--recur` y `--until`
@@ -107,7 +107,7 @@ Una sola dirección: orbit es source-of-truth, los backends consumen.
 
 ## Estado actual (v0.40.0, 2026-05-29)
 
-**CLI-citas** ([ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico) + [ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)): followups (`⏩` en cuerpo) como capa sobre `notes`; paraguas `cita` (fup/done/drop) con corte tipado vs genérico; echo del orbit-item desde el serializador único; interrogador `-i` en `add`.
+**CLI-citas** ([ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico) + [ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)): followups (`⏩` en cuerpo) como capa sobre `notes`; echo del orbit-item desde el serializador único; interrogador `-i` en `add`. El paraguas `cita` (fup/done/drop) se movió a **verbos tipados** en v0.42 (ver CHANGELOG); queda `clog`.
 
 **Formato unificado + retirada de `ff`** (v0.41, [ADR-045](DECISIONS.md#adr-045--formato-de-item-unificado-como-verdad--retirada-del-eje-ff)): `agenda.md` es ahora el **formato de item unificado** (header `- [estado] <emoji> título #tag` + cuerpo indentado, sin secciones); lector tolerante + migración perezosa. **F5 hecha**: retirados el campo `ff`, los verbos `plan`/`pending`, los contadores snooze/failed y el flag `--ff`/`--pending`; el triaje es ahora exclusivamente el followup `⏩`. `task_state` = planned/someday/done/dropped. "Decidir hoy" (secretario/panel/`organize --triage`) sobre followups ≤ today. Detalle en [CHANGELOG.md](CHANGELOG.md) (v0.41).
 

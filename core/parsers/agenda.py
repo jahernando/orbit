@@ -110,51 +110,17 @@ def register_ev(subparsers):
     _add_fup_subparser(ev_sub)
 
 
-def register_cita(subparsers):
-    """``orbit cita log [text]`` y alias ``orbit clog [text]``.
+def register_clog(subparsers):
+    """``orbit clog [text]`` — logbook entry de la cita activa ahora.
 
-    Umbrella para las 4 citas: encuentra la cita activa ahora (now ∈
-    [start, end+10min]) y crea entrada de logbook. Si hay >1 activa o 0,
-    abre selector. Elimina la fricción de "buscar el proyecto + tipo
-    + texto" al loguear citas en curso.
+    Encuentra la cita activa ahora (now ∈ [start, end+10min]) sobre las 4
+    citas y crea una entrada de logbook. Si hay >1 activa o 0, abre selector.
+    Elimina la fricción de "buscar el proyecto + tipo + texto" al loguear
+    citas en curso — es el único superviviente del retirado paraguas ``cita``
+    (v0.42: `cita fup/done/drop` → verbos tipados + `task/ms/... done/drop`).
     """
-    cita_p = subparsers.add_parser(
-        "cita", help="Cita umbrella (las 4 citas): `cita log [text]`")
-    cita_sub = cita_p.add_subparsers(dest="action")
-    cita_log = cita_sub.add_parser(
-        "log", help="Create logbook entry from currently-active cita")
-    cita_log.add_argument("text", nargs="?", default=None,
-                          help="Optional filter text (substring match on desc)")
-
-    cita_fup = cita_sub.add_parser(
-        "fup", help="Add/drop a ⏩ followup on any cita (cross-type)")
-    cita_fup.add_argument("project", help="Project name")
-    cita_fup.add_argument("text", help="Substring match on cita desc")
-    cita_fup.add_argument("date", help="Followup date (YYYY-MM-DD, today, mañana, ...)")
-    cita_fup.add_argument("--desc", default=None, help="Optional followup note")
-    cita_fup.add_argument("--drop", action="store_true",
-                          help="Remove the followup with this date instead of adding")
-
-    cita_done = cita_sub.add_parser(
-        "done", help="Mark a task/milestone done (located cross-type)")
-    cita_done.add_argument("project", help="Project name")
-    cita_done.add_argument("text", nargs="?", default=None,
-                           help="Substring match on cita desc (omit for selector)")
-
-    cita_drop = cita_sub.add_parser(
-        "drop", help="Cancel any cita (located cross-type)")
-    cita_drop.add_argument("project", help="Project name")
-    cita_drop.add_argument("text", nargs="?", default=None,
-                           help="Substring match on cita desc (omit for selector)")
-    cita_drop.add_argument("--force", action="store_true", help="Skip confirmation")
-    cita_drop.add_argument("-o", dest="occurrence", action="store_true",
-                           help="Drop this occurrence only")
-    cita_drop.add_argument("-s", dest="series", action="store_true",
-                           help="Drop the entire series")
-
-    # Atajo directo equivalente a `cita log`.
     clog_p = subparsers.add_parser(
-        "clog", help="Alias de `cita log` — logbook entry de la cita activa")
+        "clog", help="Logbook entry de la cita activa ahora (las 4 citas)")
     clog_p.add_argument("text", nargs="?", default=None,
                         help="Optional filter text (substring match on desc)")
 

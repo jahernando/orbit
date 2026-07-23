@@ -22,7 +22,9 @@ Ergonomía de los followups (`⏩`), sin cambiar el modelo de datos (siguen sien
 
 **`--des`** — alias de `--desc` en `add`/`edit`/`fup`.
 
-Los verbos que mutan siguen imprimiendo el orbit-item desde el serializador único (ADR-044). Suite: 1880 passed, 1 skipped (+18 tests nuevos). El paraguas `cita fup` (cross-type, `--drop` por fecha) se mantiene por compatibilidad pero queda desaconsejado; su retirada + la del resto del umbrella `cita` (conservando `clog`) se hará en una entrega posterior tras validar los verbos tipados en uso.
+**Retirada del paraguas `cita`** — con los verbos tipados en su sitio, el umbrella `cita` (v0.40) se elimina: `cita fup/done/drop` → verbos tipados (`task fup`, `task done`/`drop`, `ms done`/`drop`, `ev drop`, `rem drop`; localización cross-type ya no aplica, cada verbo trabaja sobre su tipo). Sobrevive **`clog`** (logbook de la cita activa ahora), reclasificado de trigger de citas a trigger de dash (solo escribe logbook, no muta citas). Borrados: `cmd_cita`, `run_cita_fup/done/drop`, el subparser `cita`; `register_cita` → `register_clog`. El locator compartido `_cita_locate` (ahora con filtro `kinds`) se conserva: lo usan el verbo tipado `fup` y `clog`.
+
+Los verbos que mutan siguen imprimiendo el orbit-item desde el serializador único (ADR-044). Suite: 1863 passed, 1 skipped (+18 tests del verbo tipado/`--fup`/`clean`; −17 de `cita fup/done/drop`). Docs: CHULETA/README/TUTORIAL/CLAUDE/CHANGELOG.
 
 ---
 

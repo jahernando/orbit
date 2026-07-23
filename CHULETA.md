@@ -53,7 +53,7 @@ Una task vive en uno de dos estados abiertos, derivados solo de `date`:
 | someday | — | reposo, sin presión; no aflora hasta que le pongas fecha o un followup |
 
 - `task add --date DATE` → **planned**. `task add` sin fecha → **someday** (captura en reposo, ya no se auto-programa a hoy).
-- Para **planificar** una someday: `task edit --date DATE`. Para **posponer/triar** cualquier cita: un **followup** `cita fup` (`⏩ FECHA` en el cuerpo; ver sección Followups). El followup es lo que hace aflorar la cita en "Decidir hoy" cuando `⏩ <= today`.
+- Para **planificar** una someday: `task edit --date DATE`. Para **posponer/triar** cualquier cita: un **followup** `<tipo> fup` (`⏩ FECHA` en el cuerpo; ver sección Followups). El followup es lo que hace aflorar la cita en "Decidir hoy" cuando `⏩ <= today`.
 - Los verbos `plan`/`pending` y los campos `ff`/`💤`/`❌` se **retiraron en F5**: el eje de triaje es ahora el followup (línea de cuerpo, aplica a las 4 citas), no un campo de cabecera de la task.
 
 - `done` y `drop`: interactivos si no se especifica texto; `drop` pide confirmación
@@ -116,7 +116,7 @@ Si al crear una tarea, hito o evento con `--time` no se indica `--ring`, Orbit p
 
 ### Echo del item al mutar
 
-Todos los verbos que modifican una cita (`add`, `edit`, `done`, `drop`, `plan`, `pending`, `cita fup`) confirman imprimiendo el **orbit-item resultante** tal cual queda en `agenda.md` (mismo serializador → fiel byte a byte), incluido su cuerpo (followups/links). El `[orbit:id]` se oculta salvo con `-v`/`--verbose`.
+Todos los verbos que modifican una cita (`add`, `edit`, `done`, `drop`, `fup`) confirman imprimiendo el **orbit-item resultante** tal cual queda en `agenda.md` (mismo serializador → fiel byte a byte), incluido su cuerpo (followups/links). El `[orbit:id]` se oculta salvo con `-v`/`--verbose`.
 
 ---
 
@@ -176,21 +176,15 @@ orbit reminder fup  <project> "<text>" <DATE|clean> [--desc DESC]     # (rem = a
 
 ---
 
-## cita — paraguas de las 4 citas
-
-`cita` opera sobre cualquiera de las 4 citas (task / ms / ev / reminder) **sin que indiques el tipo**: localiza por proyecto + texto (lista numerada si hay varias coincidencias). Útil para ciclo de vida y anotación cuando no quieres recordar de qué tipo es la cita.
+## clog — logbook de la cita activa ahora
 
 ```bash
-orbit cita log  ["<text>"]                                 # = clog: logbook de la cita activa ahora
-orbit cita fup  <project> "<text>" <date> [--desc DESC]    # añade un followup ⏩ a la cita
-orbit cita fup  <project> "<text>" <date> --drop           # borra ESE followup (clave = fecha)
-orbit cita done <project> ["<text>"]                       # marca hecha (solo task/ms)
-orbit cita drop <project> ["<text>"] [--force] [-o] [-s]   # cancela cualquier tipo
+orbit clog ["<text>"]     # entrada de logbook de la cita en curso (las 4 citas, sin indicar tipo)
 ```
 
-- `clog` es atajo de `cita log`.
-- `cita done` rechaza eventos y recordatorios (no tienen "done" → se cancelan con `cita drop`).
-- `cita drop` delega en el `drop` del tipo correspondiente: misma gestión de recurrencia (`-o`/`-s`/`--force`), ring y logbook.
+`clog` localiza la cita activa ahora mismo (now ∈ [inicio, fin+10min]) sobre los 4 tipos y crea una entrada de logbook, sin que indiques proyecto/tipo/texto. Si hay >1 activa o ninguna, abre un selector. `["<text>"]` filtra por subcadena.
+
+> **v0.42 — el paraguas `cita` se retiró.** `clog` es su único superviviente. Los antiguos `cita fup/done/drop` viven ahora en los **verbos tipados**: followups → `task fup` / `ms fup` / `ev fup` / `rem fup` (+ `--fup` al alta/edición, ver Followups); completar/cancelar → `task done`/`task drop`, `ms done`/`ms drop`, `ev drop`, `rem drop`.
 
 ### Followups (`⏩` en el cuerpo)
 
@@ -211,8 +205,6 @@ orbit <tipo> edit <project> "<text>" ... --fup <date>      # añade un ⏩ al ed
 - `date` acepta `YYYY-MM-DD`, `today`, `mañana`, `monday`, `+N`, … (se normaliza a ISO). `--des` es alias de `--desc`.
 - Mutación silenciosa: no escribe en el logbook, pero el comando muestra el item resultante.
 - El followup es el **único** mecanismo de triaje (F5 retiró el campo `ff` de cabecera): va en una **línea de cuerpo** indentada y aplica a las 4 citas.
-
-> El paraguas `cita fup <project> "<text>" <date> [--desc] [--drop]` (cross-type, borrado por fecha exacta) sigue disponible pero queda desaconsejado frente a los verbos tipados + `clean`.
 
 ---
 

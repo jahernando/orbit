@@ -228,14 +228,16 @@ reminder log next-kr "correo"        # → #apunte en logbook
 
 Útil para anotar qué se hizo cuando se completó una tarea, se alcanzó un hito, se asistió a un evento o se atendió un recordatorio.
 
-### El paraguas `cita` y los followups
+### Followups y `clog`
 
-`cita` opera sobre cualquiera de las 4 citas sin que digas el tipo: localiza por proyecto + texto (lista numerada si hay varias). Es cómodo para el ciclo de vida cuando no recuerdas si era tarea, hito, evento o recordatorio.
+Para el ciclo de vida de una cita usa el verbo de su tipo (`task done`, `ms done`, `ev drop`, `rem drop`…). Y si estás en mitad de algo y quieres apuntarlo, `clog` localiza la cita **activa ahora** y crea la entrada de logbook sin que digas proyecto ni tipo:
 
 ```bash
-cita done next-kr "Reproducir"      # marca hecha (solo task/ms)
-cita drop next-kr "Congreso"        # cancela cualquier tipo
+clog                     # logbook de la cita en curso
+clog "seminario"         # filtra por texto si hay varias activas
 ```
+
+> El antiguo paraguas `cita` (`cita done/drop/fup`) se retiró en v0.42; `clog` es lo único que queda de él.
 
 Un **followup** es un empujón blando que cuelgas bajo cualquier cita con una fecha: la cita reaparece en "Decidir hoy" cuando esa fecha llega, pero **no** se marca como atrasada (a diferencia de una fecha de compromiso) y no acumula contadores. Puedes poner varios.
 

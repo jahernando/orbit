@@ -725,60 +725,9 @@ def _cita_locate(project_dir, data, text: Optional[str], kinds=None):
     return index_map[pick]
 
 
-def run_cita_fup(project: Optional[str], text: Optional[str],
-                 date_val: Optional[str], desc: Optional[str] = None,
-                 drop: bool = False) -> int:
-    """Add or drop a ⏩ followup on any appointment (cross-type) in *project*.
-
-    Followups are soft nudges (design §2, ADR-043): they surface the cita
-    on/after *date_val* without marking it ❗ and carry no state. Mutations
-    are silent — no logbook entry, no side-effect (§0.5) — but echo what
-    changed. The key for ``--drop`` is the date.
-    """
-    from core.agenda.display import add_followup, drop_followup, format_item_block
-    from core.dateparse import parse_date
-
-    project_dir = _resolve_project(project)
-    if project_dir is None:
-        return 1
-    if not date_val:
-        print("Error: especifica fecha (ej. cita fup <proyecto> <texto> <YYYY-MM-DD>)")
-        return 1
-    date_norm = parse_date(date_val)
-    if not _valid_date(date_norm):
-        print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, ...")
-        return 1
-
-    agenda_path = resolve_file(project_dir, "agenda")
-    data  = _read_agenda(agenda_path)
-    found = _cita_locate(project_dir, data, text)
-    if found is None:
-        return 1
-    kind, idx = found
-    item  = data[kind][idx]
-    emoji = _CITA_KIND_EMOJI[kind]
-
-    if drop:
-        removed = drop_followup(item, date_norm)
-        if not removed:
-            print(f"No hay followup ⏩{date_norm} en {emoji} {item['desc']}.")
-            return 1
-        _write_agenda(agenda_path, data)
-        for line in removed:
-            print(f"  ⏩ borrado: {line}")
-        print(format_item_block(kind, item,
-                                banner=f"cita fup --drop · {project_dir.name}"))
-        return 0
-
-    add_followup(item, date_norm, desc)
-    _write_agenda(agenda_path, data)
-    print(format_item_block(kind, item, banner=f"cita fup · {project_dir.name}"))
-    return 0
-
-
 # ── Typed followup verb (`<type> fup ...`) ─────────────────────────────────
 #
-# Same soft-nudge followups as `cita fup`, but scoped to one appointment type
+# Soft-nudge followups scoped to one appointment type
 # so `task fup` never matches an event of the same name. The date positional
 # doubles as the verb selector: a real date adds a ⏩, the literal `clean`
 # opens a numbered remover ("clean" is never a valid date, no collision).
@@ -883,56 +832,6 @@ def run_fup(kind: str, project: Optional[str], text: Optional[str],
               "(ej. task fup <proyecto> <texto> <YYYY-MM-DD>)")
         return 1
     return _fup_add(project, text, target, desc, kinds)
-
-
-def run_cita_done(project: Optional[str], text: Optional[str]) -> int:
-    """Mark a task/milestone done, located cross-type (design §1).
-
-    `done` only applies to task/ms (the typed citas with status); events and
-    reminders have no done — they are cancelled with `cita drop`. Locates via
-    the shared locator, rejects ev/reminder with a clear message, then
-    delegates to the per-type runner (full reuse of its logbook/ring logic).
-    """
-    project_dir = _resolve_project(project)
-    if project_dir is None:
-        return 1
-    data  = _read_agenda(resolve_file(project_dir, "agenda"))
-    found = _cita_locate(project_dir, data, text)
-    if found is None:
-        return 1
-    kind, idx = found
-    if kind not in ("tasks", "milestones"):
-        emoji = _CITA_KIND_EMOJI[kind]
-        print(f"⚠️  `done` solo aplica a tareas/hitos, no a {emoji}. "
-              f"Usa `cita drop` para cancelar.")
-        return 1
-    desc   = data[kind][idx]["desc"]
-    runner = run_task_done if kind == "tasks" else run_ms_done
-    return runner(project=project_dir.name, text=desc)
-
-
-def run_cita_drop(project: Optional[str], text: Optional[str],
-                  force: bool = False, occurrence: bool = False,
-                  series: bool = False) -> int:
-    """Cancel any appointment, located cross-type (design §1).
-
-    Works on all four types. Locates via the shared locator, then delegates
-    to the per-type drop runner so recurrence handling (-o/-s/--force), ring
-    deletion and logbook all behave identically to `<type> drop`.
-    """
-    project_dir = _resolve_project(project)
-    if project_dir is None:
-        return 1
-    data  = _read_agenda(resolve_file(project_dir, "agenda"))
-    found = _cita_locate(project_dir, data, text)
-    if found is None:
-        return 1
-    kind, idx = found
-    desc   = data[kind][idx]["desc"]
-    runner = {"tasks": run_task_drop, "milestones": run_ms_drop,
-              "events": run_ev_drop, "reminders": run_reminder_drop}[kind]
-    return runner(project=project_dir.name, text=desc,
-                  force=force, occurrence=occurrence, series=series)
 
 
 def run_cita_log(text: Optional[str] = None) -> int:

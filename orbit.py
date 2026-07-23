@@ -573,31 +573,13 @@ def cmd_ev(args):
     return 1
 
 
-def cmd_cita(args):
-    """Cita umbrella dispatcher: `cita log [text]` / `cita fup ...`."""
-    action = _ga(args, "action") or "log"
-    if action == "log":
-        from core.agenda.runners import run_cita_log
-        return run_cita_log(text=_ga(args, "text"))
-    if action == "fup":
-        from core.agenda.runners import run_cita_fup
-        return run_cita_fup(project=_ga(args, "project"), text=_ga(args, "text"),
-                            date_val=_ga(args, "date"), desc=_ga(args, "desc"),
-                            drop=_ga(args, "drop"))
-    if action == "done":
-        from core.agenda.runners import run_cita_done
-        return run_cita_done(project=_ga(args, "project"), text=_ga(args, "text"))
-    if action == "drop":
-        from core.agenda.runners import run_cita_drop
-        return run_cita_drop(project=_ga(args, "project"), text=_ga(args, "text"),
-                             force=_ga(args, "force", False),
-                             occurrence=_ga(args, "occurrence", False),
-                             series=_ga(args, "series", False))
-    return 1
-
-
 def cmd_clog(args):
-    """Atajo: `clog [text]` ≡ `cita log [text]`."""
+    """`clog [text]` — logbook entry de la cita activa ahora (las 4 citas).
+
+    Único superviviente del retirado paraguas ``cita`` (v0.42). Los antiguos
+    `cita fup/done/drop` viven ahora en los verbos tipados (`task fup`, …) y
+    en `task/ms/ev/rem done|drop`.
+    """
     from core.agenda.runners import run_cita_log
     return run_cita_log(text=_ga(args, "text"))
 
@@ -1906,7 +1888,7 @@ def _build_parser():
     _agenda_parsers.register_ms(subparsers)
     _agenda_parsers.register_ev(subparsers)
     _agenda_parsers.register_reminder(subparsers)
-    _agenda_parsers.register_cita(subparsers)
+    _agenda_parsers.register_clog(subparsers)
 
     # --- hl ---
     hl_p   = subparsers.add_parser("hl", help="Highlights commands (highlights.md)")
@@ -2176,7 +2158,7 @@ def _build_parser():
 _COMMANDS = {
     "task": cmd_task_new,
     "ms": cmd_ms, "ev": cmd_ev, "reminder": cmd_reminder, "rem": cmd_reminder,
-    "cita": cmd_cita, "clog": cmd_clog, "hl": cmd_hl,
+    "clog": cmd_clog, "hl": cmd_hl,
     "view": cmd_view_new,
     "note": cmd_note, "save": cmd_commit, "commit": cmd_commit, "deliver": cmd_deliver,
     "clip": cmd_clip,
@@ -2202,8 +2184,9 @@ _COMMANDS = {
 #   resto en _DASH_TRIGGERS → solo dash  (log/hl/project no afectan ics
 #                     ni ring, sólo a los viewers markdown).
 _CITA_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
-                  "ics-import", "email", "focus", "cita"}
-_DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project"}
+                  "ics-import", "email", "focus"}
+# clog only writes a logbook entry (no cita mutation) → dash only, like `log`.
+_DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project", "clog"}
 
 
 def run_command(argv: list) -> int:
