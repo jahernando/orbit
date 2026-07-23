@@ -566,7 +566,26 @@ def _check_refs(project_name: str, project_dir: Path, file_path: Path,
     lines = file_path.read_text().splitlines()
     start = max(0, len(lines) - max_lines)
 
+    # Lines inside HTML comment blocks are not real refs (e.g. the `[link](url)`
+    # example in the highlights template header) — skip them. Computed over the
+    # whole file so a comment opened before `start` is still honored.
+    comment_lines: set = set()
+    _in_c = False
+    for idx, _l in enumerate(lines):
+        _s = _l.strip()
+        if _in_c:
+            comment_lines.add(idx)
+            if "-->" in _s:
+                _in_c = False
+            continue
+        if "<!--" in _s:
+            comment_lines.add(idx)
+            if "-->" not in _s or _s.index("-->") < _s.index("<!--"):
+                _in_c = True
+
     for i in range(start, len(lines)):
+        if i in comment_lines:
+            continue
         line = lines[i]
         for match in _LINK_RE.finditer(line):
             target = match.group(1).strip()

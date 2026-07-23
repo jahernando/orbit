@@ -395,6 +395,19 @@ class TestCheckRefs:
         )
         assert _check_refs("💻testproj", proj, log) == []
 
+    def test_comment_block_refs_skipped(self, doctor_env):
+        """Markdown links inside HTML comments (e.g. the highlights template
+        header example `[link](url)`) are not real refs."""
+        proj = doctor_env["proj"]
+        hl = proj / "testproj-highlights.md"
+        hl.write_text(
+            "# Highlights\n\n"
+            "<!-- Un ítem por línea: guión, emoji-tipo, texto o [link](url).\n"
+            "       - 📎 [Paper](https://…) #referencia -->\n\n"
+            "- 📎 Ref real #referencia\n"
+        )
+        assert _check_refs("💻testproj", proj, hl) == []
+
     def test_fragment_refs_skipped(self, doctor_env):
         proj = doctor_env["proj"]
         log = proj / "testproj-logbook.md"
