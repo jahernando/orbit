@@ -20,6 +20,7 @@ from core.agenda.lifecycle import (
     _fed_tag, _resolve_project,
     _generic_add, _generic_drop, _generic_edit, _generic_log,
     _agenda_via_calendar, _ask_drop_confirmation,
+    _confirm_past_date,
     date_val_is_today,
 )
 
@@ -761,6 +762,9 @@ def _fup_add(project, text, date_val, desc, kinds):
     date_norm = parse_date(date_val)
     if not _valid_date(date_norm):
         print(f"⚠️  Fecha '{date_val}' no reconocida. Usa: YYYY-MM-DD, today, mañana, ...")
+        return 1
+    if not _confirm_past_date(date_norm, label="followup date"):
+        print("Cancelled.")
         return 1
     opened = _fup_open(project, text, kinds)
     if opened is None:

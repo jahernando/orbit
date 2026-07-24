@@ -10,6 +10,18 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — Guard de fecha-pasada en DATE de citas y followups
+
+Un año mal tecleado (p. ej. `2016` por `2026`) entraba silencioso en la verdad; para un followup `⏩` afloraba **de inmediato** en "Hoy — por triar" en vez de quedarse en el futuro (caso real detectado en `🌀next-topo`).
+
+**Guard único** — helper `_confirm_past_date(date_iso, label=…)` en `core/agenda/lifecycle.py`: si la fecha ISO normalizada es estrictamente anterior a hoy **y** hay TTY, pregunta `Are you sure the <label> is <DATE>? [y/N]`. Devuelve proceder/abortar. Sin TTY (batch/import/tests) siempre procede — no bloquea flujos desatendidos. `none`/vacío/no-ISO pasan sin preguntar.
+
+**Cobertura** — reemplaza el guard inline preexistente de `add` de cita (antes solo ahí) y lo extiende a: `edit` de cita (`new_date`), `<tipo> fup … DATE`, `--fup DATE` inline en `add` y `edit`, y el interrogador guiado `-i` (ahí la fecha pasada omite ese followup, no aborta el add). Mensajes de usuario en **inglés** (los vecinos en español son pre-existentes; pendiente barrido i18n).
+
+**Tests** — `TestPastDateGuard` (helper: declina/acepta/futuro-no-pregunta/no-TTY-procede/`none`; e2e: fup y add/edit declinados devuelven 1 sin escribir, no-TTY procede). Suite 1883 pass.
+
+---
+
 ### v0.44.0 (2026-07-23) — Nombres de fichero de proyecto genéricos (`agenda.md`, `logbook.md`, `highlights.md`, `project.md`)
 
 Los cuatro ficheros de cada proyecto pasan de `<proyecto>-<kind>.md` a **genéricos** ([ADR-047](DECISIONS.md#adr-047--nombres-de-fichero-de-proyecto-genéricos-agendamd-en-vez-de-proyecto-agendamd)). Motivación: el prefijo `<proyecto>-` es redundante (la carpeta ya lo nombra) y alarga las tabs/quick-switcher de Obsidian usado como bóveda.

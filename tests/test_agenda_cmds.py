@@ -560,6 +560,113 @@ class TestFupOnAddEdit:
         assert "no reconocida" in capsys.readouterr().out.lower()
 
 
+class TestPastDateGuard:
+    """Mistyped-year guard: an appointment/⏩ DATE before today prompts on a TTY.
+
+    Non-interactive callers always proceed (regression guard) so the guard
+    never blocks batch/import or the rest of the suite.
+    """
+
+    def _read(self, proj):
+        from core.agenda_cmds import _read_agenda
+        return _read_agenda(proj / f"{_strip_emoji(proj.name)}-agenda.md")
+
+    @staticmethod
+    def _past():
+        return (date.today() - timedelta(days=10)).isoformat()
+
+    def test_helper_declined_on_tty(self, monkeypatch):
+        from core.agenda import lifecycle
+        monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "n")
+        assert lifecycle._confirm_past_date(self._past()) is False
+
+    def test_helper_accepted_on_tty(self, monkeypatch):
+        from core.agenda import lifecycle
+        monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "y")
+        assert lifecycle._confirm_past_date(self._past()) is True
+
+    def test_helper_future_never_prompts(self, monkeypatch):
+        from core.agenda import lifecycle
+        monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: True)
+
+        def _boom(*a):
+            raise AssertionError("should not prompt for a future date")
+
+        monkeypatch.setattr("builtins.input", _boom)
+        future = (date.today() + timedelta(days=10)).isoformat()
+        assert lifecycle._confirm_past_date(future) is True
+
+    def test_helper_non_tty_proceeds(self, monkeypatch):
+        from core.agenda import lifecycle
+        monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: False)
+        assert lifecycle._confirm_past_date(self._past()) is True
+
+    def test_helper_none_passthrough(self):
+        from core.agenda import lifecycle
+        assert lifecycle._confirm_past_date("none") is True
+        assert lifecycle._confirm_past_date(None) is True
+
+    def test_fup_past_declined_returns_1_and_no_write(self, proj, monkeypatch):
+        from core import api
+        from core.agenda.runners import run_fup
+        api.add_task(project=proj.name, text="X")
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "n")
+        rc = run_fup("task", proj.name, "X", self._past())
+        assert rc == 1
+        assert self._read(proj)["tasks"][-1].get("notes") in (None, [])
+
+    def test_fup_past_accepted_writes(self, proj, monkeypatch):
+        from core import api
+        from core.agenda.runners import run_fup
+        api.add_task(project=proj.name, text="X")
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "y")
+        past = self._past()
+        rc = run_fup("task", proj.name, "X", past)
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1]["notes"] == [f"⏩ {past}"]
+
+    def test_fup_non_tty_past_proceeds(self, proj, monkeypatch):
+        # Regression: batch/import must not block on a past ⏩.
+        from core import api
+        from core.agenda.runners import run_fup
+        api.add_task(project=proj.name, text="X")
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        past = self._past()
+        rc = run_fup("task", proj.name, "X", past)
+        assert rc == 0
+        assert self._read(proj)["tasks"][-1]["notes"] == [f"⏩ {past}"]
+
+    def test_task_add_past_declined_returns_1(self, proj, monkeypatch):
+        from core.agenda.runners import run_task_add
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "n")
+        rc = run_task_add(proj.name, "Vieja", date_val=self._past())
+        assert rc == 1
+        assert self._read(proj)["tasks"] == []
+
+    def test_task_edit_past_declined_keeps_date(self, proj, monkeypatch):
+        from core import api
+        from core.agenda.runners import run_task_edit
+        api.add_task(project=proj.name, text="Editar", date="2099-01-01")
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "n")
+        rc = run_task_edit(proj.name, "Editar", new_date=self._past())
+        assert rc == 1
+        assert self._read(proj)["tasks"][-1]["date"] == "2099-01-01"
+
+    def test_fup_inline_add_past_declined_returns_1(self, proj, monkeypatch):
+        from core.agenda.runners import run_task_add
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "n")
+        rc = run_task_add(proj.name, "T", fup=self._past())
+        assert rc == 1
+        assert self._read(proj)["tasks"] == []
+
+
 class TestGuidedAdd:
     """`-i` guided interrogator (Fase 4): TTY-guarded gap-filling on add."""
 
@@ -608,12 +715,12 @@ class TestGuidedAdd:
         from core.agenda import lifecycle
         from core.agenda_cmds import run_task_add, _read_agenda
         monkeypatch.setattr(lifecycle.sys.stdin, "isatty", lambda: True)
-        answers = iter(["", "", "", "", "2026-06-11", ""])   # skip all, one fup
+        answers = iter(["", "", "", "", "2099-06-11", ""])   # skip all, one fup
         monkeypatch.setattr("builtins.input", lambda *a: next(answers))
         run_task_add("test-project", "Guided task", ask=True)
         t = _read_agenda(proj / "test-project-agenda.md")["tasks"][-1]
         assert t["desc"] == "Guided task"
-        assert t["notes"] == ["⏩ 2026-06-11"]
+        assert t["notes"] == ["⏩ 2099-06-11"]
 
     def test_run_task_add_no_ask_is_silent(self, proj, monkeypatch):
         # Without -i, even on a TTY, the interrogator must not fire.

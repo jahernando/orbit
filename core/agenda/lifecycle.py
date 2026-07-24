@@ -84,16 +84,9 @@ def _validate_add_params(date_val: Optional[str], time_val: Optional[str],
         from views.ring.parse import _parse_ring
         if _parse_ring(ring) is None:
             return f"⚠️  Ring '{ring}' no válido. Usa: HH:MM, 1d, 2h, 30m, o YYYY-MM-DD HH:MM"
-    # Warn if date is in the past (non-recurring only)
-    if date_val and _valid_date(date_val) and not recur:
-        if date.fromisoformat(date_val) < date.today() and sys.stdin.isatty():
-            print(f"⚠️  La fecha {date_val} está en el pasado.")
-            try:
-                resp = input("   ¿Continuar? [s/N]: ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                resp = ""
-            if resp not in ("s", "si", "sí", "y", "yes"):
-                return "Cancelado."
+    # Warn if date is in the past (non-recurring only) — shared typo guard.
+    if not recur and not _confirm_past_date(date_val):
+        return "Cancelled."
 
     if time_val and time_format == "simple":
         if not date_val:
@@ -395,6 +388,33 @@ def _validate_edit_params(new_date=None, new_until=None, new_recur=None,
     return None
 
 
+def _confirm_past_date(date_iso: Optional[str], *, label: str = "date") -> bool:
+    """Confirm an ISO date that falls before today (mistyped-year guard).
+
+    A mistyped year (e.g. ``2016`` for ``2026``) silently lands a past date in
+    the truth; for a followup ``⏩`` it then surfaces immediately as por-triar
+    instead of staying in the future. When *date_iso* is a valid ISO date
+    strictly before today and we are on a TTY, ask the user to confirm.
+
+    Returns True to proceed, False to abort. Non-interactive callers (no TTY)
+    always proceed, so batch/import stays unattended and the test suite is
+    unaffected. ``"none"`` / empty / non-ISO values are treated as "nothing to
+    confirm" and pass through. Shared by appointment add/edit and followup add.
+    """
+    if not date_iso or not _valid_date(date_iso):
+        return True
+    if date.fromisoformat(date_iso) >= date.today():
+        return True
+    if not sys.stdin.isatty():
+        return True
+    print(f"⚠️  The {label} {date_iso} is in the past.")
+    try:
+        resp = input(f"   Are you sure the {label} is {date_iso}? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        resp = ""
+    return resp in ("y", "yes")
+
+
 def _upsert_emoji_note(notes: list, prefix: str, value: Optional[str]) -> list:
     """Insert/replace/remove a note line that starts with *prefix*.
 
@@ -597,6 +617,9 @@ def _interrogate_add(type_name, cfg, *, date_val, time_val, ring, desc, room):
         if not _valid_date(fdate):
             print(f"  ⚠️  Fecha '{parts[0]}' no reconocida, followup omitido.")
             continue
+        if not _confirm_past_date(fdate, label="followup date"):
+            print("  Followup skipped.")
+            continue
         followups.append(_followup_line(fdate, parts[1] if len(parts) > 1 else None))
     return date_val, time_val, ring, desc, room, followups
 
@@ -640,16 +663,9 @@ def _generic_add(type_name: str, project: str, text: str,
             ring=ring, desc=desc, room=room)
 
     # Past-date confirmation (CLI-only, never raised by the API).
-    if date_val and _valid_date(date_val) and not recur:
-        if date.fromisoformat(date_val) < date.today() and sys.stdin.isatty():
-            print(f"⚠️  La fecha {date_val} está en el pasado.")
-            try:
-                resp = input("   ¿Continuar? [s/N]: ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                resp = ""
-            if resp not in ("s", "si", "sí", "y", "yes"):
-                print("Cancelado.")
-                return 1
+    if not recur and not _confirm_past_date(date_val):
+        print("Cancelled.")
+        return 1
 
     if cfg["has_ring"] and date_val and time_val and not ring:
         ring = _prompt_and_validate_ring()
@@ -662,6 +678,9 @@ def _generic_add(type_name: str, project: str, text: str,
         if not _valid_date(fup_norm):
             print(f"⚠️  Fecha --fup '{fup}' no reconocida. "
                   "Usa: YYYY-MM-DD, today, mañana, ...")
+            return 1
+        if not _confirm_past_date(fup_norm, label="followup date"):
+            print("Cancelled.")
             return 1
         followups = followups + [_followup_line(fup_norm)]
 
@@ -857,6 +876,9 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
             print(f"⚠️  Fecha --fup '{fup}' no reconocida. "
                   "Usa: YYYY-MM-DD, today, mañana, ...")
             return 1
+        if not _confirm_past_date(fup_norm, label="followup date"):
+            print("Cancelled.")
+            return 1
 
     # Normalize recur
     if new_recur and new_recur != "none":
@@ -869,6 +891,11 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
                                 time_format=cfg["time_format"])
     if err:
         print(err)
+        return 1
+
+    # Past-date confirmation for an explicit new date (mistyped-year guard).
+    if new_date and new_date != "none" and not _confirm_past_date(new_date):
+        print("Cancelled.")
         return 1
 
     # Select item

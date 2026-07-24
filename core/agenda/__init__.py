@@ -41,7 +41,7 @@ from core.agenda.display import (  # noqa: F401
 )
 from core.agenda.lifecycle import (  # noqa: F401
     _fed_tag, _prompt_ring, _prompt_and_validate_ring,
-    _validate_add_params, _validate_edit_params,
+    _validate_add_params, _validate_edit_params, _confirm_past_date,
     _TYPE_CONFIG, _resolve_project, _format_add_attrs,
     set_cloud_verified, _agenda_via_calendar,
     _schedule_ring_if_today, _delete_ring_if_today, _update_ring_on_edit,
