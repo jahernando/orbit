@@ -362,6 +362,61 @@ def balance(movements: List[Movement]) -> Decimal:
     return sum((m.amount for m in movements), Decimal("0")).quantize(_CENTS)
 
 
+def project_partida(project_dir: Path) -> Optional[str]:
+    """La partida del proyecto, deducida de sus movimientos.
+
+    Hoy **un proyecto tiene una sola partida**, así que no hay ambigüedad: la
+    primera que aparezca es la del proyecto. Si algún día hay varias, esta
+    función es el único punto que hay que abrir.
+    """
+    movements, _ = read_movements(project_dir)
+    return next((m.partida for m in movements if m.partida), None)
+
+
+def resolve_partida(project_dir: Path, requested: Optional[str],
+                    confirm=None) -> str:
+    """Partida a usar en un movimiento nuevo. Lanza `ValueError` si no la hay.
+
+    - sin `--tag` → se hereda la del proyecto (no se teclea dos veces lo mismo)
+    - sin `--tag` y sin movimientos previos → hay que declararla una vez
+    - con `--tag` distinta de la del proyecto → casi siempre es un error de
+      tecleo, así que se pide confirmación; sin TTY se aborta (el saldo no es
+      sitio para dar por buena una duda)
+    """
+    known = project_partida(project_dir)
+    wanted = (requested or "").strip().lstrip("#").strip()
+
+    if not wanted:
+        if known:
+            return known
+        raise ValueError(
+            "este proyecto aún no tiene partida: declárala una vez con "
+            "--tag <partida> (p. ej. viaje, fungible, inventariable)"
+        )
+
+    if known and wanted != known:
+        prompt = (f"⚠️  El proyecto usa la partida #{known}; has escrito "
+                  f"#{wanted}. ¿Usar #{wanted}? [s/N]: ")
+        answer = confirm(prompt) if confirm else _ask_tty(prompt)
+        if not answer:
+            raise ValueError(
+                f"movimiento cancelado; la partida del proyecto es #{known}"
+            )
+    return wanted
+
+
+def _ask_tty(prompt: str) -> bool:
+    """Confirmación por terminal. Sin TTY devuelve False (opción segura)."""
+    import sys
+    if not sys.stdin.isatty():
+        return False
+    try:
+        return input(prompt).strip().lower() in ("s", "si", "sí", "y", "yes")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
 def has_movements(project_dir: Path) -> bool:
     """¿El proyecto tiene ledger? Determina la creación perezosa de `ledger.md`."""
     movements, _ = read_movements(project_dir)

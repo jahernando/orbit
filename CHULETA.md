@@ -398,9 +398,11 @@ orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto|ingreso \
   `--amount` se teclea sin signo y lo rechaza si lo lleva.
 - `--amount` acepta `218,40` · `4.000,00` · `218.40` · `4.000`. Más de 2 decimales
   se rechaza (no se redondea en silencio). Aritmética en `Decimal`.
-- `--tag PARTIDA` es **obligatorio**: la partida (`viaje`, `fungible`,
-  `inventariable`…) es lo que permitirá totales y presupuestos sin reclasificar
-  a mano. Emoji único 💶 para las dos direcciones.
+- `--tag PARTIDA` **solo en el primer movimiento del proyecto**: un proyecto
+  tiene una sola partida (`viaje`, `fungible`, `inventariable`…), así que los
+  siguientes movimientos la heredan. Si tecleas una distinta se pide
+  confirmación (casi siempre es un `#viajes` por `#viaje`) y sin terminal se
+  aborta. Emoji único 💶 para las dos direcciones.
 - **El justificante no tiene flag propia**: es el argumento posicional de `log`,
   así que `--import` lo copia a `cloud/logs/` y lo enlaza en la cabecera.
 - `--date` es la **fecha del movimiento** (la que ordena la tabla). No admite

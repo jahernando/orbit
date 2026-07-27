@@ -19,7 +19,8 @@ from decimal import Decimal
 from core.ledger import (
     CARRY_TAG, EXPENSE_TAG, INCOME_TAG, LEDGER_TAGS,
     Movement, balance, build_body, format_amount, parse_amount, parse_entry,
-    prepare_movement, read_movements, scan_text, signed_amount,
+    prepare_movement, project_partida, read_movements, resolve_partida,
+    scan_text, signed_amount,
 )
 from core.log import TAG_EMOJI, VALID_TYPES, add_entry
 
@@ -156,6 +157,48 @@ class TestPrepareMovement:
     def test_beneficiario_opcional(self):
         _, body, _ = prepare_movement(EXPENSE_TAG, "100", "viaje")
         assert body == ["💶 -100,00"]
+
+
+class TestResolvePartida:
+    """Un proyecto tiene una sola partida: se declara una vez y se hereda."""
+
+    def _mov(self, proj, partida, importe="10,00"):
+        tags, body, _ = prepare_movement(EXPENSE_TAG, importe, partida)
+        add_entry("testproj", f"Mov {partida}", EXPENSE_TAG, None, "2026-07-14",
+                  project_dir=proj, continuations=body, extra_tags=tags)
+
+    def test_primer_movimiento_debe_declararla(self, ledger_env):
+        with pytest.raises(ValueError, match="aún no tiene partida"):
+            resolve_partida(ledger_env, None)
+
+    def test_se_hereda_sin_teclearla(self, ledger_env):
+        self._mov(ledger_env, "viaje")
+        assert resolve_partida(ledger_env, None) == "viaje"
+
+    def test_misma_partida_explicita(self, ledger_env):
+        self._mov(ledger_env, "viaje")
+        assert resolve_partida(ledger_env, "#viaje") == "viaje"
+
+    def test_partida_distinta_pide_confirmacion(self, ledger_env):
+        self._mov(ledger_env, "viaje")
+        # Aceptada explícitamente → se usa
+        assert resolve_partida(ledger_env, "fungible",
+                               confirm=lambda _p: True) == "fungible"
+
+    def test_partida_distinta_sin_confirmar_aborta(self, ledger_env):
+        # Casi siempre es un error de tecleo (#viajes por #viaje).
+        self._mov(ledger_env, "viaje")
+        with pytest.raises(ValueError, match="#viaje"):
+            resolve_partida(ledger_env, "viajes", confirm=lambda _p: False)
+
+    def test_sin_tty_no_da_por_buena_la_duda(self, ledger_env, monkeypatch):
+        self._mov(ledger_env, "viaje")
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        with pytest.raises(ValueError):
+            resolve_partida(ledger_env, "viajes")
+
+    def test_proyecto_sin_movimientos_con_tag_explicita(self, ledger_env):
+        assert resolve_partida(ledger_env, "viaje") == "viaje"
 
 
 class TestBuildBody:

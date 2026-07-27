@@ -320,12 +320,13 @@ def cmd_log(args):
     body = tags = None
     amount = None
     if args.entry in LEDGER_TAGS:
-        from core.ledger import prepare_movement
+        from core.ledger import prepare_movement, resolve_partida
         try:
+            partida = resolve_partida(project_dir, getattr(args, "tag", None))
             tags, body, amount = prepare_movement(
                 args.entry,
                 getattr(args, "amount", None),
-                getattr(args, "tag", None),
+                partida,
                 getattr(args, "payee", None),
             )
         except ValueError as exc:
