@@ -312,6 +312,26 @@ def cmd_log(args):
     if not project_dir:
         return 1
 
+    # Movimiento del ledger: la entrada de logbook ES la verdad contable, así
+    # que aquí se exige importe y partida (core/ledger.py). El interrogador
+    # para rellenarlos interactivamente llega en F2.
+    from core.ledger import LEDGER_TAGS
+
+    body = tags = None
+    amount = None
+    if args.entry in LEDGER_TAGS:
+        from core.ledger import prepare_movement
+        try:
+            tags, body, amount = prepare_movement(
+                args.entry,
+                getattr(args, "amount", None),
+                getattr(args, "tag", None),
+                getattr(args, "payee", None),
+            )
+        except ValueError as exc:
+            print(f"⚠️  {exc}")
+            return 1
+
     rc = add_entry_with_ref(
         project=args.project,
         ref=args.ref,
@@ -322,7 +342,17 @@ def cmd_log(args):
         as_link=getattr(args, "link", False),
         no_date=getattr(args, "no_date", False),
         project_dir=project_dir,
+        continuations=body,
+        extra_tags=tags,
     )
+    if rc == 0 and amount is not None:
+        from core.ledger import currency_symbol, format_amount
+        detalle = " · ".join(filter(None, [
+            f"{args.entry.upper()} {format_amount(amount)} {currency_symbol()}",
+            getattr(args, "payee", None),
+            f"#{tags[0]}",
+        ]))
+        print(f"  💶 {detalle}")
     if rc == 0 and args.open:
         logbook = find_logbook_file(project_dir)
         if logbook:
@@ -1507,6 +1537,13 @@ def _build_parser():
     log_p.add_argument("--no-date", action="store_true", dest="no_date",
                        help="Skip the YYYY-MM-DD_ prefix on the imported filename (non-md imports only).")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
+    # Ledger (--entry gasto|ingreso): la fecha del movimiento es --date.
+    log_p.add_argument("--amount", default=None, metavar="N",
+                       help="Ledger: importe sin signo (lo pone la tag). Ej: 218,40")
+    log_p.add_argument("--payee", default=None, metavar="P",
+                       help="Ledger: beneficiario (pagador si es ingreso)")
+    log_p.add_argument("--tag", default=None, metavar="PARTIDA",
+                       help="Ledger: partida del movimiento. Ej: viaje, fungible")
     log_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
                        help="Open in editor (optionally specify editor name)")
 

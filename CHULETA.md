@@ -378,6 +378,36 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 - `--entry`: filtra por tipo de entrada (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
 - `--in`: busca en un tipo de fichero específico (por defecto logbook)
 
+### Ledger — movimientos de dinero (F1)
+
+Un movimiento **es una entrada de logbook** con tag `#gasto` o `#ingreso`; no hay
+fichero-verdad nuevo. `ledger.md` (tabla + saldo) es un derivado y llega en F3.
+
+```bash
+orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto|ingreso \
+          --amount N --tag PARTIDA [--payee P] [--import] [--date D]
+```
+
+```markdown
+2026-07-14 💶 [Vuelo Madrid–Ginebra](./cloud/logs/2026-07-14_factura.pdf) #gasto #viaje
+  💶 -218,40
+  👤 Iberia
+```
+
+- **El signo lo pone la tag**, nunca el usuario: `#gasto` resta, `#ingreso` suma.
+  `--amount` se teclea sin signo y lo rechaza si lo lleva.
+- `--amount` acepta `218,40` · `4.000,00` · `218.40` · `4.000`. Más de 2 decimales
+  se rechaza (no se redondea en silencio). Aritmética en `Decimal`.
+- `--tag PARTIDA` es **obligatorio**: la partida (`viaje`, `fungible`,
+  `inventariable`…) es lo que permitirá totales y presupuestos sin reclasificar
+  a mano. Emoji único 💶 para las dos direcciones.
+- **El justificante no tiene flag propia**: es el argumento posicional de `log`,
+  así que `--import` lo copia a `cloud/logs/` y lo enlaza en la cabecera.
+- `--date` es la **fecha del movimiento** (la que ordena la tabla). No admite
+  futuro.
+- `#arrastre` es la tercera tag del ledger, pero **no se teclea**: la escribe
+  solo `orbit archive` al consolidar movimientos archivados (F5).
+
 ---
 
 ## crono — cronogramas (task compuesta)

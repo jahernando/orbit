@@ -8,6 +8,7 @@ from core.config import PROJECTS_DIR, iter_project_dirs
 VALID_TYPES = ["idea", "referencia", "apunte", "problema", "solucion", "resultado",
                "decision", "evaluacion",
                "plan", "email",
+               "gasto", "ingreso", "arrastre",   # ledger (core/ledger.py)
                "tarea", "evento"]   # tarea/evento kept for backwards compat
 
 
@@ -165,6 +166,11 @@ TAG_EMOJI = {
     "evaluacion":  "🔍",
     "plan":        "🗓️",
     "email":       "✉️",
+    # Ledger: emoji único para las tres direcciones — la línea del diario queda
+    # neutra y la dirección la llevan la tag y el signo del importe.
+    "gasto":       "💶",
+    "ingreso":     "💶",
+    "arrastre":    "💶",
     "tarea":       "✅",   # legacy
     "evento":      "📅",   # legacy
 }
@@ -236,7 +242,8 @@ def _is_new_project(project_dir: Path) -> bool:
 def add_entry(project: str, message: str, tipo: str, path: Optional[str],
               fecha: Optional[str], orbit: bool = False,
               project_dir: Optional[Path] = None,
-              continuations: Optional[list] = None) -> int:
+              continuations: Optional[list] = None,
+              extra_tags: Optional[list] = None) -> int:
     if fecha:
         try:
             entry_date = date.fromisoformat(fecha)
@@ -258,7 +265,7 @@ def add_entry(project: str, message: str, tipo: str, path: Optional[str],
         init_logbook(logbook_path, project_dir.name)
 
     entry = format_entry(message, tipo, path, fecha, orbit=orbit,
-                         continuations=continuations)
+                         continuations=continuations, extra_tags=extra_tags)
     _append_entry(logbook_path, entry)
     print(f"✓ [{project_dir.name}] {entry.strip()}")
 
@@ -291,7 +298,9 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                        deliver: bool = False, orbit: bool = False,
                        as_link: bool = False,
                        no_date: bool = False,
-                       project_dir: Optional[Path] = None) -> int:
+                       project_dir: Optional[Path] = None,
+                       continuations: Optional[list] = None,
+                       extra_tags: Optional[list] = None) -> int:
     """Add a logbook entry, handling URL/file/import/link logic.
 
     - ref is URL → link title to URL
@@ -353,7 +362,8 @@ def add_entry_with_ref(project: str, ref: Optional[str], message: str,
                 link = ref  # keep as-is (relative path or manual reference)
 
     rc = add_entry(project, message, tipo, link, fecha, orbit=orbit,
-                   project_dir=project_dir)
+                   project_dir=project_dir, continuations=continuations,
+                   extra_tags=extra_tags)
     if rc != 0:
         return rc
 
