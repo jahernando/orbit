@@ -1537,6 +1537,7 @@ from core.parsers._helpers import (
     _OrbitParser,
     _add_log_args, _add_project_text, _add_add_args, _add_edit_args,
     _add_drop_args, _add_crono_subparsers, _add_fed_args, _add_output_args,
+    add_project_arg,
 )
 
 
@@ -1546,7 +1547,7 @@ def _build_parser():
 
     # --- log ---
     log_p = subparsers.add_parser("log", help="Add an entry to a project logbook")
-    log_p.add_argument("project", help="Project name (partial match)")
+    add_project_arg(log_p, help="Project name (partial match)")
     log_p.add_argument("message", nargs="?", default=None,
                        help="Entry message / title (el interrogador lo pide si falta)")
     log_p.add_argument("ref",     nargs="?", default=None, help="File path or URL (optional)")
@@ -1643,7 +1644,7 @@ def _build_parser():
 
     # ls ev [project]
     ls_ev = ls_sub.add_parser("ev", help="List events")
-    ls_ev.add_argument("project", nargs="?", default=None, help="Project")
+    add_project_arg(ls_ev, required=False, help="Project")
     ls_ev.add_argument("--from", dest="date_from", default=None, metavar="DATE")
     ls_ev.add_argument("--to",   dest="date_to",   default=None, metavar="DATE")
     _add_output_args(ls_ev)
@@ -1652,27 +1653,27 @@ def _build_parser():
 
     # ls reminders [project]
     ls_rem = ls_sub.add_parser("reminders", aliases=["rem"], help="List active reminders")
-    ls_rem.add_argument("project", nargs="?", default=None, help="Project")
+    add_project_arg(ls_rem, required=False, help="Project")
     _add_output_args(ls_rem)
     _add_log_args(ls_rem)
     _add_fed_args(ls_rem)
 
     # ls hl [project]
     ls_hl = ls_sub.add_parser("hl", help="List highlights")
-    ls_hl.add_argument("project", nargs="?", default=None, help="Project")
+    add_project_arg(ls_hl, required=False, help="Project")
     ls_hl.add_argument("--type", default=None, choices=HL_TYPES, help="Section type")
     _add_output_args(ls_hl)
     _add_log_args(ls_hl)
 
     # ls files [project]
     ls_files = ls_sub.add_parser("files", help="List project md files with git status")
-    ls_files.add_argument("project", nargs="?", default=None, help="Project")
+    add_project_arg(ls_files, required=False, help="Project")
     _add_output_args(ls_files)
     _add_log_args(ls_files)
 
     # ls notes [project]
     ls_notes = ls_sub.add_parser("notes", help="List notes with git status")
-    ls_notes.add_argument("project", nargs="?", default=None, help="Project")
+    add_project_arg(ls_notes, required=False, help="Project")
     _add_output_args(ls_notes)
     _add_log_args(ls_notes)
 
@@ -1716,7 +1717,7 @@ def _build_parser():
     # --- dash ---
     ledger_p = subparsers.add_parser(
         "ledger", help="Regenera ledger.md del proyecto e imprime tabla + saldo")
-    ledger_p.add_argument("project", help="Project name (partial match)")
+    add_project_arg(ledger_p, help="Project name (partial match)")
 
     subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,calendar,cronos,hitos,logbook,report-summary}.md + 📊panel/ring/rings.md")
 
@@ -1799,8 +1800,9 @@ def _build_parser():
     # --- ics (iCalendar export) ---
     ics_p = subparsers.add_parser("ics",
         help="Export appointments as iCalendar (.ics) for sharing/subscription")
-    ics_p.add_argument("project", nargs="?", default=None,
-                       help="Project name (substring match). Omit when using --bucket or --workspace.")
+    add_project_arg(ics_p,
+                    required=False,
+                    help="Project name (substring match). Omit when using --bucket or --workspace.")
     ics_p.add_argument("--out", default=None, metavar="PATH",
                        help="Write to PATH instead of stdout")
     ics_p.add_argument("--bucket", default=None, metavar="NAME",
@@ -1836,13 +1838,13 @@ def _build_parser():
 
     def _add_track_args(p):
         """Args shared by `orbit track` and `orbit tracked add`."""
-        p.add_argument("project", help="Project name (partial match)")
+        add_project_arg(p, help="Project name (partial match)")
         p.add_argument("file", metavar="FULLPATH",
                        help="External .md file to track (full path)")
 
     def _add_untrack_args(p):
         """Args shared by `orbit untrack` and `orbit tracked drop`."""
-        p.add_argument("project", help="Project name (partial match)")
+        add_project_arg(p, help="Project name (partial match)")
         p.add_argument("name", help="Filename in notes/ (e.g. DECISIONS.md)")
 
     link_p = subparsers.add_parser("link", aliases=["track"],
@@ -1866,13 +1868,12 @@ def _build_parser():
     _add_untrack_args(tr_drop)
 
     tr_list = tr_sub.add_parser("list", help="List tracked files (optionally for one project)")
-    tr_list.add_argument("project", nargs="?", default=None,
-                          help="Project name (partial match). Omit to list all.")
+    add_project_arg(tr_list, required=False, help="Project name (partial match). Omit to list all.")
 
     # --- ics-share (export a single cita as .ics) ---
     icss_p = subparsers.add_parser("ics-share",
         help="Export one cita (project + orbit-id or desc) to a single-VEVENT .ics for email/Slack")
-    icss_p.add_argument("project", help="Project name (substring match)")
+    add_project_arg(icss_p, help="Project name (substring match)")
     icss_p.add_argument("--orbit-id", dest="orbit_id", default=None, metavar="ID",
                         help="Exact orbit-id of the cita to export")
     icss_p.add_argument("--desc", default=None, metavar="PATTERN",
@@ -1883,7 +1884,7 @@ def _build_parser():
     # --- ics-import (import a single VEVENT into a project) ---
     icsi_p = subparsers.add_parser("ics-import",
         help="Import a .ics file into a project as a new cita (single VEVENT)")
-    icsi_p.add_argument("project", help="Project name (substring match)")
+    add_project_arg(icsi_p, help="Project name (substring match)")
     icsi_p.add_argument("path", nargs="?", default=None,
                         help="Path to the .ics file (omit when using --clipboard)")
     icsi_p.add_argument("--clipboard", action="store_true",
@@ -1902,7 +1903,7 @@ def _build_parser():
 
     email_p = subparsers.add_parser("email",
         help="Capture an email into a project note + logbook entry")
-    email_p.add_argument("project", help="Project name")
+    add_project_arg(email_p, help="Project name")
     email_p.add_argument("query", nargs="?", default=None,
                          help="Subject substring (pending)")
     email_p.add_argument("--id", default=None, metavar="MSG_ID",
@@ -1927,16 +1928,14 @@ def _build_parser():
     # --- doctor ---
     doc_p = subparsers.add_parser("doctor",
                                    help="Check syntax of project files (logbook, agenda, highlights)")
-    doc_p.add_argument("project", nargs="?", default=None,
-                       help="Project name (omit for all)")
+    add_project_arg(doc_p, required=False, help="Project name (omit for all)")
     doc_p.add_argument("--fix", action="store_true",
                        help="Offer to fix issues interactively")
 
     # --- archive ---
     archive_p = subparsers.add_parser("archive",
                                        help="Archive old entries, done tasks, past events, stale notes")
-    archive_p.add_argument("project", nargs="?", default=None,
-                           help="Project name (omit for all)")
+    add_project_arg(archive_p, required=False, help="Project name (omit for all)")
     archive_p.add_argument("--months", type=int, default=6,
                            help="Age threshold in months (default: 6)")
     archive_p.add_argument("--dry-run", action="store_true", dest="dry_run",
@@ -1965,7 +1964,7 @@ def _build_parser():
     hl_sub = hl_p.add_subparsers(dest="action")
 
     hl_add = hl_sub.add_parser("add", help="Add a highlight")
-    hl_add.add_argument("project", help="Project name (partial match)")
+    add_project_arg(hl_add, help="Project name (partial match)")
     hl_add.add_argument("text",    help="Highlight text or title")
     hl_add.add_argument("ref",     nargs="?", default=None, help="File path or URL (optional)")
     hl_add.add_argument("--type",  required=True, choices=HL_TYPES,
@@ -1983,14 +1982,14 @@ def _build_parser():
                         help="Prefix date (today, tomorrow, YYYY-MM-DD)")
 
     hl_drop = hl_sub.add_parser("drop", help="Remove a highlight (interactive)")
-    hl_drop.add_argument("project", nargs="?", default=None)
+    add_project_arg(hl_drop, required=False)
     hl_drop.add_argument("text",    nargs="?", default=None)
     hl_drop.add_argument("--force", action="store_true", help="Skip confirmation")
     hl_drop.add_argument("--type",  default=None, choices=HL_TYPES,
                          help="Restrict to section type")
 
     hl_edit = hl_sub.add_parser("edit", help="Edit a highlight")
-    hl_edit.add_argument("project", nargs="?", default=None)
+    add_project_arg(hl_edit, required=False)
     hl_edit.add_argument("text",    nargs="?", default=None)
     hl_edit.add_argument("--type",   default=None, choices=HL_TYPES)
     hl_edit.add_argument("--text",   dest="new_text", default=None, help="New text/title")
@@ -2001,8 +2000,9 @@ def _build_parser():
     # --- view (project summary) ---
     v2_p = subparsers.add_parser("view",
                                   help="Terminal summary of a project (or interactive picker)")
-    v2_p.add_argument("project", nargs="?", default=None,
-                      help="Project name (partial match; omit for interactive picker)")
+    add_project_arg(v2_p,
+                    required=False,
+                    help="Project name (partial match; omit for interactive picker)")
     v2_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
                       help="Open in editor (optionally specify editor name)")
     _add_log_args(v2_p)
@@ -2012,7 +2012,7 @@ def _build_parser():
     note_sub = note_p.add_subparsers(dest="action")
 
     nt_create = note_sub.add_parser("create", help="Create or import a note")
-    nt_create.add_argument("project", help="Project name (partial match)")
+    add_project_arg(nt_create, help="Project name (partial match)")
     nt_create.add_argument("title",   help="Note title")
     nt_create.add_argument("file",    nargs="?", default=None,
                            help="File to import (omit to create new)")
@@ -2033,7 +2033,7 @@ def _build_parser():
     nt_create.add_argument("--editor",  default=None)
 
     nt_import = note_sub.add_parser("import", help="Import an existing .md file as a note")
-    nt_import.add_argument("project", help="Project name (partial match)")
+    add_project_arg(nt_import, help="Project name (partial match)")
     nt_import.add_argument("title",   help="Note title")
     nt_import.add_argument("file",    help="Path to .md file to import")
     nt_import.add_argument("--no-open", action="store_true",
@@ -2052,7 +2052,7 @@ def _build_parser():
     nt_import.add_argument("--editor",  default=None)
 
     nt_open = note_sub.add_parser("open", help="Open note (create if missing)")
-    nt_open.add_argument("project", help="Project name (partial match)")
+    add_project_arg(nt_open, help="Project name (partial match)")
     nt_open.add_argument("name", nargs="?", default=None,
                          help="Note name (omit for interactive selection)")
     nt_open.add_argument("--date", default=None,
@@ -2060,13 +2060,13 @@ def _build_parser():
     nt_open.add_argument("--editor", default=None)
 
     nt_list = note_sub.add_parser("list", help="List notes with git status")
-    nt_list.add_argument("project", help="Project name (partial match)")
+    add_project_arg(nt_list, help="Project name (partial match)")
     nt_list.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
                          help="Open in editor (optionally specify editor name)")
     _add_log_args(nt_list)
 
     nt_drop = note_sub.add_parser("drop", help="Delete a note (interactive)")
-    nt_drop.add_argument("project", help="Project name (partial match)")
+    add_project_arg(nt_drop, help="Project name (partial match)")
     nt_drop.add_argument("file",    nargs="?", default=None,
                          help="Filename or partial name (omit for interactive selection)")
     nt_drop.add_argument("--force", action="store_true", help="Skip confirmation")
@@ -2094,14 +2094,14 @@ def _build_parser():
 
     # --- render ---
     rnd_p = subparsers.add_parser("render", help="Render project files to HTML for cloud")
-    rnd_p.add_argument("project", nargs="?", default=None, help="Project name (partial match)")
+    add_project_arg(rnd_p, required=False, help="Project name (partial match)")
     rnd_p.add_argument("--full", action="store_true", help="Full render of all projects")
     rnd_p.add_argument("--check", action="store_true", help="Check cloud sync status")
 
     # --- deliver (top-level alias of `cloud deliver`, kept for daily use) ---
     dlv_p = subparsers.add_parser("import", aliases=["deliver"],
         help="Import file to cloud (alias of `cloud deliver`). Alias: deliver.")
-    dlv_p.add_argument("project", help="Project name (partial match)")
+    add_project_arg(dlv_p, help="Project name (partial match)")
     dlv_p.add_argument("file",    help="File path to import")
 
     # --- cloud {deliver,sync,imgs} ---
@@ -2109,7 +2109,7 @@ def _build_parser():
     cld_sub = cld_p.add_subparsers(dest="action")
 
     cdv_p = cld_sub.add_parser("deliver", help="Copy file to project cloud directory (clipboard cloud path)")
-    cdv_p.add_argument("project", help="Project name (partial match)")
+    add_project_arg(cdv_p, help="Project name (partial match)")
     cdv_p.add_argument("file",    help="File path to deliver")
 
     csy_p = cld_sub.add_parser("sync", help="Sync all project markdown to cloud as HTML")

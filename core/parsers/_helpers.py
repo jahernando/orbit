@@ -46,13 +46,30 @@ def _add_log_args(p):
                    help="Append output to a note (e.g. --append catedra:calibracion)")
 
 
+def add_project_arg(p, required=True, help="Project name (partial match)"):
+    """Posicional ``project`` — salvo en un shell fijado a un proyecto.
+
+    En el panel de proyecto (``orbit shell --project X``) el argumento
+    **desaparece de la gramática** y se inyecta como default, de modo que
+    ``log "texto"`` escriba en el proyecto fijado en vez de interpretar
+    "texto" como nombre de proyecto. Ver :mod:`core.context` (ADR-049).
+    """
+    from core import context
+    pinned = context.pinned()
+    if pinned:
+        p.set_defaults(project=pinned)
+        return
+    if required:
+        p.add_argument("project", help=help)
+    else:
+        p.add_argument("project", nargs="?", default=None, help=help)
+
+
 def _add_project_text(p, project_required=True):
     """``project`` + ``text`` positional args."""
-    if project_required:
-        p.add_argument("project", help="Project name (partial match)")
-    else:
-        p.add_argument("project", nargs="?", default=None,
-                       help="Project name (partial match; omit for interactive)")
+    add_project_arg(p, required=project_required,
+                    help="Project name (partial match)" if project_required
+                    else "Project name (partial match; omit for interactive)")
     p.add_argument("text", nargs="?", default=None, help="Text or partial match")
 
 
@@ -106,7 +123,7 @@ def _add_fup_subparser(sub):
     The third positional doubles as verb selector (``clean`` is never a date).
     """
     fp = sub.add_parser("fup", help="Add a ⏩ followup (or `clean` to remove one)")
-    fp.add_argument("project", help="Project name")
+    add_project_arg(fp, help="Project name")
     fp.add_argument("text", help="Substring match on the cita title")
     fp.add_argument("target", metavar="DATE|clean",
                     help="Followup date (YYYY-MM-DD, monday, +3, ...) or 'clean' to remove one")
@@ -122,42 +139,42 @@ def _add_crono_subparsers(sub):
     the chosen subcommand.
     """
     cr_add = sub.add_parser("add", help="Crear cronograma")
-    cr_add.add_argument("project", help="Project name")
+    add_project_arg(cr_add, help="Project name")
     cr_add.add_argument("name", help="Cronograma name")
 
     cr_show = sub.add_parser("show", help="Mostrar cronograma con fechas calculadas")
-    cr_show.add_argument("project", help="Project name")
+    add_project_arg(cr_show, help="Project name")
     cr_show.add_argument("name", help="Cronograma name (partial match)")
     cr_show.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
     _add_log_args(cr_show)
 
     cr_check = sub.add_parser("check", help="Validar cronograma (doctor)")
-    cr_check.add_argument("project", help="Project name")
+    add_project_arg(cr_check, help="Project name")
     cr_check.add_argument("name", help="Cronograma name (partial match)")
 
     cr_list = sub.add_parser("list", help="Listar cronogramas del proyecto")
-    cr_list.add_argument("project", help="Project name")
+    add_project_arg(cr_list, help="Project name")
     cr_list.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR")
     _add_log_args(cr_list)
 
     cr_edit = sub.add_parser("edit", help="Abrir cronograma en el editor")
-    cr_edit.add_argument("project", help="Project name")
+    add_project_arg(cr_edit, help="Project name")
     cr_edit.add_argument("name", help="Cronograma name (partial match)")
     cr_edit.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
                          help="Editor (default: configured editor)")
 
     cr_done = sub.add_parser("done", help="Marcar tarea de cronograma como completada")
-    cr_done.add_argument("project", help="Project name")
+    add_project_arg(cr_done, help="Project name")
     cr_done.add_argument("name", help="Cronograma name")
     cr_done.add_argument("index", nargs="?", default=None,
                          help="Task index, partial text, or omit for interactive")
 
     cr_reindex = sub.add_parser("reindex", help="Renumerar índices del cronograma")
-    cr_reindex.add_argument("project", help="Project name")
+    add_project_arg(cr_reindex, help="Project name")
     cr_reindex.add_argument("name", help="Cronograma name (partial match)")
 
     cr_gantt = sub.add_parser("gantt", help="Visualizar cronograma como Gantt")
-    cr_gantt.add_argument("project", help="Project name")
+    add_project_arg(cr_gantt, help="Project name")
     cr_gantt.add_argument("name", help="Cronograma name (partial match)")
     cr_gantt_mode = cr_gantt.add_mutually_exclusive_group()
     cr_gantt_mode.add_argument("--progress", action="store_true",
@@ -169,7 +186,7 @@ def _add_crono_subparsers(sub):
 
     cr_mermaid = sub.add_parser("mermaid",
                                 help="Embeber visualización (gantt/tabla) en el crono md")
-    cr_mermaid.add_argument("project", help="Project name")
+    add_project_arg(cr_mermaid, help="Project name")
     cr_mermaid.add_argument("name", help="Cronograma name (partial match)")
     cr_mermaid.add_argument("--table", action="store_true",
                             help="Tabla markdown (renderer-agnóstico, sin Mermaid)")
