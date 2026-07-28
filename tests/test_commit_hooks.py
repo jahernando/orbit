@@ -49,6 +49,7 @@ def test_commit_post_chain_registered():
     assert chain.pre == []
     assert chain.post == [
         "ring_refresh",
+        "ledger_refresh",     # antes de render: publica ledger.md ya fresco
         "secretary_refresh",
         "ics_emit_workspace",
         "render_to_cloud",

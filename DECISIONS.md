@@ -964,6 +964,29 @@ Tres fricciones reales:
 
 ---
 
+## ADR-048 — El libro de caja vive en el logbook; `ledger.md` es un derivado
+
+**Estado**: aceptada (2026-07-28).
+
+**Contexto**: los proyectos de gestión necesitan llevar ingresos y gastos (con su justificante en PDF) y saber el saldo. La forma obvia era un quinto fichero-verdad por proyecto con una tabla markdown editable a mano. Pero orbit acababa de converger sus tres ficheros-verdad a una gramática única de items (ADR-045/046), y una tabla-como-verdad significaba un segundo parser, un segundo doctor, una segunda ruta de migración y edición in-place de tablas. Además obligaba a duplicar la huella del movimiento en el logbook, con el riesgo de desincronización entre ambas copias.
+
+**Decisión**:
+1. **Un movimiento de dinero ES una entrada de logbook** con tag `#gasto` / `#ingreso` (y `#arrastre`, que escribe solo `archive`). No hay fichero-verdad nuevo: el apunte del diario y el movimiento contable son el mismo objeto, así que no pueden desincronizarse. La cabecera lleva **una sola tag** (la dirección), como cualquier entrada de logbook; partida, beneficiario e importe van en **una línea de cuerpo** de tokens `emoji valor` unidos por `·`, la misma gramática que la línea temporal de las citas en `agenda.md` (`▶️ … · ⏰ … · 🔔 …`). El justificante viaja en el enlace de cabecera que `add_entry_with_ref` ya renderiza. El lector acepta también el primer formato (un token por línea, partida como segunda tag).
+2. **`ledger.md` es 100 % derivado** (`views/ledger.py`): tabla con saldo corrido, regenerable en cualquier momento. Sin parser de escritura, sin migración: si el formato cambia, se regenera.
+3. **Ningún verbo de escritura nuevo**: se reutiliza `log --entry gasto|ingreso`, que ya trae `--date`, el routing `--import`/`--link` del justificante y el vocabulario de tags. El precio es una rama condicional en un comando permisivo (importe y concepto pasan a obligatorios para esas dos tags); se acepta frente a duplicar verbos que serían sinónimos.
+4. **El signo lo deriva la tag, nunca el usuario**: `--amount` se teclea sin signo y lo rechaza si lo lleva. Al releer, si el signo escrito a mano contradice la tag, manda la tag y se reporta. Aritmética en `Decimal`, nunca `float`.
+5. **`ledger.md` se emite al directorio del proyecto**, no a `📊panel/`. Excepción consciente al principio truth-layer/view-layer (ADR-041 sentó el precedente): `📊panel/` es transversal y esto es por-proyecto; el usuario quiere su ledger junto a los otros cuatro ficheros. Es además el **primer fichero de proyecto opcional** (creación perezosa), así que nada puede exigir su presencia.
+6. **Una partida por proyecto**: se declara en el primer movimiento y los demás la heredan. Se guarda denormalizada en cada movimiento a propósito, para que `ledger.md` siga derivándose solo del logbook y varias partidas no exijan migración.
+
+**Consecuencias**:
+- Pros: cero doble verdad, cero parser de escritura, cero migración; la gramática del workspace no se fragmenta; el fichero derivado es desechable.
+- Contras: corregir un movimiento antiguo obliga a reescribir una entrada de diario pasada (se acepta la edición in-place: usuario único, sin requisito de auditoría, git conserva la historia; no hay asientos de rectificación). Una edición externa en Obsidian no refresca `ledger.md` hasta el siguiente `save` o `orbit ledger`.
+- **Deuda pendiente y peligrosa**: `archive --logbook` **borra** las entradas anteriores al corte (`core/archive.py:94-128`), así que sobre un proyecto con movimientos dejaría un saldo *incorrecto*, no incompleto, y sin avisar. F5 lo cierra: `archive` preguntará si consolidar el neto por partida como entrada `#arrastre`, y ambas ramas (sí y no) dejarán rastro en la verdad para que el derivado pueda cantar el corte. **Hasta que F5 esté hecha, no archivar proyectos con ledger.**
+
+**Verificación**: `tests/test_ledger.py` (67) + `tests/test_ledger_view.py` (25).
+
+---
+
 ## ADR-047 — Nombres de fichero de proyecto genéricos (`agenda.md` en vez de `<proyecto>-agenda.md`)
 
 **Estado**: aceptada (2026-07-23).

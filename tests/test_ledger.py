@@ -129,9 +129,9 @@ class TestSignedAmount:
 class TestPrepareMovement:
 
     def test_movimiento_completo(self):
-        tags, body, amount = prepare_movement(EXPENSE_TAG, "218,40", "viaje", "Iberia")
-        assert tags == ["viaje"]
-        assert body == ["💶 -218,40", "👤 Iberia"]
+        body, amount = prepare_movement(EXPENSE_TAG, "218,40", "viaje", "Iberia")
+        # Una sola línea de tokens, como la línea temporal de las citas.
+        assert body == ["🏷️ viaje · 👤 Iberia · 💶 -218,40"]
         assert amount == Decimal("-218.40")
 
     def test_partida_obligatoria(self):
@@ -147,25 +147,25 @@ class TestPrepareMovement:
             prepare_movement(CARRY_TAG, "100", "viaje")
 
     def test_almohadilla_de_la_partida_se_tolera(self):
-        tags, _, _ = prepare_movement(INCOME_TAG, "100", "#financiacion")
-        assert tags == ["financiacion"]
+        body, _ = prepare_movement(INCOME_TAG, "100", "#financiacion")
+        assert body == ["🏷️ financiacion · 💶 100,00"]
 
     def test_partida_con_espacios_rechazada(self):
         with pytest.raises(ValueError, match="espacios"):
             prepare_movement(EXPENSE_TAG, "100", "material de oficina")
 
     def test_beneficiario_opcional(self):
-        _, body, _ = prepare_movement(EXPENSE_TAG, "100", "viaje")
-        assert body == ["💶 -100,00"]
+        body, _ = prepare_movement(EXPENSE_TAG, "100", "viaje")
+        assert body == ["🏷️ viaje · 💶 -100,00"]
 
 
 class TestResolvePartida:
     """Un proyecto tiene una sola partida: se declara una vez y se hereda."""
 
     def _mov(self, proj, partida, importe="10,00"):
-        tags, body, _ = prepare_movement(EXPENSE_TAG, importe, partida)
+        body, _ = prepare_movement(EXPENSE_TAG, importe, partida)
         add_entry("testproj", f"Mov {partida}", EXPENSE_TAG, None, "2026-07-14",
-                  project_dir=proj, continuations=body, extra_tags=tags)
+                  project_dir=proj, continuations=body)
 
     def test_primer_movimiento_debe_declararla(self, ledger_env):
         with pytest.raises(ValueError, match="aún no tiene partida"):
@@ -203,11 +203,16 @@ class TestResolvePartida:
 
 class TestBuildBody:
 
-    def test_sin_beneficiario(self):
+    def test_una_sola_linea_de_tokens(self):
+        assert build_body(Decimal("-218.40"), "viaje", "Iberia") == [
+            "🏷️ viaje · 👤 Iberia · 💶 -218,40"]
+
+    def test_tokens_ausentes_no_aparecen(self):
         assert build_body(Decimal("-218.40")) == ["💶 -218,40"]
 
     def test_beneficiario_en_blanco_se_omite(self):
-        assert build_body(Decimal("100"), "   ") == ["💶 100,00"]
+        assert build_body(Decimal("100"), "viaje", "   ") == [
+            "🏷️ viaje · 💶 100,00"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -218,8 +223,8 @@ class TestParseEntry:
 
     def test_movimiento_basico(self):
         mov, problem = parse_entry(
-            "2026-07-14", "💶 Vuelo Madrid–Ginebra #gasto #viaje",
-            ["💶 -218,40", "👤 Iberia"],
+            "2026-07-14", "💶 Vuelo Madrid–Ginebra #gasto",
+            ["🏷️ viaje · 👤 Iberia · 💶 -218,40"],
         )
         assert problem is None
         assert mov.date == date(2026, 7, 14)
@@ -233,8 +238,8 @@ class TestParseEntry:
     def test_justificante_va_en_el_enlace_de_cabecera(self):
         mov, _ = parse_entry(
             "2026-07-14",
-            "💶 [Vuelo](cloud/logs/2026-07-14_factura.pdf) #gasto #viaje",
-            ["💶 -218,40"],
+            "💶 [Vuelo](cloud/logs/2026-07-14_factura.pdf) #gasto",
+            ["🏷️ viaje · 💶 -218,40"],
         )
         assert mov.concept == "Vuelo"
         assert mov.link == "cloud/logs/2026-07-14_factura.pdf"
@@ -277,6 +282,14 @@ class TestParseEntry:
     def test_sin_partida(self):
         mov, _ = parse_entry("2026-07-14", "💶 Vuelo #gasto", ["💶 218,40"])
         assert mov.partida is None
+
+    def test_lee_el_formato_viejo_de_cuerpo(self):
+        # Primer formato: un token por línea y la partida como segunda tag.
+        mov, problem = parse_entry(
+            "2026-07-14", "💶 Vuelo #gasto #viaje", ["💶 -218,40", "👤 Iberia"])
+        assert problem is None
+        assert (mov.partida, mov.payee, mov.amount) == (
+            "viaje", "Iberia", Decimal("-218.40"))
 
     def test_marcador_orbit_no_ensucia_el_concepto(self):
         mov, _ = parse_entry("2026-07-14", "💶 Cuota #gasto #viaje [O]", ["💶 10,00"])
@@ -369,10 +382,10 @@ class TestVocabulario:
 class TestEscrituraRelectura:
 
     def test_movimiento_escrito_se_relee(self, ledger_env):
-        tags, body, _ = prepare_movement(EXPENSE_TAG, "218,40", "viaje", "Iberia")
+        body, _ = prepare_movement(EXPENSE_TAG, "218,40", "viaje", "Iberia")
         rc = add_entry("testproj", "Vuelo Madrid–Ginebra", EXPENSE_TAG, None,
                        "2026-07-14", project_dir=ledger_env,
-                       continuations=body, extra_tags=tags)
+                       continuations=body)
         assert rc == 0
 
         movs, problems = read_movements(ledger_env)
@@ -388,9 +401,9 @@ class TestEscrituraRelectura:
         for tag, importe, partida in [(INCOME_TAG, "4.000,00", "financiacion"),
                                       (EXPENSE_TAG, "218,40", "viaje"),
                                       (EXPENSE_TAG, "1.000", "fungible")]:
-            tags, body, _ = prepare_movement(tag, importe, partida)
+            body, _ = prepare_movement(tag, importe, partida)
             add_entry("testproj", f"Mov {partida}", tag, None, "2026-07-14",
-                      project_dir=ledger_env, continuations=body, extra_tags=tags)
+                      project_dir=ledger_env, continuations=body)
         movs, problems = read_movements(ledger_env)
         assert problems == []
         assert balance(movs) == Decimal("2781.60")

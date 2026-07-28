@@ -378,21 +378,32 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 - `--entry`: filtra por tipo de entrada (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
 - `--in`: busca en un tipo de fichero específico (por defecto logbook)
 
-### Ledger — movimientos de dinero (F1)
+### Ledger — libro de caja por proyecto
 
 Un movimiento **es una entrada de logbook** con tag `#gasto` o `#ingreso`; no hay
-fichero-verdad nuevo. `ledger.md` (tabla + saldo) es un derivado y llega en F3.
+fichero-verdad nuevo. `ledger.md` (tabla + saldo) es un derivado 100 %
+regenerable: nadie lo edita a mano y si se rompe se vuelve a generar.
 
 ```bash
 orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto|ingreso \
-          --amount N --tag PARTIDA [--payee P] [--import] [--date D]
+          --amount N [--tag PARTIDA] [--payee P] [--import] [--date D]
+
+orbit ledger <proyecto>       # regenera ledger.md + imprime tabla y saldo
 ```
 
+En terminal, lo que falte se pregunta (**tipo → item → beneficiario → importe →
+fecha → enlace**); en batch se aborta diciendo qué falta. La partida solo se
+pregunta en el primer movimiento del proyecto.
+
 ```markdown
-2026-07-14 💶 [Vuelo Madrid–Ginebra](./cloud/logs/2026-07-14_factura.pdf) #gasto #viaje
-  💶 -218,40
-  👤 Iberia
+2026-07-14 💶 [Vuelo Madrid–Ginebra](./cloud/logs/2026-07-14_factura.pdf) #gasto
+  🏷️ viaje · 👤 Iberia · 💶 -218,40
 ```
+
+Cabecera `DATE 💶 concepto(enlace) #tag` con **una sola tag** (la dirección),
+como cualquier otra entrada de logbook; cuerpo en **una línea** de tokens
+`emoji valor` unidos por `·`, misma gramática que la línea temporal de las
+citas en `agenda.md` (`▶️ … · ⏰ … · 🔔 …`). Los tokens ausentes no aparecen.
 
 - **El signo lo pone la tag**, nunca el usuario: `#gasto` resta, `#ingreso` suma.
   `--amount` se teclea sin signo y lo rechaza si lo lleva.
@@ -408,7 +419,23 @@ orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto|ingreso \
 - `--date` es la **fecha del movimiento** (la que ordena la tabla). No admite
   futuro.
 - `#arrastre` es la tercera tag del ledger, pero **no se teclea**: la escribe
-  solo `orbit archive` al consolidar movimientos archivados (F5).
+  solo `orbit archive` al consolidar movimientos archivados (F5, pendiente).
+
+`ledger.md` se regenera al anotar un movimiento y en `save` (chain
+`commit_post`), que es lo que recoge los movimientos escritos a mano en
+Obsidian. Solo existe en proyectos con movimientos: es el primer fichero de
+proyecto **opcional**. Contiene la partida en cabecera, la tabla con saldo
+corrido y, si `archive` cortó el histórico sin arrastre, el aviso de que el
+saldo no incluye lo anterior.
+
+```markdown
+| Fecha | Tipo | Concepto | Beneficiario | Importe | Saldo |
+|---|---|---|---|---|---|
+| 2026-07-01 | Ingreso | Anticipo PID2024 | UCM | +4.000,00 | 4.000,00 |
+| 2026-07-14 | Gasto | Vuelo Madrid–Ginebra | Iberia | -218,40 | 3.781,60 |
+
+**Saldo actual: 3.781,60 €**
+```
 
 ---
 

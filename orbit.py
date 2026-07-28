@@ -313,45 +313,67 @@ def cmd_log(args):
         return 1
 
     # Movimiento del ledger: la entrada de logbook ES la verdad contable, así
-    # que aquí se exige importe y partida (core/ledger.py). El interrogador
-    # para rellenarlos interactivamente llega en F2.
+    # que aquí se exigen importe y partida (core/ledger.py). En terminal, lo
+    # que falte se pregunta; en batch se aborta con el motivo.
     from core.ledger import LEDGER_TAGS
 
-    body = tags = None
+    body = partida = None
     amount = None
+    message, ref, fecha = args.message, args.ref, args.date
     if args.entry in LEDGER_TAGS:
-        from core.ledger import prepare_movement, resolve_partida
+        import sys as _sys
+        from core.ledger import (Cancelled, interrogate_movement,
+                                 prepare_movement, resolve_partida)
+        amount_raw = getattr(args, "amount", None)
+        payee      = getattr(args, "payee", None)
+        partida    = getattr(args, "tag", None)
+        if _sys.stdin.isatty() and not (message and amount_raw):
+            try:
+                (message, amount_raw, payee, partida, fecha,
+                 ref) = interrogate_movement(
+                    project_dir, args.entry,
+                    concept=message, amount=amount_raw, payee=payee,
+                    partida=partida, fecha=fecha, ref=ref)
+            except Cancelled:
+                print("⚠️  movimiento cancelado")
+                return 1
+        if not message:
+            print("Error: falta el concepto → orbit log <proyecto> \"<concepto>\" "
+                  f"--entry {args.entry} --amount N")
+            return 1
         try:
-            partida = resolve_partida(project_dir, getattr(args, "tag", None))
-            tags, body, amount = prepare_movement(
-                args.entry,
-                getattr(args, "amount", None),
-                partida,
-                getattr(args, "payee", None),
-            )
+            partida = resolve_partida(project_dir, partida)
+            body, amount = prepare_movement(
+                args.entry, amount_raw, partida, payee)
         except ValueError as exc:
             print(f"⚠️  {exc}")
             return 1
+    elif not message:
+        print("Error: falta el mensaje → orbit log <proyecto> \"mensaje\"")
+        return 1
 
     rc = add_entry_with_ref(
         project=args.project,
-        ref=args.ref,
-        message=args.message,
+        ref=ref,
+        message=message,
         tipo=args.entry,
-        fecha=_d(args.date),
+        fecha=_d(fecha),
         deliver=getattr(args, "deliver", False),
         as_link=getattr(args, "link", False),
         no_date=getattr(args, "no_date", False),
         project_dir=project_dir,
         continuations=body,
-        extra_tags=tags,
     )
     if rc == 0 and amount is not None:
-        from core.ledger import currency_symbol, format_amount
+        from core.ledger import balance, currency_symbol, format_amount, read_movements
+        from views.ledger import write_ledger
+        write_ledger(project_dir)
+        movements, _ = read_movements(project_dir)
         detalle = " · ".join(filter(None, [
             f"{args.entry.upper()} {format_amount(amount)} {currency_symbol()}",
-            getattr(args, "payee", None),
-            f"#{tags[0]}",
+            payee,
+            f"#{partida}",
+            f"saldo {format_amount(balance(movements))} {currency_symbol()}",
         ]))
         print(f"  💶 {detalle}")
     if rc == 0 and args.open:
@@ -359,6 +381,11 @@ def cmd_log(args):
         if logbook:
             open_file(logbook, _editor_from_args(args))
     return rc
+
+
+def cmd_ledger(args):
+    from views.ledger import run_ledger
+    return run_ledger(args.project)
 
 
 def cmd_search(args):
@@ -1520,7 +1547,8 @@ def _build_parser():
     # --- log ---
     log_p = subparsers.add_parser("log", help="Add an entry to a project logbook")
     log_p.add_argument("project", help="Project name (partial match)")
-    log_p.add_argument("message", help="Entry message / title")
+    log_p.add_argument("message", nargs="?", default=None,
+                       help="Entry message / title (el interrogador lo pide si falta)")
     log_p.add_argument("ref",     nargs="?", default=None, help="File path or URL (optional)")
     log_p.add_argument(
         "--entry",
@@ -1686,6 +1714,10 @@ def _build_parser():
     _add_fed_args(pan_p)
 
     # --- dash ---
+    ledger_p = subparsers.add_parser(
+        "ledger", help="Regenera ledger.md del proyecto e imprime tabla + saldo")
+    ledger_p.add_argument("project", help="Project name (partial match)")
+
     subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,calendar,cronos,hitos,logbook,report-summary}.md + 📊panel/ring/rings.md")
 
     # --- report ---
@@ -2201,7 +2233,7 @@ _COMMANDS = {
     "note": cmd_note, "save": cmd_commit, "commit": cmd_commit, "deliver": cmd_deliver,
     "clip": cmd_clip,
     "cloud": cmd_cloud, "render": cmd_render,
-    "log": cmd_log, "search": cmd_search,
+    "log": cmd_log, "search": cmd_search, "ledger": cmd_ledger,
     "panel": cmd_panel, "dash": cmd_dash, "report": cmd_report, "open": cmd_open,
     "project": cmd_project,
     "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "link": cmd_track, "untrack": cmd_untrack, "unlink": cmd_untrack, "import": cmd_deliver, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,

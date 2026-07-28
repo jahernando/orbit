@@ -6,14 +6,14 @@ derivado 100 % regenerable (F3) y nadie lo edita a mano.
 
 Anatomía de un movimiento en `logbook.md`:
 
-    2026-07-14 💶 [Vuelo Madrid–Ginebra](cloud/logs/2026-07-14_factura.pdf) #gasto #viaje
-      💶 -218,40
-      👤 Iberia
+    2026-07-14 💶 [Vuelo Madrid–Ginebra](cloud/logs/2026-07-14_factura.pdf) #gasto
+      🏷️ viaje · 👤 Iberia · 💶 -218,40
 
 - **cabecera**: fecha del movimiento, emoji único 💶, concepto (con el enlace al
-  justificante si lo hay, que `add_entry_with_ref` ya renderiza), tag de
-  dirección y tag de partida.
-- **cuerpo**: importe y beneficiario.
+  justificante si lo hay, que `add_entry_with_ref` ya renderiza) y **una sola
+  tag**, la de dirección — como cualquier otra entrada de logbook.
+- **cuerpo**: una línea de tokens `emoji valor` unidos por `·`, misma gramática
+  que la línea temporal de las citas en `agenda.md` (`▶️ … · ⏰ … · 🔔 …`).
 
 El **signo lo deriva la tag**, nunca el usuario: `#gasto` es negativo e
 `#ingreso` positivo. `#arrastre` es la excepción (signo libre) porque consolida
@@ -48,8 +48,12 @@ USER_TAGS = (EXPENSE_TAG, INCOME_TAG)
 #: dirección la llevan la tag y el signo, nunca el color ni la forma.
 LEDGER_EMOJI = "💶"
 
-AMOUNT_EMOJI = "💶"
-PAYEE_EMOJI  = "👤"
+PARTIDA_EMOJI = "🏷️"
+PAYEE_EMOJI   = "👤"
+AMOUNT_EMOJI  = "💶"
+
+#: Orden canónico del cuerpo: partida · beneficiario · importe.
+_BODY_SEP = " · "
 
 DEFAULT_CURRENCY = "EUR"
 _CURRENCY_SYMBOL = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF"}
@@ -184,23 +188,33 @@ def signed_amount(tag: str, magnitude: Decimal) -> Decimal:
 
 # ── Cuerpo del movimiento ────────────────────────────────────────────────────
 
-def build_body(amount: Decimal, payee: Optional[str] = None) -> List[str]:
-    """Líneas de cuerpo de un movimiento, listas para `format_entry(continuations=…)`.
+def build_body(amount: Decimal, partida: Optional[str] = None,
+               payee: Optional[str] = None) -> List[str]:
+    """Cuerpo de un movimiento: **una línea** de tokens `emoji valor` unidos por `·`.
+
+        🏷️ viaje · 👤 Iberia · 💶 -218,40
+
+    Misma gramática que la línea temporal de las citas en `agenda.md`
+    (`▶️ … · ⏰ … · 🔔 …`): cada dato lleva su emoji, así que el orden es legible
+    pero no significativo y los tokens ausentes simplemente no aparecen.
 
     El justificante no va aquí: viaja en el enlace de la cabecera, que
     `add_entry_with_ref` ya renderiza como `[concepto](cloud/logs/…)`.
     """
-    body = [f"{AMOUNT_EMOJI} {format_amount(amount)}"]
+    tokens = []
+    if partida and partida.strip():
+        tokens.append(f"{PARTIDA_EMOJI} {partida.strip()}")
     if payee and payee.strip():
-        body.append(f"{PAYEE_EMOJI} {payee.strip()}")
-    return body
+        tokens.append(f"{PAYEE_EMOJI} {payee.strip()}")
+    tokens.append(f"{AMOUNT_EMOJI} {format_amount(amount)}")
+    return [_BODY_SEP.join(tokens)]
 
 
 def prepare_movement(tag: str, amount_raw: Optional[str],
                      partida: Optional[str],
                      payee: Optional[str] = None
-                     ) -> Tuple[List[str], List[str], Decimal]:
-    """Valida un movimiento tecleado y devuelve `(extra_tags, cuerpo, importe)`.
+                     ) -> Tuple[List[str], Decimal]:
+    """Valida un movimiento tecleado y devuelve `(cuerpo, importe)`.
 
     Lanza `ValueError` con un mensaje dirigido al usuario. Es la puerta única
     de escritura desde la CLI: exige partida e importe, y rechaza el signo
@@ -227,7 +241,7 @@ def prepare_movement(tag: str, amount_raw: Optional[str],
         raise ValueError("un movimiento necesita importe: --amount <cantidad>")
 
     amount = signed_amount(tag, parse_amount(str(amount_raw)))
-    return [partida], build_body(amount, payee), amount
+    return build_body(amount, partida, payee), amount
 
 
 # ── Lectura de la verdad ─────────────────────────────────────────────────────
@@ -275,6 +289,25 @@ def _iter_entries(text: str):
         yield header[0], header[1], body
 
 
+def _parse_body(body: List[str]) -> dict:
+    """Tokens `emoji valor` del cuerpo → `{emoji: valor}`.
+
+    Cada línea se parte por `·`, así que esto lee tanto el formato actual (una
+    línea con todos los tokens) como el primero que hubo (un token por línea).
+    """
+    fields = {}
+    for line in body:
+        for token in line.split(_BODY_SEP.strip()):
+            token = token.strip()
+            for emoji in (PARTIDA_EMOJI, PAYEE_EMOJI, AMOUNT_EMOJI):
+                if token.startswith(emoji):
+                    value = token[len(emoji):].strip()
+                    if value:
+                        fields.setdefault(emoji, value)
+                    break
+    return fields
+
+
 def parse_entry(date_str: str, header: str,
                 body: List[str]) -> Tuple[Optional[Movement], Optional[str]]:
     """Convierte una entrada de logbook en `Movement`.
@@ -302,8 +335,8 @@ def parse_entry(date_str: str, header: str,
     if m:
         content, link = m.group("text").strip(), m.group("url").strip()
 
-    raw_amount = next((l[len(AMOUNT_EMOJI):] for l in body
-                       if l.startswith(AMOUNT_EMOJI)), None)
+    fields = _parse_body(body)
+    raw_amount = fields.get(AMOUNT_EMOJI)
     if raw_amount is None:
         return None, f"{date_str} {content}: movimiento sin importe ({AMOUNT_EMOJI})"
     try:
@@ -320,9 +353,13 @@ def parse_entry(date_str: str, header: str,
                    f"mando la tag")
         amount = -amount
 
-    payee = next((l[len(PAYEE_EMOJI):].strip() for l in body
-                  if l.startswith(PAYEE_EMOJI)), None)
-    partida = next((t for t in tags if t not in LEDGER_TAGS), None)
+    payee = fields.get(PAYEE_EMOJI)
+    # La partida vive en el cuerpo; las entradas viejas la llevaban como
+    # segunda tag de cabecera, así que se sigue aceptando de ahí.
+    partida = fields.get(PARTIDA_EMOJI) or next(
+        (x for x in tags if x not in LEDGER_TAGS), None)
+    if partida:
+        partida = partida.lstrip("#")
 
     return Movement(date=when, tag=tag, concept=content, amount=amount,
                     partida=partida, payee=payee or None, link=link), problem
@@ -403,6 +440,79 @@ def resolve_partida(project_dir: Path, requested: Optional[str],
                 f"movimiento cancelado; la partida del proyecto es #{known}"
             )
     return wanted
+
+
+class Cancelled(Exception):
+    """El usuario abortó el interrogador (Ctrl-C / EOF)."""
+
+
+def _ask_line(prompt: str, default: Optional[str] = None) -> Optional[str]:
+    """Pregunta mostrando el default; Enter lo acepta. EOF/Ctrl-C → `Cancelled`."""
+    suffix = f" [{default}]" if default else ""
+    try:
+        raw = input(f"  {prompt}{suffix}: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise Cancelled
+    return raw or default
+
+
+def _ask_required(prompt: str, validate=None, tries: int = 3) -> str:
+    """Como `_ask_line` pero el campo no puede quedar vacío.
+
+    Una respuesta inválida se vuelve a pedir mostrando el porqué, en vez de
+    asumir un valor: en un movimiento de dinero adivinar sale caro.
+    """
+    for _ in range(tries):
+        raw = _ask_line(prompt)
+        if not raw:
+            print("     (obligatorio)")
+            continue
+        if validate is None:
+            return raw
+        try:
+            validate(raw)
+            return raw
+        except ValueError as exc:
+            print(f"     ⚠️  {exc}")
+    raise Cancelled
+
+
+def interrogate_movement(project_dir: Path, tag: str, *,
+                         concept: Optional[str], amount: Optional[str],
+                         payee: Optional[str], partida: Optional[str],
+                         fecha: Optional[str], ref: Optional[str]):
+    """Rellena por teclado los huecos de un movimiento. Solo pregunta lo que falta.
+
+    Orden: tipo (partida) → item → beneficiario → importe → fecha → enlace.
+    La partida solo se pregunta si el proyecto aún no tiene ninguna: un
+    proyecto tiene una sola y los demás movimientos la heredan.
+
+    Devuelve la tupla `(concept, amount, payee, partida, fecha, ref)`.
+    Lanza `Cancelled` si el usuario aborta.
+    """
+    print(f"━━━ log · {tag} (Enter = saltar lo opcional) ━━━")
+
+    if not partida and not project_partida(project_dir):
+        partida = _ask_required(
+            f"{PARTIDA_EMOJI}  Tipo (partida)",
+            lambda v: prepare_movement(tag, "0", v),
+        )
+    if not concept:
+        concept = _ask_required("📝 Item")
+    if not payee:
+        payee = _ask_line("👤 Beneficiario") or None
+    if not amount:
+        amount = _ask_required(
+            f"{AMOUNT_EMOJI} Importe (sin signo)",
+            lambda v: parse_amount(v),
+        )
+    if not fecha:
+        fecha = _ask_line("📅 Fecha", date.today().isoformat())
+    if not ref:
+        ref = _ask_line("📎 Enlace (ruta o URL)") or None
+
+    return concept, amount, payee, partida, fecha, ref
 
 
 def _ask_tty(prompt: str) -> bool:

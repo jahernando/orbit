@@ -10,6 +10,29 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — Ledger: libro de caja por proyecto
+
+Ingresos y gastos por proyecto, con justificante y saldo. La verdad son
+entradas de logbook con tag `#gasto`/`#ingreso`; `ledger.md` es un derivado
+regenerable ([ADR-048](DECISIONS.md#adr-048--el-libro-de-caja-vive-en-el-logbook-ledgermd-es-un-derivado)).
+
+- `core/ledger.py`: importes en `Decimal` con parseo ES/anglosajón estricto,
+  cuerpo del movimiento, lectura de la verdad, herencia de partida.
+- `views/ledger.py`: `ledger.md` (partida en cabecera, tabla con saldo corrido,
+  aviso de corte sin arrastre, entradas ilegibles cantadas) + verbo
+  `orbit ledger <proyecto>` + acción `ledger_refresh` en `commit_post`.
+- `log --entry gasto|ingreso [--amount N] [--payee P] [--tag PARTIDA]`, con
+  interrogador en terminal (tipo → item → beneficiario → importe → fecha →
+  enlace) y abortado explícito en batch.
+- Emoji único 💶 para las dos direcciones: la dirección la llevan la tag y el
+  signo, no el color ni la forma.
+
+Pendiente: F5 (`archive` + `#arrastre`). Hasta entonces, **no archivar
+proyectos con movimientos**: `_clean_logbook` borra entradas y falsearía el
+saldo en silencio.
+
+---
+
 ### Unreleased — Guard de fecha-pasada en DATE de citas y followups
 
 Un año mal tecleado (p. ej. `2016` por `2026`) entraba silencioso en la verdad; para un followup `⏩` afloraba **de inmediato** en "Hoy — por triar" en vez de quedarse en el futuro (caso real detectado en `🌀next-topo`).
