@@ -19,7 +19,8 @@ Principios de diseño:
   core/                   ← writers de la verdad + infra
     agenda_cmds.py        ← CRUD de las 4 citas (task, ms, ev, reminder)
     cartero_invoke.py     ← subprocess shim al satélite cartero (sin imports cruzados)
-    shell.py              ← shell interactivo
+    shell.py              ← shell interactivo (general o fijado a un proyecto)
+    context.py            ← proyecto fijado: panel de proyecto de `wks` (ADR-049)
     startup.py            ← prompts de arranque (untracked, commit, code update)
     config.py             ← ORBIT_HOME, ORBIT_PROMPT, orbit.json
     log.py                ← logbook entries
@@ -106,6 +107,8 @@ Una sola dirección: orbit es source-of-truth, los backends consumen.
 - `SETUP.md` — instrucciones de instalación
 
 ## Estado actual (v0.40.0, 2026-05-29)
+
+**Panel de proyecto** ([ADR-049](DECISIONS.md#adr-049--panel-de-proyecto-shell-fijado-a-un-proyecto-inmutable-y-en-modo-ligero)): `orbit shell --project X` (o `ORBIT_PROJECT`) fija el shell a un proyecto — es lo que abre `wks` en su segunda ventana. El posicional `project` desaparece de la gramática, nombrar otro proyecto es error, los comandos transversales se bloquean y el arranque es ligero (el panel general es el dueño del workspace). Invariantes en [RULES.md](RULES.md#shell).
 
 **CLI-citas** ([ADR-043](DECISIONS.md#adr-043--followups--body-como-capa-semántica-sobre-notes--paraguas-cita-tipadogenérico) + [ADR-044](DECISIONS.md#adr-044--echo-del-orbit-item-desde-el-serializador-único-de-la-verdad)): followups (`⏩` en cuerpo) como capa sobre `notes`; echo del orbit-item desde el serializador único; interrogador `-i` en `add`. El paraguas `cita` (fup/done/drop) se movió a **verbos tipados** en v0.42 (ver CHANGELOG); queda `clog`.
 

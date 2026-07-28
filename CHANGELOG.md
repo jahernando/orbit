@@ -10,6 +10,38 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — Panel de proyecto: shell fijado a un proyecto
+
+La segunda ventana de `wks <proyecto>` arranca fijada a ese proyecto: los
+comandos ya no llevan el nombre del proyecto y la ventana no puede tocar
+ningún otro ([ADR-049](DECISIONS.md#adr-049--panel-de-proyecto-shell-fijado-a-un-proyecto-inmutable-y-en-modo-ligero)).
+
+- `orbit shell --project X` (o `ORBIT_PROJECT=X`). Inmutable durante la
+  sesión: no hay verbo para cambiar de proyecto — se abre otra ventana.
+  Si el proyecto no resuelve, el shell **no arranca**.
+- `core/context.py`: estado del proceso, resolución silenciosa de nombres,
+  lista negra de comandos transversales, guardia contra proyectos ajenos y
+  acotado de `agenda`/`report`/`ls`/`search` al proyecto fijado (con la
+  federación apagada).
+- `add_project_arg()` sustituye los ~40 sitios que declaraban el posicional
+  `project`: fijados, el argumento desaparece de la gramática, así que
+  `log "texto"` escribe en el proyecto en vez de leer *"texto"* como nombre
+  de proyecto. Nombrar otro proyecto es error explícito, no cambio de destino.
+- Bloqueados en el panel de proyecto: `dash`, `panel`, `cal`, `organize`,
+  `focus`, `ring`, `mail`, `setup`, `cloud sync|imgs`, `project create|drop|type`,
+  `ls projects`. `save`/`commit` siguen permitidos (son del repositorio).
+- Arranque en modo ligero: la cadena `shell_start` no corre ninguna acción,
+  ni la de medianoche, ni se consume el aviso del watchdog. Evita dos
+  watchdogs, dos ofertas de commit y un `.doctor-pending` repartido entre
+  ventanas — duplicación que ya existía al abrir dos shells.
+- Historial de readline por panel (`~/.orbit_history-<proyecto>`):
+  `write_history_file` reemplaza en vez de anexar, y la última ventana en
+  cerrarse pisaba el historial de las demás.
+- `wks` (repo `scripts`, fuera de este repositorio) pasa `--project` en sus
+  dos modos, paneles y pestañas.
+
+---
+
 ### Unreleased — Ledger: libro de caja por proyecto
 
 Ingresos y gastos por proyecto, con justificante y saldo. La verdad son

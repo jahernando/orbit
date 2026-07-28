@@ -964,6 +964,38 @@ Tres fricciones reales:
 
 ---
 
+## ADR-049 — Panel de proyecto: shell fijado a un proyecto, inmutable y en modo ligero
+
+**Estado**: aceptada (2026-07-28).
+
+**Contexto**: orbit se usa en dos formas. En el escritorio principal, un shell sobre todo el workspace. Y en la segunda ventana de la terna que abre `wks <proyecto>`, un shell del que sólo se espera que trabaje en *ese* proyecto — pero que obligaba a repetir el nombre del proyecto en cada comando (`log orbit "…"`). Nombrar el proyecto en cada línea es ruido puro cuando la ventana entera ya es de ese proyecto.
+
+La forma obvia (un verbo `use <proyecto>` que cambia de contexto dentro del shell) se descartó: si el contexto es mutable hay que mostrarlo, recordarlo y desconfiar de él, y un `use` olvidado escribe en el proyecto equivocado. La ventana ya es el contexto.
+
+**Decisión**:
+
+1. **El fijado se hace al arrancar y es inmutable**: `orbit shell --project X` o la variable de entorno `ORBIT_PROJECT`. No hay verbo para cambiar de proyecto ni escotilla para tocar otro puntualmente. Si quieres otro proyecto, abres otra ventana — que es justo lo que hace `wks`. Un shell = como mucho un proyecto, para toda su vida.
+
+2. **El posicional `project` desaparece de la gramática**, no se rellena a posteriori. `add_project_arg()` (usado por los ~40 sitios que lo declaraban) omite el argumento cuando hay proyecto fijado y lo inyecta como default. Rellenarlo después no serviría: argparse asigna de izquierda a derecha, así que `log "texto"` leería *"texto"* como nombre de proyecto antes de que nadie pudiera corregirlo. Las otras dos formas (`projects` con `nargs="*"` en agenda/report/ls, `--project` con `nargs="+"` en search) sí se rellenan tras parsear: en ellas vacío significaba "todos", y fijados significa "el mío".
+
+3. **Nombrar otro proyecto es un error, no un cambio de destino**. Es la consecuencia peligrosa de (2): sin el posicional, un `log otro "texto"` tecleado por inercia escribiría *"otro"* como mensaje en el proyecto fijado — un fallo silencioso que corrompe la verdad. El guardia dispara sólo con **coincidencia exacta de un token suelto** con el nombre de otro proyecto, de modo que un mensaje entrecomillado (un único token, con espacios) nunca lo activa. Se prefiere un rechazo ocasional injusto —recuperable entrecomillando— a un apunte escrito donde no toca.
+
+4. **Los comandos transversales se bloquean, por lista negra**. Se bloquea lo que *actúa* sobre el workspace o produce una vista transversal (`dash`, `panel`, `cal`, `organize`, `focus`, `ring`, `mail`, `setup`, `cloud sync|imgs`, `project create|drop|type`, `ls projects`). Las lecturas inocuas (`search`, `report`, `agenda`, `ls`, `history`) no se bloquean: se **acotan** al proyecto fijado. `save`/`commit` tampoco se bloquean — operan sobre el repositorio, no sobre un proyecto, y querer guardar sin cambiar de ventana es razonable. Lista negra y no blanca para que un comando nuevo no nazca bloqueado por un olvido.
+
+5. **El panel de proyecto arranca en modo ligero: la cadena `shell_start` no corre ninguna acción.** Todas operan sobre el workspace entero, y con dos ventanas abiertas se duplicarían: dos watchdogs pasando el doctor sobre todo, la oferta de commit repetida, y el aviso `.doctor-pending` repartido entre las dos —lo vería sólo la que llegara primero, que es peor que no verlo—. Por lo mismo el panel de proyecto no dispara la cadena de medianoche ni consume ese aviso. **El panel general es el dueño del workspace**; el de proyecto es un invitado. Un action nuevo en la cadena hereda la regla sin tocar nada.
+
+6. **Fallar al fijar aborta el arranque**. Degradar en silencio a panel general dejaría una ventana que *parece* de proyecto y escribe en cualquier sitio: exactamente el fallo que todo lo anterior evita.
+
+7. **Historial de readline por panel** (`~/.orbit_history-<proyecto>`). `write_history_file` reemplaza en vez de anexar: con un fichero único, la última ventana en cerrarse pisaba el historial de las demás. Efecto secundario deseable: la flecha arriba de cada panel ofrece los comandos de *su* proyecto.
+
+**Consecuencias**:
+- Pros: el comando más frecuente pierde su argumento más repetido; la garantía "esta ventana no toca otro proyecto" es estructural, no disciplina del usuario; desaparece la duplicación de daemons y avisos entre ventanas, que ya existía antes de esta funcionalidad.
+- Contras: no hay one-liners entre proyectos desde un panel fijado (es la decisión, no un efecto colateral); el guardia puede rechazar un texto sin comillas cuya primera palabra coincida exactamente con otro proyecto; `wks` exige que el nombre del workspace coincida con el del proyecto de orbit, y sólo resuelve contra el workspace `ws` que `worbit` tiene fijo.
+
+**Verificación**: `tests/test_context.py` (30).
+
+---
+
 ## ADR-048 — El libro de caja vive en el logbook; `ledger.md` es un derivado
 
 **Estado**: aceptada (2026-07-28).

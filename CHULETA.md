@@ -11,6 +11,35 @@ orbit claude       # abre Claude Code en el directorio Orbit
 Al entrar: `¡Hola! ¡Bienvenido!` + startup (doctor, untracked, save+push, gsync)
 Al salir: `exit`/`quit` (directo) o `end` (ofrece save+push antes de salir)
 
+### Panel de proyecto — shell fijado a un proyecto
+
+```bash
+orbit shell --project next-pn24     # o -p next-pn24
+ORBIT_PROJECT=next-pn24 orbit shell # equivalente por entorno
+```
+
+Es lo que abre `wks <proyecto>` en su segunda ventana. Dentro:
+
+```bash
+log "añadidos ingresos y gastos"    # sin nombre de proyecto
+task add "escribir el ADR" --date friday
+agenda                              # sólo este proyecto
+```
+
+- **El nombre del proyecto desaparece de los comandos**: se sobreentiende.
+- **Inmutable**: no hay verbo para cambiar de proyecto. Para otro, otra ventana.
+- **Nombrar otro proyecto es un error**, no un cambio de destino. Si el texto
+  empieza por el nombre exacto de otro proyecto, entrecomíllalo.
+- **Comandos de workspace bloqueados**: `dash`, `panel`, `cal`, `organize`,
+  `focus`, `ring`, `mail`, `setup`, `cloud sync|imgs`, `project create|drop|type`,
+  `ls projects` → para ésos, el panel general. `save`/`commit` sí funcionan.
+- **Modo ligero**: no pasa el doctor del workspace, no levanta daemons ni
+  ofrece save al arrancar. De eso se encarga el panel general, que es el dueño
+  del workspace. `end` sigue ofreciendo guardar.
+- Historial de flecha-arriba propio de cada panel.
+
+Ver [ADR-049](DECISIONS.md#adr-049--panel-de-proyecto-shell-fijado-a-un-proyecto-inmutable-y-en-modo-ligero).
+
 ---
 
 ## project — gestión de proyectos
@@ -1092,6 +1121,11 @@ Al entrar en `orbit shell`:
 3. **Cambios sin save** — ofrece hacer save + push (mensaje por defecto: `sync YYYY-MM-DD`)
 4. **gsync** en background + **recordatorios** — sincroniza con Google y programa los recordatorios del día (tras save)
 5. **Cartero** — lanza el proceso background de correo si hay configuración en `orbit.json`
+
+En un **panel de proyecto** (`orbit shell --project X`) no corre ninguno de
+los cinco: son trabajo del workspace y los lleva el panel general. Correrlos
+en las dos ventanas duplicaría watchdogs y ofertas de commit, y repartiría el
+aviso del doctor entre ambas.
 
 ---
 
