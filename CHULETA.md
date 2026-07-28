@@ -419,7 +419,26 @@ citas en `agenda.md` (`▶️ … · ⏰ … · 🔔 …`). Los tokens ausentes 
 - `--date` es la **fecha del movimiento** (la que ordena la tabla). No admite
   futuro.
 - `#arrastre` es la tercera tag del ledger, pero **no se teclea**: la escribe
-  solo `orbit archive` al consolidar movimientos archivados (F5, pendiente).
+  solo `orbit archive`.
+
+**Archivar un proyecto con movimientos**: `archive` borra las entradas
+anteriores al corte, así que antes pregunta si consolidar su saldo neto:
+
+```
+    🗒️  12 entradas de logbook — ¿Eliminar? [S/n]: s
+    💶 8 movimientos de ledger anteriores (neto 3.000,00 €)
+       ¿Consolidar como arrastre para no falsear el saldo? [S/n]:
+```
+
+- **Sí** → una entrada `#arrastre` **por partida** con su neto, fechada el día
+  del corte. El saldo no cambia; el histórico queda resumido.
+- **No** → una entrada `#arrastre` con importe 0 que marca el corte, y
+  `ledger.md` encabeza con `⚠️ Histórico truncado en FECHA sin arrastre`. El
+  saldo queda incompleto, pero **el fichero lo dice**.
+- `--force` consolida (preserva el saldo). `--dry-run` avisa de cuántos
+  movimientos hay en juego y de su neto, sin tocar nada.
+- Archivados sucesivos componen: el segundo barrido se lleva el arrastre del
+  primero y lo funde en el nuevo neto.
 
 `ledger.md` se regenera al anotar un movimiento y en `save` (chain
 `commit_post`), que es lo que recoge los movimientos escritos a mano en

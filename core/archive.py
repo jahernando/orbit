@@ -130,6 +130,114 @@ def _clean_logbook(project_dir: Path, cutoff: date) -> int:
     return removed
 
 
+# ── Ledger: arrastre del saldo archivado ─────────────────────────────────────
+#
+# `_clean_logbook` **borra** las entradas anteriores al corte, y un movimiento
+# de dinero vive en el logbook. Sin lo que sigue, archivar un proyecto con
+# ledger no dejaría un histórico incompleto: dejaría un **saldo incorrecto**,
+# y sin avisar. Por eso el archivado de un proyecto con movimientos siempre
+# deja rastro en la verdad, se consolide o no ([[ADR-048]]).
+
+def _carry_preview(project_dir: Path, cutoff: date):
+    """Movimientos que se va a llevar el corte y su neto por partida.
+
+    Devuelve `(n_movimientos, neto_total, {partida: neto})`.
+    """
+    from core.ledger import read_movements
+
+    movements, _ = read_movements(project_dir)
+    doomed = [m for m in movements if m.date < cutoff]
+    if not doomed:
+        return 0, None, {}
+
+    from decimal import Decimal
+    por_partida = {}
+    for mov in doomed:
+        por_partida[mov.partida] = por_partida.get(mov.partida, Decimal("0")) + mov.amount
+    return len(doomed), sum(por_partida.values(), Decimal("0")), por_partida
+
+
+def _write_carry(project_dir: Path, cutoff: date, por_partida: dict,
+                 consolidate: bool) -> int:
+    """Escribe la(s) entrada(s) `#arrastre`. Devuelve cuántas ha escrito.
+
+    - `consolidate=True` → **una entrada por partida** con su neto. Consolidar
+      todo en una sola línea destruiría el desglose para siempre, que es justo
+      el dato que hará falta el día que haya presupuestos.
+    - `consolidate=False` → una sola entrada con importe 0 marcando el corte.
+      No es ceremonia: `ledger.md` es derivado y solo ve las entradas que
+      existen, así que sin esta marca imprimiría el saldo truncado con total
+      aplomo. Con ella, encabeza el fichero avisando.
+
+    La fecha es la del corte, y el lector ordena `#arrastre` primero en empate,
+    así que el saldo corrido arranca donde debe.
+    """
+    from decimal import Decimal
+
+    from core.ledger import CARRY_TAG, build_body, project_partida
+    from core.log import _append_entry, format_entry, init_logbook, resolve_file
+
+    when = cutoff.isoformat()
+    if consolidate:
+        movimientos = [(partida, neto) for partida, neto in sorted(
+            por_partida.items(), key=lambda kv: (kv[0] or ""))]
+        concepto = f"Saldo arrastrado (movimientos anteriores a {when})"
+    else:
+        movimientos = [(project_partida(project_dir), Decimal("0"))]
+        concepto = f"Archivado sin arrastre (movimientos anteriores a {when})"
+
+    logbook = resolve_file(project_dir, "logbook")
+    if not logbook.exists():
+        init_logbook(logbook, project_dir.name)
+    for partida, neto in movimientos:
+        entry = format_entry(concepto, CARRY_TAG, None, when, orbit=True,
+                             continuations=build_body(neto, partida))
+        _append_entry(logbook, entry)
+    return len(movimientos)
+
+
+def _ask_carry(project_dir: Path, cutoff: date, force: bool):
+    """Pregunta si consolidar, **antes** de que el corte se lleve los movimientos.
+
+    Devuelve `(consolidar, {partida: neto})`, o `None` si el proyecto no tiene
+    movimientos afectados (el caso de casi todos los proyectos).
+
+    `--force` consolida: es la opción que preserva el saldo, y en una operación
+    desatendida vale más un histórico resumido que un saldo falso.
+    """
+    from core.ledger import currency_symbol, format_amount
+
+    n, neto, por_partida = _carry_preview(project_dir, cutoff)
+    if not n:
+        return None
+
+    prompt = (f"    💶 {n} movimiento{'s' if n != 1 else ''} de ledger "
+              f"anterior{'es' if n != 1 else ''} "
+              f"(neto {format_amount(neto)} {currency_symbol()})\n"
+              f"       ¿Consolidar como arrastre para no falsear el saldo? [S/n]: ")
+    return _confirm(prompt, force), por_partida
+
+
+def _finish_carry(project_dir: Path, cutoff: date, decision) -> None:
+    """Escribe el arrastre (o la marca de corte) y regenera `ledger.md`."""
+    if decision is None:
+        return
+    consolidate, por_partida = decision
+    n = _write_carry(project_dir, cutoff, por_partida, consolidate)
+    if consolidate:
+        print(f"    💶 saldo arrastrado en {n} entrada{'s' if n != 1 else ''} "
+              f"#arrastre")
+    else:
+        print("    ⚠️  archivado sin arrastre: el saldo del ledger ya no incluye "
+              "lo anterior")
+        print("       (queda anotado en logbook.md y ledger.md lo avisa en cabecera)")
+    try:
+        from views.ledger import write_ledger      # core → views, lazy (RULES)
+        write_ledger(project_dir, force=True)
+    except Exception:
+        pass                                        # el derivado se regenera solo
+
+
 def _clean_done_items(project_dir: Path, cutoff: date) -> int:
     """Remove done/cancelled tasks and milestones older than cutoff. Returns count."""
     from core.agenda_cmds import _read_agenda, _write_agenda
@@ -290,8 +398,18 @@ def run_archive(project: Optional[str] = None, months: int = 6,
             label_log = f"{n_log} entrada{'s' if n_log != 1 else ''} de logbook"
             if dry_run:
                 print(f"    🗒️  {label_log}")
+                n_mov, neto, _ = _carry_preview(d, cutoff)
+                if n_mov:
+                    from core.ledger import currency_symbol, format_amount
+                    print(f"    💶 {n_mov} de ellas son movimientos de ledger "
+                          f"(neto {format_amount(neto)} {currency_symbol()}) "
+                          f"— se ofrecerá consolidar como arrastre")
             elif _confirm(f"    🗒️  {label_log} — ¿Eliminar? [S/n]: ", force):
+                # El neto se calcula ANTES de borrar; la entrada se escribe
+                # después, para que el corte no se la lleve por delante.
+                carry = _ask_carry(d, cutoff, force)
                 total_logbook += _clean_logbook(d, cutoff)
+                _finish_carry(d, cutoff, carry)
             else:
                 print(f"    🗒️  omitido")
 

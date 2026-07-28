@@ -27,9 +27,11 @@ regenerable ([ADR-048](DECISIONS.md#adr-048--el-libro-de-caja-vive-en-el-logbook
 - Emoji único 💶 para las dos direcciones: la dirección la llevan la tag y el
   signo, no el color ni la forma.
 
-Pendiente: F5 (`archive` + `#arrastre`). Hasta entonces, **no archivar
-proyectos con movimientos**: `_clean_logbook` borra entradas y falsearía el
-saldo en silencio.
+- `archive` sobre un proyecto con movimientos pregunta si consolidar el saldo
+  archivado. Consolidar escribe una entrada `#arrastre` por partida (saldo
+  intacto); declinar escribe una `#arrastre` de importe 0 y `ledger.md` avisa
+  de que el histórico está truncado. Sin esto, archivar dejaba un saldo
+  *incorrecto* —no incompleto— y sin avisar.
 
 ---
 

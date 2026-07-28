@@ -978,12 +978,14 @@ Tres fricciones reales:
 5. **`ledger.md` se emite al directorio del proyecto**, no a `📊panel/`. Excepción consciente al principio truth-layer/view-layer (ADR-041 sentó el precedente): `📊panel/` es transversal y esto es por-proyecto; el usuario quiere su ledger junto a los otros cuatro ficheros. Es además el **primer fichero de proyecto opcional** (creación perezosa), así que nada puede exigir su presencia.
 6. **Una partida por proyecto**: se declara en el primer movimiento y los demás la heredan. Se guarda denormalizada en cada movimiento a propósito, para que `ledger.md` siga derivándose solo del logbook y varias partidas no exijan migración.
 
+7. **`archive` nunca deja un saldo falso**. `_clean_logbook` **borra** las entradas anteriores al corte, y un movimiento vive en el logbook: sin más, archivar dejaría un saldo *incorrecto*, no incompleto, y sin avisar. Así que archivar un proyecto con movimientos pregunta antes, y **ambas ramas dejan rastro en la verdad**: consolidar escribe una entrada `#arrastre` por partida con su neto (fechada el día del corte, y el lector la ordena primero en empate); declinar escribe una `#arrastre` de importe 0 que marca el corte, para que `ledger.md` —que es derivado y solo ve lo que existe— pueda encabezar con el aviso en vez de imprimir un saldo truncado con aplomo. Archivados sucesivos componen por construcción: el segundo barrido funde el arrastre del primero.
+
 **Consecuencias**:
 - Pros: cero doble verdad, cero parser de escritura, cero migración; la gramática del workspace no se fragmenta; el fichero derivado es desechable.
 - Contras: corregir un movimiento antiguo obliga a reescribir una entrada de diario pasada (se acepta la edición in-place: usuario único, sin requisito de auditoría, git conserva la historia; no hay asientos de rectificación). Una edición externa en Obsidian no refresca `ledger.md` hasta el siguiente `save` o `orbit ledger`.
-- **Deuda pendiente y peligrosa**: `archive --logbook` **borra** las entradas anteriores al corte (`core/archive.py:94-128`), así que sobre un proyecto con movimientos dejaría un saldo *incorrecto*, no incompleto, y sin avisar. F5 lo cierra: `archive` preguntará si consolidar el neto por partida como entrada `#arrastre`, y ambas ramas (sí y no) dejarán rastro en la verdad para que el derivado pueda cantar el corte. **Hasta que F5 esté hecha, no archivar proyectos con ledger.**
 
-**Verificación**: `tests/test_ledger.py` (67) + `tests/test_ledger_view.py` (25).
+
+**Verificación**: `tests/test_ledger.py` (69) + `tests/test_ledger_view.py` (25) + `tests/test_ledger_archive.py` (12).
 
 ---
 
