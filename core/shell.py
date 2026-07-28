@@ -382,14 +382,10 @@ def run_shell(editor: str = "", project: str = None):
     """
     from core import context
 
-    if project:
-        if not _pin_or_abort(project):
-            return 1
-    else:
-        ok, msg = context.pin_from_env()
-        if not ok:
-            print(f"⚠️  ORBIT_PROJECT: {msg}")
-            return 1
+    # `--project` manda sobre ORBIT_PROJECT (que `run_command` ya habrá
+    # aplicado): lo explícito gana sobre lo heredado del entorno.
+    if project and not _pin_or_abort(project):
+        return 1
     pinned = context.pinned()
 
     history_file = _history_path(pinned)

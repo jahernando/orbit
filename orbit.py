@@ -2265,6 +2265,15 @@ def run_command(argv: list) -> int:
     """Execute an orbit command from a list of arguments. Returns exit code."""
     from core import context
 
+    # ORBIT_PROJECT fija cualquier invocación de orbit, no sólo el shell: la
+    # variable describe el entorno de la ventana, y una regla que valiera para
+    # `orbit shell` pero no para `orbit log …` sería una trampa.
+    if context.pinned() is None:
+        ok, msg = context.pin_from_env()
+        if not ok:
+            print(f"⚠️  ORBIT_PROJECT: {msg}")
+            return 1
+
     fixed = _fix_argv(argv)
 
     # Panel de proyecto: los comandos de workspace y los que nombran otro

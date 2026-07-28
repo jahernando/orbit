@@ -246,3 +246,18 @@ def test_history_file_is_per_panel(pinnable):
     project = shell._history_path("orbit")
     assert general != project
     assert project.name.endswith("-orbit")
+
+
+def test_env_pins_one_shot_invocations_too(pinnable, monkeypatch, capsys):
+    """ORBIT_PROJECT vale para `orbit <cmd>`, no sólo para `orbit shell`."""
+    import orbit
+    monkeypatch.setenv("ORBIT_PROJECT", "orbit")
+    assert orbit.run_command(["dash"]) == 1
+    assert "panel general" in capsys.readouterr().out
+
+
+def test_invalid_env_aborts_the_command(pinnable, monkeypatch, capsys):
+    import orbit
+    monkeypatch.setenv("ORBIT_PROJECT", "no-existe")
+    assert orbit.run_command(["agenda"]) == 1
+    assert "ORBIT_PROJECT" in capsys.readouterr().out
