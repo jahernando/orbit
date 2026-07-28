@@ -298,8 +298,20 @@ from core import hooks as _hooks
 
 # ── Startup sequence ─────────────────────────────────────────────────────────
 
-def _run_startup():
-    """Execute the `shell_start` chain. See HOOKSYSTEM.md §6.3 for the action list."""
+def _run_startup(light: bool = False):
+    """Execute the `shell_start` chain. See HOOKSYSTEM.md §6.3 for the action list.
+
+    ``light=True`` (panel de proyecto) **no corre ninguna acción**. Todas las
+    de la cadena operan sobre el workspace entero: pasar el doctor, avanzar
+    recurrentes, regenerar derivados, ofrecer save, levantar daemons. Que las
+    corriera también el panel de proyecto duplicaría trabajo (dos watchdogs
+    pasando el doctor sobre todo el workspace), repetiría la oferta de commit
+    en dos ventanas y repartiría el aviso `.doctor-pending` entre las dos:
+    sólo lo vería la que llegara primero. El panel general es el dueño del
+    workspace (ADR-049). Un action nuevo en la cadena hereda esta regla.
+    """
+    if light:
+        return
     _hooks.fire("shell_startup", verbosity="pretty")
     print()
 
@@ -324,11 +336,63 @@ def _run_shutdown():
 
 # ── Shell REPL ───────────────────────────────────────────────────────────────
 
-def run_shell(editor: str = ""):
-    """Interactive Orbit shell with readline, tab completion, and startup checks."""
+def _history_path(pinned: str = None) -> Path:
+    """Fichero de historial de readline — uno por panel.
 
-    # Enable persistent history
-    history_file = Path.home() / ".orbit_history"
+    El panel general y cada panel de proyecto escriben ficheros distintos.
+    Con uno solo, `write_history_file` (que reemplaza, no anexa) haría que la
+    última ventana en cerrarse pisara el historial de las demás.
+    """
+    return Path.home() / (f".orbit_history-{pinned}" if pinned else ".orbit_history")
+
+
+def _pin_or_abort(project: str) -> bool:
+    """Fijar el shell al proyecto pedido. False si no se pudo (abortar).
+
+    Arrancar sin fijar cuando se pidió fijar sería la peor salida: la ventana
+    parecería un panel de proyecto y escribiría donde no toca.
+    """
+    from core import context
+    ok, msg = context.pin(project)
+    if not ok:
+        print(f"⚠️  No puedo fijar el shell: {msg}")
+        print("    Proyectos disponibles: " + ", ".join(context.project_names()))
+        return False
+    return True
+
+
+def _print_pinned_banner() -> None:
+    """Cabecera del panel de proyecto: qué está fijado y qué no hace."""
+    from core import context
+    d = context.pinned_dir()
+    tipo = d.parent.name if d is not None else "?"
+    print(f"🎯 Proyecto fijado: {context.pinned()}  ({tipo})")
+    print("   Los comandos de este panel trabajan sólo en este proyecto.")
+    print("   Modo ligero: doctor, daemons y refresco del workspace los lleva el panel general.")
+    print()
+
+
+def run_shell(editor: str = "", project: str = None):
+    """Interactive Orbit shell with readline, tab completion, and startup checks.
+
+    ``project`` (o la variable de entorno ``ORBIT_PROJECT``) fija el shell a un
+    proyecto: es el **panel de proyecto** que abre `wks` en su segunda ventana.
+    El fijado es inmutable durante la sesión — no hay verbo para cambiarlo; si
+    quieres otro proyecto, abres otra ventana. Ver :mod:`core.context`.
+    """
+    from core import context
+
+    if project:
+        if not _pin_or_abort(project):
+            return 1
+    else:
+        ok, msg = context.pin_from_env()
+        if not ok:
+            print(f"⚠️  ORBIT_PROJECT: {msg}")
+            return 1
+    pinned = context.pinned()
+
+    history_file = _history_path(pinned)
     try:
         readline.read_history_file(history_file)
     except (FileNotFoundError, OSError):
@@ -338,6 +402,9 @@ def run_shell(editor: str = ""):
     COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "save", "commit", "deliver",
                 "import", "ls", "log", "search", "open", "report", "agenda", "dash", "wks",
                 "mail", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
+    if pinned:
+        COMMANDS = [c for c in COMMANDS
+                    if context.check_blocked([c]) is None]
 
     # Shell commands allowed to run from the Orbit REPL
     SHELL_COMMANDS = {"git", "cat", "head", "tail", "pwd", "echo"}
@@ -354,7 +421,11 @@ def run_shell(editor: str = ""):
     print("¡Hola! ¡Bienvenido!")
     print()
 
-    _run_startup()
+    if pinned:
+        _print_pinned_banner()
+    _run_startup(light=bool(pinned))
+
+    prompt = f"{ORBIT_PROMPT} {pinned} ›" if pinned else ORBIT_PROMPT
 
     shell_start_date = _date.today()
 
@@ -363,18 +434,23 @@ def run_shell(editor: str = ""):
 
     while True:
         # Midnight check — fire `day_open` chain (see HOOKSYSTEM.md §6.4).
+        # El panel de proyecto no la dispara: avanza recurrentes de todo el
+        # workspace y regenera derivados — trabajo del panel general.
         if _date.today() != shell_start_date:
-            print()
-            print("☀️ Nuevo día. Avanzando recurrentes...")
-            _hooks.fire("day_changed", ctx={"silent": True}, verbosity="pretty")
-            print()
             shell_start_date = _date.today()
+            if not pinned:
+                print()
+                print("☀️ Nuevo día. Avanzando recurrentes...")
+                _hooks.fire("day_changed", ctx={"silent": True}, verbosity="pretty")
+                print()
 
-        # Watchdog deferred notification (one-shot per session).
-        _maybe_show_doctor_pending()
+        # Watchdog deferred notification (one-shot per session). El panel de
+        # proyecto no tiene watchdog y no debe consumir el aviso del general.
+        if not pinned:
+            _maybe_show_doctor_pending()
 
         try:
-            line = input(f"{ORBIT_PROMPT} ").strip()
+            line = input(f"{prompt} ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break
@@ -455,6 +531,8 @@ def run_shell(editor: str = ""):
     _dash_stop.set()  # stop background dash refresh
 
     readline.write_history_file(history_file)
+    context.clear()
 
     print()
     print("¡Hasta pronto!")
+    return 0

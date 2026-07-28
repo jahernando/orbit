@@ -1688,6 +1688,8 @@ def _build_parser():
 
     shell_p = subparsers.add_parser("shell", help="Enter interactive Orbit shell")
     shell_p.add_argument("--editor", default=None, help="Editor (env ORBIT_EDITOR, or system default)")
+    shell_p.add_argument("--project", "-p", dest="pin_project", default=None, metavar="PROJECT",
+                         help="Fijar el shell a un proyecto (panel de proyecto; env ORBIT_PROJECT)")
 
     # --- open ---
     open_p = subparsers.add_parser("open", help="Open a project file in editor")
@@ -2261,8 +2263,22 @@ _DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project", "clog"}
 
 def run_command(argv: list) -> int:
     """Execute an orbit command from a list of arguments. Returns exit code."""
+    from core import context
+
+    fixed = _fix_argv(argv)
+
+    # Panel de proyecto: los comandos de workspace y los que nombran otro
+    # proyecto se rechazan sobre el argv crudo, antes de parsear — al faltar
+    # el posicional `project` argparse los aceptaría con otro significado.
+    for check in (context.check_blocked, context.check_foreign):
+        msg = check(fixed)
+        if msg:
+            print(msg)
+            return 1
+
     parser = _build_parser()
-    args = parser.parse_args(_fix_argv(argv))
+    args = parser.parse_args(fixed)
+    context.apply_to_args(args)
 
     log_history(argv)
 
@@ -2287,8 +2303,8 @@ def run_command(argv: list) -> int:
                                  daemon=True).start()
         return result
     if args.command == "shell":
-        run_shell(editor=_editor_from_args(args))
-        return 0
+        return run_shell(editor=_editor_from_args(args),
+                         project=getattr(args, "pin_project", None)) or 0
     if args.command == "help":
         return cmd_help(args) or 0
     parser.print_help()
@@ -2299,9 +2315,9 @@ def main():
     sys.exit(run_command(sys.argv[1:]))
 
 
-def run_shell(editor: str = ""):
+def run_shell(editor: str = "", project: str = None):
     from core.shell import run_shell as _run_shell
-    _run_shell(editor)
+    return _run_shell(editor, project=project)
 
 
 if __name__ == "__main__":

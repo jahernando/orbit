@@ -203,3 +203,46 @@ def test_pinned_parser_typed_verb(pinnable):
     args = orbit._build_parser().parse_args(["task", "add", "escribir el ADR"])
     assert args.project == "orbit"
     assert args.text == "escribir el ADR"
+
+
+# ── Cableado en el shell y en run_command ────────────────────────────────────
+
+def test_run_command_refuses_workspace_command(pinnable, capsys):
+    import orbit
+    context.pin("orbit")
+    assert orbit.run_command(["dash"]) == 1
+    assert "panel general" in capsys.readouterr().out
+
+
+def test_run_command_refuses_foreign_project(pinnable, capsys):
+    import orbit
+    context.pin("orbit")
+    assert orbit.run_command(["log", "echo", "un apunte"]) == 1
+    out = capsys.readouterr().out
+    assert "echo" in out and "orbit" in out
+
+
+def test_run_command_blocks_after_verb_entity_swap(pinnable, capsys):
+    """`add project` se normaliza a `project add`; el bloqueo va después."""
+    import orbit
+    context.pin("orbit")
+    assert orbit.run_command(["create", "project", "nuevo"]) == 1
+    assert "panel general" in capsys.readouterr().out
+
+
+def test_light_startup_fires_nothing(pinnable, monkeypatch):
+    from core import shell
+    called = []
+    monkeypatch.setattr(shell._hooks, "fire", lambda *a, **k: called.append(a))
+    shell._run_startup(light=True)
+    assert called == []
+    shell._run_startup(light=False)
+    assert called != []
+
+
+def test_history_file_is_per_panel(pinnable):
+    from core import shell
+    general = shell._history_path(None)
+    project = shell._history_path("orbit")
+    assert general != project
+    assert project.name.endswith("-orbit")
