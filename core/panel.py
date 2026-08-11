@@ -329,8 +329,10 @@ def _print_calendar(start, end):
 def _collect_cronogramas(include_federated=True):
     """Collect cronograma progress across all projects.
 
-    Returns list of (project_dir, crono_name, done, total, deadline)
-    sorted by project. Only includes cronogramas with pending tasks.
+    Returns list of (project_dir, crono_name, done, total, deadline,
+    crono_file) sorted by project. Only includes cronogramas with pending
+    tasks. `crono_file` es la ruta del `cronos/crono-*.md` de origen (la
+    verdad), para que los viewers puedan enlazarlo.
     """
     from core.cronograma import (_parse_crono_file, _parent_indices,
                                  _is_leaf, _resolve_deadline)
@@ -355,7 +357,8 @@ def _collect_cronogramas(include_federated=True):
             if done == total:
                 continue  # skip completed cronogramas
             deadline = _resolve_deadline(data["metadata"], project_dir, today)
-            results.append((project_dir, data["name"], done, total, deadline))
+            results.append((project_dir, data["name"], done, total, deadline,
+                            crono_file))
     return results
 
 
@@ -460,7 +463,7 @@ def run_panel(period=None, include_federated=True,
         print(f"\n## 📊 Cronogramas\n")
         print("| Proyecto | Cronograma | Progreso | | Deadline |")
         print("|----------|------------|----------|---|----------|")
-        for project_dir, crono_name, done, total, deadline in cronogramas:
+        for project_dir, crono_name, done, total, deadline, _f in cronogramas:
             pct = done * 100 // total if total else 0
             filled = round(pct / 10)
             bar = "█" * filled + "░" * (10 - filled)

@@ -184,7 +184,7 @@ def _count_cronos(today) -> tuple:
     n_active = len(cronogramas)
     urgent_cutoff = today + timedelta(days=CRONOS_URGENT_DAYS)
     n_urgent = sum(
-        1 for _, _, _, _, deadline in cronogramas
+        1 for *_, deadline, _f in cronogramas
         if deadline is not None and deadline <= urgent_cutoff
     )
     return n_active, n_urgent

@@ -2,9 +2,9 @@
 
 Reproduce la tabla `## 📊 Cronogramas` del antiguo `orbit panel` como
 viewer dedicado del workspace dashboard. Columnas: Proyecto · Cronograma
-· barra de progreso · done/total (pct%) · Deadline (con días restantes /
-aviso de ritmo). Sólo cronogramas con tareas pendientes; los completos se
-omiten.
+(link al `cronos/crono-*.md`) · barra de progreso · done/total (pct%) ·
+Deadline (con días restantes / aviso de ritmo). Sólo cronogramas con
+tareas pendientes; los completos se omiten.
 
 Viewer puro: lee la verdad (los `cronos/crono-*.md` de cada proyecto),
 escribe el `.md`, return.
@@ -12,6 +12,21 @@ escribe el `.md`, return.
 
 from datetime import date
 from pathlib import Path
+
+
+def _crono_link_md(crono_file: Path, name: str) -> str:
+    """Markdown link al fichero del cronograma desde 📊panel/secretary/.
+
+    Misma convención que `proj_link_md` / `hitos._crono_cell`: ruta
+    relativa a ORBIT_HOME precedida de `../../`. Federados u otro vault
+    (fuera de ORBIT_HOME) → texto plano, no linkable.
+    """
+    from core.config import ORBIT_HOME
+    try:
+        rel = crono_file.relative_to(ORBIT_HOME)
+    except ValueError:
+        return name
+    return f"[{name}](../../{rel})"
 
 
 def generate(out_path: Path) -> None:
@@ -33,14 +48,15 @@ def generate(out_path: Path) -> None:
     today = date.today()
     lines.append("| Proyecto | Cronograma | Progreso |  | Deadline |")
     lines.append("|----------|------------|----------|---|----------|")
-    for project_dir, crono_name, done, total, deadline in cronogramas:
+    for project_dir, crono_name, done, total, deadline, crono_file in cronogramas:
         pct = done * 100 // total if total else 0
         filled = round(pct / 10)
         bar = "█" * filled + "░" * (10 - filled)
         proj = proj_link_md(project_dir)
+        crono = _crono_link_md(crono_file, crono_name)
         dl_str = _deadline_short_str(done, total, deadline, today)
         lines.append(
-            f"| {proj} | {crono_name} | {bar} | {done}/{total} ({pct}%) "
+            f"| {proj} | {crono} | {bar} | {done}/{total} ({pct}%) "
             f"| {dl_str} |"
         )
 
