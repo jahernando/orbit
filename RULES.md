@@ -27,6 +27,22 @@ Ver [ADR-033](DECISIONS.md#adr-033--separación-corewriters-vs-viewsreaders).
 
 ---
 
+## CLI
+
+### La familia `ls` nunca escribe
+
+`ls <cosa>` vuelca en terminal los items de un fichero-verdad. **Es lectura pura**: ningún subcomando de `ls` escribe la verdad ni regenera un derivado, ni siquiera "de paso".
+
+- El caso que lo motiva: `orbit ledger <proyecto>` regenera `ledger.md` antes de imprimir, y `ls ledger` **no**. Por eso `views/ledger.py` separa `print_ledger()` (imprime) de `run_ledger()` (regenera + imprime). Regenerar es cosa del verbo propio y del hook `ledger_refresh` en `commit_post`.
+- Un `ls` que escribe convierte un comando de consulta en una mutación silenciosa: ensucia el árbol de git en mitad de una lectura y hace que el estado del workspace dependa de qué se miró. La consulta debe poder repetirse sin consecuencias.
+- Si un `ls` nuevo necesita un derivado que no existe, lo calcula en memoria y lo imprime; no lo materializa. Si el derivado es caro de calcular, el sitio de la regeneración es un hook o un verbo propio, no el listado.
+
+`--open`, `--log` y `--append` sí escriben, pero fuera de la verdad y **sólo cuando el usuario los pide**: mandan la salida a un fichero de trabajo, al logbook o a una nota. Son destinos de la salida, no efectos del listado.
+
+Coherente con `core/` writers vs `views/` readers ([ADR-033](DECISIONS.md#adr-033--separación-core-writers-vs-views-readers)) y con `ledger.md` como derivado 100 % regenerable ([ADR-048](DECISIONS.md#adr-048--el-libro-de-caja-vive-en-el-logbook-ledgermd-es-un-derivado)).
+
+---
+
 ## Shell
 
 ### Un shell fijado no toca otro proyecto, ni el workspace
