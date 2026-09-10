@@ -418,6 +418,7 @@ orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto|ingreso \
           --amount N [--tag PARTIDA] [--payee P] [--import] [--date D]
 
 orbit ledger <proyecto>       # regenera ledger.md + imprime tabla y saldo
+orbit ls ledger [proyecto]    # solo imprime (no toca el disco)
 ```
 
 En terminal, lo que falte se pregunta (**tipo → item → beneficiario → importe →
@@ -593,10 +594,15 @@ orbit ls ms       [project...] [--status pending|done|all] [--date D] [--dated]
 orbit ls ev         [project]    [--from D] [--to D]
 orbit ls reminders  [project]    # recordatorios activos (alias: ls rem)
 orbit ls hl        [project]    [--type T]
+orbit ls log       [project]    [--type T...] [--date D] [--from D] [--to D]
+orbit ls ledger    [project]    # movimientos y saldo (solo lectura)
 orbit ls files    [project]    # ficheros md del proyecto con estado git
 orbit ls notes    [project]    # notas con estado git
 ```
 
+- `ls log` lista las cabeceras de entrada del logbook; `ls <proyecto>` hace lo mismo (forma antigua)
+- `ls ledger` **no regenera** `ledger.md` — para eso está `orbit ledger <proyecto>`
+- Sin proyecto, `ls hl/log/ledger/files/notes` barren el workspace entero
 - `--unplanned`: solo tareas sin fecha asignada (futuribles)
 - `--someday`: solo tareas sin fecha (reposo) — equivalente a `--unplanned` tras F5
 - `--no-fed`: excluye proyectos federados del listado

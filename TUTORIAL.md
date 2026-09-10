@@ -610,6 +610,8 @@ ls projects                # lista de proyectos con estado
 ls tasks                   # tareas pendientes de todos los proyectos
 ls tasks --unplanned       # tareas sin fecha (futuribles)
 ls ms                      # hitos pendientes
+ls log next-kr             # entradas del logbook (--type, --date, --from/--to)
+ls ledger next-kr          # movimientos y saldo, sin regenerar ledger.md
 ls files next-kr           # ficheros del proyecto con estado git
 ls notes next-kr           # notas con estado git
 ```

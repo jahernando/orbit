@@ -10,6 +10,27 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `ls log` y `ls ledger`: los cuatro ficheros, en terminal
+
+Completa la familia `ls` con los dos fichero-verdad que faltaban. No hay verbo
+nuevo (`show`/`cat`): `ls <cosa>` ya significa "vuelca en terminal los items de
+un fichero", y duplicarlo obligaría a recordar cuál toca para cada uno.
+
+- `orbit ls log [P] [--type T...] [--date D] [--from D] [--to D]`: cabeceras de
+  entrada del logbook. Es la forma nombrada del fallback `ls <proyecto>`, que
+  sigue funcionando pero no servía en el panel de proyecto — allí `ls` a secas
+  resuelve a `ls projects`, que está bloqueado.
+- `orbit ls ledger [P]`: movimientos y saldo **sin regenerar** `ledger.md`. Un
+  `ls` que escribe ficheros sería una sorpresa; regenerar sigue siendo cosa de
+  `orbit ledger <proyecto>` y del hook `commit_post`.
+- Sin proyecto, ambos barren el workspace y saltan los proyectos sin nada que
+  enseñar, igual que `ls hl`. Con proyecto fijado se acotan solos.
+- `views/ledger.py` separa `print_ledger()` (imprimir) de `run_ledger()`
+  (regenerar + imprimir); `core/list_entries.py` separa `_entries_for()` y
+  `_block()` del volcado, y `list_entries()` pasa a usarlos.
+
+---
+
 ### Unreleased — Panel de proyecto: shell fijado a un proyecto
 
 La segunda ventana de `wks <proyecto>` arranca fijada a ese proyecto: los
