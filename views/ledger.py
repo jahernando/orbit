@@ -140,23 +140,21 @@ def _action_ledger_refresh(ctx):
     return {"ok": True, "msg": f"{n} ledger{'s' if n != 1 else ''}"}
 
 
-def run_ledger(project: str) -> int:
-    """`orbit ledger <proyecto>` — regenera `ledger.md` e imprime tabla + saldo."""
-    from core.ledger import project_partida
-    from core.log import find_project
+def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
+    """Imprime en terminal la tabla de movimientos y el saldo. No toca el disco.
 
-    project_dir = find_project(project)
-    if not project_dir:
-        return 1
+    Es la mitad legible de `run_ledger`, separada para que `ls ledger` pueda
+    leer sin regenerar: un `ls` que escribe ficheros sería una sorpresa.
+    """
+    from core.ledger import project_partida
 
     movements, problems = read_movements(project_dir)
     if not movements:
         print(f"[{project_dir.name}] sin movimientos. "
-              f"Anota uno con: orbit log {project} \"<concepto>\" "
+              f"Anota uno con: orbit log {label or project_dir.name} \"<concepto>\" "
               f"--entry gasto --amount N --tag <partida>")
         return 0
 
-    write_ledger(project_dir, force=True)
     rows, total = _rows(movements)
     partida = project_partida(project_dir)
     symbol = currency_symbol()
@@ -175,4 +173,44 @@ def run_ledger(project: str) -> int:
           f"({len(movements)} movimiento{'s' if len(movements) != 1 else ''})")
     for problem in problems:
         print(f"  ⚠️  {problem}")
+    return 0
+
+
+def run_ledger(project: str) -> int:
+    """`orbit ledger <proyecto>` — regenera `ledger.md` e imprime tabla + saldo."""
+    from core.log import find_project
+
+    project_dir = find_project(project)
+    if not project_dir:
+        return 1
+
+    if read_movements(project_dir)[0]:
+        write_ledger(project_dir, force=True)
+    return print_ledger(project_dir, label=project)
+
+
+def run_ls_ledger(project: Optional[str] = None) -> int:
+    """`orbit ls ledger [P]` — lectura pura del libro de caja.
+
+    Sin proyecto recorre el workspace, como el resto de la familia `ls`, y
+    salta los proyectos sin movimientos: el ledger es un fichero opcional.
+    """
+    from core.ls import collect_project_dirs
+
+    if project:
+        dirs = collect_project_dirs(project)
+        if not dirs:
+            return 1
+        return print_ledger(dirs[0], label=project)
+
+    shown = 0
+    for project_dir in collect_project_dirs():
+        if not read_movements(project_dir)[0]:
+            continue
+        if shown:
+            print()
+        print_ledger(project_dir)
+        shown += 1
+    if not shown:
+        print("No hay movimientos.")
     return 0

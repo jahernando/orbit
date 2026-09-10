@@ -6,6 +6,8 @@
   ls ms   [P...]      list milestones
   ls ev   [P]         list events
   ls hl   [P]         list highlights
+  ls log  [P]         list logbook entries
+  ls ledger [P]       list ledger movements and balance
   ls files [P]        list all md files in project with git status
   ls notes [P]        list notes with git status
 """
@@ -68,7 +70,7 @@ def _git_status_indicator(path: Path) -> str:
         return "?"
 
 
-def _collect_project_dirs(project: Optional[str] = None) -> list:
+def collect_project_dirs(project: Optional[str] = None) -> list:
     """Resolve project arg(s) to a list of project directories."""
     if project:
         d = _find_new_project(project)
@@ -80,7 +82,7 @@ def _collect_project_dirs(project: Optional[str] = None) -> list:
 
 def run_ls_files(project: Optional[str] = None) -> int:
     """List all markdown files in project directory (non-recursive) with git status."""
-    dirs = _collect_project_dirs(project)
+    dirs = collect_project_dirs(project)
     if project and not dirs:
         return 1
 
@@ -108,7 +110,7 @@ def run_ls_files(project: Optional[str] = None) -> int:
 
 def run_ls_notes(project: Optional[str] = None) -> int:
     """List notes/ markdown files with git status."""
-    dirs = _collect_project_dirs(project)
+    dirs = collect_project_dirs(project)
     if project and not dirs:
         return 1
 

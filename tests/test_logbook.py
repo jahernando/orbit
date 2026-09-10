@@ -6,6 +6,7 @@ Covers:
                       invalid date rejected, future date rejected
   - add_orbit_entry:  appends [O] entry, silent on missing dir
   - list_entries:     no filter, by type, by date, by period, combined, [O] line handling
+  - run_ls_log:       `ls log` con y sin proyecto, filtros, logbook ausente
   - _entry_in_period: date / period_from / period_to logic
   - run_search:       keyword match, --in logbook/highlights/agenda, new-format project,
                       no results, [O] entries searchable
@@ -16,7 +17,9 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from core.log import format_entry, add_entry, add_orbit_entry, VALID_TYPES
-from core.list_entries import list_entries, _entry_in_period, parse_entry_type
+from core.list_entries import (
+    list_entries, run_ls_log, _entry_in_period, parse_entry_type,
+)
 from core.search import run_search
 
 
@@ -444,3 +447,56 @@ class TestRunSearch:
     def test_search_nonexistent_project(self, logbook_env, capsys):
         rc = run_search("x", projects=["nonexistent"])
         assert rc == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# run_ls_log — `orbit ls log`
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestRunLsLog:
+
+    def _populate(self, proj: Path):
+        (proj / "testproj-logbook.md").write_text(
+            "# Logbook\n\n"
+            "2026-03-01 Idea A #idea\n"
+            "2026-03-05 Referencia B #referencia\n"
+            "2026-03-09 Apunte C #apunte\n"
+        )
+
+    def test_lista_el_proyecto_indicado(self, logbook_env, capsys):
+        self._populate(logbook_env["proj"])
+        assert run_ls_log("testproj") == 0
+        out = capsys.readouterr().out
+        assert "Idea A" in out
+        assert "3 entradas" in out
+
+    def test_filtra_por_tipo(self, logbook_env, capsys):
+        self._populate(logbook_env["proj"])
+        assert run_ls_log("testproj", tipos=["idea"]) == 0
+        out = capsys.readouterr().out
+        assert "Idea A" in out
+        assert "Referencia B" not in out
+
+    def test_filtra_por_periodo(self, logbook_env, capsys):
+        self._populate(logbook_env["proj"])
+        assert run_ls_log("testproj", period_from="2026-03-05") == 0
+        out = capsys.readouterr().out
+        assert "Idea A" not in out
+        assert "2 entradas" in out
+
+    def test_sin_proyecto_barre_el_workspace(self, logbook_env, capsys):
+        self._populate(logbook_env["proj"])
+        assert run_ls_log() == 0
+        assert "Apunte C" in capsys.readouterr().out
+
+    def test_sin_proyecto_y_sin_entradas_no_lista_nada(self, logbook_env, capsys):
+        assert run_ls_log() == 0
+        assert "No hay entradas." in capsys.readouterr().out
+
+    def test_proyecto_sin_logbook(self, logbook_env, capsys):
+        (logbook_env["proj"] / "testproj-logbook.md").unlink()
+        assert run_ls_log("testproj") == 1
+        assert "No logbook" in capsys.readouterr().out
+
+    def test_proyecto_inexistente(self, logbook_env, capsys):
+        assert run_ls_log("noexiste") == 1

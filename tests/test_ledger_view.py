@@ -7,6 +7,7 @@ Cubre:
                           justificante, aviso de corte, entradas ilegibles
   - write_ledger:         creación perezosa, idempotencia (sin churn de git)
   - refresh_all:          barrido de todos los proyectos
+  - run_ls_ledger:        lectura pura (no escribe ledger.md), con y sin proyecto
 """
 
 import builtins
@@ -19,7 +20,7 @@ from core.ledger import (
 )
 from core.log import add_entry
 from views.ledger import (
-    LEDGER_FILE, build_ledger_md, refresh_all, write_ledger,
+    LEDGER_FILE, build_ledger_md, refresh_all, run_ls_ledger, write_ledger,
 )
 
 
@@ -250,3 +251,36 @@ class TestRefreshAll:
     def test_no_crea_nada_en_proyectos_sin_ledger(self, proj):
         assert refresh_all() == 0
         assert not (proj / LEDGER_FILE).exists()
+
+
+class TestRunLsLedger:
+
+    def test_imprime_movimientos_y_saldo(self, proj, capsys):
+        _mov(proj, EXPENSE_TAG, "218,40", "Hotel")
+        _mov(proj, INCOME_TAG, "300", "Reintegro")
+        assert run_ls_ledger("testproj") == 0
+        out = capsys.readouterr().out
+        assert "Hotel" in out and "Reintegro" in out
+        assert "Saldo actual: 81,60" in out
+
+    def test_no_escribe_ledger_md(self, proj, capsys):
+        # `ls` lee; regenerar el fichero es cosa de `ledger` y del hook de save.
+        _mov(proj, EXPENSE_TAG, "218,40")
+        assert run_ls_ledger("testproj") == 0
+        assert not (proj / LEDGER_FILE).exists()
+
+    def test_sin_movimientos_sugiere_como_anotar(self, proj, capsys):
+        assert run_ls_ledger("testproj") == 0
+        assert "sin movimientos" in capsys.readouterr().out
+
+    def test_sin_proyecto_barre_el_workspace(self, proj, capsys):
+        _mov(proj, EXPENSE_TAG, "218,40", "Hotel")
+        assert run_ls_ledger() == 0
+        assert "Hotel" in capsys.readouterr().out
+
+    def test_sin_proyecto_y_sin_movimientos_no_lista_nada(self, proj, capsys):
+        assert run_ls_ledger() == 0
+        assert "No hay movimientos." in capsys.readouterr().out
+
+    def test_proyecto_inexistente(self, proj, capsys):
+        assert run_ls_ledger("noexiste") == 1

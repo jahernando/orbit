@@ -1507,6 +1507,22 @@ def cmd_ls(args):
             hl_type=getattr(args, "type", None))
         return _handle_output(args, fn, "ls hl")
 
+    if what == "log":
+        from core.list_entries import run_ls_log
+        fn = lambda: run_ls_log(
+            project=_ga(args, "project"),
+            tipos=getattr(args, "type_filter", None),
+            fecha=_d(getattr(args, "date", None)),
+            period_from=_d(getattr(args, "period_from", None)),
+            period_to=_d(getattr(args, "period_to", None)))
+        return _handle_output(args, fn, "ls log")
+
+    if what == "ledger":
+        from views.ledger import run_ls_ledger
+        fn = lambda: run_ls_ledger(
+            project=_ga(args, "project"))
+        return _handle_output(args, fn, "ls ledger")
+
     if what == "files":
         fn = lambda: run_ls_files(
             project=_ga(args, "project"))
@@ -1604,7 +1620,7 @@ def _build_parser():
     _add_fed_args(search_p)
 
     # --- ls (unified listing) ---
-    ls_p   = subparsers.add_parser("ls", help="List projects, tasks, milestones, events, highlights, files, notes")
+    ls_p   = subparsers.add_parser("ls", help="List projects, tasks, milestones, events, highlights, logbook, ledger, files, notes")
     ls_sub = ls_p.add_subparsers(dest="what")
 
     # ls projects (default when no subcommand)
@@ -1664,6 +1680,23 @@ def _build_parser():
     ls_hl.add_argument("--type", default=None, choices=HL_TYPES, help="Section type")
     _add_output_args(ls_hl)
     _add_log_args(ls_hl)
+
+    # ls log [project]
+    ls_log = ls_sub.add_parser("log", help="List logbook entries")
+    add_project_arg(ls_log, required=False, help="Project")
+    ls_log.add_argument("--type", nargs="+", default=None, dest="type_filter",
+                        metavar="TYPE", help="Filter by entry type(s)")
+    ls_log.add_argument("--date", default=None, help="Filter by date")
+    ls_log.add_argument("--from", dest="period_from", default=None, metavar="DATE")
+    ls_log.add_argument("--to",   dest="period_to",   default=None, metavar="DATE")
+    _add_output_args(ls_log)
+    _add_log_args(ls_log)
+
+    # ls ledger [project]
+    ls_ledger = ls_sub.add_parser("ledger", help="List ledger movements and balance (read-only)")
+    add_project_arg(ls_ledger, required=False, help="Project")
+    _add_output_args(ls_ledger)
+    _add_log_args(ls_ledger)
 
     # ls files [project]
     ls_files = ls_sub.add_parser("files", help="List project md files with git status")
