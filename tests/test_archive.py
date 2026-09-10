@@ -16,6 +16,18 @@ from core.archive import (
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+def _days_ago(n: int) -> str:
+    """Fecha ISO de hace `n` días (negativa = futuro).
+
+    `run_archive` calcula el corte desde *hoy*, así que una fecha fija en el
+    test caduca sola: lo que se escribió como "reciente" acaba cayendo fuera
+    de la ventana de N meses y el test empieza a fallar sin que nadie toque
+    el código. Los tests que pasan un `cutoff` explícito no tienen ese
+    problema y siguen usando fechas fijas.
+    """
+    return (date.today() - timedelta(days=n)).isoformat()
+
+
 def _make_project(tmp_path, name="test-proj", logbook="", agenda="", notes=None):
     """Create a minimal project structure and return project_dir."""
     type_dir = tmp_path / "💻software"
@@ -253,7 +265,8 @@ class TestDeleteNotes:
 
 class TestRunArchive:
     def test_single_project_dry_run(self, tmp_path):
-        logbook = "2025-01-01 📝 vieja #apunte\n2026-03-01 📝 nueva #apunte\n"
+        logbook = (f"{_days_ago(400)} 📝 vieja #apunte\n"
+                   f"{_days_ago(30)} 📝 nueva #apunte\n")
         proj = _make_project(tmp_path, name="myproj", logbook=logbook)
 
         with patch("core.config.ORBIT_HOME", tmp_path), \
@@ -262,9 +275,11 @@ class TestRunArchive:
             ret = run_archive(project="myproj", months=6, dry_run=True)
 
         assert ret == 0
+        assert "vieja" in (proj / "myproj-logbook.md").read_text()   # dry-run
 
     def test_single_project_force_cleans(self, tmp_path):
-        logbook = "2025-01-01 📝 vieja #apunte\n2026-03-01 📝 nueva #apunte\n"
+        logbook = (f"{_days_ago(400)} 📝 vieja #apunte\n"
+                   f"{_days_ago(30)} 📝 nueva #apunte\n")
         proj = _make_project(tmp_path, name="myproj", logbook=logbook)
 
         with patch("core.config.ORBIT_HOME", tmp_path), \
@@ -278,13 +293,13 @@ class TestRunArchive:
         assert "nueva" in content
 
     def test_agenda_flag_only_cleans_agenda(self, tmp_path):
-        logbook = "2025-01-01 📝 vieja #apunte\n"
+        logbook = f"{_days_ago(400)} 📝 vieja #apunte\n"
         agenda = (
             "## ✅ Tareas\n"
-            "- [x] Done (2025-06-01)\n"
-            "- [ ] Pending (2026-06-01)\n\n"
+            f"- [x] Done ({_days_ago(400)})\n"
+            f"- [ ] Pending ({_days_ago(-30)})\n\n"
             "## 📅 Eventos\n"
-            "2025-06-01 — Evento viejo\n"
+            f"{_days_ago(400)} — Evento viejo\n"
         )
         proj = _make_project(tmp_path, name="myproj", logbook=logbook, agenda=agenda)
 
@@ -315,7 +330,7 @@ class TestRunArchive:
         assert ret == 0
 
     def test_nothing_to_clean(self, tmp_path):
-        logbook = "2026-03-01 📝 reciente #apunte\n"
+        logbook = f"{_days_ago(30)} 📝 reciente #apunte\n"
         proj = _make_project(tmp_path, name="fresh", logbook=logbook)
 
         with patch("core.config.ORBIT_HOME", tmp_path), \
@@ -323,3 +338,4 @@ class TestRunArchive:
              patch("core.archive._find_new_project", return_value=proj):
             ret = run_archive(project="fresh", months=6, force=True)
         assert ret == 0
+        assert "reciente" in (proj / "fresh-logbook.md").read_text()
