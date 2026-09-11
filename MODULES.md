@@ -164,6 +164,7 @@ graph TB
 | 0.0 | Mail → log/event | `email` (1098) | Captura Apple Mail / Outlook / .eml. `--ev` también escribe agenda → cubre 2.1 a la vez. |
 | 0.2 | Mail/Slack → notificación macOS | `cartero` (~905) | Globito nativo via `osascript`. Independiente del log. Indicador del prompt `[📬N]` retirado en F2 satellites (2026-05-15). |
 | 1   | Log + hl + notes + cloud | `log` `highlights` `notes` + `archive` | `highlights` y `notes` escriben en `log` (no son independientes). |
+| 0.3 | arXiv → bandeja en `notes/` → highlights | `arxiv` (~700) | Feed diario por proyecto (ADR-050). Config en `notes/arxiv-temas.md` (sólo lectura); action `arxiv_fetch` en `shell_start`. |
 | 1.1a | md propios en repo | `notes` | ✓ |
 | 1.1b | pesados a cloud | `deliver` `cloudsync` `cloud_imgs` | 3 módulos para "copiar a `cloud_root`". Agrupados bajo `orbit cloud {deliver,sync,imgs}` en v0.38 (Fase 2). `recloud` (one-shot de migración) borrado. |
 | 1.1c | links externos md / others | (convención de log; sin módulo dedicado) | Resuelto en `log` + `open`. |

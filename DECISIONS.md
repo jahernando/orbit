@@ -964,6 +964,34 @@ Tres fricciones reales:
 
 ---
 
+## ADR-050 — Feed de arXiv: bandeja en `notes/`, config aparte, triaje a highlights
+
+**Estado**: aceptada (2026-09-11).
+
+**Contexto**: el usuario quiere que orbit le traiga cada mañana los artículos nuevos de arXiv que tocan sus temas (neutrinos, Higgs, materia oscura, detectores de xenón/argón/TPC, reconstrucción e identificación, estadística, redes neuronales en física de partículas y astropartículas), y poder marcar los que valen para conservarlos.
+
+**Decisión**:
+
+1. **Un solo disparo: la cadena `shell_start`, no un planificador del sistema.** "Cada día laborable a las 8:30" y "la primera vez que entro" son el mismo código en cuanto hay marca de agua: la fecha del último barrido decide, no el reloj. Un `launchd` a las 8:30 sólo añadiría valor con notificación de macOS —el resultado no se ve hasta abrir orbit— y a cambio mete un proceso más que mantener. Queda como ampliación, no como base.
+
+2. **La config no vive en el fichero que el programa escribe.** La bandeja se reescribe cada mañana; poner ahí los temas metería la única copia de la config dentro de un fichero auto-editado, donde un fallo de formato o una migración futura se la lleva. `notes/arxiv-temas.md` es de lectura para orbit y de escritura sólo para el usuario. Frente a `orbit.json`: admite comentarios y estructura legible, se edita en Obsidian al lado de donde se leen los resultados, y es config **de proyecto**, no de workspace.
+
+3. **La bandeja es bandeja, no archivo.** Los artículos entran arriba de `notes/arxiv.md`; marcar con `#relevante` y ejecutar `arxiv triage` los promociona a `highlights.md` como `📎 #referencia` y los saca de la bandeja. Es el flujo de captura → triaje que orbit ya tiene, y deja lo curado donde ya está lo curado. Vaciar los no marcados se **pregunta** (defecto No): borrar en silencio lo que el usuario aún no ha mirado sería indistinguible de perder datos.
+
+4. **Filtro determinista antes que LLM.** Categorías de arXiv, puntuación por términos con el detalle de qué acertó, autores vigilados y exclusiones. Tres afinamientos que salieron de mirar el ruido real sobre 321 artículos de tres días: un acierto en el **título** vale el doble que en el resumen; un término **entre comillas** es acrónimo estricto (`"TPC"` no dispara con *tpc* ni *TPCs*); y un tema puede declararse **acompañante** (`+acompaña`), de modo que sólo cuenta si además acierta un tema propio — sin eso, "deep learning" traía predicción de fulguraciones solares por delante de un artículo de doble beta. El enganche para una pasada de LLM está marcado en `_score_entry`; se decidirá con ruido medido, no supuesto.
+
+5. **Deduplicación por identificador sin versión.** Un artículo aparece en varias categorías y reaparece al publicarse su `v2`. El estado (`<workspace>/.arxiv-state.json`) guarda los identificadores base ya vistos, y la marca de agua **sólo avanza si la descarga fue bien**: arXiv caído significa reintentar mañana, no perder un día.
+
+6. **Genérico desde el primer día, aunque hoy sólo lo use un proyecto.** Participa todo proyecto que tenga fichero de temas. No hay lista de proyectos en ningún sitio: la presencia del fichero *es* la suscripción.
+
+**Consecuencias**:
+- Pros: ninguna pieza nueva de infraestructura —un módulo de `core/`, una acción en una cadena que ya existía y dos ficheros en `notes/`—; el barrido es idempotente y repetible; el ruido del filtro es auditable porque cada entrada lleva los términos que la hicieron entrar.
+- Contras: hay una llamada de red en el arranque del shell (acotada por timeout y silenciosa al fallar); el panel de proyecto no barre, por herencia de [ADR-049](#adr-049--panel-de-proyecto-shell-fijado-a-un-proyecto-inmutable-y-en-modo-ligero); y la calidad del filtro depende de que el usuario mantenga su fichero de temas, que es justo donde se quiere que esté la decisión.
+
+**Verificación**: `tests/test_arxiv.py` (33) + barrido real contra la API de arXiv.
+
+---
+
 ## ADR-049 — Panel de proyecto: shell fijado a un proyecto, inmutable y en modo ligero
 
 **Estado**: aceptada (2026-07-28).

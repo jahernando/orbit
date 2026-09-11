@@ -26,6 +26,7 @@ Principios de diseño:
     log.py                ← logbook entries
     highlights.py         ← highlights CRUD
     project.py            ← gestión de proyectos
+    arxiv.py              ← feed diario de arXiv por proyecto (bandeja en notes/ → highlights)
     focus.py              ← planificación semanal por carriles (anchor/push/joy) en mission + vista anual
     types.py              ← dataclasses compartidas entre core/ y views/ (Issue, …)
   views/                  ← readers de la verdad → artefactos derivados (regla en RULES.md)
@@ -107,6 +108,8 @@ Una sola dirección: orbit es source-of-truth, los backends consumen.
 - `SETUP.md` — instrucciones de instalación
 
 ## Estado actual (v0.40.0, 2026-05-29)
+
+**Feed de arXiv** ([ADR-050](DECISIONS.md#adr-050--feed-de-arxiv-bandeja-en-notes-config-aparte-triaje-a-highlights)): `orbit arxiv {init,fetch,triage}`. Barrido diario en la cadena `shell_start` (días laborables, una vez al día, marca de agua en `<workspace>/.arxiv-state.json`) sobre todo proyecto con `notes/arxiv-temas.md`. Los artículos caen en `notes/arxiv.md`; marcar con `#relevante` + `arxiv triage` los promociona a `highlights.md` como `📎`. Filtro determinista: categorías + términos (título ×2, acrónimo estricto entre comillas, temas `+acompaña`) + autores vigilados + exclusiones.
 
 **Panel de proyecto** ([ADR-049](DECISIONS.md#adr-049--panel-de-proyecto-shell-fijado-a-un-proyecto-inmutable-y-en-modo-ligero)): `orbit shell --project X` (o `ORBIT_PROJECT`) fija el shell a un proyecto — es lo que abre `wks` en su segunda ventana. El posicional `project` desaparece de la gramática, nombrar otro proyecto es error, los comandos transversales se bloquean y el arranque es ligero (el panel general es el dueño del workspace). Invariantes en [RULES.md](RULES.md#shell).
 

@@ -266,6 +266,77 @@ Ficheros antiguos con secciones `## <emoji> <Palabra>` se **migran perezosamente
 
 ---
 
+## arxiv — feed diario de artículos
+
+```bash
+orbit arxiv init   <project>
+orbit arxiv fetch  [<project>] [--since FECHA] [--max N] [--dry-run]
+orbit arxiv triage [<project>] [--purge]
+```
+
+Barrido de arXiv por proyecto: los artículos nuevos que casan con tus temas
+caen en una **bandeja** dentro de `notes/`, tú marcas los que valen y el triaje
+los promociona a `highlights.md` como `📎 #referencia`.
+
+**Dos ficheros en `notes/`**:
+
+- `arxiv-temas.md` — la **config**, la escribes tú; orbit sólo la lee.
+- `arxiv.md` — la **bandeja**, la escribe orbit; lo más reciente arriba.
+
+**Fichero de temas** — secciones reconocidas por su encabezado `##`:
+
+```markdown
+## Categorías
+hep-ex, physics.ins-det, astro-ph.CO
+
+## Autores vigilados
+Gómez Cadenas
+
+## Tema: detectores #detectores
+- liquid xenon
+- "TPC"
+
+## Tema: redes neuronales e IA #ia +acompaña
+- deep learning
+
+## Excluir
+- swampland
+
+## Ajustes
+tope: 15
+umbral: 3
+retroceso: 7
+```
+
+- La **etiqueta** tras el nombre del tema es la que aparece en la entrada; si
+  falta, se deriva del nombre.
+- Término **entre comillas** = acrónimo estricto: mayúsculas exactas y límite
+  de palabra, para que `"TPC"` no dispare con *tpc* ni con *TPCs*.
+- Un acierto en el **título** puntúa el doble que en el resumen.
+- `+acompaña` en la cabecera del tema = sólo cuenta si además acierta un tema
+  propio. Es lo que evita que *deep learning* traiga artículos de otro campo.
+- Un autor vigilado suma 5, muy por encima de cualquier término suelto.
+- Un término de `Excluir` tumba la entrada entera.
+- `tope` = artículos escritos por barrido · `umbral` = puntuación mínima ·
+  `retroceso` = días que mira atrás el primer barrido.
+
+**Marcado y triaje**: añade `#relevante` a la línea del artículo en la bandeja
+y lanza `arxiv triage`. Los marcados pasan a `highlights.md` conservando sus
+etiquetas de tema, y salen de la bandeja. Los no marcados se quedan; `triage`
+pregunta si vaciarlos (defecto **No**), y `--purge` los tira sin preguntar.
+
+**Automático**: la acción `arxiv_fetch` de la cadena `shell_start` barre los
+días laborables, una vez al día, en todo proyecto que tenga fichero de temas.
+Silenciosa cuando no hay nada. Si arXiv no responde, la marca de agua no avanza
+y se reintenta al día siguiente. El estado vive en `<workspace>/.arxiv-state.json`
+(última fecha barrida + identificadores ya vistos, deduplicados **sin versión**,
+así que una `v2` de un artículo ya visto no vuelve a aparecer).
+
+**Nota**: el panel de proyecto (shell fijado) no corre la cadena de arranque
+(ADR-049), así que el barrido automático ocurre sólo en el panel general.
+
+---
+
 ## note — notas de proyecto
 
 Modelo **propia / externa** (v0.36, ver `DECISIONS.md` ADR-026):
