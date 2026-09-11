@@ -41,6 +41,7 @@ def test_shell_start_chain_registered():
         "advance_overdue_recurring",
         "ring_refresh",
         "secretary_refresh",
+        "arxiv_fetch",
         "daemons_startup",
         "render_status_check",
     ]
@@ -270,6 +271,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
                side_effect=lambda *a, **kw: (calls.append("ring_refresh_all") or [])), \
          patch("views.ring.export.invoke_daemon", return_value=(True, "noop")), \
          patch("orbit.run_dash", side_effect=record("run_dash")), \
+         patch("core.arxiv.feed_projects", return_value=[]), \
          patch("core.shell.threading.Thread") as MockThread:
         MockThread.return_value.start = lambda: calls.append("dash_daemon_thread")
         results = hooks.fire("shell_startup", verbosity="quiet")
@@ -294,6 +296,7 @@ def test_shell_startup_fires_all_actions_in_order(reset_journal):
         "advance_overdue_recurring",
         "ring_refresh",
         "secretary_refresh",
+        "arxiv_fetch",
         "daemons_startup",
         "render_status_check",
     ]
@@ -312,6 +315,7 @@ def test_shell_startup_non_critical_failure_continues(reset_journal):
          patch("core.startup.startup_code_update_check"), \
          patch("core.cartero_invoke.startup_cartero"), \
          patch("orbit.run_dash"), \
+         patch("core.arxiv.feed_projects", return_value=[]), \
          patch("core.shell.threading.Thread"):
         results = hooks.fire("shell_startup", verbosity="quiet")
 

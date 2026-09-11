@@ -126,6 +126,15 @@
         "emoji": "💶",
         "label": "Ledger"
       }
+    },
+    "arxiv_fetch": {
+      "module": "core.arxiv",
+      "fn": "_action_arxiv_fetch",
+      "critical": false,
+      "display": {
+        "emoji": "📎",
+        "label": "arXiv"
+      }
     }
   },
   "chains": {
@@ -162,6 +171,7 @@
         "advance_overdue_recurring",
         "ring_refresh",
         "secretary_refresh",
+        "arxiv_fetch",
         "daemons_startup",
         "render_status_check"
       ],

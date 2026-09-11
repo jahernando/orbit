@@ -1381,6 +1381,24 @@ def cmd_claude(args):
     return run_claude(question=" ".join(question) if isinstance(question, list) else question)
 
 
+def cmd_arxiv(args):
+    """Feed de arXiv: init / fetch / triage. Ver core/arxiv.py."""
+    from core.arxiv import run_init, run_fetch, run_triage
+    action  = getattr(args, "action", None)
+    project = getattr(args, "project", None)
+    if action == "init":
+        return run_init(project)
+    if action == "triage":
+        return run_triage(project, purge=getattr(args, "purge", False))
+    if action in ("fetch", None):
+        return run_fetch(project,
+                         since=getattr(args, "since", None),
+                         max_n=getattr(args, "max_n", None),
+                         dry_run=getattr(args, "dry_run", False))
+    print("Uso: arxiv {init|fetch|triage} [<proyecto>]")
+    return 1
+
+
 def cmd_doctor(args):
     from views.doctor.doctor import run_doctor
     return run_doctor(
@@ -2243,6 +2261,29 @@ def _build_parser():
     foc_year_p.add_argument("--year", type=int, default=None,
                             help="Año ISO a regenerar (defecto: el actual)")
 
+    # --- arxiv ---
+    arx_p = subparsers.add_parser("arxiv",
+        help="Feed diario de arXiv: bandeja en notes/ y triaje a highlights")
+    arx_sub = arx_p.add_subparsers(dest="action")
+    arx_init = arx_sub.add_parser("init",
+        help=f"Crea notes/arxiv-temas.md (config) y la bandeja notes/arxiv.md")
+    add_project_arg(arx_init, help="Project")
+    arx_fetch = arx_sub.add_parser("fetch", help="Barrido manual de arXiv")
+    add_project_arg(arx_fetch, required=False,
+                    help="Project (omitir = todos los que tengan feed)")
+    arx_fetch.add_argument("--since", default=None, metavar="DATE",
+                           help="Desde esta fecha en vez de la marca de agua")
+    arx_fetch.add_argument("--max", dest="max_n", type=int, default=None,
+                           metavar="N", help="Tope de artículos escritos")
+    arx_fetch.add_argument("--dry-run", dest="dry_run", action="store_true",
+                           help="No escribe nada ni avanza la marca de agua")
+    arx_tri = arx_sub.add_parser("triage",
+        help="Promociona los items marcados #relevante a highlights.md")
+    add_project_arg(arx_tri, required=False,
+                    help="Project (omitir = el único con feed)")
+    arx_tri.add_argument("--purge", action="store_true",
+                         help="Vacía sin preguntar los no marcados")
+
     # --- undo ---
     subparsers.add_parser("undo", help="Undo the last operation")
 
@@ -2278,6 +2319,7 @@ _COMMANDS = {
     "focus": cmd_focus,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,
+    "arxiv": cmd_arxiv,
 }
 
 
@@ -2291,7 +2333,7 @@ _COMMANDS = {
 _CITA_TRIGGERS = {"task", "ms", "ev", "reminder", "rem", "crono",
                   "ics-import", "email", "focus"}
 # clog only writes a logbook entry (no cita mutation) → dash only, like `log`.
-_DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project", "clog"}
+_DASH_TRIGGERS = _CITA_TRIGGERS | {"log", "hl", "project", "clog", "arxiv"}
 
 
 def run_command(argv: list) -> int:
