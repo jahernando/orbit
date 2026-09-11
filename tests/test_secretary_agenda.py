@@ -515,3 +515,93 @@ class TestBellColumn:
                 break
         else:
             pytest.fail("no encontré la fila ⏩")
+
+
+class TestSpanRecurDedupe:
+    """Una cita de la verdad → como mucho una fila por día.
+
+    Regresión del bug CE1/CE2 (fnyp, 2026-09): un evento con `end` (multi-día)
+    *y* `recur` producía una copia más cada día — la franja base solapaba con
+    la franja de cada ocurrencia virtual, y nadie deduplicaba.
+    """
+
+    @staticmethod
+    def _count(by_day, day, desc):
+        return sum(1 for e in by_day.get(day.isoformat(), [])
+                   if (e[1].get("desc") or "") == desc)
+
+    def test_multiday_plus_recur_no_duplicates(self, agenda_env):
+        from views.secretary._agenda_table import collect_items_by_day
+        start = date(2026, 9, 11)   # viernes
+        end = date(2026, 9, 18)     # viernes siguiente
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "- 📅 CE1 #evento\n"
+                f"    ▶️ {start.isoformat()} : {end.isoformat()}"
+                " · ⏰ 17:00-18:00 · 🔄 weekdays\n"
+            ),
+        )
+        by_day = collect_items_by_day(start, end)
+        cur = start
+        while cur <= end:
+            assert self._count(by_day, cur, "CE1") <= 1, (
+                f"CE1 duplicado el {cur}: "
+                f"{self._count(by_day, cur, 'CE1')} filas"
+            )
+            cur += timedelta(days=1)
+
+    def test_recur_until_shows_once_per_occurrence(self, agenda_env):
+        """Sintaxis correcta (`🔄 weekdays : hasta`): un día laborable, una fila;
+        fin de semana, ninguna; nada después del corte."""
+        from views.secretary._agenda_table import collect_items_by_day
+        start = date(2026, 9, 11)
+        until = date(2026, 9, 18)
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "- 📅 CE1 #evento\n"
+                f"    ▶️ {start.isoformat()} · ⏰ 17:00-18:00"
+                f" · 🔄 weekdays : {until.isoformat()}\n"
+            ),
+        )
+        by_day = collect_items_by_day(start, date(2026, 9, 20))
+        assert self._count(by_day, date(2026, 9, 11), "CE1") == 1   # vie
+        assert self._count(by_day, date(2026, 9, 12), "CE1") == 0   # sáb
+        assert self._count(by_day, date(2026, 9, 13), "CE1") == 0   # dom
+        assert self._count(by_day, date(2026, 9, 14), "CE1") == 1   # lun
+        assert self._count(by_day, date(2026, 9, 18), "CE1") == 1   # vie
+        assert self._count(by_day, date(2026, 9, 19), "CE1") == 0   # tras corte
+
+    def test_twin_entries_still_show_twice(self, agenda_env):
+        """El dedupe es por cita de origen, no por contenido: dos entradas
+        gemelas en la verdad siguen dando dos filas (duplicado del usuario)."""
+        from views.secretary._agenda_table import collect_items_by_day
+        day = date(2026, 9, 11)
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "- 📅 Kick-out #evento\n"
+                f"    ▶️ {day.isoformat()} · ⏰ 10:00\n\n"
+                "- 📅 Kick-out #evento\n"
+                f"    ▶️ {day.isoformat()} · ⏰ 10:00\n"
+            ),
+        )
+        by_day = collect_items_by_day(day, day)
+        assert self._count(by_day, day, "Kick-out") == 2
+
+    def test_multiday_event_still_spans_its_days(self, agenda_env):
+        """Sin recurrencia, un evento multi-día sigue apareciendo cada día."""
+        from views.secretary._agenda_table import collect_items_by_day
+        start = date(2026, 9, 14)
+        end = date(2026, 9, 16)
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "- 📅 Xenon workshop #evento\n"
+                f"    ▶️ {start.isoformat()} : {end.isoformat()}\n"
+            ),
+        )
+        by_day = collect_items_by_day(start, end)
+        for d in (start, date(2026, 9, 15), end):
+            assert self._count(by_day, d, "Xenon workshop") == 1

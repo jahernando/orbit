@@ -207,9 +207,17 @@ def render_day_rows(items) -> list:
 
 
 def _add_item_spanning(by_day: dict, entry, item_start: str, item_end: str,
-                       df_date, dt_date) -> None:
+                       df_date, dt_date, seen=None, src_key=None) -> None:
     """Add `entry` a by_day para cada día en [item_start, item_end] ∩ [df, dt].
-    Para events multi-día (con `end`), aparecerá en cada día del rango."""
+    Para events multi-día (con `end`), aparecerá en cada día del rango.
+
+    `seen` + `src_key` blindan contra la doble contabilidad: una misma cita de
+    la verdad no puede producir dos filas el mismo día. Pasa cuando un item
+    combina `end` (multi-día) con `recur` y su duración alcanza a la siguiente
+    ocurrencia — la franja base y las ocurrencias virtuales se solapan. Sin el
+    filtro, cada día acumula una copia más que el anterior. La primera franja
+    que llega a un día gana (la base, que es la entrada real).
+    """
     from datetime import date as _date, timedelta
     try:
         s = max(_date.fromisoformat(item_start), df_date)
@@ -218,7 +226,13 @@ def _add_item_spanning(by_day: dict, entry, item_start: str, item_end: str,
         return
     cur = s
     while cur <= e:
-        by_day.setdefault(cur.isoformat(), []).append(entry)
+        day = cur.isoformat()
+        if seen is not None and src_key is not None:
+            if (day, src_key) in seen:
+                cur += timedelta(days=1)
+                continue
+            seen.add((day, src_key))
+        by_day.setdefault(day, []).append(entry)
         cur += timedelta(days=1)
 
 
@@ -227,7 +241,7 @@ def collect_items_by_day(date_from, date_to, include_federated: bool = True) -> 
     cuyo rango temporal intersecta ``[date_from, date_to]``. Filters
     done/cancelled.
 
-    Tres extensiones sobre "una entrada un día":
+    Cuatro reglas sobre "una entrada un día":
     - **Multi-día events** (con `end` set): aparecen en cada día de su
       rango ``[date, end]`` (no sólo el día de inicio). Útil para
       conferencias/viajes de varios días.
@@ -237,6 +251,12 @@ def collect_items_by_day(date_from, date_to, include_federated: bool = True) -> 
     - **Recurrencia × multi-día**: ocurrencias virtuales preservan
       `end` (offset del original), así que cada virtual también se
       expande por sus días.
+    - **Dedupe por cita de origen**: una entrada de la verdad produce como
+      mucho una fila por día. Necesario porque las dos reglas anteriores se
+      solapan cuando la duración alcanza a la siguiente ocurrencia (bug
+      CE1/CE2 en fnyp, 2026-09: una copia más cada día). La identidad es la
+      posición del item en la verdad, no su contenido — dos entradas gemelas
+      siguen dando dos filas, que es un duplicado del usuario.
     """
     from datetime import date as _date
     from core.agenda.io import _read_agenda
@@ -247,6 +267,7 @@ def collect_items_by_day(date_from, date_to, include_federated: bool = True) -> 
     dt_date = date_to   if hasattr(date_to,   "isoformat") else _date.fromisoformat(date_to)
 
     by_day: dict = {}
+    seen: set = set()
     for project_dir in _resolve_dirs(None, include_federated=include_federated):
         agenda_path = resolve_file(project_dir, "agenda")
         if not agenda_path.exists():
@@ -254,21 +275,27 @@ def collect_items_by_day(date_from, date_to, include_federated: bool = True) -> 
         data = _read_agenda(agenda_path)
         proj_md = proj_link_md(project_dir)
         for kind in ("events", "tasks", "milestones", "reminders"):
-            for item in data.get(kind, []):
+            for pos, item in enumerate(data.get(kind, [])):
                 if item.get("status") in ("done", "cancelled"):
                     continue
                 d = item.get("date")
                 if not d:
                     continue
+                # Identidad de la cita de origen: posición en su lista, no
+                # contenido. Dos entradas gemelas de la verdad (mismo desc y
+                # hora, sin orbit_id) siguen siendo dos filas — eso es un
+                # duplicado del usuario, no del visor.
+                src_key = (str(project_dir), kind, pos)
                 entry = (kind, item, project_dir, proj_md)
                 # Base occurrence (con rango si multi-día events).
                 end_d = item.get("end") or d
-                _add_item_spanning(by_day, entry, d, end_d, df_date, dt_date)
+                _add_item_spanning(by_day, entry, d, end_d, df_date, dt_date,
+                                   seen, src_key)
                 # Recurring: expandir ocurrencias virtuales dentro del rango.
                 if item.get("recur"):
                     for vi in _expand_recurrences(item, df_date, dt_date):
                         v_entry = (kind, vi, project_dir, proj_md)
                         v_end = vi.get("end") or vi["date"]
                         _add_item_spanning(by_day, v_entry, vi["date"], v_end,
-                                            df_date, dt_date)
+                                            df_date, dt_date, seen, src_key)
     return by_day
