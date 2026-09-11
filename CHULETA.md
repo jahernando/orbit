@@ -320,10 +320,13 @@ retroceso: 7
 - `tope` = artículos escritos por barrido · `umbral` = puntuación mínima ·
   `retroceso` = días que mira atrás el primer barrido.
 
-**Marcado y triaje**: añade `#relevante` a la línea del artículo en la bandeja
-y lanza `arxiv triage`. Los marcados pasan a `highlights.md` conservando sus
-etiquetas de tema, y salen de la bandeja. Los no marcados se quedan; `triage`
-pregunta si vaciarlos (defecto **No**), y `--purge` los tira sin preguntar.
+**Marcado y triaje**: cada artículo de la bandeja es una línea con casilla,
+`- [ ] 📎 [título](url) #tema`. Marca la casilla (un clic en Obsidian, una `x`
+en cualquier editor) y lanza `arxiv triage`. Escribir `#relevante` en la línea
+marca igual, para cuando la casilla no sea clicable. Los marcados pasan a
+`highlights.md` conservando sus etiquetas de tema, y salen de la bandeja. Los
+no marcados se quedan; `triage` pregunta si vaciarlos (defecto **No**), y
+`--purge` los tira sin preguntar.
 
 **Automático**: la acción `arxiv_fetch` de la cadena `shell_start` barre los
 días laborables, una vez al día, en todo proyecto que tenga fichero de temas.

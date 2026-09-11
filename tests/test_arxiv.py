@@ -199,7 +199,7 @@ def test_build_query_joins_categories_and_window():
 
 def test_prepend_creates_inbox_with_sentinel(tmp_path):
     inbox = tmp_path / "notes" / arxiv.INBOX_FILENAME
-    arxiv.prepend_block(inbox, "📖phys", "## 2026-09-11\n\n- 📎 [T](u) #x")
+    arxiv.prepend_block(inbox, "📖phys", "## 2026-09-11\n\n- [ ] 📎 [T](u) #x")
     text = inbox.read_text()
     assert arxiv.SENTINEL in text
     assert text.index(arxiv.SENTINEL) < text.index("## 2026-09-11")
@@ -207,8 +207,8 @@ def test_prepend_creates_inbox_with_sentinel(tmp_path):
 
 def test_prepend_puts_newest_on_top(tmp_path):
     inbox = tmp_path / "notes" / arxiv.INBOX_FILENAME
-    arxiv.prepend_block(inbox, "📖phys", "## viejo\n\n- 📎 [A](u) #x")
-    arxiv.prepend_block(inbox, "📖phys", "## nuevo\n\n- 📎 [B](u) #x")
+    arxiv.prepend_block(inbox, "📖phys", "## viejo\n\n- [ ] 📎 [A](u) #x")
+    arxiv.prepend_block(inbox, "📖phys", "## nuevo\n\n- [ ] 📎 [B](u) #x")
     text = inbox.read_text()
     assert text.index("## nuevo") < text.index("## viejo")
 
@@ -217,7 +217,7 @@ def test_render_entry_carries_link_tags_and_matches():
     cfg = arxiv.parse_topics(TOPICS)
     entry = _entry(title="Neutrino oscillation", authors=["A", "B", "C", "D"])
     line = arxiv.render_entry(entry, arxiv._score_entry(entry, cfg))
-    assert "- 📎 [Neutrino oscillation](https://arxiv.org/abs/2609.00001) #neutrinos" in line
+    assert "- [ ] 📎 [Neutrino oscillation](https://arxiv.org/abs/2609.00001) #neutrinos" in line
     assert "+1" in line                      # 4 autores → 3 + resto
     assert "coincide: neutrino oscillation" in line
 
@@ -231,10 +231,10 @@ _INBOX = """\
 
 ## 2026-09-11 · 2 artículos
 
-- 📎 [Uno](https://arxiv.org/abs/1) #neutrinos #relevante
+- [x] 📎 [Uno](https://arxiv.org/abs/1) #neutrinos
   - 1 · hep-ex · 2026-09-10 · A. Uno
   - coincide: neutrino
-- 📎 [Dos](https://arxiv.org/abs/2) #detectores
+- [ ] 📎 [Dos](https://arxiv.org/abs/2) #detectores
   - 2 · hep-ex · 2026-09-10 · B. Dos
 """
 
@@ -420,3 +420,35 @@ def test_init_does_not_duplicate_the_highlights_link(feed_env):
     arxiv.run_init(proj.name)
     hl = (proj / "highlights.md").read_text()
     assert hl.count(f"./notes/{arxiv.INBOX_FILENAME}") == 1
+
+
+def test_checkbox_is_the_mark():
+    items = arxiv.parse_inbox(_INBOX.splitlines())
+    assert items[0].marked and not items[1].marked
+
+
+def test_written_items_start_unchecked():
+    cfg = arxiv.parse_topics(TOPICS)
+    entry = _entry(title="neutrino oscillation")
+    assert arxiv.item_header(entry, arxiv._score_entry(entry, cfg)).startswith("- [ ] 📎 ")
+
+
+def test_handwritten_tag_still_marks():
+    lines = ["- [ ] 📎 [T](https://arxiv.org/abs/9) #neutrinos #relevante"]
+    item = arxiv.parse_inbox(lines)[0]
+    assert item.marked
+    assert item.tags == ["#neutrinos"]
+
+
+def test_bare_line_without_checkbox_is_still_read():
+    """Bandejas escritas antes de la casilla: la línea desnuda sigue valiendo."""
+    lines = ["- 📎 [T](https://arxiv.org/abs/9) #neutrinos"]
+    item = arxiv.parse_inbox(lines)[0]
+    assert not item.marked and item.title == "T"
+
+
+def test_obsidian_completion_date_does_not_break_the_item():
+    """El plugin Tasks puede añadir `✅ fecha` al marcar: no debe estorbar."""
+    lines = ["- [x] 📎 [T](https://arxiv.org/abs/9) #neutrinos ✅ 2026-09-11"]
+    item = arxiv.parse_inbox(lines)[0]
+    assert item.marked and item.tags == ["#neutrinos"]

@@ -376,12 +376,18 @@ def _inbox_header(project_name: str) -> str:
         f"*Bandeja de entrada. Lo más reciente arriba.*\n"
         f"*Temas y palabras clave: [{TOPICS_FILENAME}](./{TOPICS_FILENAME}) "
         f"— ese fichero lo escribes tú, orbit sólo lo lee.*\n"
-        f"*Marca con `{MARK_TAG}` lo que quieras conservar y ejecuta "
-        f"`arxiv triage`.*\n"
+        f"*Marca la casilla de lo que quieras conservar y ejecuta "
+        f"`arxiv triage`. Escribir `{MARK_TAG}` en la línea vale igual.*\n"
         f"\n"
         f"{SENTINEL} — orbit inserta las entradas nuevas justo debajo. "
         f"No borres esta línea. -->\n"
     )
+
+
+def item_header(entry: dict, scored: dict) -> str:
+    """`- [ ] 📎 [título](url) #tema` — la casilla es la marca de relevancia."""
+    tags = " ".join(scored["tags"])
+    return f"- [ ] {ITEM_EMOJI} [{entry['title']}]({entry['abs']}) {tags}".rstrip()
 
 
 def render_entry(entry: dict, scored: dict) -> str:
@@ -391,7 +397,7 @@ def render_entry(entry: dict, scored: dict) -> str:
     who = ", ".join(authors[:3])
     if len(authors) > 3:
         who += f" +{len(authors) - 3}"
-    lines = [f"- {ITEM_EMOJI} [{entry['title']}]({entry['abs']}) {tags}".rstrip()]
+    lines = [item_header(entry, scored)]
     lines.append(f"  - {entry['id']} · {entry['primary']} · {entry['published']} · {who}")
     if scored["matched"]:
         seen, uniq = set(), []
@@ -636,7 +642,7 @@ def fetch_for_project(project_dir: Path, *, since_arg: Optional[str] = None,
 
     if not quiet:
         for entry, scored in chosen:
-            print("  " + render_entry(entry, scored).splitlines()[0][2:])
+            print("  " + item_header(entry, scored).split("] ", 1)[-1])
 
     return {"ok": True, "written": len(chosen), "scanned": len(raw),
             "dropped": dropped,
@@ -682,14 +688,15 @@ def _fetch_one(project_dir: Path, *, since: Optional[str] = None,
     print(f"✓ {prefix}[{project_dir.name}] {res['written']} en la bandeja, "
           f"{res['scanned']} revisados{tail}")
     if res["written"] and not dry_run:
-        print(f"   notes/{INBOX_FILENAME} — marca con {MARK_TAG} y lanza `arxiv triage`")
+        print(f"   notes/{INBOX_FILENAME} — marca la casilla y lanza `arxiv triage`")
     return 0
 
 
 # ── Triaje ───────────────────────────────────────────────────────────────────
 
 _ITEM_RE = re.compile(
-    rf"^-\s+{re.escape(ITEM_EMOJI)}\s+\[(?P<title>.+?)\]\((?P<url>[^)]+)\)(?P<rest>.*)$")
+    rf"^-\s+(?:\[(?P<check>.)\]\s+)?{re.escape(ITEM_EMOJI)}\s+"
+    rf"\[(?P<title>.+?)\]\((?P<url>[^)]+)\)(?P<rest>.*)$")
 
 
 @dataclass
@@ -727,7 +734,8 @@ def parse_inbox(lines: list) -> list:
             title=m.group("title").strip(),
             url=m.group("url").strip(),
             tags=[t for t in tags if _normalize(t) != _normalize(MARK_TAG)],
-            marked=any(_normalize(t) == _normalize(MARK_TAG) for t in tags),
+            marked=((m.group("check") or " ").strip().lower() not in ("", "-")
+                    or any(_normalize(t) == _normalize(MARK_TAG) for t in tags)),
             start=i, end=j - 1,
         ))
     return items
@@ -804,7 +812,8 @@ def run_triage(project: Optional[str] = None, purge: bool = False) -> int:
         print(f"✓ [{project_dir.name}] {len(marked)} promovido"
               f"{'s' if len(marked) != 1 else ''} a highlights.md como 📎")
     else:
-        print(f"[{project_dir.name}] ningún item marcado con {MARK_TAG}.")
+        print(f"[{project_dir.name}] ningún item marcado "
+              f"(casilla o {MARK_TAG}).")
 
     if not rest:
         return 0
