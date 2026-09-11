@@ -360,7 +360,8 @@ def run_hl_add(project: str, text: str, hl_type: str,
                date_str: Optional[str] = None,
                deliver: bool = False,
                as_link: bool = False,
-               no_date: bool = False) -> int:
+               no_date: bool = False,
+               tags: Optional[list] = None) -> int:
     if hl_type not in TYPE_EMOJI:
         print(f"Error: tipo '{hl_type}' no válido. Opciones: {', '.join(VALID_TYPES)}")
         return 1
@@ -419,7 +420,8 @@ def run_hl_add(project: str, text: str, hl_type: str,
 
     hl_path = resolve_file(project_dir, "highlights")
     data    = _read_highlights(hl_path)
-    item    = {"type": hl_type, "text": text, "link": link, "note": None, "tags": []}
+    item    = {"type": hl_type, "text": text, "link": link, "note": None,
+               "tags": list(tags or [])}
     data["items"].append(item)
     _write_highlights(hl_path, data)
 
