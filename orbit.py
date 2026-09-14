@@ -709,40 +709,69 @@ def cmd_project(args):
 
 
 def cmd_help(args):
-    import subprocess
+    """`help` (índice) · `help <comando>` (página) · `help chuleta|tutorial|about`.
+
+    Ni el índice ni las páginas tienen texto propio: se derivan de CHULETA.md
+    (ver `core/manual.py`). `man` es alias de este mismo comando.
+    """
     from core.config import ORBIT_CODE
+    from core import manual
+
     topic = getattr(args, "topic", None)
     to_editor = bool(getattr(args, "open", None))
     editor = _editor_from_args(args)
 
     _HELP_FILES = {
-        None:       ("CHULETA.md",  "chuleta.md"),
         "chuleta":  ("CHULETA.md",  "chuleta.md"),
         "tutorial": ("TUTORIAL.md", "tutorial.md"),
         "about":    ("README.md",   "readme.md"),
     }
-    entry = _HELP_FILES.get(topic)
-    if not entry:
-        print(f"Tema desconocido: {topic}. Usa: chuleta, tutorial, about")
+
+    def _show(text, dest_name):
+        if to_editor:
+            dest = ORBIT_DIR / dest_name
+            dest.write_text(text)
+            open_file(dest, editor)
+        else:
+            manual.page(text)
+
+    chuleta = (ORBIT_CODE / "CHULETA.md").read_text()
+
+    if topic in _HELP_FILES:
+        source, dest_name = _HELP_FILES[topic]
+        _show((ORBIT_CODE / source).read_text(), dest_name)
+        return 0
+
+    if topic is None:
+        print(manual.render_index(manual.build_index(chuleta, _COMMANDS)))
+        return 0
+
+    verb = topic.lstrip("-")
+    if verb not in _COMMANDS:
+        print(f"No existe el comando '{topic}'. `help` lista los que hay.")
         return 1
 
-    source, workspace_name = entry
-    path = ORBIT_CODE / source
-    if to_editor:
-        dest = ORBIT_DIR / workspace_name
-        dest.write_text(path.read_text())
-        open_file(dest, editor)
-    else:
-        try:
-            text = path.read_text()
-            pager = subprocess.Popen(["less", "-R"], stdin=subprocess.PIPE)
-            pager.communicate(input=text.encode())
-        except Exception:
-            print(path.read_text())
+    sec = manual.find_section(chuleta, verb, _COMMANDS)
+    if sec is None:
+        print(f"'{verb}' no tiene sección propia en la chuleta.")
+        print(f"  Su gramática: {verb} --help")
+        return 1
+
+    _show(manual.render_page(chuleta, sec, _grammar_for(verb)), f"man-{verb}.md")
     return 0
 
 
-
+def _grammar_for(verb: str) -> str:
+    """Bloque de ayuda de argparse del verbo, o cadena vacía si no se puede."""
+    try:
+        parser = _build_parser()
+        for action in parser._subparsers._group_actions:      # noqa: SLF001
+            sub = getattr(action, "choices", {}).get(verb)
+            if sub is not None:
+                return sub.format_help()
+    except Exception:
+        pass
+    return ""
 
 
 _AGENDA_PERIODS = {
@@ -2287,15 +2316,14 @@ def _build_parser():
     # --- undo ---
     subparsers.add_parser("undo", help="Undo the last operation")
 
-    # --- help ---
-    hlp_p   = subparsers.add_parser("help", help="Show help: chuleta (default), tutorial, about")
-    hlp_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
-                       help="Open in editor (optionally specify editor name)")
-    hlp_sub = hlp_p.add_subparsers(dest="topic")
-    for _name, _help in [("chuleta",  "Open CHULETA.md in editor"),
-                          ("tutorial", "Open TUTORIAL.md"),
-                          ("about",    "Open README.md")]:
-        _p = hlp_sub.add_parser(_name, help=_help)
+    # --- help / man ---
+    for _verb, _h in (("help", "Índice de comandos; `help <comando>` abre su página"),
+                      ("man",  "Alias de `help <comando>`")):
+        _p = subparsers.add_parser(_verb, help=_h)
+        _p.add_argument("topic", nargs="?", default=None,
+                        help="Comando, o chuleta / tutorial / about")
+        _p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
+                        help="Abrir en editor (opcionalmente indica cuál)")
 
     return parser
 
@@ -2319,6 +2347,7 @@ _COMMANDS = {
     "focus": cmd_focus,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,
+    "help": cmd_help, "man": cmd_help,
     "arxiv": cmd_arxiv,
 }
 
@@ -2389,7 +2418,7 @@ def run_command(argv: list) -> int:
     if args.command == "shell":
         return run_shell(editor=_editor_from_args(args),
                          project=getattr(args, "pin_project", None)) or 0
-    if args.command == "help":
+    if args.command in ("help", "man"):
         return cmd_help(args) or 0
     parser.print_help()
     return 1

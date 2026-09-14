@@ -28,6 +28,7 @@ Principios de diseño:
     project.py            ← gestión de proyectos
     arxiv.py              ← feed diario de arXiv por proyecto (bandeja en notes/ → highlights)
     focus.py              ← planificación semanal por carriles (anchor/push/joy) en mission + vista anual
+    manual.py             ← índice de comandos + páginas de manual, derivados de CHULETA.md
     types.py              ← dataclasses compartidas entre core/ y views/ (Issue, …)
   views/                  ← readers de la verdad → artefactos derivados (regla en RULES.md)
     render/render.py      ← MD → HTML en cloud_root (+ orbit.css)

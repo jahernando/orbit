@@ -731,6 +731,35 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
     except Exception:
         pass
 
+    # Check manual coverage: every verb of the dispatch table should be
+    # findable in CHULETA.md, which is what `help <verbo>` and `orbit claude`
+    # read. Un verbo sin encabezado no rompe nada, pero es invisible para el
+    # índice: el usuario no puede descubrirlo. Los alias se reportan en grupo
+    # (si uno del grupo está documentado, el grupo lo está).
+    try:
+        from core.config import ORBIT_CODE
+        from core import manual
+        import orbit as _orbit
+
+        chuleta = (ORBIT_CODE / "CHULETA.md").read_text()
+        orphans = set(manual.orphan_verbs(chuleta, _orbit._COMMANDS))
+        groups: dict = {}
+        for verb, fn in _orbit._COMMANDS.items():
+            groups.setdefault(fn, []).append(verb)
+        gaps = sorted(
+            "/".join(sorted(vs)) for vs in groups.values()
+            if set(vs) <= orphans
+        )
+        if gaps:
+            print(f"  📖 {len(gaps)} comando{'s' if len(gaps) != 1 else ''} "
+                  f"sin entrada en CHULETA.md: {', '.join(gaps)}")
+            print("  → `help` no puede indexarlos. Añade su sección "
+                  "`## <verbo> — <descripción>`, o nombra el verbo en el "
+                  "encabezado que ya lo documenta.")
+            print()
+    except Exception:
+        pass
+
     # Check ics_buckets config (v0.32): every kind must appear in exactly
     # one bucket. Buckets surface as .ics files in cloud/calendar/.
     try:

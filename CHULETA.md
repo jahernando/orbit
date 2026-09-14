@@ -42,6 +42,33 @@ Ver [ADR-049](DECISIONS.md#adr-049--panel-de-proyecto-shell-fijado-a-un-proyecto
 
 ---
 
+## help / man — índice de comandos y manual
+
+```bash
+help                    # índice: una línea por comando
+help <comando>          # la página de ese comando + su gramática
+man <comando>           # alias de `help <comando>`
+help chuleta            # esta referencia completa, paginada
+help tutorial           # el tutorial · help about → el README
+help <comando> --open   # abrir la página en el editor
+<comando> --help        # sólo la gramática (opciones y subcomandos)
+```
+
+Ni el índice ni las páginas tienen texto propio: se **derivan de este mismo
+fichero**. Cada sección `## <verbo> — <descripción>` de la chuleta es la página
+de manual de ese verbo, y la descripción tras el guión largo es su línea en el
+índice. Un alias entre paréntesis o separado por barra en el encabezado cuelga
+de la misma página: `## reminder (rem) — …` sirve a los dos.
+
+La consecuencia práctica: **documentar un comando nuevo es escribir su sección
+aquí**, y aparece solo en `help`. No hay un segundo sitio que actualizar.
+
+`doctor` avisa de los verbos del CLI que no tienen encabezado donde aparezca su
+nombre, porque el índice no puede encontrarlos aunque estén explicados dentro
+de otra sección.
+
+---
+
 ## project — gestión de proyectos
 
 ```bash

@@ -705,13 +705,18 @@ ls notes next-kr           # notas con estado git
 ### Documentación
 
 ```bash
-help                       # chuleta de comandos (terminal, paginado)
-help chuleta               # equivalente (paginado)
-help tutorial              # tutorial en terminal (paginado)
-help about                 # README en terminal (paginado)
-help --open                # abre CHULETA.md en el editor
-help tutorial --open       # abre TUTORIAL.md en el editor
+help                       # índice: una línea por comando
+help hl                    # la página de `hl` + su gramática
+man hl                     # lo mismo, si prefieres teclear man
+hl --help                  # sólo la gramática (opciones y subcomandos)
+help chuleta               # la referencia completa, paginada
+help tutorial              # este tutorial · help about → el README
+help hl --open             # abre la página en el editor
 ```
+
+El índice y las páginas salen de `CHULETA.md`, así que nunca se quedan
+desfasados respecto a la referencia. Si no recuerdas cómo se llama un comando,
+`help` a secas te los lista todos con una línea de descripción.
 
 ---
 
