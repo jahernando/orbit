@@ -501,3 +501,23 @@ def test_rate_limit_message_is_explicit(feed_env, monkeypatch):
     monkeypatch.setattr(arxiv, "fetch_entries", _boom)
     res = arxiv.fetch_for_project(feed_env["proj"], quiet=True)
     assert not res["ok"] and "429" in res["msg"]
+
+
+def test_timeout_is_retried_too(monkeypatch):
+    calls = []
+
+    class _Resp:
+        def read(self): return _ATOM_SAMPLE.encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def _urlopen(req, timeout=None):
+        calls.append(1)
+        if len(calls) < 2:
+            raise TimeoutError("timed out")
+        return _Resp()
+
+    monkeypatch.setattr(arxiv.urllib.request, "urlopen", _urlopen)
+    monkeypatch.setattr(arxiv.time, "sleep", lambda *_: None)
+    assert len(arxiv._read_url("https://x", 5)) > 0
+    assert len(calls) == 2

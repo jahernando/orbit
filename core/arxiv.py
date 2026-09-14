@@ -47,8 +47,8 @@ USER_AGENT  = "orbit/arxiv-feed (single-user research digest)"
 PAGE_SIZE   = 100          # arXiv recomienda no pasar de 2000 por petición
 PAGE_PAUSE  = 3.0          # segundos entre peticiones (política de arXiv)
 MAX_PAGES   = 10
-HTTP_TIMEOUT = 20
-RETRY_PAUSES = (5, 15, 45)  # espera antes de cada reintento ante 429/503
+HTTP_TIMEOUT = 60          # arXiv tarda hasta 30 s en devolver el propio 429
+RETRY_PAUSES = (10, 30, 90)  # espera antes de cada reintento
 
 MARK_TAG    = "#relevante"
 SENTINEL    = "<!-- orbit:arxiv-inbox"
@@ -322,9 +322,13 @@ def _read_url(url: str, timeout: int) -> str:
     """GET con reintento ante 429/503.
 
     arXiv limita el ritmo y responde 429 cuando se le pide demasiado seguido.
-    No es un fallo del que haya que rendirse: se espera y se reintenta. El
-    resto de errores HTTP suben tal cual, que sí son problema nuestro (una
-    query mal formada da 400 y reintentarla es perder el tiempo).
+    No es un fallo del que haya que rendirse: se espera y se reintenta, igual
+    que ante un corte de red o una espera agotada. Bajo penalización tarda
+    hasta 30 s en contestar el propio 429, de ahí que el timeout sea holgado:
+    con uno corto, un rechazo por ritmo se disfrazaba de caída.
+
+    El resto de errores HTTP suben tal cual, que sí son problema nuestro: una
+    query mal formada da 400 y reintentarla es perder el tiempo.
     """
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     last: Optional[Exception] = None
@@ -338,6 +342,8 @@ def _read_url(url: str, timeout: int) -> str:
             if exc.code not in (429, 503):
                 raise
             last = exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last = exc                            # corte de red o espera agotada
     raise last                                    # type: ignore[misc]
 
 
