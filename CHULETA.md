@@ -144,7 +144,7 @@ Ejemplo: `orbit ev add proj "Seminario" --date 2026-04-01 --recur weekly --until
 
 En `edit`: `--until none` elimina el límite (la serie pasa a ser indefinida).
 
-### Ring (`--ring`)
+### Alarmas de la cita (`--ring`)
 
 | Valor | Significado |
 |-------|------------|
@@ -405,7 +405,7 @@ orbit unlink  <project> <name>                     # quitar externa, source inta
 
 ---
 
-## externa — symlink a `.md` fuera del workspace
+## link / unlink / tracked — notas externas: symlink a `.md` fuera del workspace
 
 Casos: `DECISIONS.md` de tu repo público, draft compartido en Drive de la USC, plan vivo de otro proyecto. **Markdown que vive fuera de orbit-ws, lo quieres a mano en Obsidian y publicado al cloud, sin duplicar la verdad**.
 
@@ -481,7 +481,7 @@ orbit open  <project> [logbook|highlights|agenda|project] [--editor E] [--dir]
 
 ---
 
-## log y search
+## log / search — apuntes en el logbook y búsqueda
 
 ```bash
 orbit log <project> "<título>" [<file|url>] [--entry TIPO] [--import] [--link] [--no-date] [--note NOTA] [--date D] [--open [EDITOR]]
@@ -743,6 +743,43 @@ orbit agenda migrate [project...]     # reescribe agenda.md al formato nuevo (in
 
 ---
 
+## cal — calendario del mes
+
+```bash
+cal                        # mes actual
+cal abril                  # un mes por su nombre (o april)
+cal 2026-04                # un mes por su fecha
+cal abril 3                # tres meses desde abril (máximo 3)
+cal --from 2026-04-01 --to 2026-05-15   # rango libre
+cal --open                 # abre 📊panel/secretary/calendar.md en el editor
+```
+
+Vuelca en terminal la rejilla del mes con las citas de todos los proyectos, una
+línea por día. Es **lectura pura**: no escribe la verdad ni regenera derivados.
+
+Acepta los destinos de salida comunes (`--open`, `--log`, `--append`). Con
+`--open` el volcado va a `📊panel/secretary/calendar.md`; el resto de comandos
+de consulta usan el `cmd.md` transitorio.
+
+---
+
+## dash — regenerar los derivados del workspace
+
+```bash
+dash                       # regenera los viewers + los .ics del cloud
+```
+
+Rehace los viewers de `📊panel/` (agenda, proyectos, calendario, cronogramas,
+hitos, logbook, resumen) y, a continuación, los buckets `.ics` del cloud, para
+que Calendar.app vea el estado actual sin esperar a un `save`.
+
+Normalmente **no hace falta llamarlo**: cada mutación de cita, log, highlight o
+proyecto lo dispara en segundo plano, y `save` lo incluye en su cadena. Se usa a
+mano tras editar un `.md` a pelo en el editor, que es la vía por la que orbit no
+se entera del cambio.
+
+---
+
 ## panel — dashboard dinámico
 
 ```bash
@@ -893,7 +930,7 @@ orbit report --summary [logbook|agenda|highlights|all] [--date D] [--from D] [--
 
 > Orbit gestiona estas conexiones automáticamente (al arrancar, al operar sobre citas, al hacer save). Los comandos siguientes permiten interactuar manualmente.
 
-### Git — versionado (workflow `save`)
+### save — versionado con git
 
 ```bash
 orbit save ["<mensaje>"]
@@ -913,7 +950,7 @@ Alias legacy: `orbit commit` sigue funcionando.
 
 Si por alguna razón necesitas el camino AppleScript-write antiguo (push directo, reconciliación de drift…), ver `DORMANT.md` con los pasos exactos para revivirlo. Por defecto los comandos `orbit gsync` y `orbit calsync` ya no aparecen en el CLI.
 
-### Calendar.app — ics (export iCalendar / suscripciones) ← ruta principal desde v0.33
+### ics — export iCalendar y suscripciones de Calendar.app (ruta principal desde v0.33)
 
 ```bash
 orbit ics <proyecto>                       # imprime .ics a stdout
@@ -976,7 +1013,7 @@ Default si no defines `ics_buckets`: `agenda=task+rem`, `events=ev+ms+crono`. Ca
 
 **Snapshot diff**: cada `.ics` se guarda con un `.ics.snapshot` paralelo (versión anterior). `write_workspace` reporta cuántas citas se añadieron/modificaron/eliminaron desde el último render — útil para auditar drift sin abrir Calendar.app.
 
-### Compartir e importar citas puntuales
+### ics-share / ics-import — compartir e importar citas puntuales
 
 ```bash
 orbit ics-share <proj> --orbit-id ID     # exporta esa cita a /tmp/orbit-<id>.ics
@@ -999,7 +1036,7 @@ orbit ics-import <proj> --clipboard      # lee del portapapeles (pbpaste)
 - Conflicto: si ya existe cita con mismo `desc+date` en el destino → prompt `[d-duplicar / o-overwrite / c-cancel]`.
 - Tras crear: regen automático del `.ics` del proyecto.
 
-### Cloud (OneDrive/Google Drive) — render y cloud
+### cloud / render / deliver — OneDrive, Google Drive y entrega de ficheros
 
 ```bash
 orbit render                          # renderiza ficheros del último save
@@ -1043,7 +1080,7 @@ orbit setup                    # asistente interactivo de configuración
 - Cada sección es opcional — Enter para saltar
 - Genera/actualiza `orbit.json` y `federation.json`
 
-### Cartero — notificaciones de correo
+### mail (cartero) — notificaciones de correo
 
 ```bash
 orbit mail                     # check manual: muestra no leídos por etiqueta (detallado)
@@ -1256,19 +1293,6 @@ Configuración: `federation.json` en la raíz del workspace:
 - Los proyectos federados se muestran con el emoji del workspace (🌿) sin link
 - Los recordatorios del Mac (`ring`) se programan para ambos workspaces al entrar en la shell
 - La federación es asimétrica: cada workspace decide qué otros ve
-
----
-
-## help — documentación
-
-```bash
-orbit help            # muestra CHULETA.md en terminal (paginado)
-orbit help chuleta    # equivalente (paginado)
-orbit help tutorial   # muestra TUTORIAL.md en terminal (paginado)
-orbit help about      # muestra README.md en terminal (paginado)
-orbit help --open     # abre CHULETA.md en el editor
-orbit help tutorial --open   # abre TUTORIAL.md en el editor
-```
 
 ---
 

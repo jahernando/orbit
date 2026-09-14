@@ -166,3 +166,20 @@ def test_the_daily_verbs_are_indexed():
     indexed = {v for s in manual.build_index(chuleta, verbs) for v in s.verbs}
     for verb in ("task", "hl", "log", "note", "agenda", "arxiv", "save", "ls"):
         assert verb in indexed
+
+
+def test_no_command_is_left_out_of_the_index():
+    """Todo verbo del despachador debe ser localizable desde `help`.
+
+    Los alias cuentan en grupo: basta con que uno de ellos aparezca en el
+    encabezado. Si este test cae, el comando nuevo no tiene sección en la
+    chuleta (o su encabezado no lo nombra) y `help` no puede listarlo.
+    """
+    chuleta, verbs = _real()
+    orphans = set(manual.orphan_verbs(chuleta, verbs))
+    groups: dict = {}
+    for verb, fn in verbs.items():
+        groups.setdefault(fn, []).append(verb)
+    gaps = sorted("/".join(sorted(vs)) for vs in groups.values()
+                  if set(vs) <= orphans)
+    assert gaps == []

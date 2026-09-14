@@ -105,6 +105,16 @@ agenda --order date        # agrupa por día con horas
 
 El dashboard fijo del workspace es `📊panel/secretary/agenda.md`, regenerado tras cada mutación (carril hot). Pínalo en Obsidian como pestaña principal del día. Los comandos `panel` / `agenda` siguen imprimiendo a terminal para inspección puntual o consultas de semana / mes.
 
+### Calendario del mes
+
+```bash
+cal                        # mes actual con las citas de todos los proyectos
+cal abril                  # un mes concreto · cal abril 3 → tres meses
+cal --open                 # abre la rejilla en el editor
+```
+
+Es lectura pura: no escribe nada ni regenera derivados.
+
 ### Flujo típico del día
 
 ```
