@@ -2278,7 +2278,7 @@ def _build_parser():
     arx_fetch.add_argument("--dry-run", dest="dry_run", action="store_true",
                            help="No escribe nada ni avanza la marca de agua")
     arx_tri = arx_sub.add_parser("triage",
-        help="Promociona los items marcados #relevante a highlights.md")
+        help="Promociona a highlights.md los items con la casilla marcada")
     add_project_arg(arx_tri, required=False,
                     help="Project (omitir = el único con feed)")
     arx_tri.add_argument("--purge", action="store_true",

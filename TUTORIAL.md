@@ -308,7 +308,93 @@ Cada `hl add` deja también una entrada en el logbook con tag `#headline` + el t
 
 ---
 
-## 8. Capturar emails a un proyecto
+## 8. arXiv — feed diario de artículos
+
+Orbit puede traerte cada mañana los artículos nuevos de arXiv que tocan tus temas, dejarlos en una bandeja dentro del proyecto, y promocionar a highlights los que marques.
+
+Se activa por proyecto, una sola vez:
+
+```bash
+arxiv init 📖phys
+```
+
+Eso crea dos ficheros en `notes/` del proyecto y enlaza la bandeja desde `highlights.md`:
+
+- **`arxiv-temas.md`** — la config. **La escribes tú**; orbit sólo la lee. Categorías de arXiv, autores vigilados, temas con sus términos, exclusiones y ajustes.
+- **`arxiv.md`** — la bandeja. La escribe orbit, lo más reciente arriba.
+
+### Afinar los temas
+
+El fichero de temas es markdown corriente, editable en Obsidian:
+
+```markdown
+## Categorías
+hep-ex, physics.ins-det, astro-ph.CO
+
+## Autores vigilados
+Gómez Cadenas
+
+## Tema: detectores #detectores
+- liquid xenon
+- "TPC"
+
+## Tema: redes neuronales e IA #ia +acompaña
+- deep learning
+
+## Excluir
+- swampland
+
+## Ajustes
+tope: 15
+umbral: 3
+retroceso: 7
+```
+
+Cuatro reglas que gobiernan el filtro:
+
+- Un acierto en el **título** puntúa el doble que en el resumen.
+- Un término **entre comillas** es acrónimo estricto: `"TPC"` no dispara con *tpc* ni con *TPCs*.
+- `+acompaña` marca un tema que **sólo cuenta si además acierta otro tema tuyo**. Es lo que evita que *deep learning* te traiga artículos de física solar.
+- Un **autor vigilado** suma 5, muy por encima de cualquier término suelto. Es la señal más fuerte que tienes: mete a la gente de tus colaboraciones.
+
+Para probar sin escribir nada en la bandeja:
+
+```bash
+arxiv fetch 📖phys --dry-run
+```
+
+### Leer y triar
+
+Cada artículo entra en la bandeja como una línea con **casilla**:
+
+```
+- [ ] 📎 [Search for neutrinoless double beta decay in 136Xe](https://arxiv.org/abs/2609.01234) #neutrinos #detectores
+  - 2609.01234 · hep-ex · 2026-09-10 · A. Uno, B. Dos +12
+  - coincide: neutrinoless double beta, liquid xenon
+```
+
+Las dos líneas de debajo son el contexto: identificador, categoría, fecha, autores, y los términos exactos que hicieron entrar el artículo. Eso último es lo que te permite ajustar el fichero de temas con criterio.
+
+Marca la casilla de lo que quieras conservar. En Obsidian es un clic, en cualquier editor es escribir una `x`. Escribir `#relevante` en la línea marca igual, para cuando la casilla no sea clicable. Después:
+
+```bash
+arxiv triage 📖phys
+```
+
+Los marcados pasan a `highlights.md` como referencia `📎` con sus etiquetas de tema, dejan su entrada en el logbook, y salen de la bandeja. Los no marcados se quedan, y el triaje pregunta si quieres vaciarlos (por defecto **no**).
+
+### Barrido automático
+
+Al entrar en orbit, los días laborables, se barre una vez al día cada proyecto que tenga fichero de temas. Es silencioso si no hay nada nuevo. Si arXiv no responde, no pierdes el día: la marca de agua no avanza y se reintenta mañana.
+
+Dos cosas que conviene saber:
+
+- El barrido corre en el **panel general**, no en el panel fijado a un proyecto. Si sólo abres paneles de proyecto, lánzalo a mano con `arxiv fetch`.
+- Cada proyecto tiene sus temas, su bandeja y su propia marca de agua. Puedes tener un feed ancho de vigilancia general y otro estrecho para un análisis concreto.
+
+---
+
+## 9. Capturar emails a un proyecto
 
 A veces recibes un email importante (una invitación, un paper, un acuerdo). Lo registras en un proyecto en un comando:
 
@@ -331,7 +417,7 @@ email next-kr --eml ~/Desktop/foo.eml --ev
 
 ---
 
-## 9. Buscar
+## 10. Buscar
 
 ```bash
 search "calibración"                                # en todos los proyectos
@@ -344,7 +430,7 @@ search "calibración" --notes                        # incluir notas/
 
 ---
 
-## 10. Ver proyectos
+## 11. Ver proyectos
 
 ```bash
 view next-kr              # resumen en terminal: estado, tareas, hitos, últimas entradas
@@ -355,7 +441,7 @@ open next-kr highlights   # abre highlights en el editor
 
 ---
 
-## 11. Al final del día — report
+## 12. Al final del día — report
 
 ```bash
 report
@@ -383,7 +469,7 @@ hl add mission "Semana productiva en next-kr, retrasar hk-sources" --type evals
 
 ---
 
-## 12. Flujo de trabajo completo — ejemplo típico
+## 13. Flujo de trabajo completo — ejemplo típico
 
 ```
 Lunes por la mañana
@@ -424,7 +510,7 @@ Viernes por la tarde
 
 ---
 
-## 13. Otros comandos útiles
+## 14. Otros comandos útiles
 
 ### Notas: propia vs externa
 
@@ -629,7 +715,7 @@ help tutorial --open       # abre TUTORIAL.md en el editor
 
 ---
 
-## 14. Servicios externos y mantenimiento
+## 15. Servicios externos y mantenimiento
 
 Orbit gestiona automáticamente la conexión con servicios externos: sincroniza citas con Google, versiona con git, renderiza a cloud y programa notificaciones en el Mac. No necesitas pensar en ello durante el día — Orbit se encarga al arrancar la shell, al operar sobre citas y al hacer save.
 
@@ -790,7 +876,7 @@ archive next-kr --months 3 # solo un proyecto, antigüedad 3 meses
 
 ---
 
-## 15. Federación de workspaces — ver citas de otro espacio
+## 16. Federación de workspaces — ver citas de otro espacio
 
 Si tienes más de un workspace (por ejemplo, uno de trabajo y otro personal), puedes federar uno desde el otro para ver sus citas en panel, agenda y otros comandos de lectura.
 
