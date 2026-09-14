@@ -452,3 +452,52 @@ def test_obsidian_completion_date_does_not_break_the_item():
     lines = ["- [x] 📎 [T](https://arxiv.org/abs/9) #neutrinos ✅ 2026-09-11"]
     item = arxiv.parse_inbox(lines)[0]
     assert item.marked and item.tags == ["#neutrinos"]
+
+
+# ── Límite de ritmo ──────────────────────────────────────────────────────────
+
+def test_rate_limit_is_retried(monkeypatch):
+    import urllib.error
+    calls = []
+
+    class _Resp:
+        def read(self): return _ATOM_SAMPLE.encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def _urlopen(req, timeout=None):
+        calls.append(1)
+        if len(calls) < 3:
+            raise urllib.error.HTTPError(req.full_url, 429, "Rate exceeded", {}, None)
+        return _Resp()
+
+    monkeypatch.setattr(arxiv.urllib.request, "urlopen", _urlopen)
+    monkeypatch.setattr(arxiv.time, "sleep", lambda *_: None)
+    assert len(arxiv._read_url("https://x", 5)) > 0
+    assert len(calls) == 3
+
+
+def test_other_http_errors_are_not_retried(monkeypatch):
+    import urllib.error
+    calls = []
+
+    def _urlopen(req, timeout=None):
+        calls.append(1)
+        raise urllib.error.HTTPError(req.full_url, 400, "Bad Request", {}, None)
+
+    monkeypatch.setattr(arxiv.urllib.request, "urlopen", _urlopen)
+    monkeypatch.setattr(arxiv.time, "sleep", lambda *_: None)
+    with pytest.raises(urllib.error.HTTPError):
+        arxiv._read_url("https://x", 5)
+    assert len(calls) == 1
+
+
+def test_rate_limit_message_is_explicit(feed_env, monkeypatch):
+    import urllib.error
+
+    def _boom(*a, **kw):
+        raise urllib.error.HTTPError("https://x", 429, "Rate exceeded", {}, None)
+
+    monkeypatch.setattr(arxiv, "fetch_entries", _boom)
+    res = arxiv.fetch_for_project(feed_env["proj"], quiet=True)
+    assert not res["ok"] and "429" in res["msg"]

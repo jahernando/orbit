@@ -25,6 +25,7 @@ import re
 import sys
 import time
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -47,6 +48,7 @@ PAGE_SIZE   = 100          # arXiv recomienda no pasar de 2000 por petición
 PAGE_PAUSE  = 3.0          # segundos entre peticiones (política de arXiv)
 MAX_PAGES   = 10
 HTTP_TIMEOUT = 20
+RETRY_PAUSES = (5, 15, 45)  # espera antes de cada reintento ante 429/503
 
 MARK_TAG    = "#relevante"
 SENTINEL    = "<!-- orbit:arxiv-inbox"
@@ -316,6 +318,29 @@ def _parse_feed(xml_text: str) -> list:
     return out
 
 
+def _read_url(url: str, timeout: int) -> str:
+    """GET con reintento ante 429/503.
+
+    arXiv limita el ritmo y responde 429 cuando se le pide demasiado seguido.
+    No es un fallo del que haya que rendirse: se espera y se reintenta. El
+    resto de errores HTTP suben tal cual, que sí son problema nuestro (una
+    query mal formada da 400 y reintentarla es perder el tiempo).
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    last: Optional[Exception] = None
+    for pause in (0,) + RETRY_PAUSES:
+        if pause:
+            time.sleep(pause)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (429, 503):
+                raise
+            last = exc
+    raise last                                    # type: ignore[misc]
+
+
 def fetch_entries(categories: list, since: datetime, until: datetime, *,
                   timeout: int = HTTP_TIMEOUT, max_pages: int = MAX_PAGES) -> list:
     """Pide a la API de arXiv los artículos del rango. Lanza OSError si falla."""
@@ -328,12 +353,8 @@ def fetch_entries(categories: list, since: datetime, until: datetime, *,
             "sortBy": "submittedDate",
             "sortOrder": "descending",
         }
-        req = urllib.request.Request(
-            f"{API_URL}?{urllib.parse.urlencode(params)}",
-            headers={"User-Agent": USER_AGENT},
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            page = _parse_feed(resp.read().decode("utf-8", "replace"))
+        page = _parse_feed(
+            _read_url(f"{API_URL}?{urllib.parse.urlencode(params)}", timeout))
         entries.extend(page)
         if len(page) < PAGE_SIZE:
             break
@@ -608,7 +629,12 @@ def fetch_for_project(project_dir: Path, *, since_arg: Optional[str] = None,
 
     try:
         raw = fetch_entries(cfg.categories, since, until)
-    except Exception as exc:                       # red, DNS, HTTP, timeout
+    except urllib.error.HTTPError as exc:
+        detail = ("limita el ritmo (429): espera unos minutos"
+                  if exc.code == 429 else f"responde {exc.code}")
+        return {"ok": False, "written": 0, "scanned": 0, "dropped": 0,
+                "msg": f"arXiv {detail}"}
+    except Exception as exc:                       # red, DNS, timeout
         return {"ok": False, "written": 0, "scanned": 0, "dropped": 0,
                 "msg": f"arXiv no responde ({type(exc).__name__})"}
 
