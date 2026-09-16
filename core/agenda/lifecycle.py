@@ -17,7 +17,8 @@ from core.project import _find_new_project
 from core.log import add_orbit_entry, resolve_file
 from core.config import get_federation_emoji
 
-from core.agenda.recurrence import _normalize_recur, is_valid_recur, _next_occurrence
+from core.agenda.recurrence import (_normalize_recur, is_valid_recur, _next_occurrence,
+                                    overlaps_next_occurrence)
 from core.agenda.io import _read_agenda, _write_agenda, _valid_date, _valid_time
 from core.agenda.display import (
     _select_item, _select_event, _select_item_reminder,
@@ -514,6 +515,17 @@ def _make_edit_occurrence(item, data_list, cfg, edits: dict,
 
 # ── Generic operations ────────────────────────────────────────────────────────
 
+def _overlap_message(end: str, recur: str, nxt: str,
+                     editing: bool = False) -> str:
+    """Error de ``--end`` en un evento recurrente que llega a su siguiente
+    ocurrencia (casi siempre quería decir ``--until``)."""
+    fix = (f"--end none --until {end}" if editing else f"--until {end}")
+    return (f"⚠️  Con fin {end} cada ocurrencia ({recur}) dura hasta la "
+            f"siguiente ({nxt}) o más: el evento se solaparía consigo mismo.\n"
+            f"    --end es el fin del evento; el fin de la repetición es "
+            f"--until. Usa: {fix}")
+
+
 def _translate_api_error(msg: str) -> str:
     """Map an API ValueError string to the legacy CLI wording.
 
@@ -537,6 +549,8 @@ def _translate_api_error(msg: str) -> str:
                 "Usa: daily, weekly, monthly, weekdays, every 2 weeks, first monday, ...")
     if msg == "until requires recur":
         return "Error: --until requiere --recur."
+    if (m := _re.match(r"end_date overlaps recurrence: (\S+) (\S+) (\S+)$", msg)):
+        return _overlap_message(*m.groups())
     if msg == "ring requires date":
         return "⚠️  --ring requiere --date."
     if (m := _re.match(r"invalid ring: '?(.+?)'?$", msg)):
@@ -948,6 +962,18 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
             return 0
 
     # ── Series path (or non-recurring) ──
+    # El resultado no puede ser un evento que llegue a su siguiente ocurrencia.
+    if cfg["has_end"]:
+        def _eff(new, old):
+            return None if new == "none" else (new or old)
+        eff_date = _eff(new_date, item.get("date"))
+        eff_recur = _eff(new_recur, item.get("recur"))
+        eff_end = _eff(new_end, item.get("end"))
+        nxt = overlaps_next_occurrence(eff_date, eff_end, eff_recur)
+        if nxt:
+            print(_overlap_message(eff_end, eff_recur, nxt, editing=True))
+            return 1
+
     edits = {}
     if new_text:  edits["desc"]  = new_text
     if new_date:  edits["date"]  = new_date

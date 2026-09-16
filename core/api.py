@@ -27,7 +27,8 @@ from typing import Optional, Tuple
 
 from core.project import _find_new_project
 from core.log import resolve_file
-from core.agenda.recurrence import _normalize_recur, is_valid_recur, _next_occurrence
+from core.agenda.recurrence import (_normalize_recur, is_valid_recur, _next_occurrence,
+                                    overlaps_next_occurrence)
 from core.agenda.io import _read_agenda, _write_agenda, _valid_date, _valid_time
 from core.agenda.display import _AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX
 from core.agenda.lifecycle import _TYPE_CONFIG
@@ -64,6 +65,10 @@ def _validate_common(*, date: Optional[str], time: Optional[str],
             raise ValueError(f"invalid recur: {recur!r}")
     if until and not recur:
         raise ValueError("until requires recur")
+    if end_date and recur and date:
+        nxt = overlaps_next_occurrence(date, end_date, recur)
+        if nxt:
+            raise ValueError(f"end_date overlaps recurrence: {end_date} {recur} {nxt}")
     if ring and not date:
         raise ValueError("ring requires date")
     if ring:

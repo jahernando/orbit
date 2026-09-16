@@ -140,7 +140,7 @@ Se aceptan días de la semana en inglés y español (`lunes`, `viernes`, etc.).
 
 ### Fin de recurrencia (`--until`)
 
-`--until YYYY-MM-DD` indica la fecha límite de la recurrencia. Cuando la siguiente ocurrencia supera esa fecha, la serie se da por finalizada. No confundir con `--end`/`--end-date` de eventos, que indican el día de fin de un evento multi-día.
+`--until YYYY-MM-DD` indica la fecha límite de la recurrencia. Cuando la siguiente ocurrencia supera esa fecha, la serie se da por finalizada. No confundir con `--end`/`--end-date` de eventos, que indican el día de fin de un evento multi-día (orbit rechaza un `--end` que haga durar cada ocurrencia hasta la siguiente).
 
 Ejemplo: `orbit ev add proj "Seminario" --date 2026-04-01 --recur weekly --until 2026-06-30`
 
@@ -202,7 +202,7 @@ orbit ev fup  <project> "<text>" <DATE|clean> [--desc DESC]
 
 - `--time`: hora del evento. `HH:MM` (solo inicio, 1h por defecto) o `HH:MM-HH:MM` (inicio-fin)
 - `--end-time HH:MM`: hora de fin separada (se combina con `--time` → `HH:MM-HH:MM`). Si no hay `--time`, usa 09:00 como inicio
-- `--end` / `--end-date`: fecha de fin para eventos multi-día
+- `--end` / `--end-date`: fecha de fin para eventos multi-día. **No es el fin de una serie** (eso es `--until`): en un evento recurrente, un `--end` que llega a la siguiente ocurrencia se rechaza, porque el evento se solaparía consigo mismo y saldría todos los días. Para arreglar uno ya escrito: `ev edit … --end none --until FECHA`
 - Sin `--time`: evento de día completo
 - `drop` en evento recurrente: pregunta si quitar solo esta ocurrencia o toda la serie; `-o` avanza al próximo, `-s` elimina la serie (sin prompt); `--force` avanza al próximo (seguro por defecto)
 - `drop` pide confirmación (defecto **No**); `--force` la omite

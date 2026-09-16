@@ -1675,6 +1675,81 @@ class TestEventRecurrence:
 # drop -o / -s flags for task, ms, ev
 # ══════════════════════════════════════════════════════════════════════════════
 
+class TestRecurringEventEndOverlap:
+    """--end (fin del evento) confundido con --until (fin de la repetición):
+    un evento recurrente que llega a su siguiente ocurrencia se rechaza."""
+
+    def test_overlap_helper(self):
+        from core.agenda.recurrence import overlaps_next_occurrence as ov
+        # El caso real: natación semanal con --end en vez de --until.
+        assert ov("2026-09-16", "2026-12-01", "weekly") == "2026-09-23"
+        assert ov("2026-09-16", "2026-09-23", "weekly") == "2026-09-23"  # justo toca
+        assert ov("2026-09-16", "2026-09-18", "weekly") is None          # 3 días, ok
+        assert ov("2026-03-10", "2026-03-11", "daily") == "2026-03-11"
+        assert ov("2026-03-10", "2026-03-10", "daily") is None           # un solo día
+        assert ov("2026-01-05", "2026-02-10", "monthly") == "2026-02-05"
+        assert ov("2026-03-10", "2026-12-01", None) is None              # sin recur
+        assert ov("2026-03-10", None, "weekly") is None                  # sin fin
+
+    def test_add_rejects_end_spanning_recurrence(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        rc = run_ev_add("test-project", "natación", "2026-09-16",
+                        time_val="10:30", recur="weekly", end_date="2026-12-01",
+                        ring="15m")
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "--until 2026-12-01" in out and "2026-09-23" in out
+        assert _read_agenda(proj / "test-project-agenda.md")["events"] == []
+
+    def test_add_accepts_short_recurring_multiday(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        rc = run_ev_add("test-project", "Retiro", "2026-03-10",
+                        recur="monthly", end_date="2026-03-12")
+        assert rc == 0
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        assert ev["end"] == "2026-03-12" and ev["recur"] == "monthly"
+
+    def test_add_until_is_the_right_way(self, proj, projects_dir):
+        from core.agenda_cmds import run_ev_add, _read_agenda
+        rc = run_ev_add("test-project", "natación", "2026-09-16",
+                        recur="weekly", until="2026-12-01")
+        assert rc == 0
+        ev = _read_agenda(proj / "test-project-agenda.md")["events"][0]
+        assert ev["until"] == "2026-12-01" and not ev.get("end")
+
+    def test_edit_rejects_adding_long_end_to_series(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "natación", "2026-09-16", recur="weekly")
+        capsys.readouterr()
+        rc = run_ev_edit("test-project", "natación", new_end="2026-12-01",
+                         series=True)
+        assert rc == 1
+        assert "--end none --until 2026-12-01" in capsys.readouterr().out
+        assert not _read_agenda(proj / "test-project-agenda.md")["events"][0].get("end")
+
+    def test_edit_rejects_adding_recur_to_long_event(self, proj, projects_dir, capsys):
+        from core.agenda_cmds import run_ev_add, run_ev_edit, _read_agenda
+        run_ev_add("test-project", "Curso", "2026-09-16", end_date="2026-12-01")
+        rc = run_ev_edit("test-project", "Curso", new_recur="weekly")
+        assert rc == 1
+        assert not _read_agenda(proj / "test-project-agenda.md")["events"][0].get("recur")
+
+    def test_edit_can_repair_existing_bad_event(self, proj, projects_dir):
+        """Un evento ya mal escrito a mano se arregla con --end none --until."""
+        from core.agenda_cmds import _read_agenda, _write_agenda, run_ev_edit
+        path = proj / "test-project-agenda.md"
+        data = _read_agenda(path)
+        data["events"] = [{"desc": "natación", "date": "2026-09-16",
+                           "end": "2026-12-01", "time": "10:30",
+                           "recur": "weekly", "until": None, "notes": []}]
+        _write_agenda(path, data)
+        rc = run_ev_edit("test-project", "natación", new_end="none",
+                         new_until="2026-12-01", series=True)
+        assert rc == 0
+        ev = _read_agenda(path)["events"][0]
+        assert ev.get("end") is None and ev["until"] == "2026-12-01"
+
+
 class TestDropOccurrenceSeriesTask:
     def test_drop_o_advances_recurring(self, proj, projects_dir, capsys):
         from core.agenda_cmds import run_task_add, run_task_drop, _read_agenda

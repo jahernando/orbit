@@ -122,6 +122,25 @@ def _next_occurrence(due: Optional[str], recur: str, done_date: str) -> str:
     return nxt.isoformat()
 
 
+def overlaps_next_occurrence(start: str, end: Optional[str],
+                             recur: Optional[str]) -> Optional[str]:
+    """Si un evento ``start..end`` que se repite con *recur* dura tanto que
+    llega a su siguiente ocurrencia, devuelve la fecha de ésta; si no, None.
+
+    Es el síntoma de confundir ``--end`` (fin *del evento*) con ``--until``
+    (fin *de la repetición*): cada ocurrencia se solaparía con la siguiente
+    y el evento aparecería todos los días, repetido.
+    """
+    if not (start and end and recur):
+        return None
+    try:
+        s, e = date.fromisoformat(start), date.fromisoformat(end)
+    except ValueError:
+        return None
+    nxt = _next_occurrence(start, recur, start)
+    return nxt if e >= date.fromisoformat(nxt) and e > s else None
+
+
 def _advance_to_today_or_future(item_date: str, recur: str,
                                  until: Optional[str]) -> tuple:
     """Advance a recurrence date forward until it reaches today or beyond.

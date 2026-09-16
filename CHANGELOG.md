@@ -10,6 +10,20 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `--end` en eventos recurrentes: rechazado si solapa la serie
+
+`ev add … --recur weekly --end 2026-12-01` creaba un evento **de 76 días** que se
+repetía cada semana: cada ocurrencia seguía "en curso" al llegar la siguiente y
+el secretario lo pintaba todos los días, una vez por serie. Quería decir
+`--until` (fin de la repetición).
+
+- `overlaps_next_occurrence()` en `core/agenda/recurrence.py`: el fin del evento
+  alcanza la siguiente ocurrencia calculada con la aritmética de siempre.
+- `add` (vía `core/api.py`, así que cubre toda entrada por la API) y `edit`
+  (sobre el resultado: fecha, fin y recurrencia efectivos) lo rechazan con un
+  mensaje que propone `--until` (en `edit`, `--end none --until`).
+- Un evento ya mal escrito se puede reparar con `ev edit … --end none --until`.
+
 ### Unreleased — `day` y `organize <proyecto>`: triaje del día y del proyecto
 
 Dos comandos sobre un motor común (`core/triage.py`, ADR-051). Listan las citas
