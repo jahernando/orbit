@@ -1422,8 +1422,10 @@ def cmd_arxiv(args):
     if action in ("fetch", None):
         return run_fetch(project,
                          since=getattr(args, "since", None),
+                         until=getattr(args, "until", None),
                          max_n=getattr(args, "max_n", None),
-                         dry_run=getattr(args, "dry_run", False))
+                         dry_run=getattr(args, "dry_run", False),
+                         force=getattr(args, "force", False))
     print("Uso: arxiv {init|fetch|triage} [<proyecto>]")
     return 1
 
@@ -2302,10 +2304,14 @@ def _build_parser():
                     help="Project (omitir = todos los que tengan feed)")
     arx_fetch.add_argument("--since", default=None, metavar="DATE",
                            help="Desde esta fecha en vez de la marca de agua")
+    arx_fetch.add_argument("--until", default=None, metavar="DATE",
+                           help="Hasta esta fecha (defecto: ahora). Para recuperar tramos viejos")
     arx_fetch.add_argument("--max", dest="max_n", type=int, default=None,
                            metavar="N", help="Tope de artículos escritos")
     arx_fetch.add_argument("--dry-run", dest="dry_run", action="store_true",
                            help="No escribe nada ni avanza la marca de agua")
+    arx_fetch.add_argument("--force", action="store_true",
+                           help="Pide a arXiv aunque estemos en espera por ritmo")
     arx_tri = arx_sub.add_parser("triage",
         help="Promociona a highlights.md los items con la casilla marcada")
     add_project_arg(arx_tri, required=False,

@@ -297,7 +297,7 @@ Ficheros antiguos con secciones `## <emoji> <Palabra>` se **migran perezosamente
 
 ```bash
 orbit arxiv init   <project>
-orbit arxiv fetch  [<project>] [--since FECHA] [--max N] [--dry-run]
+orbit arxiv fetch  [<project>] [--since FECHA] [--until FECHA] [--max N] [--dry-run] [--force]
 orbit arxiv triage [<project>] [--purge]
 ```
 
@@ -346,6 +346,23 @@ retroceso: 7
 - Un término de `Excluir` tumba la entrada entera.
 - `tope` = artículos escritos por barrido · `umbral` = puntuación mínima ·
   `retroceso` = días que mira atrás el primer barrido.
+
+**Recuperar un tramo viejo**: `--since` ignora la marca de agua y `--until`
+acota el final. Un barrido trae como mucho 1000 artículos, los más recientes
+del rango, así que una ventana de meses no llega al principio: se avisa cuando
+pasa, y la vía es ir por tramos de una o dos semanas.
+
+```bash
+arxiv fetch 📖phys --since 2026-08-01 --until 2026-08-08
+arxiv fetch 📖phys --since 2026-08-08 --until 2026-08-15   # …y así hasta hoy
+```
+
+Recuperar un tramo viejo **no hace retroceder la marca de agua**: el barrido
+diario sigue cubriendo los días pendientes.
+
+**Límite de ritmo**: si arXiv responde 429 se anota una espera de 6 horas en el
+estado y no se le vuelve a pedir hasta que pase, ni siquiera desde el arranque.
+Insistir alarga el bloqueo. `--force` la ignora, para cuando sabes que ya pasó.
 
 **Marcado y triaje**: cada artículo de la bandeja es una línea con casilla,
 `- [ ] 📎 [título](url) #tema`. Marca la casilla (un clic en Obsidian, una `x`

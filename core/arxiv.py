@@ -48,7 +48,8 @@ PAGE_SIZE   = 100          # arXiv recomienda no pasar de 2000 por petición
 PAGE_PAUSE  = 3.0          # segundos entre peticiones (política de arXiv)
 MAX_PAGES   = 10
 HTTP_TIMEOUT = 60          # arXiv tarda hasta 30 s en devolver el propio 429
-RETRY_PAUSES = (10, 30, 90)  # espera antes de cada reintento
+RETRY_PAUSES = (10, 30)     # espera antes de cada reintento
+COOLDOWN_HOURS = 6          # tras un rechazo por ritmo, no volver a intentarlo
 
 MARK_TAG    = "#relevante"
 SENTINEL    = "<!-- orbit:arxiv-inbox"
@@ -342,16 +343,27 @@ def _read_url(url: str, timeout: int) -> str:
             if exc.code not in (429, 503):
                 raise
             last = exc
+            hinted = exc.headers.get("Retry-After") if exc.headers else None
+            if hinted and str(hinted).strip().isdigit():
+                # arXiv dice cuánto esperar: hacerle caso y no insistir antes.
+                raise
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last = exc                            # corte de red o espera agotada
     raise last                                    # type: ignore[misc]
 
 
 def fetch_entries(categories: list, since: datetime, until: datetime, *,
-                  timeout: int = HTTP_TIMEOUT, max_pages: int = MAX_PAGES) -> list:
-    """Pide a la API de arXiv los artículos del rango. Lanza OSError si falla."""
+                  timeout: int = HTTP_TIMEOUT, max_pages: int = MAX_PAGES,
+                  truncated: Optional[list] = None) -> list:
+    """Pide a la API de arXiv los artículos del rango. Lanza OSError si falla.
+
+    Trae como mucho ``max_pages`` × ``PAGE_SIZE`` artículos, los más recientes
+    primero. Si el rango contiene más, los viejos se quedan fuera; ``truncated``
+    (una lista que el llamante pasa) recibe un True para que pueda decirlo en
+    vez de callárselo.
+    """
     entries, start = [], 0
-    for _ in range(max_pages):
+    for page_no in range(max_pages):
         params = {
             "search_query": _build_query(categories, since, until),
             "start": start,
@@ -364,6 +376,8 @@ def fetch_entries(categories: list, since: datetime, until: datetime, *,
         entries.extend(page)
         if len(page) < PAGE_SIZE:
             break
+        if page_no == max_pages - 1 and truncated is not None:
+            truncated.append(True)
         start += PAGE_SIZE
         time.sleep(PAGE_PAUSE)
     return entries
@@ -391,7 +405,27 @@ def _save_state(state: dict) -> None:
 
 def _project_state(state: dict, key: str) -> dict:
     return state["projects"].setdefault(
-        key, {"last_run": None, "watermark": None, "seen": []})
+        key, {"last_run": None, "watermark": None, "seen": [], "cooldown_until": None})
+
+
+def _in_cooldown(st: dict) -> Optional[str]:
+    """Devuelve la hora hasta la que hay que esperar, o None si se puede pedir.
+
+    arXiv bloquea por dirección IP cuando se le insiste, y el bloqueo dura
+    horas: responde 429 al instante, sin llegar a mirar la query. Reintentar
+    dentro de ese plazo no sólo es inútil, sino que lo alimenta. Por eso el
+    rechazo por ritmo se recuerda entre ejecuciones, no sólo dentro de una.
+    """
+    mark = st.get("cooldown_until")
+    if not mark:
+        return None
+    try:
+        until = datetime.fromisoformat(mark)
+    except ValueError:
+        return None
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    return mark if datetime.now(timezone.utc) < until else None
 
 
 # ── Bandeja ──────────────────────────────────────────────────────────────────
@@ -597,12 +631,22 @@ def run_init(project: str) -> int:
 
 # ── Barrido ──────────────────────────────────────────────────────────────────
 
+def _parse_day(arg: Optional[str]) -> Optional[datetime]:
+    """`2026-08-01`, `today`, `-7d`… → datetime en UTC, o None."""
+    if not arg:
+        return None
+    from core.dateparse import parse_date
+    resolved = parse_date(arg)
+    if not resolved:
+        return None
+    return datetime.fromisoformat(resolved).replace(tzinfo=timezone.utc)
+
+
 def _since_from(state_p: dict, cfg: TopicConfig, since_arg: Optional[str]) -> datetime:
     if since_arg:
-        from core.dateparse import parse_date
-        resolved = parse_date(since_arg)
-        if resolved:
-            return datetime.fromisoformat(resolved).replace(tzinfo=timezone.utc)
+        parsed = _parse_day(since_arg)
+        if parsed:
+            return parsed
     mark = state_p.get("watermark")
     if mark:
         try:
@@ -614,8 +658,9 @@ def _since_from(state_p: dict, cfg: TopicConfig, since_arg: Optional[str]) -> da
 
 
 def fetch_for_project(project_dir: Path, *, since_arg: Optional[str] = None,
+                      until_arg: Optional[str] = None,
                       max_n: Optional[int] = None, dry_run: bool = False,
-                      quiet: bool = False) -> dict:
+                      quiet: bool = False, force: bool = False) -> dict:
     """Un barrido sobre un proyecto ya resuelto. Devuelve un resumen.
 
     Claves del resumen: ``ok``, ``written``, ``scanned``, ``dropped``, ``msg``.
@@ -629,17 +674,37 @@ def fetch_for_project(project_dir: Path, *, since_arg: Optional[str] = None,
 
     state   = _load_state()
     st      = _project_state(state, project_dir.name)
+
+    waiting = None if force else _in_cooldown(st)
+    if waiting:
+        local = datetime.fromisoformat(waiting).astimezone()
+        return {"ok": False, "written": 0, "scanned": 0, "dropped": 0,
+                "cooldown": True,
+                "msg": f"arXiv nos bloqueó por ritmo; en espera hasta "
+                       f"{local:%H:%M} ({local:%d-%m}). `--force` lo ignora"}
+
     since   = _since_from(st, cfg, since_arg)
-    until   = datetime.now(timezone.utc)
+    until   = _parse_day(until_arg) or datetime.now(timezone.utc)
     seen    = set(st.get("seen", []))
 
+    trunc: list = []
     try:
-        raw = fetch_entries(cfg.categories, since, until)
+        raw = fetch_entries(cfg.categories, since, until, truncated=trunc)
     except urllib.error.HTTPError as exc:
-        detail = ("limita el ritmo (429): espera unos minutos"
-                  if exc.code == 429 else f"responde {exc.code}")
+        if exc.code == 429:
+            until = datetime.now(timezone.utc) + timedelta(hours=COOLDOWN_HOURS)
+            hinted = exc.headers.get("Retry-After") if exc.headers else None
+            if hinted and str(hinted).strip().isdigit():
+                until = datetime.now(timezone.utc) + timedelta(seconds=int(hinted))
+            st["cooldown_until"] = until.isoformat(timespec="minutes")
+            _save_state(state)
+            local = until.astimezone()
+            return {"ok": False, "written": 0, "scanned": 0, "dropped": 0,
+                    "cooldown": True,
+                    "msg": f"arXiv limita el ritmo (429): en espera hasta "
+                           f"{local:%H:%M} ({local:%d-%m})"}
         return {"ok": False, "written": 0, "scanned": 0, "dropped": 0,
-                "msg": f"arXiv {detail}"}
+                "msg": f"arXiv responde {exc.code}"}
     except Exception as exc:                       # red, DNS, timeout
         return {"ok": False, "written": 0, "scanned": 0, "dropped": 0,
                 "msg": f"arXiv no responde ({type(exc).__name__})"}
@@ -668,7 +733,11 @@ def fetch_for_project(project_dir: Path, *, since_arg: Optional[str] = None,
             prepend_block(project_dir / "notes" / INBOX_FILENAME,
                           project_dir.name, block)
         st["seen"] = (st.get("seen", []) + [e["id"] for e, _ in candidates])[-SEEN_CAP:]
-        st["watermark"] = until.strftime("%Y-%m-%dT%H:%M")
+        # La marca de agua sólo avanza. Recuperar un tramo viejo con --until no
+        # debe hacerla retroceder: el barrido de mañana volvería a mirar semanas
+        # ya vistas y el día pendiente se quedaría sin cubrir.
+        mark = until.strftime("%Y-%m-%dT%H:%M")
+        st["watermark"] = max(mark, st.get("watermark") or "")
         st["last_run"] = date.today().isoformat()
         _save_state(state)
 
@@ -677,12 +746,14 @@ def fetch_for_project(project_dir: Path, *, since_arg: Optional[str] = None,
             print("  " + item_header(entry, scored).split("] ", 1)[-1])
 
     return {"ok": True, "written": len(chosen), "scanned": len(raw),
-            "dropped": dropped,
+            "dropped": dropped, "truncated": bool(trunc),
             "msg": f"{len(chosen)} nuevos de {len(raw)} revisados"}
 
 
 def run_fetch(project: Optional[str] = None, *, since: Optional[str] = None,
-              max_n: Optional[int] = None, dry_run: bool = False) -> int:
+              until: Optional[str] = None,
+              max_n: Optional[int] = None, dry_run: bool = False,
+              force: bool = False) -> int:
     """Barrido manual. Sin proyecto, barre todos los que tengan fichero de temas."""
     if project is None:
         targets = feed_projects()
@@ -692,7 +763,8 @@ def run_fetch(project: Optional[str] = None, *, since: Optional[str] = None,
             return 1
         rc = 0
         for d in targets:
-            rc |= _fetch_one(d, since=since, max_n=max_n, dry_run=dry_run)
+            rc |= _fetch_one(d, since=since, until=until, max_n=max_n,
+                             dry_run=dry_run, force=force)
         return rc
 
     project_dir = _resolve_project(project)
@@ -704,13 +776,16 @@ def run_fetch(project: Optional[str] = None, *, since: Optional[str] = None,
         print(f"  Créalo con: arxiv init {project_dir.name}")
         return 1
 
-    return _fetch_one(project_dir, since=since, max_n=max_n, dry_run=dry_run)
+    return _fetch_one(project_dir, since=since, until=until, max_n=max_n,
+                      dry_run=dry_run, force=force)
 
 
 def _fetch_one(project_dir: Path, *, since: Optional[str] = None,
-               max_n: Optional[int] = None, dry_run: bool = False) -> int:
-    res = fetch_for_project(project_dir, since_arg=since, max_n=max_n,
-                            dry_run=dry_run)
+               until: Optional[str] = None,
+               max_n: Optional[int] = None, dry_run: bool = False,
+               force: bool = False) -> int:
+    res = fetch_for_project(project_dir, since_arg=since, until_arg=until,
+                            max_n=max_n, dry_run=dry_run, force=force)
     if not res["ok"]:
         print(f"⚠️  [{project_dir.name}] {res['msg']} — la marca de agua no avanza.")
         return 1
@@ -719,6 +794,10 @@ def _fetch_one(project_dir: Path, *, since: Optional[str] = None,
     prefix = "(simulación) " if dry_run else ""
     print(f"✓ {prefix}[{project_dir.name}] {res['written']} en la bandeja, "
           f"{res['scanned']} revisados{tail}")
+    if res.get("truncated"):
+        print(f"   ⚠️  La ventana daba para más de {MAX_PAGES * PAGE_SIZE} "
+              f"artículos: sólo se han mirado los más recientes.")
+        print("   Repítela por tramos con --since y --until (una o dos semanas).")
     if res["written"] and not dry_run:
         print(f"   notes/{INBOX_FILENAME} — marca la casilla y lanza `arxiv triage`")
     return 0
@@ -915,7 +994,8 @@ def _action_arxiv_fetch(ctx):
             failed.append(f"{project_dir.name}: {type(exc).__name__}")
             continue
         if not res["ok"]:
-            failed.append(f"{project_dir.name}: {res['msg']}")
+            if not res.get("cooldown"):
+                failed.append(f"{project_dir.name}: {res['msg']}")
             continue
         total += res["written"]
         if res["written"]:

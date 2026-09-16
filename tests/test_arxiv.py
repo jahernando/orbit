@@ -521,3 +521,129 @@ def test_timeout_is_retried_too(monkeypatch):
     monkeypatch.setattr(arxiv.time, "sleep", lambda *_: None)
     assert len(arxiv._read_url("https://x", 5)) > 0
     assert len(calls) == 2
+
+
+# ── Enfriamiento tras un rechazo por ritmo ───────────────────────────────────
+
+def _rate_limited(*a, **kw):
+    import urllib.error
+    raise urllib.error.HTTPError("https://x", 429, "Rate exceeded", {}, None)
+
+
+def test_rate_limit_writes_a_cooldown(feed_env, monkeypatch):
+    monkeypatch.setattr(arxiv, "fetch_entries", _rate_limited)
+    res = arxiv.fetch_for_project(feed_env["proj"], quiet=True)
+    assert res["cooldown"] is True
+    state = json.loads((feed_env["tmp"] / ".arxiv-state.json").read_text())
+    assert state["projects"]["📖phys"]["cooldown_until"]
+
+
+def test_cooldown_blocks_the_next_attempt_without_asking_arxiv(feed_env, monkeypatch):
+    monkeypatch.setattr(arxiv, "fetch_entries", _rate_limited)
+    arxiv.fetch_for_project(feed_env["proj"], quiet=True)
+
+    def _never(*a, **kw):
+        raise AssertionError("no debería pedirle nada a arXiv estando en espera")
+
+    monkeypatch.setattr(arxiv, "fetch_entries", _never)
+    res = arxiv.fetch_for_project(feed_env["proj"], quiet=True)
+    assert res["cooldown"] is True and "en espera" in res["msg"]
+
+
+def test_force_ignores_the_cooldown(feed_env, monkeypatch):
+    monkeypatch.setattr(arxiv, "fetch_entries", _rate_limited)
+    arxiv.fetch_for_project(feed_env["proj"], quiet=True)
+
+    asked = []
+    monkeypatch.setattr(arxiv, "fetch_entries",
+                        lambda *a, **kw: asked.append(1) or [])
+    arxiv.fetch_for_project(feed_env["proj"], quiet=True, force=True)
+    assert asked == [1]
+
+
+def test_expired_cooldown_lets_the_sweep_through(feed_env, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    state = {"projects": {"📖phys": {
+        "last_run": None, "watermark": None, "seen": [],
+        "cooldown_until": (datetime.now(timezone.utc)
+                           - timedelta(hours=1)).isoformat(timespec="minutes")}}}
+    (feed_env["tmp"] / ".arxiv-state.json").write_text(json.dumps(state))
+
+    asked = []
+    monkeypatch.setattr(arxiv, "fetch_entries",
+                        lambda *a, **kw: asked.append(1) or [])
+    res = arxiv.fetch_for_project(feed_env["proj"], quiet=True)
+    assert res["ok"] and asked == [1]
+
+
+def test_startup_action_does_not_report_a_cooldown_as_failure(feed_env, monkeypatch):
+    from datetime import date
+    monkeypatch.setattr(arxiv, "fetch_entries", _rate_limited)
+    if date.today().weekday() >= 5:
+        pytest.skip("el barrido no corre en fin de semana")
+    res = arxiv._action_arxiv_fetch(None)
+    assert res["ok"] and res["msg"] == "0 nuevos"
+
+
+# ── Ventanas viejas: --until y truncado ──────────────────────────────────────
+
+def test_until_bounds_the_window(feed_env, monkeypatch):
+    seen_range = {}
+
+    def _capture(categories, since, until, **kw):
+        seen_range["since"] = since.date().isoformat()
+        seen_range["until"] = until.date().isoformat()
+        return []
+
+    monkeypatch.setattr(arxiv, "fetch_entries", _capture)
+    arxiv.fetch_for_project(feed_env["proj"], since_arg="2026-08-01",
+                            until_arg="2026-08-15", quiet=True)
+    assert seen_range == {"since": "2026-08-01", "until": "2026-08-15"}
+
+
+def test_an_old_slice_does_not_rewind_the_watermark(feed_env, monkeypatch):
+    from datetime import date
+    monkeypatch.setattr(arxiv, "fetch_entries", lambda *a, **kw: [])
+    arxiv.fetch_for_project(feed_env["proj"], quiet=True)          # marca = hoy
+    mark = json.loads((feed_env["tmp"] / ".arxiv-state.json").read_text()
+                      )["projects"]["📖phys"]["watermark"]
+
+    arxiv.fetch_for_project(feed_env["proj"], since_arg="2026-08-01",
+                            until_arg="2026-08-15", quiet=True)
+    after = json.loads((feed_env["tmp"] / ".arxiv-state.json").read_text()
+                       )["projects"]["📖phys"]["watermark"]
+    assert after == mark
+
+
+def test_a_window_bigger_than_the_page_cap_says_so(feed_env, monkeypatch):
+    today = date.today().isoformat()
+    page = [_entry(id=str(i), title="neutrino oscillation", published=today,
+                   abs=f"https://arxiv.org/abs/{i}") for i in range(arxiv.PAGE_SIZE)]
+
+    def _full_pages(categories, since, until, truncated=None, **kw):
+        if truncated is not None:
+            truncated.append(True)
+        return page
+
+    monkeypatch.setattr(arxiv, "fetch_entries", _full_pages)
+    res = arxiv.fetch_for_project(feed_env["proj"], quiet=True)
+    assert res["truncated"] is True
+
+
+def test_fetch_entries_flags_the_page_cap(monkeypatch):
+    full = _ATOM_SAMPLE.replace("</feed>", "")
+    entry = full[full.index("<entry>"):]
+    many = "<?xml version='1.0'?><feed xmlns='http://www.w3.org/2005/Atom' " \
+           "xmlns:arxiv='http://arxiv.org/schemas/atom'>" + entry * 3 + "</feed>"
+
+    monkeypatch.setattr(arxiv, "PAGE_SIZE", 3)
+    monkeypatch.setattr(arxiv, "_read_url", lambda *a, **kw: many)
+    monkeypatch.setattr(arxiv.time, "sleep", lambda *_: None)
+
+    flag: list = []
+    from datetime import datetime, timezone
+    out = arxiv.fetch_entries(["hep-ex"],
+                              datetime(2026, 8, 1, tzinfo=timezone.utc),
+                              datetime(2026, 9, 1, tzinfo=timezone.utc),
+                              max_pages=2, truncated=flag)
+    assert len(out) == 6 and flag == [True]
