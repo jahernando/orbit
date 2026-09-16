@@ -470,10 +470,19 @@ def render_entry(entry: dict, scored: dict) -> str:
     return "\n".join(lines)
 
 
-def render_block(entries: list, day: str, total_seen: int, dropped: int) -> str:
-    """Bloque de un barrido: encabezado de día + entradas."""
+def render_block(entries: list, day: str, total_seen: int, dropped: int,
+                 window: str = "") -> str:
+    """Bloque de un barrido: encabezado + entradas.
+
+    El encabezado lleva la fecha del barrido **y la ventana que cubre**. Sin la
+    ventana, recuperar tramos viejos deja varios bloques con la misma fecha de
+    hoy y sin forma de saber a qué semana corresponde cada uno.
+    """
     n = len(entries)
-    head = f"## {day} · {n} artículo{'s' if n != 1 else ''}"
+    head = f"## {day}"
+    if window:
+        head += f" · {window}"
+    head += f" · {n} artículo{'s' if n != 1 else ''}"
     if dropped:
         head += f" · {dropped} más por debajo del tope"
     head += f" · {total_seen} revisados"
@@ -728,8 +737,10 @@ def fetch_for_project(project_dir: Path, *, since_arg: Optional[str] = None,
 
     if not dry_run:
         if chosen:
+            window = f"{since:%d-%m} → {until:%d-%m}"
             block = render_block([render_entry(e, s) for e, s in chosen],
-                                 date.today().isoformat(), len(raw), dropped)
+                                 date.today().isoformat(), len(raw), dropped,
+                                 window=window)
             prepend_block(project_dir / "notes" / INBOX_FILENAME,
                           project_dir.name, block)
         st["seen"] = (st.get("seen", []) + [e["id"] for e, _ in candidates])[-SEEN_CAP:]

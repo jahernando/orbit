@@ -647,3 +647,15 @@ def test_fetch_entries_flags_the_page_cap(monkeypatch):
                               datetime(2026, 9, 1, tzinfo=timezone.utc),
                               max_pages=2, truncated=flag)
     assert len(out) == 6 and flag == [True]
+
+
+def test_block_header_names_the_window_it_covers(feed_env, monkeypatch):
+    monkeypatch.setattr(arxiv, "fetch_entries", _fake_fetch([
+        _entry(id="1", title="neutrino oscillation", published="2026-08-17",
+               abs="https://arxiv.org/abs/1"),
+    ]))
+    arxiv.fetch_for_project(feed_env["proj"], since_arg="2026-08-15",
+                            until_arg="2026-08-22", quiet=True)
+    head = next(l for l in (feed_env["proj"] / "notes" / arxiv.INBOX_FILENAME
+                            ).read_text().splitlines() if l.startswith("## "))
+    assert "15-08 → 22-08" in head
