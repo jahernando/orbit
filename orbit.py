@@ -1331,15 +1331,36 @@ def cmd_ring(args):
     return 2
 
 
+def cmd_day(args):
+    from core.triage import run_day
+    return run_day(project=getattr(args, "project", None))
+
+
 def cmd_organize(args):
-    from core.organize import run_organize
-    return run_organize(
-        type_filter=getattr(args, "type", None),
-        project=getattr(args, "project", None),
-        period=getattr(args, "period", "today"),
-        include_undated=getattr(args, "undated", False),
-        triage=getattr(args, "triage", False),
-    )
+    """`organize <proyecto>` → triaje de todo el proyecto (core.triage).
+
+    Las formas antiguas (`--triage`, `-P`, `--undated`, filtro de tipo)
+    siguen yendo a core.organize hasta que se retiren (ADR-051).
+    """
+    from core.organize import _TYPE_ALIASES, run_organize
+    target = getattr(args, "target", None)
+    type_filter = target if target in _TYPE_ALIASES or target == "all" else None
+    project = getattr(args, "project", None) or (None if type_filter else target)
+    period = getattr(args, "period", None)
+    triage = getattr(args, "triage", False)
+    undated = getattr(args, "undated", False)
+
+    if triage or undated or period or type_filter:
+        print("(modo antiguo de organize; lo de hoy está en `day`)")
+        return run_organize(type_filter=type_filter, project=project,
+                            period=period or "today",
+                            include_undated=undated, triage=triage)
+    if not project:
+        print("organize trabaja sobre un proyecto: `organize <proyecto>`.\n"
+              "Para lo de hoy en todo el workspace: `day`.")
+        return 1
+    from core.triage import run_organize_project
+    return run_organize_project(project)
 
 
 def cmd_focus(args):
@@ -1862,16 +1883,20 @@ def _build_parser():
                        help="Open in editor (optionally specify editor name)")
     _add_log_args(cal_p)
 
+    # --- day: triaje de lo de hoy ---
+    day_p = subparsers.add_parser("day",
+                                  help="Triaje del día: citas de hoy, vencidas y ⏩ <= hoy")
+    add_project_arg(day_p, required=False, help="Proyecto (omitir = todo el workspace)")
+
     # --- organize (alias: reorganize, legacy) ---
     org_p = subparsers.add_parser("organize", aliases=["reorganize"],
-                                   help="Triage interactivo de items pendientes (drop/done/move)")
-    org_p.add_argument("type", nargs="?", default=None,
-                       choices=[None, "all", "tasks", "task", "ms", "ev", "events", "rem", "reminders", "reminder"],
-                       help="Filtrar por tipo. Default: all")
+                                   help="Triaje de todo lo pendiente de un proyecto")
+    org_p.add_argument("target", nargs="?", default=None,
+                       help="Proyecto (o, modo antiguo, tipo: tasks|ms|ev|rem)")
     org_p.add_argument("--project", "-p", default=None,
-                       help="Filtrar por proyecto (substring match)")
-    org_p.add_argument("--period", "-P", default="today",
-                       help="Periodo: today (default, incluye vencidas) | week | month | YYYY-MM-DD | YYYY-Wnn")
+                       help="Proyecto (partial match)")
+    org_p.add_argument("--period", "-P", default=None,
+                       help="Modo antiguo: today | week | month | YYYY-MM-DD | YYYY-Wnn")
     org_p.add_argument("--undated", action="store_true", dest="undated",
                        help="Incluir tareas/hitos sin fecha (futuribles)")
     org_p.add_argument("--triage", action="store_true", dest="triage",
@@ -2349,7 +2374,7 @@ _COMMANDS = {
     "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "link": cmd_track, "untrack": cmd_untrack, "unlink": cmd_untrack, "import": cmd_deliver, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "ring": cmd_ring,
-    "organize": cmd_organize, "reorganize": cmd_organize,
+    "day": cmd_day, "organize": cmd_organize, "reorganize": cmd_organize,
     "focus": cmd_focus,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,

@@ -10,6 +10,29 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `day` y `organize <proyecto>`: triaje del día y del proyecto
+
+Dos comandos sobre un motor común (`core/triage.py`, ADR-051). Listan las citas
+numeradas por bloques y abren el mismo menú sobre la elegida.
+
+- `day [proyecto]`: **Hoy** (eventos, también los de varios días y las
+  ocurrencias de recurrentes; tareas/hitos de hoy; sin hora primero, luego por
+  hora) · **⚠️ Vencidas** · **⏩ Decidir** (followups ≤ hoy). Sin
+  recordatorios ni tareas en reposo.
+- `organize <proyecto>`: además **Próximas** y **Sin fecha**, con recordatorios.
+- Menú: `[h]ora [f]echa [u] ⏩fup [c]lear-⏩ do[n]e [d]rop [s]kip`. `u` mueve
+  los `⏩` vencidos o añade uno; `f`/`h` los resuelven; `h` sobre una cita que no
+  es de hoy pide fecha (Enter = hoy); `drop` confirma (defecto No).
+- Cronogramas debajo, **solo lectura**: pasos activos hoy o vencidos (en
+  `organize`, además barra de progreso). Los pasos sin fecha propia —que
+  heredarían "hoy" y saldrían a diario— no cuentan.
+- Ambos funcionan en el panel de proyecto: `organize` sale de la lista de
+  comandos bloqueados.
+- Al salir con cambios refresca dash + ring + .ics (antes `organize` solo
+  refrescaba dash).
+- `organize` sin proyecto remite a `day`. Las formas antiguas (`--triage`, `-P`,
+  `--undated`, filtro de tipo) siguen funcionando con aviso, hasta retirarlas.
+
 ### Unreleased — `ls log` y `ls ledger`: los cuatro ficheros, en terminal
 
 Completa la familia `ls` con los dos fichero-verdad que faltaban. No hay verbo

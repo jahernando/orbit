@@ -750,21 +750,27 @@ Alias legacy: `commit` sigue funcionando.
 
 Para hacer push al remoto, usa `orbit_push` desde la terminal del sistema (fuera de la shell). Si hay cambios sin save, hace save primero.
 
-### Organizar tareas (`organize`)
+### Triaje del día y del proyecto (`day`, `organize`)
 
-Cuando llegas por la mañana y tienes vencidas + las del día por delante, lo más rápido es:
+Cuando llegas por la mañana, `day` te lista numerado lo que pide atención hoy:
+las citas de hoy (por hora), las tareas e hitos vencidos y las citas con un
+followup `⏩` que ya ha llegado. Debajo, sin número, los pasos de cronograma
+activos o atrasados.
 
 ```bash
-organize                  # lista hoy + vencidas, te deja moverlas/cerrarlas una a una
-organize ev -P week       # solo eventos de esta semana
-organize -p santiago      # solo el proyecto santiago
+day                       # todo el workspace
+day santiago              # solo el proyecto santiago
+organize santiago         # todo lo pendiente de santiago (próximas y sin fecha incluidas)
 ```
 
-El bucle: te lista, eliges número, acción rápida (`d` drop, `n` done, `f` fecha, `h` hora, `s` skip), vuelve a la lista. Sale con `q`. Cada cambio se sincroniza al momento a Calendar/Reminders.
+En la ventana de un proyecto (`wks santiago`) basta con `day` u `organize`.
 
-Para editar título o notas → sal de organize y usa `task edit "X" --desc "..."` directo.
+El bucle: eliges número y una tecla — `h` hora (si la tarea no es de hoy, la
+trae a hoy), `f` fecha, `u` followup (`mañana`, `+3 hablar con Pablo`…; mueve
+los `⏩` vencidos), `c` borra un `⏩`, `n` done, `d` drop (con confirmación),
+Enter vuelve a la lista. Sale con `q` y refresca calendario y avisos.
 
-> El comando se llamaba `reorganize` hasta 2026-05-18 y sigue funcionando como alias.
+Para editar título o notas → sal y usa `task edit "X" --desc "..."` directo.
 
 ### Calendar.app (vía suscripción `.ics`)
 

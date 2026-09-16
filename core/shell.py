@@ -396,7 +396,7 @@ def run_shell(editor: str = "", project: str = None):
     readline.set_history_length(500)
 
     COMMANDS = ["task", "ms", "ev", "hl", "view", "note", "save", "commit", "deliver",
-                "import", "ls", "log", "search", "open", "report", "agenda", "dash", "wks",
+                "import", "ls", "log", "search", "open", "report", "agenda", "day", "organize", "dash", "wks",
                 "mail", "doctor", "archive", "undo", "help", "project", "claude", "end", "exit", "quit"]
     if pinned:
         COMMANDS = [c for c in COMMANDS

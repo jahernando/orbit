@@ -24,13 +24,15 @@ Es lo que abre `wks <proyecto>` en su segunda ventana. Dentro:
 log "añadidos ingresos y gastos"    # sin nombre de proyecto
 task add "escribir el ADR" --date friday
 agenda                              # sólo este proyecto
+day                                 # triaje de hoy de este proyecto
+organize                            # triaje de todo lo pendiente del proyecto
 ```
 
 - **El nombre del proyecto desaparece de los comandos**: se sobreentiende.
 - **Inmutable**: no hay verbo para cambiar de proyecto. Para otro, otra ventana.
 - **Nombrar otro proyecto es un error**, no un cambio de destino. Si el texto
   empieza por el nombre exacto de otro proyecto, entrecomíllalo.
-- **Comandos de workspace bloqueados**: `dash`, `panel`, `cal`, `organize`,
+- **Comandos de workspace bloqueados**: `dash`, `panel`, `cal`,
   `focus`, `ring`, `mail`, `setup`, `cloud sync|imgs`, `project create|drop|type`,
   `ls projects` → para ésos, el panel general. `save`/`commit` sí funcionan.
 - **Modo ligero**: no pasa el doctor del workspace, no levanta daemons ni
@@ -822,41 +824,83 @@ Proyectos locales se muestran como links a `project.md`; federados con emoji del
 
 ---
 
-## organize — triage interactivo
+## day — triaje del día
 
 ```bash
-orbit organize                       # hoy + vencidas, todos los tipos
-orbit organize tasks                 # solo tareas
-orbit organize ev -P week            # eventos de esta semana
-orbit organize -p next-kr            # solo proyecto next-kr
-orbit organize -P 2026-W22           # ISO week específica
-orbit organize -P 2026-05-15         # un día concreto
-orbit organize --triage              # followups ⏩ <= today (todas las citas)
+day                  # hoy en todo el workspace
+day next-kr          # hoy en un proyecto (en su panel fijado: `day` a secas)
 ```
 
-Modo default (planned + overdue): acciones `[d]rop [n]done [f]echa [h]ora [s]kip`.
+Lista numerada de lo que pide atención **hoy**, por bloques:
 
-Modo `--triage`: recorre los **followups** `⏩ <= today` de las 4 citas. Acciones `[p]lan-fecha  [s]nooze-⏩  [c]lear-⏩  do[n]e  [d]rop  s[k]ip`:
-- `p` pone fecha a la cita (la vuelve planned) y borra ese followup.
-- `s` mueve el followup a otra fecha (default mañana).
-- `c` borra el followup (triaje resuelto; la cita queda en reposo).
-- `n` completa la cita (task/ms). `d` borra la cita entera.
+- **Hoy** — citas que caen hoy: eventos (también los de varios días ya
+  empezados y las ocurrencias de los recurrentes), tareas e hitos con fecha de
+  hoy. Primero lo que no tiene hora, luego por hora.
+- **⚠️ Vencidas** — tareas e hitos pendientes con fecha pasada.
+- **⏩ Decidir** — citas con un followup `⏩ <= hoy` (❗ si es de un día anterior).
 
-Alias legacy: `orbit reorganize` sigue funcionando.
+Cada cita sale una sola vez, en el primer bloque que le toca; sus `⏩` se ven
+como marca en la fila (`❗⏩09-01`, `(+N)` si tiene más). **No salen** los
+recordatorios, ni las tareas sin fecha y sin `⏩` vencido, ni los proyectos
+federados (se leen, no se editan).
 
-Modo bucle:
+Debajo, **📊 Cronogramas (solo lectura, sin número)**: los pasos activos hoy o
+vencidos. Un paso sin fecha propia no cuenta: su fecha es la de hoy por defecto
+y saldría todos los días.
 
-1. Lista los items pendientes que cumplen los filtros (vencidas arriba con ⚠️, luego cronológico, sin fecha al final).
-2. Eliges un número.
-3. Acciones disponibles:
-   - `d` — drop (cancela / borra ocurrencia)
-   - `n` — done (task/ms/reminder; los eventos no aplican)
-   - `f` — cambiar fecha (lenguaje natural: `tomorrow`, `next monday`, `+7`, `2026-05-25`)
-   - `h` — cambiar hora (`HH:MM` o `HH:MM-HH:MM`; `none` quita)
-   - `s` — skip, vuelve a la lista
-4. Tras cada cambio, refresca la lista. Sale con `q`.
+Eliges un número y una acción (mismo menú que `organize`):
 
-Cada acción dispara `sync_item` automático → Calendar/Reminders se actualizan al instante. Para editar título / notas / recurrencia / ring, sales con `q` y usas `task edit` (etc.) directamente.
+| Tecla | Acción |
+|---|---|
+| `h` | hora (`HH:MM` o `HH:MM-HH:MM`); si la cita no es de hoy, pide fecha (Enter = hoy) |
+| `f` | fecha (`mañana`, `viernes`, `+3`, `YYYY-MM-DD`) |
+| `u` | followup: `fecha [descripción]`, Enter = mañana. Si la cita tenía `⏩` vencidos, los **mueve** a esa fecha (conservando su descripción); si no, añade uno |
+| `c` | borra un `⏩` (si hay varios, pregunta cuál) |
+| `n` | done (tareas e hitos) |
+| `d` | drop, con confirmación (defecto No) |
+| `s` / Enter | vuelve a la lista sin tocar nada |
+
+- Dar fecha u hora (`f`/`h`) **resuelve** los `⏩` vencidos de la cita: se borran.
+- Las mutaciones usan los mismos runners que `task edit`, `task done`…: imprimen
+  el item resultante, dejan undo y, en recurrentes, preguntan ocurrencia o serie.
+- Al salir (`q`) con cambios, refresca derivados (dash + ring + .ics).
+- Para título, notas, recurrencia o ring: sal y usa `task edit` etc.
+
+Ver [ADR-051](DECISIONS.md#adr-051--day-y-organize-proyecto-dos-triajes-un-motor).
+
+---
+
+## organize — triaje de un proyecto
+
+```bash
+organize next-kr     # todo lo pendiente del proyecto
+organize             # en el panel fijado a un proyecto
+```
+
+Mismo motor y mismo menú que `day`, pero con **todo** lo pendiente del
+proyecto. Bloques, en orden: **Hoy · ⚠️ Vencidas · ⏩ Decidir · Próximas · Sin
+fecha**. A diferencia de `day`:
+
+- Salen los **recordatorios**.
+- **Próximas**: citas con fecha futura (y series recurrentes vivas).
+- **Sin fecha**: tareas e hitos en reposo (hitos primero).
+- Los `⏩` futuros también se ven en la fila.
+- **📊 Cronogramas**: todos los abiertos, con barra de progreso y deadline, más
+  sus pasos activos o vencidos. Solo lectura.
+
+`organize` sin proyecto en el panel general no hace nada y remite a `day`.
+
+**Modo antiguo** (se mantiene hasta retirarlo; avisa al entrar):
+
+```bash
+organize --triage                # followups ⏩ <= hoy: [p]lan [s]nooze [c]lear do[n]e [d]rop s[k]ip
+organize tasks                   # filtro de tipo: tasks | ms | ev | rem
+organize -P week                 # periodo: today | week | month | YYYY-MM-DD | YYYY-Wnn
+organize --undated               # incluye tareas/hitos sin fecha
+```
+
+Cualquiera de esas opciones activa el flujo anterior (`[d]rop [n]done [f]echa
+[h]ora [s]kip`); con `-p <proyecto>` se acota. Alias legacy: `reorganize`.
 
 ---
 

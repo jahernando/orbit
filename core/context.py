@@ -144,8 +144,6 @@ WORKSPACE_ONLY = {
     ("dash",):               "vista de todo el workspace",
     ("panel",):              "vista de todo el workspace",
     ("cal",):                "calendario de todo el workspace",
-    ("organize",):           "triaje de todo el workspace",
-    ("reorganize",):         "triaje de todo el workspace",
     ("focus",):              "planificación de la misión, no de un proyecto",
     ("ring",):               "daemon de avisos del workspace",
     ("mail",):               "cartero del workspace",

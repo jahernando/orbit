@@ -964,6 +964,34 @@ Tres fricciones reales:
 
 ---
 
+## ADR-051 — `day` y `organize <proyecto>`: dos triajes, un motor
+
+**Estado**: aceptada (2026-09-16).
+
+**Contexto**: el usuario quiere, cada mañana, una lista numerada con los eventos, tareas y followups del día sobre la que actuar sin teclear comandos completos: poner un `⏩`, dar hora a una tarea, cerrarla. Y lo mismo dentro de un proyecto, pero con todo lo pendiente. Existían dos piezas separadas: `organize` (citas de hoy + vencidas; acciones drop/done/fecha/hora, sin followup) y `organize --triage` (solo followups ≤ hoy, otro menú). Además `organize` estaba bloqueado en el panel de proyecto (ADR-049 §4), justo donde tiene más sentido, y la lista tenía fallos: no ordenaba por hora, omitía los eventos de varios días empezados antes de hoy y mezclaba los recordatorios fijos de ☀️mission.
+
+**Decisión**:
+
+1. **Dos comandos, no uno con modos.** Un único `organize` que mostrara "lo de hoy" sin proyecto y "todo" con proyecto sería un modo oculto: `organize` y `organize next-kr` harían cosas distintas, y en el panel fijado `organize` a secas haría lo contrario que en el general. Son además dos tareas mentales distintas —qué hago hoy (lista corta, diaria) frente a revisar un proyecto entero—. `day [proyecto]` es la primera; `organize <proyecto>` la segunda. El nombre es `day` y no `today` porque `today` ya es palabra de periodo (`report today`, `agenda today`).
+
+2. **Un motor** (`core/triage.py`): recogida por bloques, numeración, render, menú y acciones compartidos; cada comando solo fija qué entra. Bloques en orden de prioridad **Hoy > ⚠️ Vencidas > ⏩ Decidir > Próximas > Sin fecha**; cada cita sale una sola vez, en el primero que le toca, y sus `⏩` se ven como marca en la fila. `day` usa los tres primeros y oculta los recordatorios; `organize` usa los cinco y sí los muestra.
+
+3. **Un menú para todo**: `[h]ora [f]echa [u] ⏩fup [c]lear-⏩ do[n]e [d]rop [s]kip`. `u` con `⏩` vencidos los **mueve** (snooze); sin ellos, añade. Dar fecha u hora **resuelve** los `⏩` vencidos (se borran), igual que el antiguo `plan`. `h` sobre una cita que no es de hoy pide fecha con Enter = hoy — es el caso "asignar esta tarea a una hora de hoy". `drop` pide confirmación (defecto No): en una lista numerada una tecla equivocada borra una cita. Las mutaciones van por los runners de siempre (echo del item, undo, pregunta ocurrencia/serie en recurrentes); solo los followups se editan en el cuerpo directamente (ADR-043).
+
+4. **Cronogramas en solo lectura, sin número.** Un paso de crono no es una cita: no tiene hora ni followup y solo admite `crono done`. `day` lista los pasos activos hoy o vencidos; `organize`, todos los cronos abiertos con barra de progreso y sus pasos activos/vencidos. **Un paso sin fecha propia no cuenta como activo**: hereda `initial-time` (hoy por defecto) y "flotaría", saliendo activo todos los días. Se detecta recalculando las fechas con otro "hoy": si el deadline del paso cambia, flota.
+
+5. **Ambos funcionan en el panel de proyecto** (se retira `organize` de `WORKSPACE_ONLY`). ADR-049 bloqueaba lo que actúa sobre el workspace entero; `day` y `organize` acotados a un proyecto no lo hacen. Los federados no se listan (se leen, no se escriben).
+
+6. **Coexistencia**: `organize --triage`, `-P`, `--undated` y el filtro de tipo siguen llevando al flujo anterior (`core/organize.py`) con un aviso. Se retirarán en una fase destructiva aparte, tras usar `day` un tiempo. `organize` sin proyecto en el panel general remite a `day`.
+
+**Consecuencias**:
+- Pros: una sola superficie diaria (citas + vencidas + followups) con un menú; triaje dentro del panel de proyecto; la lista ordena por hora e incluye eventos de varios días; los cronos se ven donde se decide el día sin fingir que son citas.
+- Contras: dos verbos más que recordar frente a uno; durante la coexistencia hay dos implementaciones de triaje (`core/organize.py` y `core/triage.py`, que importa helpers de la primera); `organize` a secas en el panel general cambia de significado (antes: triaje de hoy).
+
+**Verificación**: `tests/test_triage.py`.
+
+---
+
 ## ADR-050 — Feed de arXiv: bandeja en `notes/`, config aparte, triaje a highlights
 
 **Estado**: aceptada (2026-09-11).
@@ -1008,7 +1036,7 @@ La forma obvia (un verbo `use <proyecto>` que cambia de contexto dentro del shel
 
 3. **Nombrar otro proyecto es un error, no un cambio de destino**. Es la consecuencia peligrosa de (2): sin el posicional, un `log otro "texto"` tecleado por inercia escribiría *"otro"* como mensaje en el proyecto fijado — un fallo silencioso que corrompe la verdad. El guardia dispara sólo con **coincidencia exacta de un token suelto** con el nombre de otro proyecto, de modo que un mensaje entrecomillado (un único token, con espacios) nunca lo activa. Se prefiere un rechazo ocasional injusto —recuperable entrecomillando— a un apunte escrito donde no toca.
 
-4. **Los comandos transversales se bloquean, por lista negra**. Se bloquea lo que *actúa* sobre el workspace o produce una vista transversal (`dash`, `panel`, `cal`, `organize`, `focus`, `ring`, `mail`, `setup`, `cloud sync|imgs`, `project create|drop|type`, `ls projects`). Las lecturas inocuas (`search`, `report`, `agenda`, `ls`, `history`) no se bloquean: se **acotan** al proyecto fijado. `save`/`commit` tampoco se bloquean — operan sobre el repositorio, no sobre un proyecto, y querer guardar sin cambiar de ventana es razonable. Lista negra y no blanca para que un comando nuevo no nazca bloqueado por un olvido.
+4. **Los comandos transversales se bloquean, por lista negra**. Se bloquea lo que *actúa* sobre el workspace o produce una vista transversal (`dash`, `panel`, `cal`, `organize` —desbloqueado por ADR-051—, `focus`, `ring`, `mail`, `setup`, `cloud sync|imgs`, `project create|drop|type`, `ls projects`). Las lecturas inocuas (`search`, `report`, `agenda`, `ls`, `history`) no se bloquean: se **acotan** al proyecto fijado. `save`/`commit` tampoco se bloquean — operan sobre el repositorio, no sobre un proyecto, y querer guardar sin cambiar de ventana es razonable. Lista negra y no blanca para que un comando nuevo no nazca bloqueado por un olvido.
 
 5. **El panel de proyecto arranca en modo ligero: la cadena `shell_start` no corre ninguna acción.** Todas operan sobre el workspace entero, y con dos ventanas abiertas se duplicarían: dos watchdogs pasando el doctor sobre todo, la oferta de commit repetida, y el aviso `.doctor-pending` repartido entre las dos —lo vería sólo la que llegara primero, que es peor que no verlo—. Por lo mismo el panel de proyecto no dispara la cadena de medianoche ni consume ese aviso. **El panel general es el dueño del workspace**; el de proyecto es un invitado. Un action nuevo en la cadena hereda la regla sin tocar nada.
 
