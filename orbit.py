@@ -2230,8 +2230,8 @@ def _build_parser():
     # --- save (alias legacy: commit) ---
     cmt_p = subparsers.add_parser("save", aliases=["commit"],
         help="Cierra el trabajo: doctor + git commit + proyecta a cloud/calendars/reminders. Alias: commit.")
-    cmt_p.add_argument("message", nargs="?", default=None,
-                       help="Mensaje del save (si se omite, se usa el propuesto: \"sync <fecha hora>\")")
+    cmt_p.add_argument("--commit", dest="message", metavar="MENSAJE", default=None,
+                       help="Mensaje propio del save (si se omite: \"sync <fecha hora>\")")
     _hooks.add_chain_flags(cmt_p, "commit_pre", "commit_post")
 
     # --- project ---

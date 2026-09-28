@@ -427,7 +427,7 @@ class TestRunCommit:
         assert "sync" in committed[0]
 
     def test_no_message_prompt_on_tty(self, monkeypatch, capsys):
-        """Sin mensaje explícito no se pregunta: solo la confirmación [S/n]."""
+        """Sin --commit no se pregunta nada: ni mensaje ni confirmación."""
         from core.commit import run_commit
         committed, prompts = [], []
         monkeypatch.setattr("core.commit._git_add_all_tracked", lambda: True)
@@ -441,7 +441,7 @@ class TestRunCommit:
         monkeypatch.setattr("builtins.input",
                             lambda p="": prompts.append(p) or "")
         run_commit()
-        assert len(prompts) == 1 and "Confirmar" in prompts[0]
+        assert prompts == []
         assert committed and committed[0].startswith("sync ")
 
     def test_git_commit_called_with_message(self, monkeypatch, capsys):
@@ -476,3 +476,19 @@ class TestRunCommit:
         rc = run_commit(message="fail")
         assert rc == 1
         assert "✗" in capsys.readouterr().out
+
+
+class TestSaveParser:
+    def test_commit_flag_sets_message(self):
+        from orbit import _build_parser as build_parser
+        args = build_parser().parse_args(["save", "--commit", "blabla"])
+        assert args.message == "blabla"
+
+    def test_no_flag_no_message(self):
+        from orbit import _build_parser as build_parser
+        assert build_parser().parse_args(["save"]).message is None
+
+    def test_positional_message_rejected(self):
+        from orbit import _build_parser as build_parser
+        with pytest.raises(SystemExit):
+            build_parser().parse_args(["save", "blabla"])

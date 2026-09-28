@@ -994,13 +994,13 @@ orbit report --summary [logbook|agenda|highlights|all] [--date D] [--from D] [--
 ### save — versionado con git
 
 ```bash
-orbit save ["<mensaje>"]
+orbit save [--commit "<mensaje>"]
 ```
 
 Alias legacy: `orbit commit` sigue funcionando.
 
-- Sin mensaje: usa el propuesto (`sync <fecha hora>`) sin preguntar; un mensaje propio solo se usa si se pasa explícitamente (`orbit save "…"`)
-- Muestra ficheros modificados y pide `[S/n]` antes de ejecutar
+- No pregunta nada: muestra los ficheros modificados y guarda con el mensaje `sync <fecha hora>`
+- Un mensaje propio solo con `--commit "…"`
 - Ejecuta doctor pre-check: valida agendas/logbooks antes del save
 - Ejecuta reconciliación gsync: detecta renombramientos de citas en el markdown y migra IDs de Google
 - Push al remoto: `orbit_push` desde la terminal del sistema (fuera de la shell)

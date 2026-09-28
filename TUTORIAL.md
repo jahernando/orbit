@@ -741,8 +741,8 @@ Los comandos de esta sección son para **configurar** los servicios la primera v
 Al hacer `save`, Orbit valida los ficheros (doctor), reconcilia los IDs de Google y guarda en git. Es lo único que haces manualmente:
 
 ```bash
-save                       # muestra cambios, pide confirmación, genera mensaje
-save "feat: calibración validada"   # con mensaje directo
+save                       # muestra cambios y guarda con "sync <fecha hora>"
+save --commit "feat: calibración validada"   # con mensaje propio
 undo                       # deshacer la última operación de Orbit
 ```
 

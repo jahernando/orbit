@@ -350,17 +350,6 @@ def run_commit(message: Optional[str] = None,
 
     print(f"Mensaje: \"{final_msg}\"")
 
-    # Confirm
-    if sys.stdin.isatty():
-        try:
-            ans = input("\n¿Confirmar save? [S/n]: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return 1
-        if ans not in ("", "s", "si", "sí", "y", "yes"):
-            print("Save cancelado.")
-            return 0
-
     rc = _git_commit(final_msg)
     if rc == 0:
         print("\n✓ Save realizado.")

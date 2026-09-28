@@ -316,7 +316,7 @@ orbit archive [project] [--months N] [--dry-run] [--force]
                                    # --agenda --logbook --notes para filtrar
 orbit ics --workspace              # regenera los .ics del workspace (Calendar.app se suscribe)
 orbit ics --validate               # dry-run: cuenta VEVENTs por bucket sin escribir
-orbit save ["mensaje"]             # save + push interactivo (alias: commit)
+orbit save [--commit "mensaje"]    # save sin preguntas (alias: commit)
 ```
 
 ### Documentacion

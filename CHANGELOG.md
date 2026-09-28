@@ -10,12 +10,12 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
-### Unreleased — `save` sin mensaje ya no pregunta
+### Unreleased — `save` no pregunta; mensaje propio con `--commit`
 
-`orbit save` sin argumento usa directamente el mensaje propuesto
-(`sync <fecha hora>`); ya no se pide el mensaje interactivamente. Un mensaje
-propio solo se usa si se pasa explícitamente: `orbit save "…"`. Se mantiene la
-confirmación `[S/n]`, que muestra el mensaje que se va a usar.
+`orbit save` ya no pide el mensaje ni la confirmación `[S/n]`: muestra los
+ficheros modificados y guarda con `sync <fecha hora>`. Un mensaje propio solo
+con `orbit save --commit "…"`; el mensaje posicional (`orbit save "…"`)
+desaparece y ahora es un error de argumentos.
 
 ### Unreleased — `--end` en eventos recurrentes: rechazado si solapa la serie
 
