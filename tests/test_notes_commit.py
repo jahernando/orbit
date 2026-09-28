@@ -426,6 +426,24 @@ class TestRunCommit:
         assert len(committed) == 1
         assert "sync" in committed[0]
 
+    def test_no_message_prompt_on_tty(self, monkeypatch, capsys):
+        """Sin mensaje explícito no se pregunta: solo la confirmación [S/n]."""
+        from core.commit import run_commit
+        committed, prompts = [], []
+        monkeypatch.setattr("core.commit._git_add_all_tracked", lambda: True)
+        monkeypatch.setattr("core.commit._git_status",
+                            lambda: [("M", "logbook.md")])
+        monkeypatch.setattr("core.commit._git_commit",
+                            lambda m: committed.append(m) or 0)
+        monkeypatch.setattr("core.commit._prompt_untracked", lambda: None)
+        monkeypatch.setattr("core.commit._hooks.fire", lambda *a, **k: [])
+        monkeypatch.setattr(sys, "stdin", type("T", (), {"isatty": lambda self: True})())
+        monkeypatch.setattr("builtins.input",
+                            lambda p="": prompts.append(p) or "")
+        run_commit()
+        assert len(prompts) == 1 and "Confirmar" in prompts[0]
+        assert committed and committed[0].startswith("sync ")
+
     def test_git_commit_called_with_message(self, monkeypatch, capsys):
         from core.commit import run_commit
         committed = []

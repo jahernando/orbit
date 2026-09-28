@@ -10,6 +10,13 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `save` sin mensaje ya no pregunta
+
+`orbit save` sin argumento usa directamente el mensaje propuesto
+(`sync <fecha hora>`); ya no se pide el mensaje interactivamente. Un mensaje
+propio solo se usa si se pasa explícitamente: `orbit save "…"`. Se mantiene la
+confirmación `[S/n]`, que muestra el mensaje que se va a usar.
+
 ### Unreleased — `--end` en eventos recurrentes: rechazado si solapa la serie
 
 `ev add … --recur weekly --end 2026-12-01` creaba un evento **de 76 días** que se

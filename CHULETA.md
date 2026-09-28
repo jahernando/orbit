@@ -999,7 +999,7 @@ orbit save ["<mensaje>"]
 
 Alias legacy: `orbit commit` sigue funcionando.
 
-- Sin mensaje: pide interactivamente; intro vacío → genera mensaje automático
+- Sin mensaje: usa el propuesto (`sync <fecha hora>`) sin preguntar; un mensaje propio solo se usa si se pasa explícitamente (`orbit save "…"`)
 - Muestra ficheros modificados y pide `[S/n]` antes de ejecutar
 - Ejecuta doctor pre-check: valida agendas/logbooks antes del save
 - Ejecuta reconciliación gsync: detecta renombramientos de citas en el markdown y migra IDs de Google

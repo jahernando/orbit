@@ -345,20 +345,8 @@ def run_commit(message: Optional[str] = None,
         print(f"  {code:<2}  {path}")
     print()
 
-    # Determine commit message
-    if message:
-        final_msg = message
-    else:
-        default_msg = f"sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        if sys.stdin.isatty():
-            try:
-                raw = input(f"Mensaje del save [Enter=\"{default_msg}\"]: ").strip()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return 1
-            final_msg = raw if raw else default_msg
-        else:
-            final_msg = default_msg
+    # Message: the proposed one unless the user passed one explicitly.
+    final_msg = message or f"sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
 
     print(f"Mensaje: \"{final_msg}\"")
 
