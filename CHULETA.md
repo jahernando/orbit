@@ -1328,6 +1328,11 @@ orbit archive orbit --agenda --logbook    # combinación
 
 Qué se limpia:
 1. **agenda**: tareas/hitos completados `[x]`/cancelados `[-]` + eventos pasados
+   - Evento de varios días: cuenta su **fin** (`--end`), no su inicio.
+   - Serie recurrente: **nunca** se borra mientras viva; solo cuando acabó, es
+     decir, con `--until` anterior al corte. Una serie sin `--until` no se
+     archiva nunca. Sus ocurrencias pasadas no están escritas (se calculan); las
+     ocurrencias editadas sí, como eventos sueltos, y se archivan como tales.
 2. **logbook**: entradas con fecha anterior al corte
 3. **notes**: notas en `notes/` no modificadas en N meses
 

@@ -10,6 +10,16 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `archive --agenda` ya no borra series vivas ni eventos en curso
+
+`archive` decidía si un evento era pasado por su fecha de **inicio**: borraba
+una serie recurrente entera si su fecha base era antigua (aunque siguiera
+viva) y un evento de varios días empezado antes del corte aunque terminara
+después. Ahora (`_event_last_day`): varios días → fecha de fin; serie →
+su `until`, y sin `until` no se archiva nunca.
+
+---
+
 ### Unreleased — `--fup none`, `day fup`, verificación en el triaje, títulos únicos
 
 - **`--fup none` / `<tipo> fup … none`**: la tarea o el hito queda sin fecha,

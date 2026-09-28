@@ -74,7 +74,7 @@ def _count_done_agenda(project_dir: Path, cutoff: date) -> tuple:
     for item in data["tasks"] + data["milestones"]:
         if item["status"] in ("done", "cancelled") and _item_before(item, cutoff):
             n_done += 1
-    n_events = sum(1 for ev in data["events"] if _event_date(ev) < cutoff)
+    n_events = sum(1 for ev in data["events"] if _event_last_day(ev) < cutoff)
     return n_done, n_events
 
 
@@ -275,7 +275,7 @@ def _clean_events(project_dir: Path, cutoff: date) -> int:
     original = len(data["events"])
     data["events"] = [
         ev for ev in data["events"]
-        if _event_date(ev) >= cutoff
+        if _event_last_day(ev) >= cutoff
     ]
     removed = original - len(data["events"])
 
@@ -291,6 +291,28 @@ def _event_date(ev: dict) -> date:
         return date.fromisoformat(ev.get("date", ""))
     except ValueError:
         return date.min
+
+
+def _event_last_day(ev: dict) -> date:
+    """Último día en que el evento existe; se archiva si cae antes del corte.
+
+    * Serie recurrente: su ``until``. Sin ``until`` la serie no acaba nunca
+      (``date.max``): se archiva la serie terminada, jamás una viva.
+    * Evento de varios días: su ``end`` (no el inicio).
+    * Evento simple: su fecha.
+
+    Las ocurrencias pasadas de una serie no están escritas (se calculan);
+    las que sí lo están son ocurrencias editadas, eventos simples.
+    """
+    if ev.get("recur"):
+        try:
+            return date.fromisoformat(ev.get("until") or "")
+        except ValueError:
+            return date.max
+    try:
+        return date.fromisoformat(ev.get("end") or "")
+    except ValueError:
+        return _event_date(ev)
 
 
 # ── Stale notes ──────────────────────────────────────────────────────────────

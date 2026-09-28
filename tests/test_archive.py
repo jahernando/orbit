@@ -339,3 +339,51 @@ class TestRunArchive:
             ret = run_archive(project="fresh", months=6, force=True)
         assert ret == 0
         assert "reciente" in (proj / "fresh-logbook.md").read_text()
+
+
+# ── _event_last_day: varios días y series recurrentes ────────────────────────
+
+class TestEventLastDay:
+    def _seed_events(self, tmp_path, events):
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        proj = _make_project(tmp_path, agenda="# Agenda\n")
+        path = proj / "test-proj-agenda.md"
+        data = _read_agenda(path)
+        data["events"] = events
+        _write_agenda(path, data)
+        return proj, path
+
+    def test_multiday_uses_end(self):
+        from core.archive import _event_last_day
+        assert _event_last_day({"date": "2025-12-28", "end": "2026-01-03"}) \
+            == date(2026, 1, 3)
+
+    def test_series_without_until_never_ends(self):
+        from core.archive import _event_last_day
+        assert _event_last_day({"date": "2020-01-01", "recur": "weekly"}) \
+            == date.max
+
+    def test_series_uses_until(self):
+        from core.archive import _event_last_day
+        ev = {"date": "2025-01-01", "recur": "weekly", "until": "2025-06-30"}
+        assert _event_last_day(ev) == date(2025, 6, 30)
+
+    def test_clean_keeps_live_series_and_running_multiday(self, tmp_path):
+        from core.agenda_cmds import _read_agenda
+        proj, path = self._seed_events(tmp_path, [
+            {"desc": "serie viva", "date": "2025-01-06", "recur": "weekly"},
+            {"desc": "serie hasta futuro", "date": "2025-01-06",
+             "recur": "weekly", "until": "2026-03-01"},
+            {"desc": "serie acabada", "date": "2025-01-06",
+             "recur": "weekly", "until": "2025-06-30"},
+            {"desc": "congreso en curso", "date": "2025-12-28",
+             "end": "2026-01-03"},
+            {"desc": "congreso pasado", "date": "2025-11-01",
+             "end": "2025-11-05"},
+            {"desc": "ocurrencia editada", "date": "2025-05-12"},
+        ])
+        cutoff = date(2026, 1, 1)
+        assert _count_done_agenda(proj, cutoff)[1] == 3
+        assert _clean_events(proj, cutoff) == 3
+        left = [e["desc"] for e in _read_agenda(path)["events"]]
+        assert left == ["serie viva", "serie hasta futuro", "congreso en curso"]
