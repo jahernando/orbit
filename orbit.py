@@ -796,6 +796,10 @@ def cmd_agenda(args):
     if projects and projects[0].lower() == "migrate":
         return run_agenda_migrate(projects=projects[1:] or None)
 
+    # `agenda clean [proj...]` = `archive <proj> --agenda --months 0`
+    if projects and projects[0].lower() == "clean":
+        return _agenda_clean(projects[1:], getattr(args, "dry_run", False))
+
     # Allow "agenda week", "agenda month" as period shortcuts
     if projects and not date_str and not date_from and not date_to:
         first = projects[0].lower()
@@ -1516,6 +1520,22 @@ def cmd_undo(args):
     return run_undo()
 
 
+def _agenda_clean(projects: list, dry_run: bool) -> int:
+    """Borra de la agenda lo cerrado y lo pasado hasta hoy (alias de archive).
+
+    Sin proyecto: el fijado del panel, si lo hay; si no, todos (archive
+    pregunta antes de borrar).
+    """
+    from core import context
+    from core.archive import run_archive
+    targets = projects or [context.pinned()]
+    rc = 0
+    for project in targets:
+        rc |= run_archive(project=project, months=0, dry_run=dry_run,
+                          force=False, do_agenda=True)
+    return rc
+
+
 def cmd_archive(args):
     from core.archive import run_archive
     return run_archive(
@@ -1870,6 +1890,8 @@ def _build_parser():
                       help="Per-project summary table (counts and date range)")
     ag_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",
                       help="Open in editor (optionally specify editor name)")
+    ag_p.add_argument("--dry-run", action="store_true", dest="dry_run",
+                      help="Solo con `agenda clean`: muestra qué borraría")
     _add_log_args(ag_p)
     _add_fed_args(ag_p)
 

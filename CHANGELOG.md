@@ -10,6 +10,14 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `agenda clean [proyecto...] [--dry-run]`
+
+Alias de `archive <proyecto> --agenda --months 0`: borra de la agenda lo
+cerrado y lo pasado hasta hoy, con la misma confirmación. Sin proyecto usa el
+del panel fijado (nunca barre el workspace desde un panel de proyecto).
+
+---
+
 ### Unreleased — `archive --agenda` ya no borra series vivas ni eventos en curso
 
 `archive` decidía si un evento era pasado por su fecha de **inicio**: borraba

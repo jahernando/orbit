@@ -762,7 +762,13 @@ orbit agenda week                     # esta semana
 orbit agenda month                    # este mes
 orbit agenda future [project...]      # vista previa del formato nuevo de citas
 orbit agenda migrate [project...]     # reescribe agenda.md al formato nuevo (in situ)
+orbit agenda clean [project...] [--dry-run]   # borra lo cerrado y lo pasado hasta hoy
 ```
+
+- `agenda clean` = `archive <project> --agenda --months 0`: tareas/hitos hechos o
+  cancelados y eventos ya terminados; las series recurrentes solo si acabaron
+  (ver `archive`). Pregunta antes de borrar; `--dry-run` solo lo lista. Sin
+  proyecto: el del panel fijado o, en el general, todos.
 
 - Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
 - Atajos de periodo: `today`/`hoy`, `week`/`semana`, `month`/`mes`

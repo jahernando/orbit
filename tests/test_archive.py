@@ -387,3 +387,32 @@ class TestEventLastDay:
         assert _clean_events(proj, cutoff) == 3
         left = [e["desc"] for e in _read_agenda(path)["events"]]
         assert left == ["serie viva", "serie hasta futuro", "congreso en curso"]
+
+
+# ── agenda clean (alias) ─────────────────────────────────────────────────────
+
+class TestAgendaClean:
+    def _run(self, monkeypatch, argv, pinned=None):
+        import orbit
+        from core import context
+        calls = []
+        monkeypatch.setattr("core.archive.run_archive",
+                            lambda **kw: calls.append(kw) or 0)
+        monkeypatch.setattr(context, "pinned", lambda: pinned)
+        args = orbit._build_parser().parse_args(argv)
+        assert orbit.cmd_agenda(args) == 0
+        return calls
+
+    def test_alias_with_projects(self, monkeypatch):
+        calls = self._run(monkeypatch, ["agenda", "clean", "a", "b", "--dry-run"])
+        assert [c["project"] for c in calls] == ["a", "b"]
+        assert all(c["months"] == 0 and c["do_agenda"] and c["dry_run"]
+                   and not c["force"] for c in calls)
+
+    def test_without_project_uses_pinned(self, monkeypatch):
+        calls = self._run(monkeypatch, ["agenda", "clean"], pinned="foo")
+        assert [c["project"] for c in calls] == ["foo"]
+
+    def test_without_project_general_panel_is_all(self, monkeypatch):
+        calls = self._run(monkeypatch, ["agenda", "clean"])
+        assert [c["project"] for c in calls] == [None]
