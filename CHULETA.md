@@ -9,7 +9,9 @@ orbit claude       # abre Claude Code en el directorio Orbit
 ```
 
 Al entrar: `¡Hola! ¡Bienvenido!` + startup (doctor, untracked, save+push, gsync)
-Al salir: `exit`/`quit` (directo) o `end` (ofrece save+push antes de salir)
+Al salir: `exit`/`quit` (directo) o `end` (save+push antes de salir)
+
+El save+push del arranque y de `end` sigue la regla de `save`: no pregunta, mensaje `sync <fecha hora>`.
 
 ### Panel de proyecto — shell fijado a un proyecto
 

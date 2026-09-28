@@ -140,7 +140,7 @@ Esta es la chain con **más actions** del sistema. Solo es trigger temporal: nin
 | 1b | `doctor_interactive_fix` | `views/doctor/doctor.py` | no | tty-only | Si hay fixables y tty, ofrece fix |
 | 2 | `advance_overdue_recurring` | `core/agenda_cmds.py:2126` | no | no | Modifica `agenda.md` en disco sin pedir confirmación |
 | 3 | `render_status_check` | `views/render/render.py::startup_render_status_check` | no | no | Lee `.cloud-sync.json`, avisa si último render al cloud falló (renombrado de `cloud_sync_status_check` 2026-05-16; movido a views/render/ porque el "sync" que reporta es el render) |
-| 4-5 | `save_offer` | `core/shell.py:_action_save_offer` → `startup_untracked_check` + `startup_commit_offer` | no | tty-only | Consolidación 2026-05-16 de las dos actions previas (`untracked_check` + `commit_offer`). Stage tracked, pregunta add/ignore, ofrece commit+push si hay cambios. |
+| 4-5 | `save_offer` | `core/shell.py:_action_save_offer` → `startup_untracked_check` + `startup_commit_offer` | no | tty-only | Consolidación 2026-05-16 de las dos actions previas (`untracked_check` + `commit_offer`). Stage tracked, pregunta add/ignore; si hay cambios hace commit+push sin preguntar (mensaje `sync <fecha hora>`, como `save`). |
 | 6 | `code_update_check` | `core/commit.py:499-622` | no | tty-only | Checkea si orbit repo tiene nuevos commits, ofrece pull |
 | 7 | `gsync_background` | `core/gsync.py:2829` | no | `applescript_writes: false` → DORMANT | Thread daemon |
 | 8 | `schedule_reminders` | `views/ring/parse.py` | no | NO-OP | **Dead code**. Cuerpo unreachable (`return []`). Llamada vestigial |

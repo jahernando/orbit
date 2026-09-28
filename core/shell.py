@@ -319,7 +319,7 @@ def _run_startup(light: bool = False):
 # ── Shutdown sequence ────────────────────────────────────────────────────────
 
 def _run_shutdown():
-    """Refresh dash files + offer to commit + push pending changes before exiting the shell."""
+    """Refresh dash files + save + push pending changes (no prompts) before exiting the shell."""
     from core.startup import startup_untracked_check, startup_commit_offer
     print()
     # Refresh panel.md and agenda.md so they're up-to-date for commit & cloud render

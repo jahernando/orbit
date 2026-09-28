@@ -17,6 +17,11 @@ ficheros modificados y guarda con `sync <fecha hora>`. Un mensaje propio solo
 con `orbit save --commit "…"`; el mensaje posicional (`orbit save "…"`)
 desaparece y ahora es un error de argumentos.
 
+El save+push del arranque de la shell y de `end` (`startup_commit_offer`) sigue
+la misma regla: ya no pregunta `[mensaje / Enter / n]`, guarda y empuja
+directamente con `sync <fecha hora>`. Se corrige de paso que responder `s`
+hacía un commit con el mensaje "s". Fuera de una tty no hace nada, como antes.
+
 ### Unreleased — `--end` en eventos recurrentes: rechazado si solapa la serie
 
 `ev add … --recur weekly --end 2026-12-01` creaba un evento **de 76 días** que se

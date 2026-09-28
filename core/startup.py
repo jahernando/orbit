@@ -3,7 +3,7 @@
 Three checks, each callable independently:
 
   startup_untracked_check  — stage tracked files; prompt about untracked.
-  startup_commit_offer     — if anything is staged, offer to commit (+push).
+  startup_commit_offer     — if anything is staged, save (+push) without asking.
   startup_code_update_check — fetch ORBIT_CODE and offer to pull/merge if behind.
 
 Carved out of ``core/commit.py`` in v0.38: these are about *shell startup*,
@@ -199,9 +199,11 @@ def startup_untracked_check() -> None:
 
 
 def startup_commit_offer() -> None:
-    """Show uncommitted changes and offer to commit + push.
+    """Show uncommitted changes and save (+push) them without asking.
 
-    Called after untracked check so all staged files are visible.
+    Same rule as ``orbit save``: no message prompt, no confirmation; the
+    message is always ``sync <fecha hora>``. Called after untracked check so
+    all staged files are visible. Only in a tty (never from scripts/pipes).
     """
     status = [(c, p) for c, p in _git_status() if c != "??"]
     if not status:
@@ -215,23 +217,11 @@ def startup_commit_offer() -> None:
         print(f"      ... y {n - 5} más")
     print()
 
-    default_msg = f"sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-    can_push = _can_push()
-
     if not sys.stdin.isatty():
         return
 
-    try:
-        prompt = "  ¿Save + push?" if can_push else "  ¿Save?"
-        raw = input(f"{prompt} [mensaje / Enter=\"{default_msg}\" / n]: ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return
-
-    if raw.lower() in ("n", "no"):
-        return
-
-    msg = raw if raw else default_msg
+    msg = f"sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    can_push = _can_push()
 
     rc = _git_commit(msg)
     if rc != 0:
