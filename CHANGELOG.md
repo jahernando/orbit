@@ -10,6 +10,27 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `--fup none`, `day fup`, verificación en el triaje, títulos únicos
+
+- **`--fup none` / `<tipo> fup … none`**: la tarea o el hito queda sin fecha,
+  hora, ring ni `⏩` (someday). Rechazado en eventos, recordatorios y
+  recurrentes, y combinado con `--date`/`--time`/`--recur`/`--ring`.
+- **`u` en `day`/`organize`** sobre una tarea o hito no recurrente con fecha:
+  además de poner el `⏩`, **quita la fecha y la hora** (el `⏩` es cuándo volver
+  a decidir). Acepta `none`. Eventos, recordatorios y recurrentes: solo `⏩`,
+  como antes.
+- **`day fup [proyecto]`**: la lista de `day`, sin menú; elegir un número pide
+  la fecha del `⏩`.
+- **Verificación**: tras cada acción del triaje se relee la agenda y se muestra,
+  encima del prompt, el estado real de la cita (`→ cancelada`, `→ completada`,
+  `→ sin fecha · ⏩ …`); un drop/done sin efecto se señala con `⚠️`.
+- **Títulos únicos**: `add` y `edit --text` rechazan un título que ya tiene
+  otra cita abierta del mismo tipo en la agenda (sin distinguir mayúsculas ni
+  espacios). Las cerradas no cuentan. La API (`core/api.py`, que usa `focus`)
+  no aplica la regla.
+
+---
+
 ### Unreleased — `save` no pregunta; mensaje propio con `--commit`
 
 `orbit save` ya no pide el mensaje ni la confirmación `[S/n]`: muestra los

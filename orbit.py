@@ -1333,7 +1333,13 @@ def cmd_ring(args):
 
 def cmd_day(args):
     from core.triage import run_day
-    return run_day(project=getattr(args, "project", None))
+    mode, project = getattr(args, "mode", None), getattr(args, "project", None)
+    if mode and mode != "fup":
+        if project:     # `day X` en el panel fijado, o `day X Y`
+            print(f"⚠️  No reconozco {mode!r}. Uso: day [fup] [proyecto]")
+            return 1
+        mode, project = None, mode      # `day next-kr`
+    return run_day(project=project, fup_only=mode == "fup")
 
 
 def cmd_organize(args):
@@ -1886,6 +1892,8 @@ def _build_parser():
     # --- day: triaje de lo de hoy ---
     day_p = subparsers.add_parser("day",
                                   help="Triaje del día: citas de hoy, vencidas y ⏩ <= hoy")
+    day_p.add_argument("mode", nargs="?", default=None, metavar="fup",
+                       help="fup: elegir un número pone ⏩ directamente (sin menú)")
     add_project_arg(day_p, required=False, help="Proyecto (omitir = todo el workspace)")
 
     # --- organize (alias: reorganize, legacy) ---

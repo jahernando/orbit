@@ -825,12 +825,17 @@ def run_fup(kind: str, project: Optional[str], text: Optional[str],
     """Typed followup verb: ``<kind> fup <project> <title> <date|clean>``.
 
     *kind* is a singular type name (task/milestone/event/reminder). *target*
-    is a date (adds a ⏩) or the literal ``clean`` (numbered remover).
+    is a date (adds a ⏩), the literal ``clean`` (numbered remover) or
+    ``none`` (the cita stays undated: same as ``edit --fup none``).
     """
     section = _FUP_KIND_SECTION.get(kind)
     kinds   = (section,) if section else None
     if target == "clean":
         return _fup_clean(project, text, kinds)
+    if target and target.strip().lower() == "none":
+        edit = {"tasks": run_task_edit, "milestones": run_ms_edit,
+                "events": run_ev_edit, "reminders": run_reminder_edit}[section]
+        return edit(project, text, fup="none")
     if not target:
         print("Error: especifica fecha o 'clean' "
               "(ej. task fup <proyecto> <texto> <YYYY-MM-DD>)")

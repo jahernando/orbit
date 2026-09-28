@@ -23,6 +23,7 @@ from core.agenda.io import _read_agenda, _write_agenda, _valid_date, _valid_time
 from core.agenda.display import (
     _select_item, _select_event, _select_item_reminder,
     _AGENDA_NOTE_PREFIX, _ROOM_NOTE_PREFIX, _STRUCTURED_PREFIXES,
+    _FOLLOWUP_NOTE_PREFIX,
 )
 
 
@@ -173,6 +174,44 @@ _TYPE_CONFIG = {
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
+
+def is_none_word(val) -> bool:
+    """``--fup none`` (any case): "sin fecha", not a date."""
+    return isinstance(val, str) and val.strip().lower() == "none"
+
+
+def _norm_title(text) -> str:
+    return " ".join(str(text or "").split()).casefold()
+
+
+def find_open_duplicate(items: list, text: str,
+                        exclude: Optional[dict] = None) -> Optional[dict]:
+    """Open item of *items* whose title equals *text* (case/space-insensitive).
+
+    Closed items (done / cancelled) don't count: repeating the title of
+    something already finished is normal. *exclude* is the item being
+    renamed, so it doesn't collide with itself.
+    """
+    key = _norm_title(text)
+    for it in items:
+        if it is exclude:
+            continue
+        if it.get("status") in ("done", "cancelled") or it.get("cancelled"):
+            continue
+        if _norm_title(it.get("desc")) == key:
+            return it
+    return None
+
+
+def _duplicate_message(cfg: dict, text: str, project_dir: Path) -> str:
+    return (f"⚠️  Ya hay «{text}» sin cerrar en la agenda de {project_dir.name} "
+            f"({cfg['label'].lower()}). Usa otro título o edita la existente.")
+
+
+def _undate_refusal(cfg: dict) -> str:
+    return (f"⚠️  --fup none deja la cita sin fecha, y un "
+            f"{cfg['label'].lower()} necesita fecha. Para quitarlo: drop.")
+
 
 def _resolve_project(project: Optional[str]) -> Optional[Path]:
     """Resolve project name to dir. Returns None on failure (prints error)."""
@@ -668,6 +707,22 @@ def _generic_add(type_name: str, project: str, text: str,
               f"<proyecto> \"<texto>\" ...")
         return 1
 
+    # Un título por cita abierta y agenda: los verbos localizan por título.
+    target_dir = _find_new_project(project) if project else None
+    if target_dir is not None:
+        existing = _read_agenda(resolve_file(target_dir, "agenda"))
+        if find_open_duplicate(existing.get(cfg["key"]) or [], text):
+            print(_duplicate_message(cfg, text, target_dir))
+            return 1
+
+    # --fup none = sin fecha: en el alta es la captura cruda de siempre.
+    undate = is_none_word(fup)
+    if undate:
+        if not cfg["has_status"]:
+            print(_undate_refusal(cfg))
+            return 1
+        fup = None
+
     # Guided interrogator (-i / add_mode=guided): fill optional gaps before
     # validation. TTY-guarded, inline values never re-asked (design §3).
     followups: list = []
@@ -675,6 +730,11 @@ def _generic_add(type_name: str, project: str, text: str,
         date_val, time_val, ring, desc, room, followups = _interrogate_add(
             type_name, cfg, date_val=date_val, time_val=time_val,
             ring=ring, desc=desc, room=room)
+
+    if undate and (date_val or time_val or recur):
+        print("⚠️  --fup none deja la cita sin fecha: no se combina con "
+              "--date / --time / --recur.")
+        return 1
 
     # Past-date confirmation (CLI-only, never raised by the API).
     if not recur and not _confirm_past_date(date_val):
@@ -880,6 +940,18 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
     """Generic edit for all 4 appointment types."""
     cfg = _TYPE_CONFIG[type_name]
 
+    # --fup none: la cita queda sin fecha (ni hora, ni ring, ni ⏩).
+    undate = is_none_word(fup)
+    if undate:
+        if not cfg["has_status"]:
+            print(_undate_refusal(cfg))
+            return 1
+        if new_date or new_time or new_recur or new_ring:
+            print("⚠️  --fup none deja la cita sin fecha: no se combina con "
+                  "--date / --time / --recur / --ring.")
+            return 1
+        fup = None
+
     # Inline followup (--fup DATE): normalise/validate up front so a bad date
     # fails before any mutation. Attached to the item that gets written below.
     fup_norm = None
@@ -927,6 +999,19 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
         item = items[idx]
 
     old_desc = item["desc"]
+
+    if new_text and find_open_duplicate(items, new_text, exclude=item):
+        print(_duplicate_message(cfg, new_text, project_dir))
+        return 1
+
+    if undate:
+        if item.get("recur"):
+            print(f"⚠️  «{old_desc}» es recurrente: no se puede dejar sin fecha. "
+                  "Quita antes la recurrencia (--recur none) o usa drop.")
+            return 1
+        new_date, new_time = "none", "none"
+        if cfg["has_ring"]:
+            new_ring = "none"
 
     # ── Occurrence vs Series for recurring items ──
     if item.get("recur") and not (new_recur and new_recur == "none"):
@@ -991,11 +1076,15 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
     if fup_norm:
         from core.agenda.display import add_followup
         add_followup(item, fup_norm)
+    if undate:
+        item["notes"] = [n for n in item.get("notes") or []
+                         if not n.startswith(_FOLLOWUP_NOTE_PREFIX)]
 
     _write_agenda(agenda_path, data)
     from core.agenda.display import format_item_block
     print(format_item_block(type_name, item,
-                            banner=f"{type_name} edit · {project_dir.name}"))
+                            banner=f"{type_name} edit · {project_dir.name}",
+                            state="sin fecha" if undate else None))
 
     # Ring update
     if cfg["has_ring"]:

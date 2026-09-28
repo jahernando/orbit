@@ -95,13 +95,23 @@ orbit project type drop <name>              # elimina tipo
 ## task — tareas
 
 ```bash
-orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE] [-i]
+orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE|none] [-i]
 orbit task done    [<project>] ["<text>"]
 orbit task drop    [<project>] ["<text>"] [--force] [-o] [-s]
 orbit task log     [<project>] ["<text>"]
-orbit task edit    [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE]
-orbit task fup     <project> "<text>" <DATE|clean> [--desc DESC]      # añade/quita followup ⏩ (ver Followups)
+orbit task edit    [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE|none]
+orbit task fup     <project> "<text>" <DATE|clean|none> [--desc DESC] # añade/quita followup ⏩; none = sin fecha (ver Followups)
 ```
+
+### Títulos únicos por agenda
+
+`add` rechaza una cita cuyo título ya lo tiene **otra abierta del mismo tipo**
+en la misma agenda (sin distinguir mayúsculas ni espacios repetidos); `edit
+--text` rechaza renombrar sobre uno existente. Las cerradas (hechas o
+canceladas) no cuentan: repetir el título de algo terminado es normal. Motivo:
+los verbos (`edit`, `done`, `drop`, `fup`, y `day`) localizan la cita por su
+título, y dos iguales abiertas son ambiguas. No aplica a los bloques de `focus`
+(que se crean por la API y llevan id propio).
 
 ### Modelo planned / someday (F5: eje `ff` retirado)
 
@@ -183,12 +193,12 @@ Todos los verbos que modifican una cita (`add`, `edit`, `done`, `drop`, `fup`) c
 ## ms — hitos
 
 ```bash
-orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE] [-i]
+orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE|none] [-i]
 orbit ms done   [<project>] ["<text>"]
 orbit ms drop   [<project>] ["<text>"] [--force] [-o] [-s]
 orbit ms log    [<project>] ["<text>"]
-orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE]
-orbit ms fup    <project> "<text>" <DATE|clean> [--desc DESC]
+orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE|none]
+orbit ms fup    <project> "<text>" <DATE|clean|none> [--desc DESC]
 ```
 
 ---
@@ -257,7 +267,16 @@ orbit <tipo> fup <project> "<text>" <date> [--desc DESC]   # añade ⏩ (tipo = 
 orbit <tipo> fup <project> "<text>" clean                  # borra un ⏩ (listado numerado si hay varios)
 orbit <tipo> add  <project> "<text>" ... --fup <date>      # crea la cita ya con un ⏩ colgado
 orbit <tipo> edit <project> "<text>" ... --fup <date>      # añade un ⏩ al editar
+orbit <tipo> fup  <project> "<text>" none                  # sin fecha (ver abajo)
+orbit <tipo> edit <project> "<text>" --fup none            # ídem
 ```
+
+- **`none` = "sin fecha"**: la tarea o el hito se queda **sin fecha, sin hora,
+  sin ring y sin `⏩`** — en reposo (*someday*); vuelve a salir en `organize`
+  (bloque Sin fecha). Solo tareas e hitos **no recurrentes**: un evento o un
+  recordatorio necesitan fecha (para quitarlos, `drop`) y una serie recurrente
+  hay que desrecurrirla antes (`--recur none`). `add … --fup none` es la captura
+  sin fecha de siempre; no se combina con `--date`/`--time`/`--recur`.
 
 - `<tipo> fup` acota la búsqueda a ese tipo (un `task fup` nunca engancha un evento homónimo).
 - `clean` lista los `⏩` de la cita numerados y borra el que elijas; si solo hay uno, lo borra directo. `--desc` se ignora con `clean`.
@@ -831,6 +850,8 @@ Proyectos locales se muestran como links a `project.md`; federados con emoji del
 ```bash
 day                  # hoy en todo el workspace
 day next-kr          # hoy en un proyecto (en su panel fijado: `day` a secas)
+day fup              # la misma lista, pero elegir un número pone ⏩ directamente
+day fup next-kr      # ídem en un proyecto (en su panel fijado: `day fup`)
 ```
 
 Lista numerada de lo que pide atención **hoy**, por bloques:
@@ -856,13 +877,19 @@ Eliges un número y una acción (mismo menú que `organize`):
 |---|---|
 | `h` | hora (`HH:MM` o `HH:MM-HH:MM`); si la cita no es de hoy, pide fecha (Enter = hoy) |
 | `f` | fecha (`mañana`, `viernes`, `+3`, `YYYY-MM-DD`) |
-| `u` | followup: `fecha [descripción]`, Enter = mañana. Si la cita tenía `⏩` vencidos, los **mueve** a esa fecha (conservando su descripción); si no, añade uno |
+| `u` | followup: `fecha [descripción]`, Enter = mañana, `none` = sin fecha. Si la cita tenía `⏩` vencidos, los **mueve** a esa fecha (conservando su descripción); si no, añade uno. En tareas e hitos no recurrentes, además **quita la fecha y la hora**: el `⏩` es cuándo volver a decidir. `none` la deja sin fecha y sin `⏩` |
 | `c` | borra un `⏩` (si hay varios, pregunta cuál) |
 | `n` | done (tareas e hitos) |
 | `d` | drop, con confirmación (defecto No) |
 | `s` / Enter | vuelve a la lista sin tocar nada |
 
 - Dar fecha u hora (`f`/`h`) **resuelve** los `⏩` vencidos de la cita: se borran.
+- Tras cada acción, encima del prompt, una línea **relee la agenda** y dice cómo
+  quedó la cita: `✓ ✏️ «X» · 💻foo → cancelada` (o `completada`, `eliminado de
+  la agenda`, `sin fecha · ⏩ 10-02`, `2026-10-01 10:00`…). Si un drop o un done
+  no surtió efecto, lo dice con `⚠️ … NO se ha cancelado`.
+- `day fup`: la misma lista, sin menú; eliges número y te pide la fecha del `⏩`
+  (Enter = mañana, `none` = sin fecha).
 - Las mutaciones usan los mismos runners que `task edit`, `task done`…: imprimen
   el item resultante, dejan undo y, en recurrentes, preguntan ocurrencia o serie.
 - Al salir (`q`) con cambios, refresca derivados (dash + ring + .ics).

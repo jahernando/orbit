@@ -49,6 +49,8 @@ from core.organize import (_prompt, _looks_iso, _edit_kind_date, _drop_kind,
 KIND_EMOJI = {"task": "✏️", "ms": "🏁", "ev": "📅", "reminder": "💬"}
 KIND_LABEL = {"task": "tarea", "ms": "hito", "ev": "evento",
               "reminder": "recordatorio"}
+_KIND_ENDING = {"task": "a", "ms": "o", "ev": "o", "reminder": "o"}   # cancelad-a/o
+_KIND_ENDING = {"task": "a", "ms": "o", "ev": "o", "reminder": "o"}   # cancelad-a/o
 _SECTION_OF = {"task": "tasks", "ms": "milestones", "ev": "events",
                "reminder": "reminders"}
 
@@ -450,10 +452,13 @@ def parse_fup_input(raw: str, today: date) -> Optional[tuple]:
     """``"fecha [desc]"`` → ``(iso, desc)``. Vacío = mañana. None si no vale.
 
     Se intenta la cadena entera como fecha (``next monday``) y, si no, el
-    primer token como fecha y el resto como descripción.
+    primer token como fecha y el resto como descripción. ``none`` →
+    ``("none", None)``: la cita queda sin fecha.
     """
     if not raw:
         return (today + timedelta(days=1)).isoformat(), None
+    if raw.strip().lower() == "none":
+        return "none", None
     whole = _parse_date(raw)
     if _looks_iso(whole):
         return whole, None
@@ -464,13 +469,39 @@ def parse_fup_input(raw: str, today: date) -> Optional[tuple]:
     return None
 
 
+def _undatable(row: Row) -> bool:
+    """Tareas e hitos no recurrentes: pueden quedarse sin fecha."""
+    return row.kind in ("task", "ms") and not row.item.get("recur")
+
+
+def _edit_kind_undate(row: Row, *, drop_followups: bool) -> None:
+    """Quita fecha, hora y ring (y los ⏩ si *drop_followups*) vía runner."""
+    from core.agenda_cmds import run_task_edit, run_ms_edit
+    edit = run_task_edit if row.kind == "task" else run_ms_edit
+    if drop_followups:
+        edit(row.project_dir.name, row.item["desc"], fup="none", force=True)
+    else:
+        edit(row.project_dir.name, row.item["desc"], new_date="none",
+             new_time="none", new_ring="none", force=True)
+
+
 def _act_fup(row: Row, today: date) -> bool:
-    raw = _prompt("    ⏩ fecha [descripción] (enter = mañana): ")
+    """⏩ sobre la cita. En tareas e hitos no recurrentes, además la deja
+    **sin fecha**: el ⏩ es cuándo volver a decidir, no una fecha más."""
+    raw = _prompt("    ⏩ fecha [descripción] (enter = mañana, none = sin fecha): ")
     parsed = parse_fup_input(raw, today)
     if parsed is None:
-        print(f"  ⚠️  Fecha no reconocida: {raw!r}. Usa YYYY-MM-DD, mañana, +N…")
+        print(f"  ⚠️  Fecha no reconocida: {raw!r}. Usa YYYY-MM-DD, mañana, +N, none…")
         return False
     new_date, desc = parsed
+    if new_date == "none":
+        if not _undatable(row):
+            why = ("es recurrente" if row.item.get("recur")
+                   else f"un {KIND_LABEL[row.kind]} necesita fecha")
+            print(f"  ⚠️  No se puede dejar sin fecha: {why}. Usa [d]rop o [c]lear-⏩.")
+            return False
+        _edit_kind_undate(row, drop_followups=True)
+        return True
     if new_date < today.isoformat():
         print(f"  ⚠️  {new_date} ya ha pasado; un ⏩ mira hacia delante.")
         return False
@@ -487,6 +518,9 @@ def _act_fup(row: Row, today: date) -> bool:
         desc = desc or f.get("desc")
     add_followup(target, new_date, desc)
     _write_agenda(agenda, data)
+    if _undatable(row) and target.get("date"):
+        _edit_kind_undate(row, drop_followups=False)    # imprime el item final
+        return True
     if moved:
         olds = ", ".join(m.split(None, 2)[1] for m in moved)
         banner = f"⏩ movido {olds} → {new_date}"
@@ -558,6 +592,57 @@ ACTIONS: dict = {
 }
 
 
+# ── Verificación ──────────────────────────────────────────────────────────
+#
+# Tras cada acción se relee la agenda y se dice en qué estado quedó la cita,
+# justo encima del prompt (el echo del runner queda arriba, tapado por la
+# lista). Localiza por posición en su sección, tomada antes de actuar.
+
+def _section_items(row: Row) -> list:
+    data = _read_agenda(resolve_file(row.project_dir, "agenda"))
+    return data.get(_SECTION_OF[row.kind]) or []
+
+
+def _same(a: dict, b: dict) -> bool:
+    oid = b.get("orbit_id")
+    return a.get("orbit_id") == oid if oid else a.get("desc") == b.get("desc")
+
+
+def locate_index(row: Row) -> Optional[int]:
+    items = _section_items(row)
+    for i, it in enumerate(items):
+        if it == row.item:
+            return i
+    for i, it in enumerate(items):
+        if _same(it, row.item):
+            return i
+    return None
+
+
+def describe_after(row: Row, idx: Optional[int], action: str) -> str:
+    """Una línea con el estado real de la cita tras *action*."""
+    e = _KIND_ENDING[row.kind]
+    head = (f"{KIND_EMOJI[row.kind]} «{row.item.get('desc', '')}» "
+            f"· {row.project_dir.name}")
+    items = _section_items(row)
+    it = items[idx] if idx is not None and idx < len(items) else None
+    if it is None or not _same(it, row.item):
+        return f"✓ {head} → eliminad{e} de la agenda"
+    if it.get("status") == "cancelled" or it.get("cancelled"):
+        return f"✓ {head} → cancelad{e}"
+    if it.get("status") == "done":
+        return f"✓ {head} → completad{e}"
+    when = " ".join(x for x in (it.get("date"), it.get("time")) if x)
+    state = when or "sin fecha"
+    fups = ", ".join(f["date"] for f in item_followups(it) if f["date"])
+    if fups:
+        state += f" · ⏩ {fups}"
+    if action in ("d", "n") and it.get("date") == row.item.get("date"):
+        verb = "cancelad" if action == "d" else "completad"
+        return f"⚠️  {head} NO se ha {verb}o: sigue abiert{e} ({state})"
+    return f"✓ {head} → {state}"
+
+
 # ── Bucle ─────────────────────────────────────────────────────────────────
 
 def _refresh(applied: int) -> None:
@@ -575,8 +660,11 @@ def _refresh(applied: int) -> None:
 
 
 def run_loop(title: str, dirs: list, full: bool, show_project: bool,
-             today_fn: Callable[[], date] = date.today) -> int:
+             today_fn: Callable[[], date] = date.today,
+             fup_only: bool = False) -> int:
+    """*fup_only* (``day fup``): sin menú; elegir número = poner ⏩."""
     applied = 0
+    last = None             # verificación de la última acción
     while True:
         today = today_fn()
         sections = collect(dirs, today, full)
@@ -588,6 +676,9 @@ def run_loop(title: str, dirs: list, full: bool, show_project: bool,
                                   show_project, show_progress=full):
             print(line)
         print("─" * 70)
+        if last:
+            print(last)
+            last = None
         if not rows:
             _refresh(applied)
             return 0
@@ -608,17 +699,22 @@ def run_loop(title: str, dirs: list, full: bool, show_project: bool,
         row = rows[idx - 1]
         print()
         print(format_row(idx, row, today, show_project).strip())
-        print(menu_for(row))
-        action = _prompt("  ?> ").lower()
+        if fup_only:
+            action = "u"
+        else:
+            print(menu_for(row))
+            action = _prompt("  ?> ").lower()
         if action == "q":
             _refresh(applied)
             return 0
         fn = ACTIONS.get(action)
         if fn is None:
             continue            # s / enter / desconocida → vuelve a la lista
+        pos = locate_index(row)
         try:
             if fn(row, today):
                 applied += 1
+                last = describe_after(row, pos, action)
         except Exception as exc:
             print(f"  ⚠️  Error: {exc}")
 
@@ -629,15 +725,20 @@ def _day_label(today: date) -> str:
     return f"{today.isoformat()} ({_DAY_NAMES[today.weekday()]})"
 
 
-def run_day(project: Optional[str] = None) -> int:
-    """`day [proyecto]` — triaje de lo de hoy."""
+def run_day(project: Optional[str] = None, fup_only: bool = False) -> int:
+    """`day [fup] [proyecto]` — triaje de lo de hoy.
+
+    Con *fup_only* la lista es la misma, pero elegir un número pide
+    directamente la fecha del ⏩ (sin menú).
+    """
     dirs = resolve_dirs(project)
     if dirs is None:
         return 1
     today = date.today()
     scope = dirs[0].name if project else "workspace"
-    return run_loop(f"Día — {_day_label(today)} · {scope}", dirs,
-                    full=False, show_project=not project)
+    head = "Día · ⏩ fup" if fup_only else "Día"
+    return run_loop(f"{head} — {_day_label(today)} · {scope}", dirs,
+                    full=False, show_project=not project, fup_only=fup_only)
 
 
 def run_organize_project(project: str) -> int:

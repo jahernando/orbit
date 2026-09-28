@@ -964,6 +964,27 @@ Tres fricciones reales:
 
 ---
 
+## ADR-052 — El `⏩` de una tarea la deja sin fecha; títulos únicos por agenda
+
+**Estado**: aceptada (2026-09-28). Enmienda el punto 3 de ADR-051.
+
+**Contexto**: en `day`, poner un `⏩` a una tarea de hoy le dejaba la fecha. Mañana salía en ⚠️ Vencidas —que tiene prioridad sobre ⏩ Decidir— y el `⏩` no servía de nada: la tarea no se iba del día. El usuario quiere además un modo `day fup` para aplazar varias citas seguidas, y poder decir "no sé cuándo": dejar la tarea sin fecha. Por otro lado, todos los verbos (y el triaje, que delega en ellos) localizan la cita por su título; con dos abiertas iguales la acción puede caer sobre la que no es.
+
+**Decisión**:
+
+1. **En el triaje, `⏩` sobre una tarea o hito no recurrente quita la fecha y la hora.** El `⏩` pasa a ser *cuándo volver a decidir*, no una fecha más; la tarea sale del día y reaparece en ⏩ Decidir en su fecha. Eventos y recordatorios conservan la fecha (ocurren en ella); las recurrentes también (quitarla rompería la serie). Solo en el triaje: `task fup X DATE` y `--fup DATE` fuera de él siguen **añadiendo** un `⏩` sin tocar la fecha —ahí se usa para colgar un recordatorio a algo que sí tiene fecha—.
+2. **`none` = sin fecha**, en el prompt del triaje, en `--fup` y en el verbo `fup`: sin fecha, hora, ring ni `⏩`. Es el *someday* que ya existía (`task_state`), ahora alcanzable en un paso. Rechazado donde no tiene sentido (evento, recordatorio, recurrente) en vez de degradarlo en silencio.
+3. **Verificación releyendo la verdad.** El echo del runner ya existía, pero la lista redibujada lo tapaba. Tras cada acción se relee la agenda y se imprime una línea con el estado real justo encima del prompt; si el drop/done no surtió efecto, lo dice.
+4. **Títulos únicos entre las citas abiertas de un mismo tipo y agenda**, comprobado en el CLI (`add`, `edit --text`), no en la API: `focus` crea varios bloques con el mismo título en la misma semana y los identifica por `orbit_id`. Las cerradas no cuentan.
+
+**Consecuencias**:
+- Pros: aplazar es una tecla y la tarea desaparece del día; "no sé cuándo" tiene nombre; ya no se puede crear la ambigüedad que hace que un verbo actúe sobre la cita equivocada.
+- Contras: `u` hace más de lo que dice su nombre en tareas con fecha (queda documentado en el menú de CHULETA); las duplicadas que ya existan no se detectan (no hay chequeo en doctor, que haría preguntar al `save`).
+
+**Verificación**: `tests/test_fup_none_dupes.py`.
+
+---
+
 ## ADR-051 — `day` y `organize <proyecto>`: dos triajes, un motor
 
 **Estado**: aceptada (2026-09-16).
