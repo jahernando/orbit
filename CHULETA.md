@@ -767,8 +767,9 @@ orbit agenda clean [project...] [--dry-run]   # borra lo cerrado y lo pasado has
 
 - `agenda clean` = `archive <project> --agenda --months 0`: tareas/hitos hechos o
   cancelados y eventos ya terminados; las series recurrentes solo si acabaron
-  (ver `archive`). Pregunta antes de borrar; `--dry-run` solo lo lista. Sin
-  proyecto: el del panel fijado o, en el general, todos.
+  (ver `archive`). **Lista una a una las citas que borraría y pregunta
+  `[s/N]`** (Enter = no borrar); no hace falta un paso previo. `--dry-run` solo
+  lista, sin preguntar. Sin proyecto: el del panel fijado o, en el general, todos.
 
 - Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
 - Atajos de periodo: `today`/`hoy`, `week`/`semana`, `month`/`mes`
@@ -1328,6 +1329,8 @@ orbit archive orbit --agenda --logbook    # combinación
 
 - Sin proyecto: limpia todos los proyectos
 - Sin flags: limpia todo, preguntando confirmación por cada categoría
+- La agenda muestra la lista de citas que se borrarían y pregunta `[s/N]`
+  (Enter = no); logbook y notas siguen preguntando `[S/n]` con el recuento
 - `--months N`: antigüedad mínima para eliminar (defecto: 6 meses)
 - `--dry-run`: muestra qué se eliminaría sin borrar nada
 - `--force`: salta todas las confirmaciones

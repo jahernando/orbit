@@ -416,3 +416,45 @@ class TestAgendaClean:
     def test_without_project_general_panel_is_all(self, monkeypatch):
         calls = self._run(monkeypatch, ["agenda", "clean"])
         assert [c["project"] for c in calls] == [None]
+
+
+# ── agenda: lista antes de confirmar, Enter = no ─────────────────────────────
+
+class TestAgendaListAndConfirm:
+    def _proj(self, tmp_path):
+        from core.agenda_cmds import _read_agenda, _write_agenda
+        proj = _make_project(tmp_path, agenda="# Agenda\n")
+        path = proj / "test-proj-agenda.md"
+        data = _read_agenda(path)
+        data["tasks"] = [{"desc": "tarea hecha", "status": "done",
+                          "date": _days_ago(10)},
+                         {"desc": "tarea viva", "status": "pending"}]
+        data["events"] = [{"desc": "charla pasada", "date": _days_ago(5)},
+                          {"desc": "serie viva", "date": _days_ago(90),
+                           "recur": "weekly"}]
+        _write_agenda(path, data)
+        return proj, path
+
+    def _run(self, tmp_path, monkeypatch, answer, dry_run=False):
+        from core.agenda_cmds import _read_agenda
+        proj, path = self._proj(tmp_path)
+        monkeypatch.setattr("core.archive._find_new_project", lambda n: proj)
+        monkeypatch.setattr("sys.stdin", type("T", (), {"isatty": lambda s: True})())
+        monkeypatch.setattr("builtins.input", lambda p="": answer)
+        run_archive(project="x", months=0, dry_run=dry_run, do_agenda=True)
+        return _read_agenda(path)
+
+    def test_lists_titles(self, tmp_path, monkeypatch, capsys):
+        self._run(tmp_path, monkeypatch, "", dry_run=True)
+        out = capsys.readouterr().out
+        assert "tarea hecha" in out and "charla pasada" in out
+        assert "tarea viva" not in out and "serie viva" not in out
+
+    def test_enter_does_not_delete(self, tmp_path, monkeypatch):
+        data = self._run(tmp_path, monkeypatch, "")
+        assert len(data["tasks"]) == 2 and len(data["events"]) == 2
+
+    def test_yes_deletes(self, tmp_path, monkeypatch):
+        data = self._run(tmp_path, monkeypatch, "s")
+        assert [t["desc"] for t in data["tasks"]] == ["tarea viva"]
+        assert [e["desc"] for e in data["events"]] == ["serie viva"]

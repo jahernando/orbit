@@ -16,6 +16,10 @@ Alias de `archive <proyecto> --agenda --months 0`: borra de la agenda lo
 cerrado y lo pasado hasta hoy, con la misma confirmación. Sin proyecto usa el
 del panel fijado (nunca barre el workspace desde un panel de proyecto).
 
+La parte de agenda de `archive` (y por tanto `agenda clean`) **lista cada cita**
+que borraría —antes solo daba el recuento— y la confirmación pasa a `[s/N]`:
+Enter ya no borra.
+
 ---
 
 ### Unreleased — `archive --agenda` ya no borra series vivas ni eventos en curso

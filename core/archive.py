@@ -27,8 +27,11 @@ _DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s")
 
 # ── Confirmation helper ─────────────────────────────────────────────────────
 
-def _confirm(prompt: str, force: bool) -> bool:
-    """Ask user for confirmation. Returns True if accepted."""
+def _confirm(prompt: str, force: bool, default: bool = True) -> bool:
+    """Ask user for confirmation. Returns True if accepted.
+
+    *default* is what Enter means ([S/n] vs [s/N]).
+    """
     if force:
         return True
     if not sys.stdin.isatty():
@@ -38,7 +41,9 @@ def _confirm(prompt: str, force: bool) -> bool:
     except (EOFError, KeyboardInterrupt):
         print()
         return False
-    return ans in ("", "s", "si", "sí", "y", "yes")
+    if not ans:
+        return default
+    return ans in ("s", "si", "sí", "y", "yes")
 
 
 # ── Counting helpers (dry-run / preview) ─────────────────────────────────────
@@ -62,20 +67,48 @@ def _count_old_logbook(project_dir: Path, cutoff: date) -> int:
     return count
 
 
-def _count_done_agenda(project_dir: Path, cutoff: date) -> tuple:
-    """Count done/cancelled tasks+milestones and past events. Returns (n_done, n_events)."""
+def _agenda_candidates(project_dir: Path, cutoff: date) -> tuple:
+    """Lo que el archivado borraría de la agenda: ``(done_items, events)``.
+
+    ``done_items`` son pares ``(emoji, item)`` de tareas e hitos cerrados.
+    """
     from core.agenda_cmds import _read_agenda
     agenda_path = resolve_file(project_dir, "agenda")
     if not agenda_path.exists():
-        return 0, 0
+        return [], []
 
     data = _read_agenda(agenda_path)
-    n_done = 0
-    for item in data["tasks"] + data["milestones"]:
-        if item["status"] in ("done", "cancelled") and _item_before(item, cutoff):
-            n_done += 1
-    n_events = sum(1 for ev in data["events"] if _event_last_day(ev) < cutoff)
-    return n_done, n_events
+    done = [(emoji, item)
+            for emoji, key in (("✏️", "tasks"), ("🏁", "milestones"))
+            for item in data[key]
+            if item["status"] in ("done", "cancelled")
+            and _item_before(item, cutoff)]
+    events = [ev for ev in data["events"] if _event_last_day(ev) < cutoff]
+    return done, events
+
+
+def _count_done_agenda(project_dir: Path, cutoff: date) -> tuple:
+    """Count done/cancelled tasks+milestones and past events. Returns (n_done, n_events)."""
+    done, events = _agenda_candidates(project_dir, cutoff)
+    return len(done), len(events)
+
+
+def _format_candidates(done: list, events: list) -> list:
+    """Una línea por cita que se borraría, para verla antes de confirmar."""
+    lines = []
+    for emoji, it in done:
+        mark = "[x]" if it["status"] == "done" else "[-]"
+        when = it.get("date") or "sin fecha"
+        lines.append(f"        {emoji} {mark} {when:<10}  {it.get('desc', '')}")
+    for ev in events:
+        when = ev.get("date") or "?"
+        extra = ""
+        if ev.get("recur"):
+            extra = f"  (🔄 {ev['recur']} hasta {ev.get('until')})"
+        elif ev.get("end"):
+            extra = f"  (→ {ev['end']})"
+        lines.append(f"        📅     {when:<10}  {ev.get('desc', '')}{extra}")
+    return lines
 
 
 def _item_before(item: dict, cutoff: date) -> bool:
@@ -359,7 +392,7 @@ def run_archive(project: Optional[str] = None, months: int = 6,
     do_all = not (do_agenda or do_logbook or do_notes)
 
     cutoff = date.today() - timedelta(days=months * 30)
-    label = f"{months} meses"
+    label = f"{months} meses" if months else "hasta hoy"
 
     if project:
         project_dir = _find_new_project(project)
@@ -383,8 +416,10 @@ def run_archive(project: Optional[str] = None, months: int = 6,
         n_log = 0
         stale = []
 
+        done_items, past_events = [], []
         if do_all or do_agenda:
-            n_done, n_ev = _count_done_agenda(d, cutoff)
+            done_items, past_events = _agenda_candidates(d, cutoff)
+            n_done, n_ev = len(done_items), len(past_events)
         if do_all or do_logbook:
             n_log = _count_old_logbook(d, cutoff)
         if do_all or do_notes:
@@ -405,9 +440,13 @@ def run_archive(project: Optional[str] = None, months: int = 6,
                 parts.append(f"{n_ev} evento{'s' if n_ev != 1 else ''} pasado{'s' if n_ev != 1 else ''}")
             detail = " + ".join(parts)
 
+            print(f"    📋 {detail}:")
+            for line in _format_candidates(done_items, past_events):
+                print(line)
             if dry_run:
-                print(f"    📋 {detail}")
-            elif _confirm(f"    📋 {detail} — ¿Eliminar? [S/n]: ", force):
+                pass
+            elif _confirm("    ¿Eliminar estas citas? [s/N]: ", force,
+                          default=False):
                 if n_done:
                     total_agenda += _clean_done_items(d, cutoff)
                 if n_ev:
