@@ -10,6 +10,17 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — ledger F4: `ledger <proyecto> --export <dir>` (ADR-053)
+
+- `views/ledger_export.py`: `ledger.pdf` (reportlab, apaisado), `ledger.xlsx`
+  (openpyxl: Resumen · Operaciones · Movimientos) y `justificantes/` solo con
+  lo enlazado. Enlaces relativos; idempotente (sincroniza `justificantes/`).
+- Pasa `--check` antes: con errores no exporta.
+- Extra `ledger` en `pyproject.toml` (reportlab, openpyxl); los tests se
+  saltan sin ellos.
+
+---
+
 ### Unreleased — ledger: dos ids y `ledger --reconcile` con la USC (ADR-053)
 
 - El `🆔` del `#pedido` es el nº de autorización de la USC (o uno provisional);

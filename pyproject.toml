@@ -20,6 +20,11 @@ gcal = [
     "google-auth-oauthlib",
 ]
 
+ledger = [
+    "reportlab",   # ledger --export: ledger.pdf
+    "openpyxl",    # ledger --export: ledger.xlsx
+]
+
 [tool.setuptools.packages.find]
 include = ["core*"]
 

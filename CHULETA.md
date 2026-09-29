@@ -565,6 +565,7 @@ orbit log <proyecto> "<concepto>" --entry conciliacion --amount N
 orbit ledger <proyecto>       # regenera ledger.md + imprime tabla y saldo
 orbit ledger <proyecto> --check [--strict]   # comprueba el ledger (no escribe)
 orbit ledger <proyecto> --reconcile <Execucion.pdf> <obrigasexcel.xls>   # concilia con la USC
+orbit ledger <proyecto> --export <dir>   # ledger.pdf + ledger.xlsx + justificantes/ para compartir
 orbit ls ledger [proyecto]    # solo imprime (no toca el disco)
 ```
 
@@ -678,6 +679,24 @@ perceptor, importe imputado —ImpOrzamento—, fecha de pago).
   `ledger.md`. Todo lo demás es lectura.
 - Sin el excel no compara facturas (el PDF no trae el nº de autorización de
   cada obligación).
+
+**Export para compartir** (`ledger <proyecto> --export <dir>`). Genera en
+`<dir>`:
+
+- `ledger.pdf` — resumen (con fecha de generación), operaciones (Aut. ·
+  Factura · concepto con enlaces a los justificantes · comprometido · gastado ·
+  estado · moneda original) y dotación. Para leer.
+- `ledger.xlsx` — hojas *Resumen*, *Operaciones* y *Movimientos* (una fila por
+  entrada, con su justificante enlazado); importes como números. Copia editable.
+- `justificantes/` — **solo** los ficheros que enlaza algún movimiento; nada
+  más de `cloud/logs/` sale de ahí.
+
+Antes pasa `--check`: **con errores no exporta**; los avisos se cuentan y se
+sigue. Es idempotente: regenera `ledger.*` y sincroniza `justificantes/`
+(copia lo nuevo o cambiado, quita lo que ya no se enlaza). Los enlaces son
+relativos (`justificantes/…`): funcionan con la carpeta descargada o
+sincronizada. Publicarla (OneDrive…) es cosa de otra herramienta. Necesita
+`pip install reportlab openpyxl` (extra `ledger`).
 
 **Comprobación** (`ledger <proyecto> --check`). Lee el logbook y
 `cloud/logs/`, no escribe nada. Tres niveles:

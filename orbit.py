@@ -415,6 +415,9 @@ def cmd_log(args):
 
 
 def cmd_ledger(args):
+    if getattr(args, "export", None):
+        from views.ledger_export import run_ledger_export
+        return run_ledger_export(args.project, args.export)
     if getattr(args, "reconcile", None):
         from views.ledger_reconcile import run_ledger_reconcile
         return run_ledger_reconcile(args.project, args.reconcile)
@@ -1899,6 +1902,9 @@ def _build_parser():
                           help="Comprueba el ledger: errores, avisos e info (no escribe)")
     ledger_p.add_argument("--strict", action="store_true",
                           help="Con --check: los avisos también dan código de error")
+    ledger_p.add_argument("--export", default=None, metavar="DIR",
+                          help="Genera ledger.pdf, ledger.xlsx y justificantes/ en DIR "
+                               "(no exporta si hay errores)")
     ledger_p.add_argument("--reconcile", nargs="+", default=None, metavar="FICHERO",
                           help="Concilia con la ejecución de la USC: el PDF de "
                                "ejecución y/o el excel de obrigas")

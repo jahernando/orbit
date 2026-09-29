@@ -966,7 +966,7 @@ Tres fricciones reales:
 
 ## ADR-053 — Ledger con compromisos: el pedido compromete, la factura gasta
 
-**Estado**: aceptada (2026-09-29), en curso (F1–F3 + conciliación; faltan export y migración). Amplía ADR-048.
+**Estado**: aceptada (2026-09-29), en curso (F1–F4 + conciliación; falta la migración de datos). Amplía ADR-048.
 
 **Contexto**: al preparar el ledger de un proyecto para compartirlo con la USC apareció que hojas de pedido y facturas estaban todas como `#gasto`. En contabilidad pública la hoja de pedido *compromete* crédito y la factura (o la liquidación de dietas) lo *gasta*: contar las dos es contar el dinero dos veces, y contar solo una esconde lo comprometido.
 
