@@ -418,12 +418,10 @@ def cmd_ledger(args):
     if getattr(args, "export", None):
         from views.ledger_export import run_ledger_export
         return run_ledger_export(args.project, args.export)
-    if getattr(args, "reconcile", None):
-        from views.ledger_reconcile import run_ledger_reconcile
-        return run_ledger_reconcile(args.project, args.reconcile)
-    if getattr(args, "check", False):
+    if getattr(args, "check", None) is not None:
         from views.ledger_check import run_ledger_check
-        return run_ledger_check(args.project, strict=args.strict)
+        return run_ledger_check(args.project, strict=args.strict,
+                                files=args.check)
     from views.ledger import run_ledger
     return run_ledger(args.project)
 
@@ -1898,16 +1896,15 @@ def _build_parser():
     ledger_p = subparsers.add_parser(
         "ledger", help="Regenera ledger.md del proyecto e imprime tabla + saldo")
     add_project_arg(ledger_p, help="Project name (partial match)")
-    ledger_p.add_argument("--check", action="store_true",
-                          help="Comprueba el ledger: errores, avisos e info (no escribe)")
+    ledger_p.add_argument("--check", nargs="*", default=None, metavar="FICHERO",
+                          help="Comprueba el ledger (errores, avisos, info). Con el PDF "
+                               "de ejecución y/o el excel de obrigas de la USC, además "
+                               "concilia y pone la columna USC en ledger.md")
     ledger_p.add_argument("--strict", action="store_true",
                           help="Con --check: los avisos también dan código de error")
     ledger_p.add_argument("--export", default=None, metavar="DIR",
                           help="Genera ledger.pdf, ledger.xlsx y justificantes/ en DIR "
                                "(no exporta si hay errores)")
-    ledger_p.add_argument("--reconcile", nargs="+", default=None, metavar="FICHERO",
-                          help="Concilia con la ejecución de la USC: el PDF de "
-                               "ejecución y/o el excel de obrigas")
 
     subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,calendar,cronos,hitos,logbook,report-summary}.md + 📊panel/ring/rings.md")
 

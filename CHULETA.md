@@ -564,7 +564,7 @@ orbit log <proyecto> "<concepto>" --entry conciliacion --amount N
 
 orbit ledger <proyecto>       # regenera ledger.md + imprime tabla y saldo
 orbit ledger <proyecto> --check [--strict]   # comprueba el ledger (no escribe)
-orbit ledger <proyecto> --reconcile <Execucion.pdf> <obrigasexcel.xls>   # concilia con la USC
+orbit ledger <proyecto> --check <Execucion.pdf> <obrigasexcel.xls>   # + concilia con la USC (columna USC)
 orbit ledger <proyecto> --export <dir>   # ledger.pdf + ledger.xlsx + justificantes/ para compartir
 orbit ls ledger [proyecto]    # solo imprime (no toca el disco)
 ```
@@ -644,12 +644,13 @@ cerrado / anulado) se reconstruye leyendo la cadena.
 
 **Dos ids** (vocabulario de la USC): el `🆔` de un `#pedido` es el **número de
 autorización** (`CM26XXXX0001`, `621A-25-XXXX-14`); si aún no lo tienes,
-`--id` se omite y se pone uno provisional (`P01`) que `--reconcile` cambia por
+`--id` se omite y se pone uno provisional (`P01`) que `--check <ficheros>` cambia por
 el oficial. El `🆔` de un `#gasto` es el **número de factura** (NúmFac), y su
 `🔗` la autorización que consume. En `ledger.md` son las columnas **Aut.** y
 **Factura**; un gasto sin hoja (dietas) solo tiene la segunda.
 
-**Conciliación con la USC** (`ledger <proyecto> --reconcile …`). Acepta el PDF
+**Conciliación con la USC** (`ledger <proyecto> --check <ficheros>`). El mismo
+`--check`, pasándole los ficheros de la USC, además concilia. Acepta el PDF
 de *Execución Orzamentaria da Partida* y/o el excel de *obrigas* (que en
 realidad es HTML). Del PDF lee el resumen (crédito · gastos incluidas
 autorizaciones · dispoñible), las dotaciones y las autorizaciones con su
@@ -679,6 +680,25 @@ perceptor, importe imputado —ImpOrzamento—, fecha de pago).
   `ledger.md`. Todo lo demás es lectura.
 - Sin el excel no compara facturas (el PDF no trae el nº de autorización de
   cada obligación).
+- **Guarda los ficheros** en `cloud/logs/` con la fecha de la USC
+  (`2026-09-29_Execucion_<partida>.pdf`, `2026-09-29_obrigas_<partida>.xls`) y
+  **anota una `#conciliacion`** de esa fecha (el PDF enlazado, el excel como
+  `📎`, el disponible de la USC como importe). Si ya hay una de esa fecha, no la
+  repite. Sin el PDF no se anota.
+- **Columna USC en `ledger.md`** (y en el export), sacada de los ficheros de la
+  última `#conciliacion` cada vez que se regenera (no hay estado aparte):
+
+  | Marca | Significado |
+  |---|---|
+  | `ok CM26…` | casa por número, con el nº de la USC |
+  | `ok? CM26…` | casa por importe, fecha y tercero (el nº aún no está en el ledger) |
+  | `!↑` | está en la USC y no aquí: sale como fila, con los datos de la USC |
+  | `!↓` | está aquí y no en la USC (aún no tramitada o reconocida) |
+  | `!` | no encaja: importe distinto, o la USC la tiene sin saldo ni obligaciones (detalle en *No encaja con la USC*) |
+
+  Una operación con pedido y factura lleva la peor marca de las dos. Si los
+  ficheros no están disponibles, la columna no sale y `ledger.md` lo dice.
+- `--strict`: también da código de error con `!` o `!↑`.
 
 **Export para compartir** (`ledger <proyecto> --export <dir>`). Genera en
 `<dir>`:

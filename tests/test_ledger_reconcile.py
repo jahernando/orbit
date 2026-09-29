@@ -1,4 +1,4 @@
-"""test_ledger_reconcile.py — `ledger --reconcile` (ADR-053).
+"""test_ledger_reconcile.py — `ledger --check <ficheros de la USC>` (ADR-053).
 
 Los ficheros de la USC son **sintéticos**: misma estructura que los reales
 (tabla HTML en latin-1 con las columnas de `obrigasexcel.xls`; texto de
@@ -15,8 +15,9 @@ import pytest
 from core.ledger import build_operations, read_movements, rewrite_ids
 from views.ledger_reconcile import (
     PROBABLE, SURE, Aut, Mod, Obl, UscReport, _apply, load_report,
-    parse_execution_text, parse_obligations, reconcile, run_ledger_reconcile,
+    parse_execution_text, parse_obligations, reconcile,
 )
+from views.ledger_check import run_ledger_check
 
 D = Decimal
 
@@ -219,18 +220,121 @@ class TestRewrite:
         assert ids["Factura vuelo"] is None
 
 
-def test_cli(proj, tmp_path, capsys):
-    import orbit
-    xls = tmp_path / "obrigasexcel.xls"
-    xls.write_bytes(_xls(SIN_OBLIGA, CON_OBLIGA))
-    _write(proj, *LEDGER)
-    args = orbit._build_parser().parse_args(
-        ["ledger", "proyx", "--reconcile", str(xls)])
-    assert orbit.cmd_ledger(args) == 0
-    out = capsys.readouterr().out
-    assert "Conciliación con la USC" in out
-    assert "solo en el ledger" in out and "Dietas" in out
-
-
 def test_fichero_inexistente(proj, capsys):
-    assert run_ledger_reconcile("proyx", ["/no/existe.xls"]) == 1
+    assert run_ledger_check("proyx", files=["/no/existe.xls"]) == 1
+
+
+# ── `--check` con ficheros: guarda, anota, columna USC ───────────────────────
+
+@pytest.fixture
+def usc_files(tmp_path, monkeypatch):
+    pdf = tmp_path / "dl" / "Execucion_2010.XXXX.64100.pdf"
+    pdf.parent.mkdir()
+    pdf.write_bytes(b"%PDF-1.3 falso")
+    xls = tmp_path / "dl" / "obrigasexcel (6).xls"
+    xls.write_bytes(_xls(SIN_OBLIGA, CON_OBLIGA))
+    text = EXECUCION.replace("Resumo", "Datos dipoñibles no sisteman en ata: "
+                             "29/09/2026 7:06:29\nResumo")
+    monkeypatch.setattr("views.ledger_reconcile._pdf_text", lambda p: text)
+    return pdf, xls
+
+
+def _check(*argv):
+    import orbit
+    args = orbit._build_parser().parse_args(["ledger", "proyx", "--check", *argv])
+    return orbit.cmd_ledger(args)
+
+
+class TestCheckConFicheros:
+
+    def test_guarda_con_fecha_y_anota_una_vez(self, proj, usc_files):
+        _write(proj, *LEDGER)
+        pdf, xls = usc_files
+        _check(str(pdf), str(xls))
+        logs = sorted(f.name for f in (proj / "cloud" / "logs").iterdir())
+        assert logs == ["2026-09-29_Execucion_2010.XXXX.64100.pdf",
+                        "2026-09-29_obrigas_2010.XXXX.64100.xls"]
+        recons = [m for m in read_movements(proj)[0] if m.tag == "conciliacion"]
+        assert len(recons) == 1
+        r = recons[0]
+        assert r.amount == D("18121.36") and r.date == date(2026, 9, 29)
+        assert r.link.endswith("Execucion_2010.XXXX.64100.pdf")
+        assert r.attach.endswith("obrigas_2010.XXXX.64100.xls")
+        _check(str(pdf), str(xls))                       # otra vez: no repite
+        assert len([m for m in read_movements(proj)[0]
+                    if m.tag == "conciliacion"]) == 1
+
+    def test_columna_usc_en_ledger_md(self, proj, usc_files):
+        _write(proj, *LEDGER)
+        _check(*map(str, usc_files))
+        md = (proj / "ledger.md").read_text()
+        assert "Conciliado con la USC el 2026-09-29" in md
+        assert "| USC |" in md
+        def usc(concept):
+            line = next(l for l in md.splitlines()
+                        if l.startswith("| 2026-") and f"| {concept} |" in l)
+            return line.rstrip(" |").rsplit("|", 1)[1].strip()
+        assert usc("Folla vuelo · Factura vuelo") == "ok? CM26XX0001 · F-4471"
+        assert usc("Folla congreso") == "ok? AUT-001"
+        assert usc("Folla hotel") == "!↓"
+        assert usc("Dietas") == "!↓"
+
+    def test_la_columna_sobrevive_a_regenerar(self, proj, usc_files):
+        from views.ledger import write_ledger
+        _write(proj, *LEDGER)
+        _check(*map(str, usc_files))
+        write_ledger(proj, force=True)                   # p. ej. en un save
+        assert "| USC |" in (proj / "ledger.md").read_text()
+
+    def test_solo_en_la_usc_como_fila(self, proj, usc_files):
+        _write(proj, LEDGER[0])
+        _check(*map(str, usc_files))
+        md = (proj / "ledger.md").read_text()
+        assert "| AUT-001 | — | (solo en la USC) | CONGRESO SL |" in md
+        assert md.count("!↑") >= 2
+
+    def test_importe_distinto_es_problema(self, proj, usc_files):
+        _write(proj, LEDGER[0], ("2026-09-18", "Folla #pedido",
+                                 "💶 -1.500,00 · 🆔 CM26XX0001"))
+        _check(*map(str, usc_files))
+        md = (proj / "ledger.md").read_text()
+        assert "| ! CM26XX0001 |" in md
+        assert "No encaja con la USC" in md and "importe distinto" in md
+
+    def test_strict(self, proj, usc_files):
+        _write(proj, LEDGER[0])
+        assert _check(*map(str, usc_files), "--strict") == 1   # hay !↑
+
+    def test_sin_ficheros_la_columna_avisa(self, proj, usc_files):
+        _write(proj, *LEDGER)
+        _check(*map(str, usc_files))
+        for f in (proj / "cloud" / "logs").iterdir():
+            f.unlink()
+        from views.ledger import build_ledger_md
+        md = build_ledger_md(proj)
+        assert "Columna USC no disponible" in md and "| USC |" not in md
+
+    def test_solo_excel_no_anota(self, proj, usc_files, capsys):
+        _write(proj, *LEDGER)
+        _check(str(usc_files[1]))
+        assert not [m for m in read_movements(proj)[0] if m.tag == "conciliacion"]
+        assert "necesita el PDF" in capsys.readouterr().out
+
+
+def test_export_lleva_columna_usc_y_no_la_ejecucion(proj, usc_files, tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    pytest.importorskip("reportlab")
+    from views.ledger_export import export_ledger
+    folla = proj / "cloud" / "logs" / "2026-09-18_folla.pdf"
+    folla.parent.mkdir(parents=True, exist_ok=True)
+    folla.write_text("%PDF")
+    _write(proj, ("2026-09-18", "[Folla vuelo](cloud/logs/2026-09-18_folla.pdf) #pedido",
+                  "👤 Axencia Viaxes · 💶 -1.578,64 · 🆔 CM26XX0001"))
+    _check(*map(str, usc_files))
+    out = tmp_path / "share"
+    export_ledger(proj, out)
+    assert [f.name for f in (out / "justificantes").iterdir()] == ["2026-09-18_folla.pdf"]
+    ws = openpyxl.load_workbook(out / "ledger.xlsx")["Operaciones"]
+    assert ws.cell(1, 11).value == "USC"
+    values = [ws.cell(r, 11).value for r in range(2, ws.max_row + 1)]
+    assert "ok CM26XX0001" in values and "!↑" in values

@@ -1,6 +1,6 @@
 """views/ledger_reconcile.py — conciliación con la ejecución oficial de la USC.
 
-`orbit ledger <proyecto> --reconcile <fichero>...` lee lo que da la USC y lo
+`orbit ledger <proyecto> --check <fichero>...` lee lo que da la USC y lo
 empareja, línea a línea, con el ledger (ADR-053):
 
 * **Ejecución de la partida** (PDF, `Execucion_<partida>.pdf`): el resumen
@@ -15,9 +15,13 @@ va en el `🆔`); una **obriga** es nuestro `#gasto` (el nº de factura va en su
 `🆔` y la autorización, si la hay, en su `🔗`).
 
 Emparejado: primero por número (seguro); lo que no casa, por importe + fecha
-cercana + tercero (probable). Esto solo **lee**; lo único que escribe, y solo
-si se confirma una a una, es el número oficial en las coincidencias probables
-(:func:`core.ledger.rewrite_ids`).
+cercana + tercero (probable).
+
+Lo que escribe el check con ficheros: (1) copia los ficheros a `cloud/logs/`
+con la fecha de la USC; (2) anota una `#conciliacion` de esa fecha si no la
+había; (3) el número oficial en las coincidencias probables, solo si se
+confirma una a una. `ledger.md` saca la **columna USC** de los ficheros de la
+última `#conciliacion` (:func:`usc_status`): sin estado guardado aparte.
 """
 
 import re
@@ -76,6 +80,8 @@ class Mod:
 
 @dataclass
 class UscReport:
+    as_of:     Optional[date] = None      # "Datos dispoñibles … en ata"
+    partida:   Optional[str] = None
     credit:    Optional[Decimal] = None
     spent:     Optional[Decimal] = None   # gastos incl. saldo de autorizaciones
     available: Optional[Decimal] = None
@@ -142,12 +148,21 @@ def parse_obligations(text: str) -> Tuple[List[Aut], List[Obl]]:
     """
     table = _Table()
     table.feed(text)
-    header_idx = next((i for i, r in enumerate(table.rows)
+    return _obligations_from_rows(table.rows)
+
+
+def partida_of_obligations(text: str) -> Optional[str]:
+    m = re.search(r"Partida:\s*([\w.]+)", text)
+    return m.group(1) if m else None
+
+
+def _obligations_from_rows(rows) -> Tuple[List[Aut], List[Obl]]:
+    header_idx = next((i for i, r in enumerate(rows)
                        if any(c.lower().startswith("cód.aut") or c == "Nfac"
                               for c in r)), None)
     if header_idx is None:
         raise ValueError("no encuentro la cabecera de columnas (Cód.Aut, Nfac…)")
-    header = table.rows[header_idx]
+    header = rows[header_idx]
 
     def col(row, name):
         for i, h in enumerate(header):
@@ -156,7 +171,7 @@ def parse_obligations(text: str) -> Tuple[List[Aut], List[Obl]]:
         return ""
 
     auts, obls, seen = [], [], set()
-    for row in table.rows[header_idx + 1:]:
+    for row in rows[header_idx + 1:]:
         if not any(row):
             continue
         aut_id = col(row, "Cód.Aut") or None
@@ -181,6 +196,8 @@ def parse_obligations(text: str) -> Tuple[List[Aut], List[Obl]]:
 # ── Ejecución (PDF) ──────────────────────────────────────────────────────────
 
 _AMT = r"(-?[\d.]+,\d{2})"
+_ASOF_RE = re.compile(r"en ata:\s*(\d{2}/\d{2}/\d{4})")
+_PARTIDA_RE = re.compile(r"Partida\s+(\d{4}\.\w+\.\d+)")
 _RESUMO_RE = re.compile(r"Credito total:\s*" + _AMT + r".*?Gastos[^:]*:\s*" + _AMT
                         + r".*?Disp\w*:\s*" + _AMT, re.S)
 _MOD_RE = re.compile(r"^\s*\d{4}\s+(\d{2}/\d{2}/\d{4})\s+(.+?)\s{2,}" + _AMT
@@ -196,6 +213,10 @@ def parse_execution_text(text: str) -> UscReport:
     autorización): para eso está el excel de obrigas.
     """
     report = UscReport()
+    m = _ASOF_RE.search(text)
+    report.as_of = _dmy(m.group(1)) if m else None
+    m = _PARTIDA_RE.search(text)
+    report.partida = m.group(1) if m else None
     m = _RESUMO_RE.search(text)
     if m:
         report.credit, report.spent, report.available = (
@@ -249,6 +270,8 @@ def load_report(paths: List[Path]) -> UscReport:
         raw = path.read_bytes()
         if raw[:5] == b"%PDF-":
             part = parse_execution_text(_pdf_text(path))
+            report.as_of = part.as_of or report.as_of
+            report.partida = part.partida or report.partida
             report.credit = part.credit if part.credit is not None else report.credit
             report.spent = part.spent if part.spent is not None else report.spent
             report.available = (part.available if part.available is not None
@@ -256,7 +279,9 @@ def load_report(paths: List[Path]) -> UscReport:
             report.mods += part.mods
             _merge_auts(report.auts, part.auts)
         else:
-            auts, obls = parse_obligations(_decode(raw))
+            text = _decode(raw)
+            auts, obls = parse_obligations(text)
+            report.partida = report.partida or partida_of_obligations(text)
             _merge_auts(report.auts, auts)
             report.obls += obls
             report.has_obls = True
@@ -497,24 +522,156 @@ def _apply(project_dir: Path, result: dict) -> int:
     return written
 
 
-def run_ledger_reconcile(project: str, files: List[str]) -> int:
-    from core.log import find_project
+# ── Guardar los ficheros y anotar la conciliación ───────────────────────────
 
-    project_dir = find_project(project)
-    if not project_dir:
-        return 1
+def _target_name(path: Path, when: date, partida: Optional[str], is_pdf: bool) -> str:
+    """`2026-09-29_Execucion_<partida>.pdf` / `…_obrigas_<partida>.xls`.
+
+    Se quita el ` (6)` que añade el navegador y no se repite la fecha si el
+    nombre ya empieza por una.
+    """
+    stem = re.sub(r"\s*\(\d+\)$", "", path.stem).strip().replace(" ", "_")
+    if not is_pdf and stem.lower().startswith("obrigas"):
+        stem = f"obrigas_{partida}" if partida else "obrigas"
+    if not re.match(r"^\d{4}-\d{2}-\d{2}_", stem):
+        stem = f"{when.isoformat()}_{stem}"
+    return stem + path.suffix.lower()
+
+
+def import_usc_files(project_dir: Path, paths: List[Path],
+                     report: UscReport) -> Tuple[Optional[str], Optional[str]]:
+    """Copia los ficheros a `cloud/logs/` con fecha. Devuelve las rutas
+    relativas `(pdf, xls)` tal y como se enlazan desde el logbook."""
+    import shutil
+    when = report.as_of or date.today()
+    logs = project_dir / "cloud" / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    pdf_rel = xls_rel = None
+    for path in paths:
+        is_pdf = path.read_bytes()[:5] == b"%PDF-"
+        name = _target_name(path, when, report.partida, is_pdf)
+        target = logs / name
+        if path.resolve() != target.resolve():
+            shutil.copy2(path, target)
+        rel = f"./cloud/logs/{name}"
+        if is_pdf:
+            pdf_rel = rel
+        else:
+            xls_rel = rel
+    return pdf_rel, xls_rel
+
+
+# ── Estado para la columna USC de ledger.md ─────────────────────────────────
+
+OK, OK_PROBABLE, ONLY_USC, ONLY_HERE, PROBLEM = "ok", "ok?", "!↑", "!↓", "!"
+_SEVERITY = {OK: 0, OK_PROBABLE: 1, ONLY_HERE: 2, PROBLEM: 3}
+
+
+@dataclass
+class UscStatus:
+    """Lo que la vista necesita: marca por movimiento y lo que falta aquí."""
+    as_of:    Optional[date]
+    source:   Optional[str]
+    marks:    dict = field(default_factory=dict)      # raw → (marca, id USC)
+    only_usc: List[object] = field(default_factory=list)
+    notes:    dict = field(default_factory=dict)      # raw → [texto]
+    error:    Optional[str] = None
+
+    def for_operation(self, op) -> Tuple[str, str]:
+        """Peor marca de las entradas de la operación y los ids de la USC."""
+        marks = [self.marks[m.raw] for m in op.entries if m.raw in self.marks]
+        if not marks:
+            return "", ""
+        worst = max(marks, key=lambda x: _SEVERITY[x[0]])[0]
+        ids = " · ".join(dict.fromkeys(i for _mk, i in marks if i))
+        return worst, ids
+
+
+def status_from(movements: List[Movement], report: UscReport,
+                result: Optional[dict] = None, source: Optional[str] = None) -> UscStatus:
+    result = result or reconcile(movements, report)
+    st = UscStatus(as_of=report.as_of, source=source)
+    for key in ("auts", "obls", "mods"):
+        rec = result.get(key)
+        if rec is None:
+            continue
+        for p in rec.pairs:
+            usc_id = (p.usc.id if key == "auts" else
+                      p.usc.invoice if key == "obls" else "")
+            mark = OK if p.how == SURE else OK_PROBABLE
+            if p.notes:
+                mark = PROBLEM
+                st.notes.setdefault(p.mov.raw, []).extend(p.notes)
+            if (key == "auts" and p.usc.pending == 0 and p.usc.amount
+                    and not any(o.aut_id == p.usc.id for o in report.obls)):
+                mark = PROBLEM
+                st.notes.setdefault(p.mov.raw, []).append(
+                    "la USC la tiene sin saldo y sin obligaciones")
+            st.marks[p.mov.raw] = (mark, usc_id or "")
+        for m in rec.only_ledger:
+            st.marks[m.raw] = (ONLY_HERE, "")
+        st.only_usc += rec.only_usc
+    return st
+
+
+def usc_status(project_dir: Path, movements: List[Movement]) -> Optional[UscStatus]:
+    """Estado de la última `#conciliacion` con ficheros, o None si no hay.
+
+    Relee los ficheros cada vez (no hay estado guardado): si no están
+    disponibles, lo dice en `error` y la vista omite la columna.
+    """
+    from core.ledger import RECON_TAG
+    from views.ledger_check import _resolve_link
+
+    recons = [m for m in movements if m.tag == RECON_TAG and m.link]
+    if not recons:
+        return None
+    last = recons[-1]
+    paths = [_resolve_link(project_dir, x) for x in (last.link, last.attach) if x]
+    paths = [p for p in paths if p is not None]
+    missing = [p.name for p in paths if not p.exists()]
+    if missing:
+        return UscStatus(as_of=last.date, source=last.link,
+                         error=f"no encuentro {', '.join(missing)}")
+    try:
+        report = load_report(paths)
+    except (ValueError, OSError) as exc:
+        return UscStatus(as_of=last.date, source=last.link, error=str(exc))
+    report.as_of = report.as_of or last.date
+    return status_from(movements, report, source=last.link)
+
+
+# ── `ledger --check <ficheros>` ──────────────────────────────────────────────
+
+def run_reconcile(project_dir: Path, label: str, files: List[str]) -> Optional[dict]:
+    """Guarda, anota, concilia e imprime. Devuelve el resultado, o None si
+    no se pudieron leer los ficheros."""
+    from core.ledger import record_reconciliation
+
     paths = [Path(f).expanduser() for f in files]
     missing = [p for p in paths if not p.exists()]
     if missing:
         print(f"⚠️  No existe: {', '.join(str(p) for p in missing)}")
-        return 1
+        return None
     try:
         report = load_report(paths)
     except ValueError as exc:
         print(f"⚠️  {exc}")
-        return 1
+        return None
+
+    pdf_rel, xls_rel = import_usc_files(project_dir, paths, report)
+    if pdf_rel and report.available is not None:
+        when = report.as_of or date.today()
+        if record_reconciliation(project_dir, when, report.available,
+                                 pdf_rel, xls_rel):
+            print(f"  📥 conciliación del {when.isoformat()} anotada en el logbook")
+    else:
+        print("  (sin el PDF de ejecución no se anota la conciliación: la "
+              "columna USC de ledger.md necesita el PDF)")
+
     movements, _ = read_movements(project_dir)
     result = reconcile(movements, report)
-    print_reconciliation(project_dir, project, report, result, movements)
+    print()
+    print_reconciliation(project_dir, label, report, result, movements)
     _apply(project_dir, result)
-    return 0
+    return result

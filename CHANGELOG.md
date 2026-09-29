@@ -10,6 +10,20 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — ledger: `--check <ficheros>` concilia y pone la columna USC
+
+- `--reconcile` desaparece: `ledger <p> --check` sin ficheros es la
+  comprobación interna; con el PDF de ejecución y/o el excel de obrigas,
+  además concilia.
+- Guarda los ficheros en `cloud/logs/` con la fecha de la USC y anota una
+  `#conciliacion` (una por fecha; el excel como `📎`).
+- Columna **USC** en `ledger.md`, el PDF y el xlsx: `ok <nº>`, `ok? <nº>`,
+  `!↑` (en la USC y no aquí, como fila), `!↓` (aquí y no en la USC), `!` (no
+  encaja). Se deriva de los ficheros de la última conciliación.
+- El export no copia la ejecución de la USC a `justificantes/`.
+
+---
+
 ### Unreleased — ledger F4: `ledger <proyecto> --export <dir>` (ADR-053)
 
 - `views/ledger_export.py`: `ledger.pdf` (reportlab, apaisado), `ledger.xlsx`

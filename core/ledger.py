@@ -80,6 +80,7 @@ AMOUNT_EMOJI  = "💶"
 ID_EMOJI      = "🆔"      # id de operación, en el #pedido
 REF_EMOJI     = "🔗"      # referencia a un pedido, en #gasto / #anulacion
 ORIG_EMOJI    = "💱"      # importe y moneda originales (informativo)
+ATTACH_EMOJI  = "📎"      # segundo fichero de una #conciliacion (excel de obrigas)
 
 #: Tags que admiten importe en otra moneda.
 _ORIG_TAGS = (EXPENSE_TAG, INCOME_TAG, ORDER_TAG)
@@ -386,6 +387,7 @@ class Movement:
     ref:     Optional[str] = None   # 🔗 (#gasto / #anulacion)
     partial: bool = False           # 🔗 … parcial
     orig:    Optional[tuple] = None # 💱 (importe, código)
+    attach:  Optional[str] = None   # 📎 (#conciliacion: excel de obrigas)
     raw:     str = ""
 
     @property
@@ -425,7 +427,7 @@ def _parse_body(body: List[str]) -> dict:
         for token in line.split(_BODY_SEP.strip()):
             token = token.strip()
             for emoji in (PARTIDA_EMOJI, PAYEE_EMOJI, AMOUNT_EMOJI,
-                          ID_EMOJI, REF_EMOJI, ORIG_EMOJI):
+                          ID_EMOJI, REF_EMOJI, ORIG_EMOJI, ATTACH_EMOJI):
                 if token.startswith(emoji):
                     value = token[len(emoji):].strip()
                     if value:
@@ -510,6 +512,7 @@ def parse_entry(date_str: str, header: str,
     return Movement(date=when, tag=tag, concept=content, amount=amount,
                     partida=partida, payee=payee or None, link=link,
                     op_id=op_id, ref=ref, partial=partial, orig=orig,
+                    attach=fields.get(ATTACH_EMOJI) if tag == RECON_TAG else None,
                     raw=f"{date_str} {header}".strip()), problem
 
 
@@ -810,6 +813,30 @@ def rewrite_ids(project_dir: Path, raw: str, new_id: str) -> int:
     save_snapshot(logbook)
     logbook.write_text("\n".join(lines) + "\n")
     return touched
+
+
+def record_reconciliation(project_dir: Path, when: date, available: Decimal,
+                          pdf_rel: str, xls_rel: Optional[str] = None) -> bool:
+    """Anota la `#conciliacion` de una ejecución de la USC (`ledger --check`
+    con ficheros). Devuelve False si ya había una de esa fecha: volver a
+    lanzar el check con los mismos ficheros no ensucia el logbook.
+
+    El PDF va en la cabecera (justificante) y el excel de obrigas, si lo hay,
+    como `📎` en el cuerpo: son los ficheros de los que `ledger.md` saca la
+    columna USC.
+    """
+    from core.log import add_entry
+
+    movements, _ = read_movements(project_dir)
+    if any(m.tag == RECON_TAG and m.date == when for m in movements):
+        return False
+    body = build_body(available, project_partida(project_dir))
+    if xls_rel:
+        body = [body[0] + f"{_BODY_SEP}{ATTACH_EMOJI} {xls_rel}"]
+    rc = add_entry(project_dir.name, f"Ejecución USC {when.isoformat()}",
+                   RECON_TAG, pdf_rel, when.isoformat(),
+                   project_dir=project_dir, continuations=body)
+    return rc == 0
 
 
 def protected_headers(movements: List[Movement], cutoff: date) -> set:

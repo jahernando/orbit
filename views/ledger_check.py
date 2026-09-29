@@ -236,7 +236,10 @@ def _check_reconciliation(movements: List[Movement]) -> List[Finding]:
     No se sabe si el saldo oficial es el de caja o el disponible (depende de
     cómo lo dé contabilidad), así que se avisa solo si no cuadra con ninguno.
     """
-    recons = [m for m in movements if m.tag == RECON_TAG]
+    # Las conciliaciones con la ejecución de la USC (con fichero) se comparan
+    # línea a línea en la columna USC: el total no cuadrará hasta que la USC
+    # tramite lo pendiente, y avisarlo aquí sería ruido.
+    recons = [m for m in movements if m.tag == RECON_TAG and not m.link]
     if not recons:
         return []
     last = recons[-1]
@@ -258,9 +261,10 @@ def _check_files(project_dir: Path, movements: List[Movement], operations,
         return []
     linked = set()
     for m in movements:
-        path = _resolve_link(project_dir, m.link) if m.link else None
-        if path is not None:
-            linked.add(path.name)
+        for link in (m.link, m.attach):
+            path = _resolve_link(project_dir, link) if link else None
+            if path is not None:
+                linked.add(path.name)
     ignore = _ignored(project_dir)
     economic = re.compile("|".join(cfg[k] for k in (
         "order_patterns", "invoice_patterns", "expense_patterns")))
@@ -335,29 +339,50 @@ def ledger_errors(project_dir: Path) -> List[Finding]:
     return [f for f in check_ledger(project_dir) if f.level == ERROR]
 
 
-def run_ledger_check(project: str, strict: bool = False) -> int:
-    """`orbit ledger <proyecto> --check [--strict]`.
+def run_ledger_check(project: str, strict: bool = False,
+                     files: Optional[List[str]] = None) -> int:
+    """`orbit ledger <proyecto> --check [ficheros de la USC] [--strict]`.
 
-    Código de salida 1 si hay errores (o avisos, con `--strict`).
+    Sin ficheros, la comprobación interna. Con ficheros (PDF de ejecución y/o
+    excel de obrigas), además concilia con la USC: los guarda en
+    `cloud/logs/`, anota la `#conciliacion` y regenera `ledger.md` con la
+    columna USC. Código de salida 1 si hay errores (o, con `--strict`, avisos
+    o marcas `!` / `!↑` de la USC).
     """
     from core.log import find_project
 
     project_dir = find_project(project)
     if not project_dir:
         return 1
+    usc_bad = 0
+    if files:
+        from views.ledger_reconcile import run_reconcile
+        if run_reconcile(project_dir, project, files) is None:
+            return 1
+        from views.ledger import load_usc, write_ledger
+        write_ledger(project_dir, force=True)
+        status = load_usc(project_dir, read_movements(project_dir)[0])
+        if status is not None and status.error is None:
+            marks = [mk for mk, _i in status.marks.values()]
+            usc_bad = sum(1 for mk in marks if mk == "!") + len(status.only_usc)
+            counts = {k: marks.count(k) for k in ("ok", "ok?", "!↓", "!")}
+            print(f"\n  USC → ledger.md: {counts['ok']} ok · {counts['ok?']} ok? · "
+                  f"{len(status.only_usc)} !↑ · {counts['!↓']} !↓ · "
+                  f"{counts['!']} !")
+        print()
     findings = check_ledger(project_dir)
     counts = {lvl: sum(1 for f in findings if f.level == lvl)
               for lvl in (ERROR, WARNING, INFO)}
     print(f"💶 Comprobación del ledger — {project_dir.name}")
     if not findings:
         print("  ✓ sin errores ni avisos")
-        return 0
+        return 1 if strict and usc_bad else 0
     for f in findings:
         print(f.render())
     print(f"  {'─' * 46}")
     print(f"  {counts[ERROR]} error{'es' if counts[ERROR] != 1 else ''} · "
           f"{counts[WARNING]} aviso{'s' if counts[WARNING] != 1 else ''} · "
           f"{counts[INFO]} info")
-    if counts[ERROR] or (strict and counts[WARNING]):
+    if counts[ERROR] or (strict and (counts[WARNING] or usc_bad)):
         return 1
     return 0

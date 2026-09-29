@@ -16,6 +16,7 @@ Dos particularidades respecto al resto de `views/`:
    primer fichero de proyecto opcional, así que nada debe exigir su presencia.
 """
 
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -95,6 +96,42 @@ def _recon_line(s: Summary, symbol: str) -> str:
             f"{format_amount(r.amount)} {symbol}")
 
 
+def usc_cell(op: Operation, status) -> str:
+    """Celda USC de una operación: `ok CM26…`, `ok? …`, `!↓`, `!`."""
+    mark, ids = status.for_operation(op)
+    return f"{mark} {ids}".strip() or "—"
+
+
+def usc_extra_rows(status):
+    """Lo que está en la USC y no aquí (`!↑`), como filas de operación y de
+    dotación: `(fecha, aut, factura, concepto, tercero, comprometido,
+    gastado)` y `(fecha, concepto, importe)`."""
+    from views.ledger_reconcile import Aut, Mod, Obl, ONLY_USC
+    ops, funds = [], []
+    for item in status.only_usc:
+        if isinstance(item, Aut):
+            ops.append((item.date, item.id, None, "(solo en la USC)",
+                        item.payee, item.amount, None))
+        elif isinstance(item, Obl):
+            ops.append((item.date, item.aut_id, item.invoice,
+                        item.concept or "(solo en la USC)", item.payee,
+                        None, item.amount))
+        elif isinstance(item, Mod):
+            funds.append((item.date, item.concept, item.amount))
+    key = lambda r: r[0] or date.min
+    return sorted(ops, key=key), sorted(funds, key=key), ONLY_USC
+
+
+def load_usc(project_dir: Path, movements):
+    """Estado de la última conciliación (o None). Nunca tumba la vista."""
+    try:
+        from views.ledger_reconcile import usc_status
+        return usc_status(project_dir, movements)
+    except Exception as exc:                       # un derivado no se cae
+        from views.ledger_reconcile import UscStatus
+        return UscStatus(as_of=None, source=None, error=str(exc))
+
+
 def build_ledger_md(project_dir: Path) -> str:
     """Contenido de `ledger.md` (sin el banner de autogenerado)."""
     from core.ledger import project_partida
@@ -123,30 +160,80 @@ def build_ledger_md(project_dir: Path) -> str:
         out.append(f"| {label} | {value} |")
     out += ["", _recon_line(summary, symbol), ""]
 
+    status = load_usc(project_dir, movements)
+    usc = status is not None and status.error is None
+    if status is not None and status.error:
+        out += [f"> ⚠️ Columna USC no disponible: {status.error}", ""]
+    elif usc:
+        out += [f"Conciliado con la USC el {status.as_of.isoformat()} "
+                f"({_link('ejecución', status.source)}). Columna USC: "
+                f"`ok` casa (con el nº de la USC) · `ok?` casa por importe, "
+                f"fecha y tercero · `!↑` está en la USC y no aquí · "
+                f"`!↓` está aquí y no en la USC · `!` no encaja.", ""]
+    extra_ops, extra_funds, only_mark = (usc_extra_rows(status) if usc
+                                         else ([], [], ""))
+
     out += ["## Operaciones", ""]
-    if operations:
-        out += ["| Fecha | Aut. | Factura | Concepto | Beneficiario | "
-                "Comprometido | Gastado | Estado | Moneda orig. |",
-                "|---|---|---|---|---|---:|---:|---|---:|"]
+    if operations or extra_ops:
+        head = ("| Fecha | Aut. | Factura | Concepto | Beneficiario | "
+                "Comprometido | Gastado | Estado | Moneda orig. |")
+        sep = "|---|---|---|---|---|---:|---:|---|---:|"
+        if usc:
+            head, sep = head + " USC |", sep + "---|"
+        out += [head, sep]
+        rows = []
         for op in operations:
-            out.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-                op.date.isoformat(), _esc(op.op_id),
-                _esc(", ".join(op.invoice_ids) or None), _concept_cell(op),
-                _esc(op.payee), _committed_cell(op), _money(op.spent),
-                _state_label(op), _orig_cell(op)))
+            cells = [op.date.isoformat(), _esc(op.op_id),
+                     _esc(", ".join(op.invoice_ids) or None), _concept_cell(op),
+                     _esc(op.payee), _committed_cell(op), _money(op.spent),
+                     _state_label(op), _orig_cell(op)]
+            if usc:
+                cells.append(usc_cell(op, status))
+            rows.append((op.date, cells))
+        for d, aut, inv, concept, payee, committed, spent in extra_ops:
+            rows.append((d or date.min, [
+                d.isoformat() if d else "—", _esc(aut), _esc(inv),
+                _esc(concept), _esc(payee),
+                _money(committed or Decimal("0")), _money(spent or Decimal("0")),
+                "—", "—", only_mark]))
+        rows.sort(key=lambda r: r[0])
+        out += ["| " + " | ".join(cells) + " |" for _d, cells in rows]
         out.append("")
     else:
         out += ["*Sin operaciones.*", ""]
 
     funds = [m for m in movements if m.tag in _FUNDS_LABEL and not m.is_cut]
-    if funds:
-        out += ["## Dotación", "",
-                "| Fecha | Tipo | Concepto | Origen | Importe |",
-                "|---|---|---|---|---:|"]
+    if funds or extra_funds:
+        head = "| Fecha | Tipo | Concepto | Origen | Importe |"
+        sep = "|---|---|---|---|---:|"
+        if usc:
+            head, sep = head + " USC |", sep + "---|"
+        out += ["## Dotación", "", head, sep]
+        rows = []
         for m in funds:
-            out.append(f"| {m.date.isoformat()} | {_FUNDS_LABEL[m.tag]} | "
-                       f"{_link(m.concept, m.link)} | {_esc(m.payee)} | "
-                       f"{format_amount(m.amount, plus=True)} |")
+            cells = [m.date.isoformat(), _FUNDS_LABEL[m.tag],
+                     _link(m.concept, m.link), _esc(m.payee),
+                     format_amount(m.amount, plus=True)]
+            if usc:
+                mark, ids = status.marks.get(m.raw, ("—", ""))
+                cells.append(f"{mark} {ids}".strip())
+            rows.append((m.date, cells))
+        for d, concept, amount in extra_funds:
+            rows.append((d or date.min, [d.isoformat() if d else "—", "—",
+                                         _esc(concept), "USC",
+                                         format_amount(amount, plus=True),
+                                         only_mark]))
+        rows.sort(key=lambda r: r[0])
+        out += ["| " + " | ".join(cells) + " |" for _d, cells in rows]
+        out.append("")
+
+    if usc and status.notes:
+        out += ["## ⚠️ No encaja con la USC", ""]
+        by_raw = {m.raw: m for m in movements}
+        for raw, notes in status.notes.items():
+            m = by_raw.get(raw)
+            what = f"{m.date.isoformat()} {m.concept}" if m else raw
+            out += [f"- {what}: {'; '.join(notes)}"]
         out.append("")
 
     if problems:
@@ -231,6 +318,8 @@ def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
     summary = summarize(movements, operations)
     partida = project_partida(project_dir)
     symbol = currency_symbol()
+    status = load_usc(project_dir, movements)
+    usc = status is not None and status.error is None
 
     print(f"💶 Ledger — {project_dir.name}"
           + (f" · partida #{partida}" if partida else ""))
@@ -247,14 +336,25 @@ def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
         ids = [i for i in [op.op_id] + op.invoice_ids if i]
         ident = f"{' · '.join(ids)} " if ids else ""
         orig = _orig_cell(op)
+        mark = f"  [USC {usc_cell(op, status)}]" if usc else ""
         print(f"  {op.date.isoformat()}  {_state_label(op):<13} "
               f"{format_amount(-amount):>12}  {ident}{op.concept}"
               + (f" · {op.payee}" if op.payee else "")
-              + (f" · 💱 {orig}" if orig != "—" else ""))
+              + (f" · 💱 {orig}" if orig != "—" else "") + mark)
+    if usc:
+        for d, aut, inv, concept, payee, committed, spent in usc_extra_rows(status)[0]:
+            print(f"  {d.isoformat() if d else '—':<10}  {'solo en USC':<13} "
+                  f"{format_amount(-(committed or spent or 0)):>12}  "
+                  f"{aut or inv or ''} {payee or concept}  [USC !↑]")
     print(f"  {'─' * 46}")
     for label, value in _summary_rows(summary, symbol):
         print(f"  {label + ':':<33}{value:>12} {symbol}")
     print(f"  {_recon_line(summary, symbol)}")
+    if status is not None and status.error:
+        print(f"  ⚠️  columna USC no disponible: {status.error}")
+    elif usc:
+        print(f"  USC: conciliado el {status.as_of.isoformat()} "
+              f"(ok · ok? · !↑ solo en la USC · !↓ solo aquí · ! no encaja)")
     for problem in problems + op_problems:
         print(f"  ⚠️  {problem}")
     return 0
