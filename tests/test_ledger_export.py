@@ -54,7 +54,7 @@ def _ledger(proj):
     _write(proj,
            ("2026-08-06", f"[Dotación]({c}) #ingreso", "🏷️ p · 💶 20.000,00"),
            ("2026-09-18", f"[Folla vuelo]({a}) #pedido",
-            "👤 Axencia · 💶 -1.578,64 · 💱 1.500,00 CHF · 🆔 CM26XXXX0001"),
+            "👤 Axencia · 💶 -1.578,64 · 🆔 CM26XXXX0001"),
            ("2026-10-02", f"[Factura vuelo]({b}) #gasto",
             "👤 Axencia · 💶 -1.580,10 · 🆔 F-4471 · 🔗 CM26XXXX0001"))
 
@@ -94,12 +94,12 @@ def test_xlsx(proj, tmp_path):
     ops = list(wb["Operaciones"].iter_rows(values_only=True))
     assert ops[0][:3] == ("Fecha", "Aut.", "Factura")
     assert ops[1][1:4] == ("CM26XXXX0001", "F-4471", "Folla vuelo")
-    assert ops[1][8] == "cerrado" and ops[1][9] == "1.500,00 CHF"
+    assert ops[1][8] == "cerrado"
     assert wb["Operaciones"].cell(2, 4).hyperlink.target == \
         "justificantes/2026-09-18_folla.pdf"
 
     movs = wb["Movimientos"]
-    assert movs.cell(4, 9).hyperlink.target == "justificantes/2026-10-02_factura.pdf"
+    assert movs.cell(4, 8).hyperlink.target == "justificantes/2026-10-02_factura.pdf"
     assert movs.cell(4, 4).value == "CM26XXXX0001"
 
 

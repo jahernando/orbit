@@ -550,246 +550,116 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 
 ### Ledger — libro de caja por proyecto
 
-Un movimiento **es una entrada de logbook** con tag `#ingreso`, `#gasto`,
-`#pedido`, `#anulacion` o `#conciliacion` (y `#arrastre`, que escribe
-`archive`); no hay fichero-verdad nuevo. `ledger.md` (resumen + operaciones) es
-un derivado 100 % regenerable: nadie lo edita a mano y si se rompe se vuelve a
-generar.
+Un movimiento **es una entrada de logbook** con tag `#ingreso`, `#pedido` o
+`#gasto` (y `#arrastre`, que escribe `archive`); no hay fichero-verdad nuevo.
+`ledger.md` es un derivado 100 % regenerable: nadie lo edita a mano.
 
 ```bash
-orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto|ingreso \
-          --amount N [--tag PARTIDA] [--payee P] [--orig "N MON"] [--import] [--date D]
-orbit log <proyecto> "<concepto>" [<pdf>] --entry pedido --amount N [--id AUT] [--orig "N MON"]
-orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto --amount N [--id NFAC] [--pedido AUT] [--partial]
-orbit log <proyecto> "<concepto>" --entry anulacion --pedido P03
-orbit log <proyecto> "<concepto>" --entry conciliacion --amount N
+orbit log <proyecto> "<concepto>" [<pdf>] --entry ingreso --amount N [--tag PARTIDA] [--payee P]
+orbit log <proyecto> "<concepto>" <folla.pdf> --import --entry pedido --amount N [--id AUT]
+orbit log <proyecto> "<concepto>" <factura.pdf> --import --entry gasto --amount N [--id NFAC] [--pedido AUT]
 
-orbit ledger <proyecto>       # regenera ledger.md + imprime tabla y saldo
-orbit ledger <proyecto> --check [--strict]   # comprueba el ledger (no escribe)
-orbit ledger <proyecto> --check <Execucion.pdf> <obrigasexcel.xls>   # + concilia con la USC (columna USC)
-orbit ledger <proyecto> --export <dir>   # ledger.pdf + ledger.xlsx + justificantes/ para compartir
-orbit ls ledger [proyecto]    # solo imprime (no toca el disco)
+orbit ledger <proyecto>                          # regenera ledger.md + resumen en terminal
+orbit ledger <proyecto> --check [--strict]       # comprobación interna (no escribe)
+orbit ledger <proyecto> --check <Execucion.pdf> <obrigasexcel.xls>   # + concilia con la USC
+orbit ledger <proyecto> --export <dir>           # ledger.pdf + ledger.xlsx + justificantes/
+orbit ls ledger [proyecto]                       # solo imprime (no toca el disco)
 ```
 
-En terminal, lo que falte se pregunta (**tipo → item → beneficiario → importe →
-fecha → enlace**); en batch se aborta diciendo qué falta. La partida solo se
-pregunta en el primer movimiento del proyecto.
+**Qué es cada cosa** (vocabulario de la USC):
+
+| Tag | Qué es | `🆔` | Efecto |
+|---|---|---|---|
+| `#ingreso` | dotación | — | suma a la dotación |
+| `#pedido` | hoja de pedido (folla) | nº de **autorización** (`CM26XXXX0001`); si aún no lo tienes, uno provisional (`P01`, se asigna solo) | suma a **comprometido**; no mueve caja |
+| `#gasto` | factura o liquidación de dietas | nº de **factura** (opcional) | suma a **gastado**; con `--pedido AUT` (`🔗`) **cierra** esa hoja: libera lo comprometido e imputa el importe real |
 
 ```markdown
-2026-07-14 💶 [Vuelo Madrid–Ginebra](./cloud/logs/2026-07-14_factura.pdf) #gasto
-  🏷️ viaje · 👤 Iberia · 💶 -218,40
+2026-09-18 💶 [Folla vuelo Ginebra](./cloud/logs/2026-09-18_folla.pdf) #pedido
+  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.250,00 · 🆔 CM26XXXX0001
+
+2026-10-02 💶 [Factura vuelo Ginebra](./cloud/logs/2026-10-02_factura.pdf) #gasto
+  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.262,40 · 🆔 F-4471 · 🔗 CM26XXXX0001
 ```
 
-Cabecera `DATE 💶 concepto(enlace) #tag` con **una sola tag** (la dirección),
-como cualquier otra entrada de logbook; cuerpo en **una línea** de tokens
-`emoji valor` unidos por `·`, misma gramática que la línea temporal de las
-citas en `agenda.md` (`▶️ … · ⏰ … · 🔔 …`). Los tokens ausentes no aparecen.
+- **El signo lo pone la tag**: `--amount` se teclea sin signo. Acepta `218,40` ·
+  `4.000,00` · `218.40`; más de 2 decimales se rechaza. Aritmética en `Decimal`.
+- **Partida**: `--tag` solo en el primer movimiento del proyecto; los demás la
+  heredan (si tecleas otra, pide confirmación).
+- **Justificante**: el argumento posicional de `log`; `--import` lo copia a
+  `cloud/logs/` con fecha y lo enlaza.
+- **Al escribir se es estricto**: id repetido, `--pedido` a una hoja que no
+  existe o ya está cerrada, o factura ya anotada → se rechaza sin escribir.
+- **En terminal** lo que falte se pregunta: partida (solo la primera vez),
+  concepto, beneficiario, importe, fecha, enlace, nº de autorización (Enter =
+  provisional), la hoja que factura (lista las abiertas; Enter = sin hoja) y
+  el nº de factura.
+- **Cuando la USC tramita una folla** y te da su número, cámbialo en el `🆔`
+  del pedido (y en el `🔗` de su factura, si ya la tenías).
+- Las entradas no se editan por lo demás: el estado de cada hoja (abierta /
+  cerrada) se reconstruye leyendo la cadena.
 
-- **El signo lo pone la tag**, nunca el usuario: `#gasto` resta, `#ingreso` suma.
-  `--amount` se teclea sin signo y lo rechaza si lo lleva.
-- `--amount` acepta `218,40` · `4.000,00` · `218.40` · `4.000`. Más de 2 decimales
-  se rechaza (no se redondea en silencio). Aritmética en `Decimal`.
-- `--tag PARTIDA` **solo en el primer movimiento del proyecto**: un proyecto
-  tiene una sola partida (`viaje`, `fungible`, `inventariable`…), así que los
-  siguientes movimientos la heredan. Si tecleas una distinta se pide
-  confirmación (casi siempre es un `#viajes` por `#viaje`) y sin terminal se
-  aborta. Emoji único 💶 para las dos direcciones.
-- **El justificante no tiene flag propia**: es el argumento posicional de `log`,
-  así que `--import` lo copia a `cloud/logs/` y lo enlaza en la cabecera.
-- `--date` es la **fecha del movimiento** (la que ordena la tabla). No admite
-  futuro.
-- `#arrastre` es la tercera tag del ledger, pero **no se teclea**: la escribe
-  solo `orbit archive`.
+**`ledger.md`**: resumen (dotación · gastado · comprometido · **disponible** =
+dotación − gastado − comprometido), tabla de **operaciones** (una fila por hoja
+con su factura, o por gasto directo: Aut. · Factura · concepto con enlaces ·
+beneficiario · comprometido · gastado · estado · **USC**) y tabla de
+**dotación**. Se regenera al anotar y en cada `save`. Solo existe en proyectos
+con movimientos.
 
-**Compromisos: pedido → factura** (ADR-053). La hoja de pedido *compromete*
-crédito; la factura o la liquidación de dietas lo *gasta*. En `logbook.md`
-quedan así (se pueden escribir a mano o con `log`, arriba):
+**Comprobación** (`--check`, sin ficheros). No escribe nada.
 
-```markdown
-2026-09-18 💶 [Folla vuelo Ginebra](cloud/logs/…folla.pdf) #pedido
-  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.578,64 · 🆔 P03
+- ❌ **errores** (bloquean el export y salen en `orbit doctor`): `#pedido` o
+  `#gasto` sin justificante o con un justificante que no existe · `🔗` a una
+  hoja que no existe · id o factura repetidos · entrada ilegible.
+- ⚠️ **avisos** (solo aquí, para no hacer preguntar al `save`): hoja abierta
+  más de 60 días · documento de `cloud/logs/` con pinta económica (folla,
+  factura, invoice, dietas…) que no enlaza ningún movimiento. Los que no lo
+  son, uno por línea (o patrón `*INSTITUTO*`) en `<proyecto>/.ledger-ignore`.
+- `--strict`: los avisos (y las marcas `!` / `!↑`) también dan error.
+- Umbral y patrón en `orbit.json` → `"ledger": {"open_days": 60, "doc_patterns": …}`.
 
-2026-10-02 💶 [Factura vuelo Ginebra](cloud/logs/…factura.pdf) #gasto
-  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.580,10 · 🔗 P03
+**Conciliación con la USC** (`--check <ficheros>`): el PDF de *Execución
+Orzamentaria da Partida* y/o el excel de *obrigas* (en realidad HTML).
 
-2026-09-25 💶 Pedido cancelado #anulacion
-  🔗 P04
+1. **Los guarda** en `cloud/logs/` con la fecha de la USC
+   (`2026-09-29_Execucion_<partida>.pdf`, `2026-09-29_obrigas_<partida>.xls`).
+   No toca el logbook.
+2. **Empareja solo por número**: autorizaciones ↔ `🆔` de los `#pedido`,
+   obligaciones ↔ `🆔` de los `#gasto`; las dotaciones (sin número), por
+   importe. Si un pedido con id provisional tiene el mismo importe que una
+   autorización que no casa, lo **sugiere** (💡), no lo escribe.
+3. **Imprime** los totales (USC frente a ledger) y, línea a línea, lo que
+   casa, lo que falta a cada lado (con el `orbit log` que lo crearía) y lo que
+   no encaja.
+4. **Regenera `ledger.md` con la columna USC**, sacada siempre de los ficheros
+   más recientes de `cloud/logs/`:
 
-2026-09-30 💶 Saldo según contabilidad #conciliacion
-  💶 19.926,79
-```
+   | Marca | Significado |
+   |---|---|
+   | `ok CM26…` | casa, con el nº de la USC |
+   | `!↑` | está en la USC y no aquí: sale como fila, con los datos de la USC |
+   | `!↓` | está aquí y no en la USC (aún no tramitado o reconocido) |
+   | `!` | no encaja: importe distinto (detalle en *No encaja con la USC*) |
 
-| Tag | Qué es | Efecto |
-|---|---|---|
-| `#pedido` | hoja de pedido, con id `🆔` (único en el proyecto) | suma a **comprometido**; no mueve caja |
-| `#gasto` + `🔗 P03` | factura del pedido | **cierra** el pedido: libera todo lo comprometido e imputa el importe real (la diferencia no es error) |
-| `#gasto` + `🔗 P03 parcial` | factura parcial | gasta sin cerrar; queda comprometido lo que falte |
-| `#gasto` sin `🔗` | dietas, gastos sin pedido | gasto directo |
-| `#anulacion` + `🔗 P03` | pedido cancelado | cierra sin gasto (sin importe) |
-| `#conciliacion` | saldo oficial en una fecha | solo control; sale en la cabecera |
+   Una hoja con factura lleva la peor marca de las dos. Si los ficheros no se
+   pueden leer, la columna no sale y `ledger.md` lo dice. Sin el excel no se
+   comparan facturas.
 
-- `--id` es opcional: sin él, orbit asigna el siguiente (`P01`, `P02`…,
-  respetando prefijo y ancho del último) y lo dice en el eco.
-- `--pedido` exige un pedido **existente y abierto**, y un id repetido se rechaza:
-  al escribir se es estricto; al leer lo escrito a mano, solo se avisa.
-- En terminal, lo que falte se pregunta: el id (Enter = el sugerido), el
-  pedido que se factura (lista los abiertos; Enter = gasto sin pedido), si es
-  parcial, y la moneda original.
-- **Moneda** (`--orig "1.150,00 CHF"`, o `CHF 1150`): informativa, código ISO
-  de tres letras. **Todo se calcula en `💶`** (EUR): en un pedido es una
-  estimación al tipo del día; en un gasto, lo que carga la USC. Nunca se
-  convierte. En `ledger.md` sale en la columna *Moneda orig.* y lo comprometido
-  de un pedido en otra moneda lleva `~`.
-
-Las entradas no se editan nunca: el estado de cada operación (abierto /
-cerrado / anulado) se reconstruye leyendo la cadena. Un `🔗` a un pedido que
-no existe, un id repetido o una factura sobre un pedido ya cerrado salen en
-`ledger.md` como avisos (y el dinero cuenta igual). Un ledger sin pedidos
-funciona como antes: comprometido = 0.
-
-**Dos ids** (vocabulario de la USC): el `🆔` de un `#pedido` es el **número de
-autorización** (`CM26XXXX0001`, `621A-25-XXXX-14`); si aún no lo tienes,
-`--id` se omite y se pone uno provisional (`P01`) que `--check <ficheros>` cambia por
-el oficial. El `🆔` de un `#gasto` es el **número de factura** (NúmFac), y su
-`🔗` la autorización que consume. En `ledger.md` son las columnas **Aut.** y
-**Factura**; un gasto sin hoja (dietas) solo tiene la segunda.
-
-**Conciliación con la USC** (`ledger <proyecto> --check <ficheros>`). El mismo
-`--check`, pasándole los ficheros de la USC, además concilia. Acepta el PDF
-de *Execución Orzamentaria da Partida* y/o el excel de *obrigas* (que en
-realidad es HTML). Del PDF lee el resumen (crédito · gastos incluidas
-autorizaciones · dispoñible), las dotaciones y las autorizaciones con su
-tercero; del excel, autorizaciones y obligaciones (nº de factura, NIF,
-perceptor, importe imputado —ImpOrzamento—, fecha de pago).
-
-```
-                                   USC      ledger  diferencia
-  Crédito                    20.000,00   20.000,00           —
-  Gastado + comprometido      1.800,00    3.200,00   +1.400,00
-  Disponible                 18.200,00   16.800,00   -1.400,00
-  ── Autorizaciones ↔ #pedido
-  ✓ aut. CM26XXXX0001 …  ↔ CM26XXXX0001 … Folla vuelo Ginebra
-  ≈ aut. 621A-25-XXXX-14 … ↔ P01 … Folla tasa Congreso   (probable: importe, fecha y tercero)
-  ・ solo en el ledger: P03 … (la USC aún no la ha tramitado)
-  ＋ solo en la USC: … → log <proyecto> "<concepto>" <folla.pdf> --import --entry pedido …
-```
-
-- Empareja primero **por número** (✓ seguro) y lo demás por **importe + fecha
-  a ≤ 30 días + tercero** (≈ probable). Las dotaciones, sin número, siempre por
-  importe y fecha.
-- **Solo en la USC**: te da el `orbit log` que la crearía (falta el justificante).
-  **Solo en el ledger**: lo que la USC aún no ha tramitado o reconocido.
-- **Números oficiales**: en terminal, pregunta una a una (`[s/N]`) si poner
-  el número de la USC en cada coincidencia probable; si era un pedido con id
-  provisional, cambia también los `🔗` de sus facturas. Deja undo. Es la única
-  edición de entradas ya escritas; lo demás que escribe (abajo) es nuevo.
-- Sin el excel no compara facturas (el PDF no trae el nº de autorización de
-  cada obligación).
-- **Guarda los ficheros** en `cloud/logs/` con la fecha de la USC
-  (`2026-09-29_Execucion_<partida>.pdf`, `2026-09-29_obrigas_<partida>.xls`) y
-  **anota una `#conciliacion`** de esa fecha (el PDF enlazado, el excel como
-  `📎`, el disponible de la USC como importe). Si ya hay una de esa fecha, no la
-  repite. Sin el PDF no se anota.
-- **Columna USC en `ledger.md`** (y en el export), sacada de los ficheros de la
-  última `#conciliacion` cada vez que se regenera (no hay estado aparte):
-
-  | Marca | Significado |
-  |---|---|
-  | `ok CM26…` | casa por número, con el nº de la USC |
-  | `ok? CM26…` | casa por importe, fecha y tercero (el nº aún no está en el ledger) |
-  | `!↑` | está en la USC y no aquí: sale como fila, con los datos de la USC |
-  | `!↓` | está aquí y no en la USC (aún no tramitada o reconocida) |
-  | `!` | no encaja: importe distinto, o la USC la tiene sin saldo ni obligaciones (detalle en *No encaja con la USC*) |
-
-  Una operación con pedido y factura lleva la peor marca de las dos. Si los
-  ficheros no están disponibles, la columna no sale y `ledger.md` lo dice.
-- `--strict`: también da código de error con `!` o `!↑`.
-
-**Export para compartir** (`ledger <proyecto> --export <dir>`). Genera en
-`<dir>`:
-
-- `ledger.pdf` — resumen (con fecha de generación), operaciones (Aut. ·
-  Factura · concepto con enlaces a los justificantes · comprometido · gastado ·
-  estado · moneda original · **USC**, con las filas `!↑`) y dotación. Para leer.
-- `ledger.xlsx` — hojas *Resumen*, *Operaciones* y *Movimientos* (una fila por
-  entrada, con su justificante enlazado); importes como números. Copia editable.
-- `justificantes/` — **solo** los ficheros que enlaza algún movimiento; nada
-  más de `cloud/logs/` sale de ahí. La ejecución y las obrigas de la USC
-  (enlazadas por la `#conciliacion`) tampoco: son informes internos.
-
-Antes pasa `--check`: **con errores no exporta**; los avisos se cuentan y se
-sigue. Es idempotente: regenera `ledger.*` y sincroniza `justificantes/`
-(copia lo nuevo o cambiado, quita lo que ya no se enlaza). Los enlaces son
-relativos (`justificantes/…`): funcionan con la carpeta descargada o
-sincronizada. Publicarla (OneDrive…) es cosa de otra herramienta. Necesita
+**Export** (`--export <dir>`): `ledger.pdf` (para leer), `ledger.xlsx` (hojas
+Resumen · Operaciones · Movimientos, importes como números; copia editable) y
+`justificantes/` con **solo** lo que enlaza algún movimiento (nada más de
+`cloud/logs/`: ni otros documentos ni los ficheros de la USC). Ambos llevan la
+columna USC. Antes pasa `--check`: con errores no exporta. Es idempotente
+(sincroniza `justificantes/`) y los enlaces son relativos. Necesita
 `pip install reportlab openpyxl` (extra `ledger`).
 
-**Comprobación** (`ledger <proyecto> --check`, sin ficheros). Lee el logbook y
-`cloud/logs/`, no escribe nada. Tres niveles:
-
-| Nivel | Qué mira |
-|---|---|
-| ❌ error | justificante enlazado que no existe · `#gasto`/`#pedido` sin justificante · `🔗` a un pedido que no existe · id repetido · entrada ilegible (p. ej. sin `💶`) |
-| ⚠️ aviso | documento de una autorización sin enlazar (fichero con su número) · factura con el mismo número dos veces · pedido abierto más de 60 días · factura candidata sin enlazar (fichero de `cloud/logs/` que comparte palabra con el concepto o beneficiario de un pedido abierto) · documento económico sin movimiento (folla, pedimento, factura, invoice, dietas…) · `#gasto` que enlaza una hoja de pedido · factura que difiere más de un 10 % del pedido · posible duplicado (mismo importe y beneficiario a ≤ 7 días) · beneficiario escrito de varias formas · conciliación que no cuadra ni con la caja ni con el disponible · `#ingreso` sin justificante · signo corregido |
-| ℹ️ info | nombres de fichero raros: fecha duplicada, extensión repetida |
-
-- Código de salida 1 si hay errores; con `--strict`, también con avisos.
-- `orbit doctor` (y por tanto el aviso antes de `save`) solo ve los **errores**;
-  los avisos se quedan aquí para no preguntar en cada save.
-- Documentos legítimos que parecen económicos: una línea por nombre o patrón
-  (`*Congreso*`) en `<proyecto>/.ledger-ignore` (`#` = comentario).
-- Umbrales y patrones en `orbit.json` → `"ledger": {"open_days": 60,
-  "diff_pct": 10, "duplicate_days": 7, "order_patterns": …, "invoice_patterns":
-  …, "expense_patterns": …}` (regex sobre el nombre en minúsculas y sin tildes).
-
 **Archivar un proyecto con movimientos**: `archive` borra las entradas
-anteriores al corte, así que antes pregunta si consolidar su saldo neto:
-
-```
-    🗒️  12 entradas de logbook — ¿Eliminar? [S/n]: s
-    💶 8 movimientos de ledger anteriores (neto 3.000,00 €)
-       ¿Consolidar como arrastre para no falsear el saldo? [S/n]:
-```
-
-- **Sí** → una entrada `#arrastre` **por partida** con su neto, fechada el día
-  del corte. El saldo no cambia; el histórico queda resumido.
-- **No** → una entrada `#arrastre` con importe 0 que marca el corte, y
-  `ledger.md` encabeza con `⚠️ Histórico truncado en FECHA sin arrastre`. El
-  saldo queda incompleto, pero **el fichero lo dice**.
-- `--force` consolida (preserva el saldo). `--dry-run` avisa de cuántos
-  movimientos hay en juego y de su neto, sin tocar nada.
-- **Una operación con pedido solo se archiva entera y terminada**: si el pedido
-  sigue abierto, o alguna de sus entradas (factura, anulación) es posterior al
-  corte, se quedan todas. El arrastre solo suma lo que mueve caja.
-- Archivados sucesivos componen: el segundo barrido se lleva el arrastre del
-  primero y lo funde en el nuevo neto.
-
-`ledger.md` se regenera al anotar un movimiento y en `save` (chain
-`commit_post`), que es lo que recoge los movimientos escritos a mano en
-Obsidian. Solo existe en proyectos con movimientos: es el primer fichero de
-proyecto **opcional**. Contiene la partida, el **resumen** (saldo arrastrado ·
-dotación · gastado · comprometido · **disponible** = dotación − gastado −
-comprometido), la última conciliación, la tabla de **operaciones** (una fila
-por pedido con sus facturas, o por gasto directo; con columna **USC** si hay
-conciliación), la tabla de **dotación** (ingresos y arrastres), los avisos y,
-si `archive` cortó el histórico sin arrastre, el aviso de que el saldo no
-incluye lo anterior.
-
-```markdown
-| Resumen | € |
-|---|---:|
-| Dotación | 20.000,00 |
-| Gastado | -1.408,32 |
-| Comprometido (pedidos abiertos) | -1.250,00 |
-| **Disponible** | **17.341,68** |
-
-## Operaciones
-
-| Fecha | Aut. | Factura | Concepto | Beneficiario | Comprometido | Gastado | Estado | Moneda orig. | USC |
-|---|---|---|---|---|---:|---:|---|---:|---|
-| 2026-08-31 | — | — | Dietas congreso | Ana Núñez | — | 1.408,32 | gasto directo | — | !↓ |
-| 2026-09-18 | CM26XXXX0001 | — | Folla vuelo Ginebra | Axencia Viaxes | 1.250,00 | — | abierto | — | ok CM26XXXX0001 |
-```
+anteriores al corte, así que antes pregunta si consolidar su saldo neto en una
+entrada `#arrastre` por partida (sí: el saldo no cambia; no: una `#arrastre`
+de importe 0 marca el corte y `ledger.md` avisa de que el saldo no incluye lo
+anterior). `--force` consolida. **Una hoja solo se archiva entera y cerrada**:
+si sigue abierta o su factura es posterior al corte, se quedan las dos. El
+arrastre solo suma lo que mueve caja.
 
 ---
 

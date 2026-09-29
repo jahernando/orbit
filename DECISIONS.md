@@ -964,32 +964,29 @@ Tres fricciones reales:
 
 ---
 
-## ADR-053 — Ledger con compromisos: el pedido compromete, la factura gasta
+## ADR-053 — Ledger con hojas de pedido y conciliación con la USC
 
-**Estado**: aceptada (2026-09-29), en curso (F1–F4 + conciliación; falta la migración de datos). Amplía ADR-048.
+**Estado**: aceptada (2026-09-29). Amplía ADR-048.
 
-**Contexto**: al preparar el ledger de un proyecto para compartirlo con la USC apareció que hojas de pedido y facturas estaban todas como `#gasto`. En contabilidad pública la hoja de pedido *compromete* crédito y la factura (o la liquidación de dietas) lo *gasta*: contar las dos es contar el dinero dos veces, y contar solo una esconde lo comprometido.
+**Contexto**: al preparar el ledger de un proyecto para compartirlo con la USC apareció que hojas de pedido y facturas estaban todas como `#gasto`. En contabilidad pública la hoja de pedido *compromete* crédito y la factura (o la liquidación de dietas) lo *gasta*: contar las dos es contar el dinero dos veces, y contar solo una esconde lo comprometido. Además, la USC lleva la contabilidad oficial y la publica (PDF de ejecución, excel de obrigas): hacía falta comparar con ella para encontrar descuadres.
 
 **Decisión**:
-1. **Cadena de entradas, nunca edición**: `#pedido` (con id `🆔`, único en el proyecto), `#gasto` con `🔗 id` que lo cierra, `#anulacion` con `🔗 id`, `#conciliacion` (saldo oficial, control). El estado de cada operación se reconstruye leyendo la cadena (`build_operations`), igual que el saldo se reconstruye leyendo los movimientos. Coherente con el logbook append-only.
-2. **Una factura con `🔗` cierra el pedido por defecto**; la parcial se marca (`🔗 P03 parcial`). Se descartó cerrar por suma (factura ≥ pedido): la factura puede ser menor que el pedido y entonces no cerraría nunca. El caso común (un pedido, una factura) no necesita marca.
-3. **Solo mueven caja** `#ingreso`, `#gasto` y `#arrastre`; disponible = dotación − gastado − comprometido, siendo comprometido lo pendiente de los pedidos abiertos (con parciales, lo comprometido menos lo facturado, nunca negativo).
-4. **Errores de la cadena no esconden dinero**: una factura con `🔗` a un pedido inexistente se cuenta como gasto directo y se avisa.
-5. **`archive` no parte operaciones**: una operación con pedido solo se archiva entera y terminada. Borrar el pedido dejaría la factura posterior con un `🔗` colgante y haría desaparecer lo comprometido.
-6. **Fuera de `orbit doctor`** los avisos del ledger (pendiente F3): cualquier issue del doctor hace preguntar al `save`, y los avisos heurísticos (facturas candidatas, huérfanos) saldrían en cada save.
-7. **Moneda: `💶` es siempre lo que cuenta**; `💱 1.150,00 CHF` es informativo y nunca se convierte (el tipo de cambio se deduce). Sin marca de "estimado" en el importe: el de un pedido lo es por definición, y `~-1.234` complicaría el parser; la vista pone `~` a lo comprometido de un pedido con `💱`.
-8. **Estricto al escribir, tolerante al leer**: `log` rechaza id repetido y `--pedido` a un pedido inexistente o cerrado; lo escrito a mano con esos fallos se lee y se avisa. Sin `--id` se asigna el siguiente (prefijo y ancho del último) y se anuncia.
-9. **Comprobación en `ledger --check`, no en el doctor** (salvo los errores): los avisos son heurísticas (facturas candidatas por palabra compartida, huérfanos por patrón de nombre) y metidos en el doctor harían preguntar en cada `save`. La factura candidata no exige que el nombre diga "factura" (muchas llegan como `<proveedor>_<número>.pdf`); un fichero que contiene el número de autorización de un pedido se señala como documento de esa autorización, no como factura. Los falsos positivos se silencian en `.ledger-ignore`, no bajando la sensibilidad.
-10. **Ids oficiales y conciliación línea a línea con la USC.** El `🆔` del pedido es el número de autorización de la USC y el del gasto el número de factura; así la conciliación con la ejecución oficial (`--reconcile`, PDF + excel de obrigas) casa por número, no adivinando. Mientras no hay número oficial se usa uno provisional; `--reconcile` lo sustituye tras confirmación, y es la **única edición** de entradas ya escritas que hace orbit en el ledger (se aceptan ediciones in-place desde ADR-048). La conciliación no crea movimientos: da el `orbit log` que los crearía, porque el justificante lo tiene que poner el usuario. Se compara con `ImpOrzamento` (lo imputado al presupuesto), no con la base ni el IVA.
-11. **Un solo `--check`; la columna USC se deriva, no se guarda.** Con ficheros, el check además concilia (no hay verbo aparte). Para que la columna USC sobreviva a cada regeneración de `ledger.md`, los ficheros de la USC se guardan en `cloud/logs/` con su fecha y los enlaza una `#conciliacion` (una por fecha); la vista relee los de la última. Se prefirió a un fichero de estado: la conciliación queda como hecho fechado en la verdad, con su justificante, y no hay nada que pueda desincronizarse. Marcas: `ok`, `ok?` (casa por importe/fecha/tercero, sin nº), `!↑`, `!↓`, `!`; separar `!↓` de `!` evita que todo lo pendiente (lo normal) parezca un error.
+1. **Dos tags de dinero más una**: `#pedido` (compromete, no mueve caja) y `#gasto` (gasta), además de `#ingreso`. Disponible = dotación − gastado − comprometido.
+2. **Los números de la USC son los ids**: el `🆔` del pedido es el nº de autorización (provisional `P01` mientras no se conoce; el usuario lo cambia cuando llega) y el del gasto el nº de factura; el `🔗` del gasto apunta a la hoja que cierra. Una factura cierra la hoja entera; la diferencia de importe no es error.
+3. **Cadena de entradas**: el estado de cada hoja (abierta / cerrada) se reconstruye leyendo el logbook, como el saldo. Estricto al escribir (id repetido, `🔗` a una hoja inexistente o cerrada), tolerante al leer (se avisa y el dinero cuenta).
+4. **Conciliación solo por número**, dentro de `--check` (con los ficheros de la USC): lo que casa (`ok`), lo que está en la USC y no aquí (`!↑`), lo que está aquí y aún no allí (`!↓`), lo que no encaja (`!`). Separar `!↓` de `!` evita que lo pendiente —lo normal— parezca error. Lo que no casa por número no se adivina: a lo sumo se sugiere.
+5. **La columna USC se deriva**: `--check` guarda los ficheros de la USC en `cloud/logs/` con su fecha y `ledger.md` relee los más recientes cada vez. No hay estado aparte ni entradas nuevas en el logbook.
+6. **Comprobación mínima**: errores que hacen el ledger no fiable (también en `orbit doctor`, y bloquean el export) y dos avisos (hoja abierta mucho tiempo, documento económico sin movimiento), solo en `--check` para no hacer preguntar al `save`.
+7. **Export** a una carpeta: PDF, xlsx y solo los justificantes enlazados (en `cloud/logs/` hay documentos sensibles). Publicarla es cosa de otra herramienta.
+8. **`archive` no parte una hoja de su factura.**
 
-**Fases**: F1 modelo + vista + archive · F2 moneda (`💱`) y CLI para pedidos · F3 comprobación (`ledger --check`: errores/avisos) · F4 export PDF + xlsx + justificantes · F5 migración de los datos reales.
+**Descartado tras implementarlo** (misma sesión, por complejidad frente a uso): `#anulacion` (se borra o edita la entrada), `#conciliacion` como entrada, facturas parciales, moneda original (`💱`), emparejado aproximado por importe/fecha/tercero con reescritura de números, y comprobaciones heurísticas (facturas candidatas, duplicados, variantes de beneficiario, diferencia pedido/factura, nombres raros). Si alguna hace falta con datos reales, se recupera del historial de git.
 
 **Consecuencias**:
-- Pros: el saldo deja de mezclar compromisos y gastos; next-pn24 (solo facturas) no cambia; un ledger sin pedidos da los mismos números.
-- Contras: `ledger.md` pierde la tabla con saldo corrido (una fila por operación no admite saldo corrido con sentido); los pedidos se escriben a mano hasta F2.
+- Pros: el saldo deja de mezclar compromisos y gastos; los descuadres con la USC quedan a la vista en cada `ledger.md` (p. ej. una autorización que nadie reconoce sale como `!↑` hasta resolverse); next-pn24 (solo facturas) no cambia.
+- Contras: `ledger.md` pierde el saldo corrido; cambiar el nº provisional por el oficial es a mano.
 
-**Verificación**: `tests/test_ledger_commitments.py`.
+**Verificación**: `tests/test_ledger_commitments.py`, `test_ledger_f2.py`, `test_ledger_check.py`, `test_ledger_reconcile.py`, `test_ledger_export.py`.
 
 ---
 

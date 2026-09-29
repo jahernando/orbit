@@ -1,7 +1,7 @@
 """views/ledger_reconcile.py — conciliación con la ejecución oficial de la USC.
 
 `orbit ledger <proyecto> --check <fichero>...` lee lo que da la USC y lo
-empareja, línea a línea, con el ledger (ADR-053):
+empareja con el ledger (ADR-053):
 
 * **Ejecución de la partida** (PDF, `Execucion_<partida>.pdf`): el resumen
   (crédito · gastado incl. autorizaciones · disponible), las modificaciones
@@ -14,14 +14,13 @@ Vocabulario: una **autorización** de la USC es nuestro `#pedido` (su número
 va en el `🆔`); una **obriga** es nuestro `#gasto` (el nº de factura va en su
 `🆔` y la autorización, si la hay, en su `🔗`).
 
-Emparejado: primero por número (seguro); lo que no casa, por importe + fecha
-cercana + tercero (probable).
+Emparejado **solo por número**: si el número no está en el ledger, no se
+adivina (a lo sumo se sugiere). Las dotaciones, que no tienen número, por
+importe.
 
-Lo que escribe el check con ficheros: (1) copia los ficheros a `cloud/logs/`
-con la fecha de la USC; (2) anota una `#conciliacion` de esa fecha si no la
-había; (3) el número oficial en las coincidencias probables, solo si se
-confirma una a una. `ledger.md` saca la **columna USC** de los ficheros de la
-última `#conciliacion` (:func:`usc_status`): sin estado guardado aparte.
+Lo único que escribe: copia los ficheros a `cloud/logs/` con la fecha de la
+USC. `ledger.md` saca la **columna USC** de los más recientes que haya allí
+(:func:`usc_status`): sin estado guardado aparte.
 """
 
 import re
@@ -37,10 +36,6 @@ from core.ledger import (
     EXPENSE_TAG, INCOME_TAG, ORDER_TAG, Movement, format_amount, parse_amount,
     read_movements, summarize,
 )
-
-#: Días de margen entre la fecha del ledger y la de la USC en un emparejado
-#: probable: la USC fecha la autorización cuando la tramita, no cuando se firma.
-DATE_WINDOW = 30
 
 _CENT = Decimal("0.01")
 
@@ -303,17 +298,17 @@ def _merge_auts(into: List[Aut], new: List[Aut]) -> None:
             known.pending = a.pending
 
 
-# ── Emparejado ───────────────────────────────────────────────────────────────
+# ── Emparejado (solo por número) ─────────────────────────────────────────────
 
-SURE, PROBABLE = "seguro", "probable"
+OK, ONLY_USC, ONLY_HERE, PROBLEM = "ok", "!↑", "!↓", "!"
+_SEVERITY = {OK: 0, ONLY_HERE: 1, PROBLEM: 2}
 
 
 @dataclass
 class Pair:
-    usc:   object                    # Aut | Obl | Mod
-    mov:   Movement
-    how:   str                       # SURE | PROBABLE
-    notes: List[str] = field(default_factory=list)
+    usc:  object                     # Aut | Obl | Mod
+    mov:  Movement
+    note: Optional[str] = None       # por qué no encaja (→ "!")
 
 
 @dataclass
@@ -323,45 +318,37 @@ class Reconciliation:
     only_ledger: List[Movement] = field(default_factory=list)
 
 
-def _payee_ok(a: Optional[str], b: Optional[str]) -> bool:
-    from views.ledger_check import _words
-    if not a or not b:
-        return True
-    return bool(_words(a) & _words(b))
-
-
-def _close(a: Optional[date], b: Optional[date]) -> bool:
-    return a is None or b is None or abs((a - b).days) <= DATE_WINDOW
-
-
-def _match(items, movs, key_usc, key_mov, amount_usc, amount_mov,
-           date_usc, payee_usc) -> Reconciliation:
+def _by_number(items, movs, key_usc, key_mov, amount_usc) -> Reconciliation:
     rec = Reconciliation()
     left = list(movs)
-    pending = []
-    for item in items:                                  # 1) por número
+    for item in items:
         k = key_usc(item)
         mov = next((m for m in left if k and key_mov(m) == k), None)
         if mov is None:
-            pending.append(item)
+            rec.only_usc.append(item)
             continue
         left.remove(mov)
-        pair = Pair(item, mov, SURE)
-        if abs(amount_usc(item) - amount_mov(mov)) >= _CENT:
-            pair.notes.append(f"importe distinto: USC {format_amount(amount_usc(item))}"
-                              f" · ledger {format_amount(amount_mov(mov))}")
-        rec.pairs.append(pair)
-    for item in pending:                                # 2) por importe/fecha/tercero
-        cands = [m for m in left
-                 if abs(amount_usc(item) - amount_mov(m)) < _CENT
-                 and _close(date_usc(item), m.date)
-                 and _payee_ok(payee_usc(item), m.payee)]
-        if len(cands) >= 1:
-            cands.sort(key=lambda m: abs((m.date - (date_usc(item) or m.date)).days))
-            left.remove(cands[0])
-            rec.pairs.append(Pair(item, cands[0], PROBABLE))
-        else:
+        note = None
+        if abs(amount_usc(item) - abs(mov.amount)) >= _CENT:
+            note = (f"importe distinto: USC {format_amount(amount_usc(item))} · "
+                    f"ledger {format_amount(abs(mov.amount))}")
+        rec.pairs.append(Pair(item, mov, note))
+    rec.only_ledger = left
+    return rec
+
+
+def _by_amount(items, movs) -> Reconciliation:
+    """Dotaciones: sin número, se emparejan por importe (el más cercano en fecha)."""
+    rec = Reconciliation()
+    left = list(movs)
+    for item in items:
+        cands = [m for m in left if abs(item.amount - m.amount) < _CENT]
+        if not cands:
             rec.only_usc.append(item)
+            continue
+        cands.sort(key=lambda m: abs((m.date - (item.date or m.date)).days))
+        left.remove(cands[0])
+        rec.pairs.append(Pair(item, cands[0]))
     rec.only_ledger = left
     return rec
 
@@ -372,29 +359,33 @@ def reconcile(movements: List[Movement], report: UscReport) -> dict:
     expenses = [m for m in movements if m.tag == EXPENSE_TAG]
     incomes = [m for m in movements if m.tag == INCOME_TAG]
     out = {
-        "auts": _match(report.auts, orders,
-                       key_usc=lambda a: a.id, key_mov=lambda m: m.op_id,
-                       amount_usc=lambda a: a.amount,
-                       amount_mov=lambda m: abs(m.amount),
-                       date_usc=lambda a: a.date, payee_usc=lambda a: a.payee),
-        "mods": _match(report.mods, incomes,
-                       key_usc=lambda x: None, key_mov=lambda m: None,
-                       amount_usc=lambda x: x.amount,
-                       amount_mov=lambda m: m.amount,
-                       date_usc=lambda x: x.date, payee_usc=lambda x: None),
+        "auts": _by_number(report.auts, orders, lambda a: a.id,
+                           lambda m: m.op_id, lambda a: a.amount),
+        "mods": _by_amount(report.mods, incomes),
     }
     if report.has_obls:
-        out["obls"] = _match(report.obls, expenses,
-                             key_usc=lambda o: o.invoice,
-                             key_mov=lambda m: m.op_id,
-                             amount_usc=lambda o: o.amount,
-                             amount_mov=lambda m: abs(m.amount),
-                             date_usc=lambda o: o.date,
-                             payee_usc=lambda o: o.payee)
+        out["obls"] = _by_number(report.obls, expenses, lambda o: o.invoice,
+                                 lambda m: m.op_id, lambda o: o.amount)
     return out
 
 
-# ── Salida ───────────────────────────────────────────────────────────────────
+def hints(result: dict) -> List[str]:
+    """Pedidos con id provisional que parecen una autorización de la USC que
+    no está en el ledger (mismo importe). Solo se sugiere: no se escribe."""
+    rec = result.get("auts")
+    if rec is None:
+        return []
+    out = []
+    for m in rec.only_ledger:
+        twins = [a for a in rec.only_usc if abs(a.amount - abs(m.amount)) < _CENT]
+        for a in twins:
+            out.append(f"{m.op_id or '(sin id)'} «{m.concept}» podría ser la "
+                       f"autorización {a.id} ({a.payee or 'sin tercero'}): si lo "
+                       f"es, pon 🆔 {a.id} en su entrada del logbook")
+    return out
+
+
+# ── Salida en terminal ───────────────────────────────────────────────────────
 
 def _d(x: Optional[date]) -> str:
     return x.isoformat() if x else "—"
@@ -439,9 +430,6 @@ def _suggest(project: str, item) -> str:
 _TITLES = {"auts": "Autorizaciones ↔ #pedido",
            "obls": "Obligaciones ↔ #gasto",
            "mods": "Dotaciones ↔ #ingreso"}
-_ONLY_LEDGER = {"auts": "la USC aún no la ha tramitado",
-                "obls": "la USC aún no la ha reconocido",
-                "mods": "la USC no la registra"}
 
 
 def print_reconciliation(project_dir: Path, label: str, report: UscReport,
@@ -466,66 +454,30 @@ def print_reconciliation(project_dir: Path, label: str, report: UscReport,
             continue
         print(f"\n  ── {_TITLES[key]}")
         for p in rec.pairs:
-            mark = "✓" if p.how == SURE else "≈"
-            why = "importe y fecha" if key == "mods" else "importe, fecha y tercero"
-            print(f"  {mark} {_usc_line(p.usc)}\n      ↔ {_mov_line(p.mov)}"
-                  + ("" if p.how == SURE else f"   (probable: {why})"))
-            for note in p.notes:
-                print(f"      ⚠️  {note}")
+            mark = "!" if p.note else "ok"
+            print(f"  {mark:<3}{_usc_line(p.usc)}\n       ↔ {_mov_line(p.mov)}")
+            if p.note:
+                print(f"       {p.note}")
         for item in rec.only_usc:
-            print(f"  ＋ solo en la USC: {_usc_line(item)}")
-            print(f"      → {_suggest(label, item)}")
+            print(f"  !↑ {_usc_line(item)}   (en la USC, no aquí)")
+            print(f"       → {_suggest(label, item)}")
         for m in rec.only_ledger:
-            print(f"  ・ solo en el ledger: {_mov_line(m)}  ({_ONLY_LEDGER[key]})")
+            print(f"  !↓ {_mov_line(m)}   (aquí, aún no en la USC)")
         if not (rec.pairs or rec.only_usc or rec.only_ledger):
             print("  (nada)")
+    for h in hints(result):
+        print(f"\n  💡 {h}")
     if not report.has_obls:
-        print("\n  (sin el excel de obrigas no comparo facturas: pásamelo también)")
+        print("\n  (sin el excel de obrigas no comparo facturas)")
 
 
-def _apply(project_dir: Path, result: dict) -> int:
-    """Ofrece escribir el número oficial en cada coincidencia probable."""
-    import sys
-    from core.ledger import rewrite_ids
+# ── Guardar los ficheros ─────────────────────────────────────────────────────
 
-    probables = [(k, p) for k in ("auts", "obls") if k in result
-                 for p in result[k].pairs if p.how == PROBABLE]
-    offers = [(k, p) for k, p in probables
-              if (p.usc.id if k == "auts" else p.usc.invoice)]
-    if not offers:
-        return 0
-    if not sys.stdin.isatty():
-        print("\n  (hay coincidencias probables: lánzalo en terminal para "
-              "escribir los números oficiales)")
-        return 0
-    written = 0
-    print()
-    for k, p in offers:
-        new_id = p.usc.id if k == "auts" else p.usc.invoice
-        what = "autorización" if k == "auts" else "factura"
-        extra = (f" (y los 🔗 {p.mov.op_id} de sus facturas)"
-                 if k == "auts" and p.mov.op_id else "")
-        try:
-            ans = input(f"  ¿Escribir 🆔 {new_id} ({what}) en «{p.mov.concept}»"
-                        f"{extra}? [s/N]: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-        if ans in ("s", "si", "sí", "y", "yes"):
-            n = rewrite_ids(project_dir, p.mov.raw, new_id)
-            print(f"    ✓ {n} entrada{'s' if n != 1 else ''} actualizada"
-                  f"{'s' if n != 1 else ''}")
-            written += 1
-    if written:
-        from views.ledger import write_ledger
-        write_ledger(project_dir, force=True)
-    return written
+_EXEC_GLOB, _OBL_GLOB = "*_Execucion_*.pdf", "*_obrigas*.xls"
 
-
-# ── Guardar los ficheros y anotar la conciliación ───────────────────────────
 
 def _target_name(path: Path, when: date, partida: Optional[str], is_pdf: bool) -> str:
-    """`2026-09-29_Execucion_<partida>.pdf` / `…_obrigas_<partida>.xls`.
+    """`2026-09-29_Execucion_<partida>.pdf` / `2026-09-29_obrigas_<partida>.xls`.
 
     Se quita el ` (6)` que añade el navegador y no se repite la fecha si el
     nombre ya empieza por una.
@@ -539,46 +491,51 @@ def _target_name(path: Path, when: date, partida: Optional[str], is_pdf: bool) -
 
 
 def import_usc_files(project_dir: Path, paths: List[Path],
-                     report: UscReport) -> Tuple[Optional[str], Optional[str]]:
-    """Copia los ficheros a `cloud/logs/` con fecha. Devuelve las rutas
-    relativas `(pdf, xls)` tal y como se enlazan desde el logbook."""
+                     report: UscReport) -> List[str]:
+    """Copia los ficheros a `cloud/logs/` con la fecha de la USC. Devuelve
+    los nombres con que quedan."""
     import shutil
     when = report.as_of or date.today()
     logs = project_dir / "cloud" / "logs"
     logs.mkdir(parents=True, exist_ok=True)
-    pdf_rel = xls_rel = None
+    names = []
     for path in paths:
         is_pdf = path.read_bytes()[:5] == b"%PDF-"
         name = _target_name(path, when, report.partida, is_pdf)
         target = logs / name
         if path.resolve() != target.resolve():
             shutil.copy2(path, target)
-        rel = f"./cloud/logs/{name}"
-        if is_pdf:
-            pdf_rel = rel
-        else:
-            xls_rel = rel
-    return pdf_rel, xls_rel
+        names.append(name)
+    return names
+
+
+def latest_usc_files(project_dir: Path) -> List[Path]:
+    """El PDF de ejecución y el excel de obrigas más recientes de `cloud/logs/`
+    (por la fecha del nombre)."""
+    logs = project_dir / "cloud" / "logs"
+    if not logs.is_dir():
+        return []
+    out = []
+    for pattern in (_EXEC_GLOB, _OBL_GLOB):
+        found = sorted(logs.glob(pattern))
+        if found:
+            out.append(found[-1])
+    return out
 
 
 # ── Estado para la columna USC de ledger.md ─────────────────────────────────
-
-OK, OK_PROBABLE, ONLY_USC, ONLY_HERE, PROBLEM = "ok", "ok?", "!↑", "!↓", "!"
-_SEVERITY = {OK: 0, OK_PROBABLE: 1, ONLY_HERE: 2, PROBLEM: 3}
-
 
 @dataclass
 class UscStatus:
     """Lo que la vista necesita: marca por movimiento y lo que falta aquí."""
     as_of:    Optional[date]
-    source:   Optional[str]
-    marks:    dict = field(default_factory=dict)      # raw → (marca, id USC)
+    marks:    dict = field(default_factory=dict)      # raw → (marca, nº USC)
     only_usc: List[object] = field(default_factory=list)
-    notes:    dict = field(default_factory=dict)      # raw → [texto]
+    notes:    dict = field(default_factory=dict)      # raw → texto
     error:    Optional[str] = None
 
     def for_operation(self, op) -> Tuple[str, str]:
-        """Peor marca de las entradas de la operación y los ids de la USC."""
+        """Peor marca de las entradas de la operación y los nº de la USC."""
         marks = [self.marks[m.raw] for m in op.entries if m.raw in self.marks]
         if not marks:
             return "", ""
@@ -588,26 +545,16 @@ class UscStatus:
 
 
 def status_from(movements: List[Movement], report: UscReport,
-                result: Optional[dict] = None, source: Optional[str] = None) -> UscStatus:
+                result: Optional[dict] = None) -> UscStatus:
     result = result or reconcile(movements, report)
-    st = UscStatus(as_of=report.as_of, source=source)
-    for key in ("auts", "obls", "mods"):
-        rec = result.get(key)
-        if rec is None:
-            continue
+    st = UscStatus(as_of=report.as_of)
+    for key, rec in result.items():
         for p in rec.pairs:
             usc_id = (p.usc.id if key == "auts" else
                       p.usc.invoice if key == "obls" else "")
-            mark = OK if p.how == SURE else OK_PROBABLE
-            if p.notes:
-                mark = PROBLEM
-                st.notes.setdefault(p.mov.raw, []).extend(p.notes)
-            if (key == "auts" and p.usc.pending == 0 and p.usc.amount
-                    and not any(o.aut_id == p.usc.id for o in report.obls)):
-                mark = PROBLEM
-                st.notes.setdefault(p.mov.raw, []).append(
-                    "la USC la tiene sin saldo y sin obligaciones")
-            st.marks[p.mov.raw] = (mark, usc_id or "")
+            st.marks[p.mov.raw] = (PROBLEM if p.note else OK, usc_id or "")
+            if p.note:
+                st.notes[p.mov.raw] = p.note
         for m in rec.only_ledger:
             st.marks[m.raw] = (ONLY_HERE, "")
         st.only_usc += rec.only_usc
@@ -615,39 +562,25 @@ def status_from(movements: List[Movement], report: UscReport,
 
 
 def usc_status(project_dir: Path, movements: List[Movement]) -> Optional[UscStatus]:
-    """Estado de la última `#conciliacion` con ficheros, o None si no hay.
-
-    Relee los ficheros cada vez (no hay estado guardado): si no están
-    disponibles, lo dice en `error` y la vista omite la columna.
-    """
-    from core.ledger import RECON_TAG
-    from views.ledger_check import _resolve_link
-
-    recons = [m for m in movements if m.tag == RECON_TAG and m.link]
-    if not recons:
+    """Estado frente a los ficheros de la USC más recientes de `cloud/logs/`,
+    o None si no hay ninguno. Si no se pueden leer, lo dice en `error`."""
+    paths = latest_usc_files(project_dir)
+    if not paths:
         return None
-    last = recons[-1]
-    paths = [_resolve_link(project_dir, x) for x in (last.link, last.attach) if x]
-    paths = [p for p in paths if p is not None]
-    missing = [p.name for p in paths if not p.exists()]
-    if missing:
-        return UscStatus(as_of=last.date, source=last.link,
-                         error=f"no encuentro {', '.join(missing)}")
     try:
         report = load_report(paths)
     except (ValueError, OSError) as exc:
-        return UscStatus(as_of=last.date, source=last.link, error=str(exc))
-    report.as_of = report.as_of or last.date
-    return status_from(movements, report, source=last.link)
+        return UscStatus(as_of=None, error=str(exc))
+    if report.as_of is None:
+        from views.ledger_check import _date_of_file
+        report.as_of = _date_of_file(paths[0].name)
+    return status_from(movements, report)
 
 
 # ── `ledger --check <ficheros>` ──────────────────────────────────────────────
 
 def run_reconcile(project_dir: Path, label: str, files: List[str]) -> Optional[dict]:
-    """Guarda, anota, concilia e imprime. Devuelve el resultado, o None si
-    no se pudieron leer los ficheros."""
-    from core.ledger import record_reconciliation
-
+    """Guarda los ficheros, concilia e imprime. None si no se pudieron leer."""
     paths = [Path(f).expanduser() for f in files]
     missing = [p for p in paths if not p.exists()]
     if missing:
@@ -658,20 +591,11 @@ def run_reconcile(project_dir: Path, label: str, files: List[str]) -> Optional[d
     except ValueError as exc:
         print(f"⚠️  {exc}")
         return None
-
-    pdf_rel, xls_rel = import_usc_files(project_dir, paths, report)
-    if pdf_rel and report.available is not None:
-        when = report.as_of or date.today()
-        if record_reconciliation(project_dir, when, report.available,
-                                 pdf_rel, xls_rel):
-            print(f"  📥 conciliación del {when.isoformat()} anotada en el logbook")
-    else:
-        print("  (sin el PDF de ejecución no se anota la conciliación: la "
-              "columna USC de ledger.md necesita el PDF)")
+    names = import_usc_files(project_dir, paths, report)
+    print(f"  📥 guardados en cloud/logs/: {', '.join(names)}")
 
     movements, _ = read_movements(project_dir)
     result = reconcile(movements, report)
     print()
     print_reconciliation(project_dir, label, report, result, movements)
-    _apply(project_dir, result)
     return result

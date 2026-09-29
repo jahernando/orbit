@@ -10,89 +10,28 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
-### Unreleased — ledger: `--check <ficheros>` concilia y pone la columna USC
+### Unreleased — ledger con hojas de pedido, conciliación con la USC y export (ADR-053)
 
-- `--reconcile` desaparece: `ledger <p> --check` sin ficheros es la
-  comprobación interna; con el PDF de ejecución y/o el excel de obrigas,
-  además concilia.
-- Guarda los ficheros en `cloud/logs/` con la fecha de la USC y anota una
-  `#conciliacion` (una por fecha; el excel como `📎`).
-- Columna **USC** en `ledger.md`, el PDF y el xlsx: `ok <nº>`, `ok? <nº>`,
-  `!↑` (en la USC y no aquí, como fila), `!↓` (aquí y no en la USC), `!` (no
-  encaja). Se deriva de los ficheros de la última conciliación.
-- El export no copia la ejecución de la USC a `justificantes/`.
-
----
-
-### Unreleased — ledger F4: `ledger <proyecto> --export <dir>` (ADR-053)
-
-- `views/ledger_export.py`: `ledger.pdf` (reportlab, apaisado), `ledger.xlsx`
-  (openpyxl: Resumen · Operaciones · Movimientos) y `justificantes/` solo con
-  lo enlazado. Enlaces relativos; idempotente (sincroniza `justificantes/`).
-- Pasa `--check` antes: con errores no exporta.
-- Extra `ledger` en `pyproject.toml` (reportlab, openpyxl); los tests se
-  saltan sin ellos.
-
----
-
-### Unreleased — ledger: dos ids y `ledger --reconcile` con la USC (ADR-053)
-
-- El `🆔` del `#pedido` es el nº de autorización de la USC (o uno provisional);
-  el `#gasto` lleva también `🆔`, el nº de factura. `ledger.md`: columnas
-  **Aut.** y **Factura**. `log --entry gasto --id NFAC`; el interrogador los
-  pregunta.
-- `views/ledger_reconcile.py`: lee el PDF de ejecución (`pdftotext -layout`) y
-  el excel de obrigas (HTML latin-1, por nombre de columna); empareja por
-  número y, si no, por importe + fecha + tercero; lista lo que casa, lo que
-  solo está en la USC (con el `orbit log` que lo crearía) y lo que solo está en
-  el ledger, y compara los tres totales.
-- `core.ledger.rewrite_ids`: escribe el número oficial (y los `🔗` que
-  apuntaban al provisional), solo tras confirmar una a una.
-- `--check`: documento de autorización sin enlazar; factura repetida.
-
----
-
-### Unreleased — ledger F3: `ledger <proyecto> --check [--strict]` (ADR-053)
-
-- `views/ledger_check.py`: errores (justificante inexistente o ausente en
-  gasto/pedido, `🔗` roto, id repetido, entrada ilegible), avisos (pedido
-  abierto > 60 días, factura candidata, documento económico sin movimiento,
-  gasto que enlaza una folla, diferencia > 10 %, duplicados, variantes de
-  beneficiario, conciliación que no cuadra) e info (nombres raros).
-- `orbit doctor` incorpora solo los errores del ledger.
-- `.ledger-ignore` por proyecto; umbrales y patrones en `orbit.json` → `ledger`.
-- `log --ref` pasa a `log --pedido` (no confundir con el justificante).
-
----
-
-### Unreleased — ledger F2: moneda original y `log` para pedidos (ADR-053)
-
-- `log --entry pedido|anulacion|conciliacion` y flags `--id`, `--pedido`,
-  `--partial`, `--orig "N MON"`. Sin `--id`, el siguiente libre (se anuncia en
-  el eco). `--pedido` a un pedido inexistente o cerrado, o un id repetido, se
-  rechazan antes de escribir.
-- Interrogador: id sugerido, lista de pedidos abiertos para `--pedido`, ¿parcial?,
-  moneda original.
-- `💱` en el cuerpo (`1.150,00 CHF`), informativo: todo se calcula en `💶`.
-  `ledger.md` gana la columna *Moneda orig.*; lo comprometido de un pedido en
-  otra moneda lleva `~` (estimado).
-- Eco: `ANULACION` sin importe; la moneda original entre paréntesis.
-
----
-
-### Unreleased — ledger F1: compromisos (pedido → factura), ADR-053
-
-- Tags nuevas: `#pedido` (compromete, id `🆔`), `#anulacion` y `#conciliacion`;
-  `#gasto` con `🔗 P03` cierra el pedido (`🔗 P03 parcial` no lo cierra).
-- `core/ledger.py`: `build_operations` reconstruye cada operación desde la
-  cadena de entradas; `summarize` da dotación · gastado · comprometido ·
-  disponible; `balance` solo suma lo que mueve caja.
-- `ledger.md` y `ledger <proyecto>`: resumen + una fila por operación + tabla
-  de dotación + avisos (🔗 colgante, id repetido, factura sobre pedido cerrado).
-  Sustituye a la tabla con saldo corrido.
-- `archive`: una operación con pedido solo se archiva entera y terminada; el
-  arrastre no cuenta pedidos.
-- El eco de `log --entry gasto|ingreso` da el disponible, no el saldo de caja.
+- **Modelo**: `#pedido` (hoja de pedido: compromete, no mueve caja; `🆔` = nº
+  de autorización de la USC o uno provisional `P01`) y `#gasto` (factura o
+  dietas; `🆔` = nº de factura opcional; `🔗` = la hoja que cierra). Resumen:
+  dotación · gastado · comprometido · disponible; una fila por operación.
+- **CLI**: `log --entry pedido|gasto` con `--id` y `--pedido`; el interrogador
+  pregunta los números y lista las hojas abiertas. Estricto al escribir.
+- **`ledger <p> --check`**: errores (justificantes, `🔗` roto, números
+  repetidos, entradas ilegibles; también en `orbit doctor`) y dos avisos (hoja
+  abierta > 60 días, documento económico sin movimiento; `.ledger-ignore`).
+- **`ledger <p> --check <Execucion.pdf> <obrigas.xls>`**: guarda los ficheros
+  de la USC en `cloud/logs/` con fecha, empareja **por número** y pone la
+  columna **USC** en `ledger.md` (`ok` · `!↑` · `!↓` · `!`), derivada de los
+  ficheros más recientes.
+- **`ledger <p> --export <dir>`**: `ledger.pdf`, `ledger.xlsx` y
+  `justificantes/` (solo lo enlazado). Extra `ledger` (reportlab, openpyxl).
+- `archive` no parte una hoja de su factura.
+- `log --ref` pasa a `--pedido`. Descartados tras probarlos (simplificación):
+  `#anulacion`, `#conciliacion`, facturas parciales, moneda original (`💱`),
+  emparejado aproximado y reescritura de números, y las comprobaciones
+  heurísticas (facturas candidatas, duplicados, variantes de nombre…).
 
 ---
 

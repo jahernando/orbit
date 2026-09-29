@@ -8,8 +8,7 @@ from core.config import PROJECTS_DIR, iter_project_dirs
 VALID_TYPES = ["idea", "referencia", "apunte", "problema", "solucion", "resultado",
                "decision", "evaluacion",
                "plan", "email",
-               "gasto", "ingreso", "arrastre",   # ledger (core/ledger.py)
-               "pedido", "anulacion", "conciliacion",
+               "gasto", "ingreso", "arrastre", "pedido",   # ledger (core/ledger.py)
                "tarea", "evento"]   # tarea/evento kept for backwards compat
 
 
@@ -173,8 +172,6 @@ TAG_EMOJI = {
     "ingreso":     "💶",
     "arrastre":    "💶",
     "pedido":      "💶",
-    "anulacion":   "💶",
-    "conciliacion": "💶",
     "tarea":       "✅",   # legacy
     "evento":      "📅",   # legacy
 }

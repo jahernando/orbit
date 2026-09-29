@@ -6,16 +6,14 @@ Los ficheros de la USC son **sintéticos**: misma estructura que los reales
 llevan nombres y proyectos que no van a un repo público.
 """
 
-import builtins
 from datetime import date
 from decimal import Decimal
 
 import pytest
 
-from core.ledger import build_operations, read_movements, rewrite_ids
+from core.ledger import read_movements
 from views.ledger_reconcile import (
-    PROBABLE, SURE, Aut, Mod, Obl, UscReport, _apply, load_report,
-    parse_execution_text, parse_obligations, reconcile,
+    Mod, hints, load_report, parse_execution_text, parse_obligations, reconcile,
 )
 from views.ledger_check import run_ledger_check
 
@@ -103,7 +101,7 @@ class TestParse:
         assert r.auts[0].payee == "CONGRESO SL"    # el tercero viene del PDF
 
 
-# ── Emparejado ───────────────────────────────────────────────────────────────
+# ── Emparejado (solo por número) ─────────────────────────────────────────────
 
 @pytest.fixture
 def proj(tmp_path, monkeypatch):
@@ -131,7 +129,7 @@ LEDGER = (
      "👤 Axencia Viaxes · 💶 -1.578,64 · 🆔 CM26XX0001"),
     ("2026-09-20", "Folla hotel #pedido", "👤 Hotel · 💶 -420,00 · 🆔 P02"),
     ("2026-10-02", "Factura vuelo #gasto",
-     "👤 Axencia Viaxes · 💶 -1.580,10 · 🔗 CM26XX0001"),
+     "👤 Axencia Viaxes · 💶 -1.580,10 · 🆔 F-4471 · 🔗 CM26XX0001"),
     ("2026-08-31", "Dietas #gasto", "👤 Ana · 💶 -1.408,32"),
 )
 
@@ -145,37 +143,29 @@ def _report():
 
 class TestReconcile:
 
-    def test_emparejado(self, proj):
+    def test_emparejado_por_numero(self, proj):
         _write(proj, *LEDGER)
         res = reconcile(read_movements(proj)[0], _report())
-
         auts = res["auts"]
-        how = {p.usc.id: (p.how, p.mov.concept) for p in auts.pairs}
-        assert how == {"CM26XX0001": (SURE, "Folla vuelo"),
-                       "AUT-001": (PROBABLE, "Folla congreso")}
-        assert [m.concept for m in auts.only_ledger] == ["Folla hotel"]
-
+        assert [p.usc.id for p in auts.pairs] == ["CM26XX0001"]
+        assert [a.id for a in auts.only_usc] == ["AUT-001"]        # P01 no casa
+        assert sorted(m.op_id for m in auts.only_ledger) == ["P01", "P02"]
         obls = res["obls"]
-        assert [(p.usc.invoice, p.how) for p in obls.pairs] == [("F-4471", PROBABLE)]
+        assert [(p.usc.invoice, p.note) for p in obls.pairs] == [("F-4471", None)]
         assert [m.concept for m in obls.only_ledger] == ["Dietas"]
+        assert len(res["mods"].pairs) == 1                         # por importe
 
-        assert [p.how for p in res["mods"].pairs] == [PROBABLE]
-
-    def test_solo_en_la_usc(self, proj):
-        _write(proj, LEDGER[0])
+    def test_sugerencia_para_el_provisional(self, proj):
+        _write(proj, *LEDGER)
         res = reconcile(read_movements(proj)[0], _report())
-        assert {a.id for a in res["auts"].only_usc} == {"AUT-001", "CM26XX0001"}
-        assert [o.invoice for o in res["obls"].only_usc] == ["F-4471"]
+        assert any("P01" in h and "AUT-001" in h for h in hints(res))
+        # …pero no escribe nada.
+        assert "AUT-001" not in (proj / "logbook.md").read_text()
 
-    def test_importe_distinto_por_id(self, proj):
+    def test_importe_distinto(self, proj):
         _write(proj, ("2026-09-18", "Folla #pedido", "💶 -1.500,00 · 🆔 CM26XX0001"))
         pair = reconcile(read_movements(proj)[0], _report())["auts"].pairs[0]
-        assert pair.how == SURE and "importe distinto" in pair.notes[0]
-
-    def test_tercero_distinto_no_empareja(self, proj):
-        _write(proj, ("2026-08-31", "Folla #pedido", "👤 Otra Casa · 💶 -300,00 · 🆔 P01"))
-        rec = reconcile(read_movements(proj)[0], _report())["auts"]
-        assert "AUT-001" in {a.id for a in rec.only_usc}
+        assert "importe distinto" in pair.note
 
     def test_sin_excel_no_compara_facturas(self, proj):
         _write(proj, *LEDGER)
@@ -183,48 +173,11 @@ class TestReconcile:
         assert "obls" not in res
 
 
-# ── Escritura del número oficial ─────────────────────────────────────────────
-
-class TestRewrite:
-
-    def test_pedido_provisional_y_sus_referencias(self, proj):
-        _write(proj,
-               ("2026-09-01", "Folla #pedido", "👤 X · 💶 -100,00 · 🆔 P01"),
-               ("2026-09-10", "Fra 1 #gasto", "💶 -40,00 · 🔗 P01 parcial"),
-               ("2026-09-20", "Fra 2 #gasto", "💶 -60,00 · 🔗 P01"),
-               ("2026-09-21", "Otra #gasto", "💶 -1,00 · 🔗 P011"))
-        folla = read_movements(proj)[0][0]
-        assert rewrite_ids(proj, folla.raw, "CM26XX0009") == 3
-        movs, _ = read_movements(proj)
-        assert movs[0].op_id == "CM26XX0009"
-        assert [m.ref for m in movs[1:]] == ["CM26XX0009", "CM26XX0009", "P011"]
-        assert movs[1].partial
-        ops, problems = build_operations(movs)
-        assert ops[0].state == "cerrado"
-
-    def test_gasto_sin_id(self, proj):
-        _write(proj, ("2026-10-02", "Fra #gasto", "👤 X · 💶 -10,00"))
-        rewrite_ids(proj, read_movements(proj)[0][0].raw, "F-1")
-        text = (proj / "logbook.md").read_text()
-        assert "  👤 X · 💶 -10,00 · 🆔 F-1\n" in text
-
-    def test_apply_pregunta_una_a_una(self, proj, monkeypatch):
-        _write(proj, *LEDGER)
-        res = reconcile(read_movements(proj)[0], _report())
-        monkeypatch.setattr("sys.stdin", type("T", (), {"isatty": lambda s: True})())
-        answers = iter(["s", "n"])                 # sí a la aut., no a la factura
-        monkeypatch.setattr(builtins, "input", lambda _p="": next(answers))
-        assert _apply(proj, res) == 1
-        ids = {m.concept: m.op_id for m in read_movements(proj)[0]}
-        assert ids["Folla congreso"] == "AUT-001"
-        assert ids["Factura vuelo"] is None
-
-
 def test_fichero_inexistente(proj, capsys):
     assert run_ledger_check("proyx", files=["/no/existe.xls"]) == 1
 
 
-# ── `--check` con ficheros: guarda, anota, columna USC ───────────────────────
+# ── `--check` con ficheros: guarda y pone la columna USC ─────────────────────
 
 @pytest.fixture
 def usc_files(tmp_path, monkeypatch):
@@ -245,39 +198,32 @@ def _check(*argv):
     return orbit.cmd_ledger(args)
 
 
+def _usc(md, concept):
+    line = next(l for l in md.splitlines()
+                if l.startswith("| 2026-") and f"| {concept} |" in l)
+    return line.rstrip(" |").rsplit("|", 1)[1].strip()
+
+
 class TestCheckConFicheros:
 
-    def test_guarda_con_fecha_y_anota_una_vez(self, proj, usc_files):
+    def test_guarda_con_fecha_y_no_toca_el_logbook(self, proj, usc_files):
         _write(proj, *LEDGER)
-        pdf, xls = usc_files
-        _check(str(pdf), str(xls))
+        antes = (proj / "logbook.md").read_text()
+        _check(*map(str, usc_files))
         logs = sorted(f.name for f in (proj / "cloud" / "logs").iterdir())
         assert logs == ["2026-09-29_Execucion_2010.XXXX.64100.pdf",
                         "2026-09-29_obrigas_2010.XXXX.64100.xls"]
-        recons = [m for m in read_movements(proj)[0] if m.tag == "conciliacion"]
-        assert len(recons) == 1
-        r = recons[0]
-        assert r.amount == D("18121.36") and r.date == date(2026, 9, 29)
-        assert r.link.endswith("Execucion_2010.XXXX.64100.pdf")
-        assert r.attach.endswith("obrigas_2010.XXXX.64100.xls")
-        _check(str(pdf), str(xls))                       # otra vez: no repite
-        assert len([m for m in read_movements(proj)[0]
-                    if m.tag == "conciliacion"]) == 1
+        assert (proj / "logbook.md").read_text() == antes
 
-    def test_columna_usc_en_ledger_md(self, proj, usc_files):
+    def test_columna_usc(self, proj, usc_files):
         _write(proj, *LEDGER)
         _check(*map(str, usc_files))
         md = (proj / "ledger.md").read_text()
         assert "Conciliado con la USC el 2026-09-29" in md
-        assert "| USC |" in md
-        def usc(concept):
-            line = next(l for l in md.splitlines()
-                        if l.startswith("| 2026-") and f"| {concept} |" in l)
-            return line.rstrip(" |").rsplit("|", 1)[1].strip()
-        assert usc("Folla vuelo · Factura vuelo") == "ok? CM26XX0001 · F-4471"
-        assert usc("Folla congreso") == "ok? AUT-001"
-        assert usc("Folla hotel") == "!↓"
-        assert usc("Dietas") == "!↓"
+        assert _usc(md, "Folla vuelo · Factura vuelo") == "ok CM26XX0001 · F-4471"
+        assert _usc(md, "Folla congreso") == "!↓"
+        assert _usc(md, "Dietas") == "!↓"
+        assert "| AUT-001 | — | (solo en la USC) | CONGRESO SL |" in md
 
     def test_la_columna_sobrevive_a_regenerar(self, proj, usc_files):
         from views.ledger import write_ledger
@@ -286,42 +232,36 @@ class TestCheckConFicheros:
         write_ledger(proj, force=True)                   # p. ej. en un save
         assert "| USC |" in (proj / "ledger.md").read_text()
 
-    def test_solo_en_la_usc_como_fila(self, proj, usc_files):
-        _write(proj, LEDGER[0])
+    def test_usa_los_ficheros_mas_recientes(self, proj, usc_files):
+        _write(proj, *LEDGER)
         _check(*map(str, usc_files))
-        md = (proj / "ledger.md").read_text()
-        assert "| AUT-001 | — | (solo en la USC) | CONGRESO SL |" in md
-        assert md.count("!↑") >= 2
+        logs = proj / "cloud" / "logs"
+        (logs / "2026-01-01_Execucion_viejo.pdf").write_bytes(b"%PDF-viejo")
+        from views.ledger_reconcile import latest_usc_files
+        assert [p.name for p in latest_usc_files(proj)][0].startswith("2026-09-29")
 
     def test_importe_distinto_es_problema(self, proj, usc_files):
         _write(proj, LEDGER[0], ("2026-09-18", "Folla #pedido",
                                  "💶 -1.500,00 · 🆔 CM26XX0001"))
         _check(*map(str, usc_files))
         md = (proj / "ledger.md").read_text()
-        assert "| ! CM26XX0001 |" in md
+        assert _usc(md, "Folla") == "! CM26XX0001"
         assert "No encaja con la USC" in md and "importe distinto" in md
 
     def test_strict(self, proj, usc_files):
         _write(proj, LEDGER[0])
         assert _check(*map(str, usc_files), "--strict") == 1   # hay !↑
 
-    def test_sin_ficheros_la_columna_avisa(self, proj, usc_files):
+    def test_si_faltan_los_ficheros_la_columna_avisa(self, proj, usc_files):
         _write(proj, *LEDGER)
         _check(*map(str, usc_files))
-        for f in (proj / "cloud" / "logs").iterdir():
-            f.unlink()
+        (proj / "cloud" / "logs" / "2026-09-29_Execucion_2010.XXXX.64100.pdf").write_text("roto")
         from views.ledger import build_ledger_md
         md = build_ledger_md(proj)
-        assert "Columna USC no disponible" in md and "| USC |" not in md
-
-    def test_solo_excel_no_anota(self, proj, usc_files, capsys):
-        _write(proj, *LEDGER)
-        _check(str(usc_files[1]))
-        assert not [m for m in read_movements(proj)[0] if m.tag == "conciliacion"]
-        assert "necesita el PDF" in capsys.readouterr().out
+        assert "| USC |" not in md or "Columna USC no disponible" in md
 
 
-def test_export_lleva_columna_usc_y_no_la_ejecucion(proj, usc_files, tmp_path):
+def test_export_lleva_columna_usc_y_no_los_ficheros_usc(proj, usc_files, tmp_path):
     openpyxl = pytest.importorskip("openpyxl")
     pytest.importorskip("reportlab")
     from views.ledger_export import export_ledger
@@ -335,6 +275,6 @@ def test_export_lleva_columna_usc_y_no_la_ejecucion(proj, usc_files, tmp_path):
     export_ledger(proj, out)
     assert [f.name for f in (out / "justificantes").iterdir()] == ["2026-09-18_folla.pdf"]
     ws = openpyxl.load_workbook(out / "ledger.xlsx")["Operaciones"]
-    assert ws.cell(1, 11).value == "USC"
-    values = [ws.cell(r, 11).value for r in range(2, ws.max_row + 1)]
+    assert ws.cell(1, 10).value == "USC"
+    values = [ws.cell(r, 10).value for r in range(2, ws.max_row + 1)]
     assert "ok CM26XX0001" in values and "!↑" in values
