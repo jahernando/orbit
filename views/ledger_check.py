@@ -288,7 +288,10 @@ def _check_files(project_dir: Path, movements: List[Movement], operations,
             out.append(Finding(WARNING, f"documento de la autorización "
                                f"{own[0].op_id} sin enlazar: cloud/logs/{name}"))
             continue
-        candidates = [
+        # Una hoja de pedido no es la factura de nadie: si sobra, es un
+        # pedido sin anotar (cae abajo como documento sin movimiento).
+        is_order = re.search(cfg["order_patterns"], norm)
+        candidates = [] if is_order else [
             op for op in opens
             if not (fdate and fdate < op.date - timedelta(days=7))
             and _words(name) & (_words(op.concept) | _words(op.payee or ""))]

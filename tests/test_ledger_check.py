@@ -158,6 +158,15 @@ def test_documento_de_la_autorizacion(proj):
     assert not _find(proj, text="factura candidata")
 
 
+def test_folla_no_es_factura_candidata(proj):
+    folla = _pdf(proj, "2026-09-28_folla_voos.pdf")
+    _pdf(proj, "2026-09-28_folla_pedimento_taxa_escola.pdf")
+    _write(proj, ("2026-09-28", f"[Voos escola]({folla}) #pedido",
+                  "👤 Viaxes · 💶 -320,00 · 🆔 P03"))
+    assert not _find(proj, text="factura candidata")
+    assert _find(proj, WARNING, "documento económico sin movimiento")
+
+
 def test_factura_repetida(proj):
     f = _pdf(proj, "2026-08-31_x.pdf")
     _write(proj, ("2026-08-01", f"[A]({f}) #gasto", "👤 A · 💶 -1,00 · 🆔 F1"),
