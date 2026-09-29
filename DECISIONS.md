@@ -964,33 +964,30 @@ Tres fricciones reales:
 
 ---
 
-## ADR-053 — Ledger con hojas de pedido y conciliación con la USC
+## ADR-053 — El ledger es la cuenta del proyecto: ingresos, compromisos y gastos
 
 **Estado**: aceptada (2026-09-29). Amplía ADR-048.
 
-**Contexto**: al preparar el ledger de un proyecto para compartirlo con la USC apareció que hojas de pedido y facturas estaban todas como `#gasto`. En contabilidad pública la hoja de pedido *compromete* crédito y la factura (o la liquidación de dietas) lo *gasta*: contar las dos es contar el dinero dos veces, y contar solo una esconde lo comprometido. Además, la USC lleva la contabilidad oficial y la publica (PDF de ejecución, excel de obrigas): hacía falta comparar con ella para encontrar descuadres.
+**Contexto**: al preparar el ledger de un proyecto para compartirlo con la USC apareció que hojas de pedido y facturas estaban todas como `#gasto`: contar las dos es contar el dinero dos veces, y contar solo una esconde lo comprometido. En la misma sesión se probó a meter en orbit el vocabulario y la conciliación de la USC (folla, dietas, factura, autorización, lectura de sus ficheros); resultó demasiado complejo y demasiado específico. El usuario lo reformuló: el ledger de orbit tiene que ser una cuenta genérica, que sirva para la USC y para sus cuentas personales.
 
 **Decisión**:
-1. **Dos tags de dinero más una**: `#pedido` (compromete, no mueve caja) y `#gasto` (gasta), además de `#ingreso`. Disponible = dotación − gastado − comprometido.
-2. **Los números de la USC son los ids**: el `🆔` del pedido es el nº de autorización (provisional `P01` mientras no se conoce; el usuario lo cambia cuando llega) y el del gasto el nº de factura; el `🔗` del gasto apunta a la hoja que cierra. Una factura cierra la hoja entera; la diferencia de importe no es error.
-3. **Cadena de entradas**: el estado de cada hoja (abierta / cerrada) se reconstruye leyendo el logbook, como el saldo. Estricto al escribir (id repetido, `🔗` a una hoja inexistente o cerrada), tolerante al leer (se avisa y el dinero cuenta).
-4. **Conciliación solo por número**, dentro de `--check` (con los ficheros de la USC): lo que casa (`ok`), lo que está en la USC y no aquí (`!↑`), lo que está aquí y aún no allí (`!↓`), lo que no encaja (`!`). Separar `!↓` de `!` evita que lo pendiente —lo normal— parezca error. Lo que no casa por número no se adivina: a lo sumo se sugiere.
-5. **La columna USC se deriva**: `--check` guarda los ficheros de la USC en `cloud/logs/` con su fecha y `ledger.md` relee los más recientes cada vez. No hay estado aparte ni entradas nuevas en el logbook.
-6. **Comprobación mínima**: errores que hacen el ledger no fiable (también en `orbit doctor`, y bloquean el export) y dos avisos (hoja abierta mucho tiempo, documento económico sin movimiento), solo en `--check` para no hacer preguntar al `save`.
-7. **Export** a una carpeta: PDF, xlsx y solo los justificantes enlazados (en `cloud/logs/` hay documentos sensibles). Publicarla es cosa de otra herramienta.
-8. **`archive` no parte una hoja de su factura.**
-9. **La revisión contable con la USC sale de orbit** (herramienta `usc-ledger`). orbit lleva el ledger local y publica `ledger.json` (derivado, versionado, con una `key` por entrada) como contrato; `usc-ledger` toma ese fichero, los de la USC y la revisión anterior, y genera la revisión (con la USC como verdad, sus justificantes y los pendientes a cada lado). La revisión vuelve a orbit como un documento más del logbook.
-10. **Conciliado = marca en la entrada** (`🏛️ <nº USC>`), que `usc-ledger` pone **a través de la CLI de orbit** (`ledger --mark <clave> <nº>`), no editando el markdown: orbit es el único que escribe su gramática. Al marcar una folla con nº provisional, el `🆔` pasa al oficial y también el `🔗` de sus facturas. La columna USC de `ledger.md` sale de la marca, sin leer ficheros de la USC.
-11. **Tipos en palabras del usuario**: `#folla`, `#dietas`, `#factura`, `#ingreso` (por dentro, folla = pedido y dietas/factura = gasto); `--entry ledger` pregunta; PDF, beneficiario e importe obligatorios.
-12. `--check <ficheros>` (solo informe) y `--export` quedan en orbit provisionalmente; se retiran cuando `usc-ledger` exista. Facturas parciales: se esperará a un caso real. Varias anualidades: para después.
+1. **Tres tipos**: `#ingreso`, `#compromiso` (reserva dinero, no mueve caja) y `#gasto`. Disponible = ingresos − gastado − comprometido pendiente.
+2. **Un compromiso admite varios gastos** (`🔗 REF`) y sigue abierto —lo no gastado sigue comprometido— hasta que lo gastado lo cubre (se cierra solo) o se cierra a mano (`🔒`: en el último gasto, `log --cierra`, o en el propio compromiso, `ledger --close`, que sirve también para anularlo). Cerrar solo por suma no bastaba: la factura puede ser menor que lo comprometido.
+3. **Obligatorio beneficiario e importe (€)**; el justificante, la referencia y las notas son opcionales. Un compromiso siempre tiene referencia (provisional `P01` si no se da) para poder asociarle gastos.
+4. **Cadena de entradas**: el estado de cada compromiso se reconstruye leyendo el logbook. Estricto al escribir (referencia repetida, `🔗` a un compromiso inexistente o cerrado), tolerante al leer (se avisa y el dinero cuenta).
+5. **`ledger.md`** lleva, por movimiento, **Gastado** y **Disponible** acumulados; **`ledger.json`** es el contrato versionado para herramientas de fuera, con una `key` por movimiento.
+6. **Conciliar es cosa de fuera**: una herramienta externa (para la USC, `usc-ledger`) cruza `ledger.json` con la fuente oficial y marca lo conciliado **a través de la CLI de orbit** (`ledger --mark <clave> <ref externa>` → `☑️`), nunca editando el markdown. Conciliado = tiene la marca.
+7. **`--check` mínimo**: errores que hacen el ledger no fiable (también en `orbit doctor`) y dos avisos, solo en `--check`, para no hacer preguntar al `save`.
+8. **`archive` no parte un compromiso de sus gastos.**
+9. Provisionales en orbit hasta que exista `usc-ledger`: `--check <ficheros USC>` (informe en terminal) y `--export`.
 
-**Descartado tras implementarlo** (misma sesión, por complejidad frente a uso): `#anulacion` (se borra o edita la entrada), `#conciliacion` como entrada, facturas parciales, moneda original (`💱`), emparejado aproximado por importe/fecha/tercero con reescritura de números, y comprobaciones heurísticas (facturas candidatas, duplicados, variantes de beneficiario, diferencia pedido/factura, nombres raros). Si alguna hace falta con datos reales, se recupera del historial de git.
+**Descartado en la misma sesión**: vocabulario de la USC en orbit (folla, dietas, factura, autorización; `🏛️`), `#anulacion` y `#conciliacion` como entradas, moneda original (`💱`), emparejado aproximado con reescritura de números, comprobaciones heurísticas y la columna USC derivada de sus ficheros. Varias anualidades: para después.
 
 **Consecuencias**:
-- Pros: el saldo deja de mezclar compromisos y gastos; los descuadres con la USC quedan a la vista en cada `ledger.md` (p. ej. una autorización que nadie reconoce sale como `!↑` hasta resolverse); next-pn24 (solo facturas) no cambia.
-- Contras: `ledger.md` pierde el saldo corrido; cambiar el nº provisional por el oficial es a mano.
+- Pros: una cuenta sencilla y genérica; lo específico de cada fuente vive fuera; next-pn24 (solo gastos e ingresos) no cambia.
+- Contras: cambiar una referencia provisional por la oficial es a mano (o lo hace la conciliación al marcar).
 
-**Verificación**: `tests/test_ledger_commitments.py`, `test_ledger_f2.py`, `test_ledger_check.py`, `test_ledger_reconcile.py`, `test_ledger_export.py`.
+**Verificación**: `tests/test_ledger*.py`.
 
 ---
 

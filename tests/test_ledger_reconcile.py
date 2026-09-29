@@ -124,10 +124,10 @@ def _write(proj, *entries):
 
 LEDGER = (
     ("2026-08-06", "Dotación #ingreso", "🏷️ p · 💶 20.000,00"),
-    ("2026-08-30", "Folla congreso #pedido", "👤 Congreso SL · 💶 -300,00 · 🆔 P01"),
-    ("2026-09-18", "Folla vuelo #pedido",
+    ("2026-08-30", "Folla congreso #compromiso", "👤 Congreso SL · 💶 -300,00 · 🆔 P01"),
+    ("2026-09-18", "Folla vuelo #compromiso",
      "👤 Axencia Viaxes · 💶 -1.578,64 · 🆔 CM26XX0001"),
-    ("2026-09-20", "Folla hotel #pedido", "👤 Hotel · 💶 -420,00 · 🆔 P02"),
+    ("2026-09-20", "Folla hotel #compromiso", "👤 Hotel · 💶 -420,00 · 🆔 P02"),
     ("2026-10-02", "Factura vuelo #gasto",
      "👤 Axencia Viaxes · 💶 -1.580,10 · 🆔 F-4471 · 🔗 CM26XX0001"),
     ("2026-08-31", "Dietas #gasto", "👤 Ana · 💶 -1.408,32"),
@@ -163,7 +163,7 @@ class TestReconcile:
         assert "AUT-001" not in (proj / "logbook.md").read_text()
 
     def test_importe_distinto(self, proj):
-        _write(proj, ("2026-09-18", "Folla #pedido", "💶 -1.500,00 · 🆔 CM26XX0001"))
+        _write(proj, ("2026-09-18", "Folla #compromiso", "💶 -1.500,00 · 🆔 CM26XX0001"))
         pair = reconcile(read_movements(proj)[0], _report())["auts"].pairs[0]
         assert "importe distinto" in pair.note
 
@@ -248,8 +248,8 @@ class TestMarca:
 
     def test_provisional_pasa_al_numero_oficial(self, proj):
         _write(proj,
-               ("2026-08-30", "Folla #folla", "👤 X · 💶 -300,00 · 🆔 P01"),
-               ("2026-09-10", "Fra #factura", "👤 X · 💶 -300,00 · 🔗 P01"))
+               ("2026-08-30", "Folla #compromiso", "👤 X · 💶 -300,00 · 🆔 P01"),
+               ("2026-09-10", "Fra #gasto", "👤 X · 💶 -300,00 · 🔗 P01"))
         folla = read_movements(proj)[0][0]
         assert _mark("--mark", folla.key, "621A-XX") == 0
         movs = read_movements(proj)[0]
@@ -259,11 +259,11 @@ class TestMarca:
         assert problems == [] and ops[0].state == "cerrado"
 
     def test_gasto_sin_numero_recibe_el_de_la_usc(self, proj):
-        _write(proj, ("2026-08-31", "Dietas #dietas", "👤 Ana · 💶 -10,00"))
+        _write(proj, ("2026-08-31", "Dietas #gasto", "👤 Ana · 💶 -10,00"))
         m = read_movements(proj)[0][0]
         _mark("--mark", m.key, "LIQ-7")
         m = read_movements(proj)[0][0]
-        assert (m.op_id, m.usc, m.label) == ("LIQ-7", "LIQ-7", "dietas")
+        assert (m.op_id, m.usc, m.label) == ("LIQ-7", "LIQ-7", "gasto")
 
     def test_clave_inexistente(self, proj, capsys):
         _write(proj, *LEDGER)
@@ -279,4 +279,4 @@ class TestMarca:
         assert all(r["key"] for r in rows)
         _mark("--mark", rows[2]["key"], "CM26XX0001")
         rows = json.loads((proj / "ledger.json").read_text())["movements"]
-        assert rows[2]["usc"] == "CM26XX0001"
+        assert rows[2]["conciliated"] == "CM26XX0001"

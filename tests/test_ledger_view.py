@@ -139,7 +139,7 @@ class TestInterrogador:
         _answers(monkeypatch, "", "", "")        # item vacío tres veces
         with pytest.raises(Cancelled):
             interrogate_movement(proj, EXPENSE_TAG, concept=None, amount=None,
-                                 payee=None, partida=None, fecha=None, ref=None)
+                                 payee=None, partida=None, fecha=None, ref="doc.pdf")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -156,19 +156,21 @@ class TestBuildLedgerMd:
         md = build_ledger_md(proj)
         assert "| Dotación | 4.000,00 |" in md
         assert "| Gastado | -218,40 |" in md
-        assert "| Comprometido (pedidos abiertos) | 0,00 |" in md
+        assert "| Comprometido (pendiente) | 0,00 |" in md
         assert "| **Disponible** | **3.781,60** |" in md
-        assert ("| 2026-07-14 | factura | — | — | Vuelo | Iberia | — | 218,40 | "
-                "gasto directo | — |") in md
-        assert "| 2026-07-01 | Ingreso | Anticipo | UCM | +4.000,00 | — |" in md
+        # Una fila por movimiento, con Gastado y Disponible acumulados.
+        assert ("| 2026-07-01 | ingreso | Anticipo | UCM | — | — | +4.000,00 | "
+                "0,00 | 4.000,00 | — | — |") in md
+        assert ("| 2026-07-14 | gasto | Vuelo | Iberia | — | — | -218,40 | "
+                "218,40 | 3.781,60 | — | — |") in md
 
     def test_partida_en_cabecera_no_en_columna(self, proj):
         # Con una sola partida por proyecto, una columna constante no informa.
         _mov(proj, EXPENSE_TAG, "10", partida="viaje")
         md = build_ledger_md(proj)
         assert "Partida: **#viaje**" in md
-        assert ("| Fecha | Tipo | Aut. | Factura | Concepto | Beneficiario | "
-                "Comprometido | Gastado | Estado | USC |") in md
+        assert ("| Fecha | Tipo | Concepto | Beneficiario | Ref. | Compromiso | "
+                "Importe | Gastado | Disponible | Estado | Conciliado |") in md
 
     def test_tipo_en_palabra(self, proj):
         # Redundante con el signo a propósito: la dirección no depende de un
@@ -176,7 +178,7 @@ class TestBuildLedgerMd:
         _mov(proj, INCOME_TAG, "10")
         _mov(proj, EXPENSE_TAG, "5")
         md = build_ledger_md(proj)
-        assert "| Ingreso |" in md and "| gasto directo |" in md
+        assert "| ingreso |" in md and "| gasto |" in md
 
     def test_sin_beneficiario(self, proj):
         _mov(proj, EXPENSE_TAG, "10", "Varios")
@@ -216,7 +218,7 @@ class TestBuildLedgerMd:
 
     def test_sin_movimientos(self, proj):
         md = build_ledger_md(proj)
-        assert "*Sin operaciones.*" in md
+        assert "*Sin movimientos.*" in md
         assert "| **Disponible** | **0,00** |" in md
 
     def test_pipe_en_el_texto_no_rompe_la_tabla(self, proj):
@@ -259,7 +261,7 @@ class TestWriteLedger:
         write_ledger(proj)
         texto = (proj / LEDGER_FILE).read_text()
         assert (proj / LEDGER_FILE).exists()
-        assert "*Sin operaciones.*" in texto
+        assert "*Sin movimientos.*" in texto
 
 
 class TestRefreshAll:

@@ -1,21 +1,18 @@
-"""views/ledger.py — `ledger.md`, la vista derivada del libro de caja.
+"""views/ledger.py — `ledger.md` y `ledger.json`, las vistas derivadas del ledger.
 
-Lee la verdad (las entradas del ledger en el logbook) y emite un resumen
-(dotación · gastado · comprometido · disponible) y **una fila por operación**:
-un pedido con sus facturas, o un gasto directo (ADR-053). **Nadie edita este
-fichero**: es 100 % regenerable, así que si se rompe basta con volver a
-generarlo.
+Lee la verdad (las entradas `#ingreso`, `#compromiso`, `#gasto` del logbook) y
+emite un resumen (dotación · gastado · comprometido · disponible) y la tabla
+de movimientos con **Gastado** y **Disponible** acumulados (ADR-053).
+**Nadie edita estos ficheros**: son 100 % regenerables.
 
 Dos particularidades respecto al resto de `views/`:
 
-1. **Emite al directorio del proyecto**, no a `📊panel/`. Es una excepción
-   consciente al principio truth-layer/view-layer: el usuario quiere abrir su
-   ledger donde tiene los otros cuatro ficheros. Como `📊panel/` es
-   transversal y esto es por-proyecto, sacarlo de ahí lo alejaría de su sitio.
-2. **Creación perezosa**: solo existe en proyectos con movimientos. Es el
-   primer fichero de proyecto opcional, así que nada debe exigir su presencia.
+1. **Emiten al directorio del proyecto**, no a `📊panel/`: el usuario quiere
+   su ledger junto a los otros ficheros del proyecto.
+2. **Creación perezosa**: solo existen en proyectos con movimientos.
 """
 
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -31,11 +28,11 @@ LEDGER_FILE = "ledger.md"
 LEDGER_JSON = "ledger.json"
 
 #: Versión del formato de `ledger.json`. Es el contrato con herramientas de
-#: fuera de orbit (la revisión contable frente a la USC): si cambia de forma
+#: fuera de orbit (p. ej. la conciliación con la USC): si cambia de forma
 #: incompatible, se sube.
 JSON_VERSION = 1
 
-_FUNDS_LABEL = {INCOME_TAG: "Ingreso", CARRY_TAG: "Arrastre"}
+_FUNDS_LABEL = {INCOME_TAG: "ingreso", CARRY_TAG: "arrastre"}
 
 
 def _esc(text: Optional[str]) -> str:
@@ -48,8 +45,8 @@ def _link(text: str, url: Optional[str]) -> str:
 
 
 def _concept_cell(op: Operation) -> str:
-    """Concepto del pedido (o del gasto) con su justificante, y detrás los
-    justificantes de las facturas/anulaciones que lo cierran."""
+    """Concepto del compromiso (o del gasto) con su justificante, y detrás
+    los justificantes de los gastos que lo consumen."""
     head, rest = op.entries[0], op.entries[1:]
     cell = _link(op.concept, head.link)
     for m in rest:
@@ -72,23 +69,75 @@ def _summary_rows(s: Summary, symbol: str) -> List[Tuple[str, str]]:
     rows += [
         ("Dotación", format_amount(s.income)),
         ("Gastado", format_amount(s.spent)),
-        ("Comprometido (pedidos abiertos)", format_amount(s.committed)),
+        ("Comprometido (pendiente)", format_amount(s.committed)),
         ("Disponible", format_amount(s.available)),
     ]
     return rows
 
 
 def usc_cell(op: Operation) -> str:
-    """Columna USC: los nº con que la USC tiene las entradas de la operación
-    (marca `🏛️` que pone la conciliación). Sin marca, "—": aún no conciliada."""
+    """Referencias externas con que están conciliadas las entradas de la
+    operación (marca `☑️`). Sin marca, "—": aún no conciliada."""
     ids = [m.usc for m in op.entries if m.usc]
     return " · ".join(dict.fromkeys(ids)) or "—"
 
 
 def kind_cell(op: Operation) -> str:
-    """Tipo en palabras del usuario: folla, dietas, factura (lo de la primera
-    entrada: la folla si la hay)."""
+    """Tipo de la operación: el de su primera entrada (el compromiso, si lo hay)."""
     return op.entries[0].label or op.entries[0].tag
+
+
+@dataclass
+class Row:
+    """Una fila de la tabla de movimientos, con los acumulados a esa fecha."""
+    mov:       Movement
+    spent:     Decimal            # gastado acumulado (magnitud)
+    available: Decimal            # disponible a esa fecha
+    state:     str = ""           # compromiso: abierto / cerrado
+
+
+def running_rows(movements: List[Movement], operations) -> List[Row]:
+    """Recorre los movimientos en orden y lleva Gastado y Disponible.
+
+    Disponible = ingresos − gastado − comprometido pendiente, donde lo
+    pendiente de un compromiso es lo aún no gastado contra él mientras siga
+    abierto (se cierra al cubrirlo o con `🔒`).
+    """
+    from core.ledger import ORDER_TAG, EXPENSE_TAG
+    state_of = {op.op_id: op.state for op in operations
+                if op.op_id and op.entries[0].tag == ORDER_TAG}
+    income = spent = Decimal("0.00")
+    committed, used, closed = {}, {}, set()
+    rows = []
+    for m in movements:
+        key = m.op_id
+        if m.tag == ORDER_TAG:
+            committed[key] = abs(m.amount)
+            used.setdefault(key, Decimal("0.00"))
+            if m.closes:
+                closed.add(key)
+        elif m.tag == EXPENSE_TAG:
+            spent += abs(m.amount)
+            if m.ref in committed:
+                used[m.ref] += abs(m.amount)
+                if m.closes or used[m.ref] >= committed[m.ref]:
+                    closed.add(m.ref)
+        else:                                   # ingreso / arrastre
+            income += m.amount
+        pending = sum((max(committed[k] - used[k], Decimal("0.00"))
+                       for k in committed if k not in closed), Decimal("0.00"))
+        rows.append(Row(m, spent, income - spent - pending,
+                        state_of.get(key, "") if m.tag == ORDER_TAG else ""))
+    return rows
+
+
+def _kind_label(m: Movement) -> str:
+    return _FUNDS_LABEL.get(m.tag) or m.tag
+
+
+def _concept_md(m: Movement) -> str:
+    cell = _link(m.concept, m.link)
+    return cell + (f" (📝 {_esc(m.note)})" if m.note else "")
 
 
 def build_ledger_md(project_dir: Path) -> str:
@@ -119,33 +168,27 @@ def build_ledger_md(project_dir: Path) -> str:
         out.append(f"| {label} | {value} |")
     out.append("")
 
-    out += ["## Operaciones", ""]
-    if operations:
-        out += ["| Fecha | Tipo | Aut. | Factura | Concepto | Beneficiario | "
-                "Comprometido | Gastado | Estado | USC |",
-                "|---|---|---|---|---|---|---:|---:|---|---|"]
-        for op in operations:
-            cells = [op.date.isoformat(), kind_cell(op), _esc(op.op_id),
-                     _esc(", ".join(op.invoice_ids) or None), _concept_cell(op),
-                     _esc(op.payee), _money(op.committed), _money(op.spent),
-                     _state_label(op), usc_cell(op)]
-            out.append("| " + " | ".join(cells) + " |")
-        n_ok = sum(1 for op in operations if usc_cell(op) != "—")
-        out += ["", f"USC: nº con que la tiene la USC (conciliada); — = aún no "
-                f"conciliada. {n_ok} de {len(operations)} conciliadas.", ""]
+    rows = [r for r in running_rows(movements, operations) if not r.mov.is_cut]
+    out += ["## Movimientos", ""]
+    if rows:
+        out += ["| Fecha | Tipo | Concepto | Beneficiario | Ref. | Compromiso | "
+                "Importe | Gastado | Disponible | Estado | Conciliado |",
+                "|---|---|---|---|---|---|---:|---:|---:|---|---|"]
+        for r in rows:
+            m = r.mov
+            ref = m.ref + (" 🔒" if m.closes else "") if m.ref else "—"
+            out.append("| " + " | ".join([
+                m.date.isoformat(), _kind_label(m), _concept_md(m),
+                _esc(m.payee), _esc(m.op_id), ref,
+                format_amount(m.amount, plus=True), format_amount(r.spent),
+                format_amount(r.available), r.state or "—",
+                _esc(m.usc)]) + " |")
+        n_ok = sum(1 for r in rows if r.mov.usc)
+        out += ["", f"Conciliado: la referencia externa con que casa (☑️, la pone "
+                f"una herramienta de conciliación); — = aún no. {n_ok} de "
+                f"{len(rows)} conciliados.", ""]
     else:
-        out += ["*Sin operaciones.*", ""]
-
-    funds = [m for m in movements if m.tag in _FUNDS_LABEL and not m.is_cut]
-    if funds:
-        out += ["## Dotación", "",
-                "| Fecha | Tipo | Concepto | Origen | Importe | USC |",
-                "|---|---|---|---|---:|---|"]
-        for m in funds:
-            out.append(f"| {m.date.isoformat()} | {_FUNDS_LABEL[m.tag]} | "
-                       f"{_link(m.concept, m.link)} | {_esc(m.payee)} | "
-                       f"{format_amount(m.amount, plus=True)} | {m.usc or '—'} |")
-        out.append("")
+        out += ["*Sin movimientos.*", ""]
 
     if problems:
         out += ["## ⚠️ Entradas que no he podido leer o no cuadran", ""]
@@ -205,7 +248,9 @@ def build_ledger_json(project_dir: Path) -> str:
             "state": state_of.get(m.raw) if m.tag in (ORDER_TAG, "gasto") else None,
             "justificante": m.link,
             "justificante_path": str(path.resolve()) if path is not None else None,
-            "usc": m.usc,
+            "closes": m.closes,
+            "note": m.note,
+            "conciliated": m.usc,
         })
     data = {
         "version": JSON_VERSION,
@@ -297,20 +342,18 @@ def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
     for cut in (m for m in movements if m.is_cut):
         print(f"  ⚠️  Histórico truncado en {cut.date.isoformat()} sin arrastre: "
               f"el saldo no incluye lo anterior")
-    for m in movements:
-        if m.tag in _FUNDS_LABEL and not m.is_cut:
-            print(f"  {m.date.isoformat()}  {_FUNDS_LABEL[m.tag]:<13} "
-                  f"{format_amount(m.amount, plus=True):>12}  {m.concept}"
-                  + (f" · {m.payee}" if m.payee else ""))
-    for op in operations:
-        amount = op.spent if op.state in ("cerrado", DIRECT) else op.committed
-        ids = [i for i in [op.op_id] + op.invoice_ids if i]
-        ident = f"{' · '.join(ids)} " if ids else ""
-        usc = usc_cell(op)
-        print(f"  {op.date.isoformat()}  {kind_cell(op):<8} {_state_label(op):<13} "
-              f"{format_amount(-amount):>12}  {ident}{op.concept}"
-              + (f" · {op.payee}" if op.payee else "")
-              + (f"  [USC {usc}]" if usc != "—" else "  [sin conciliar]"))
+    for r in running_rows(movements, operations):
+        m = r.mov
+        if m.is_cut:
+            continue
+        extra = [x for x in (m.op_id, f"🔗 {m.ref}" if m.ref else None,
+                             r.state, f"☑️ {m.usc}" if m.usc else None) if x]
+        print(f"  {m.date.isoformat()}  {_kind_label(m):<10} "
+              f"{format_amount(m.amount, plus=True):>12}  "
+              f"gastado {format_amount(r.spent):>10}  "
+              f"disp. {format_amount(r.available):>10}  {m.concept}"
+              + (f" · {m.payee}" if m.payee else "")
+              + (f"  [{' · '.join(extra)}]" if extra else ""))
     print(f"  {'─' * 46}")
     for label, value in _summary_rows(summary, symbol):
         print(f"  {label + ':':<33}{value:>12} {symbol}")
@@ -332,12 +375,30 @@ def run_ledger(project: str) -> int:
     return print_ledger(project_dir, label=project)
 
 
-def run_ledger_mark(project: str, key: str, usc_id) -> int:
-    """`orbit ledger <proyecto> --mark <clave> <nº USC>` / `--unmark <clave>`.
+def run_ledger_close(project: str, ref: str) -> int:
+    """`orbit ledger <proyecto> --close <ref>`: cierra un compromiso a mano."""
+    from core.ledger import close_commitment
+    from core.log import find_project
 
-    Para la herramienta de conciliación (usc-ledger): orbit es el único que
-    escribe en su logbook, así que la marca se pone por aquí, no editando el
-    markdown desde fuera. Regenera `ledger.md` y `ledger.json`.
+    project_dir = find_project(project)
+    if not project_dir:
+        return 1
+    try:
+        m = close_commitment(project_dir, ref)
+    except ValueError as exc:
+        print(f"⚠️  {exc}")
+        return 1
+    write_ledger(project_dir, force=True)
+    print(f"  🔒 cerrado: {ref} «{m.concept}» · lo no gastado deja de estar comprometido")
+    return 0
+
+
+def run_ledger_mark(project: str, key: str, usc_id) -> int:
+    """`orbit ledger <proyecto> --mark <clave> <ref externa>` / `--unmark`.
+
+    Para una herramienta de conciliación (p. ej. usc-ledger): orbit es el único
+    que escribe en su logbook, así que la marca se pone por aquí, no editando
+    el markdown desde fuera. Regenera `ledger.md` y `ledger.json`.
     """
     from core.ledger import mark_conciliated
     from core.log import find_project
@@ -354,11 +415,11 @@ def run_ledger_mark(project: str, key: str, usc_id) -> int:
     what = f"{before.date.isoformat()} {before.label} «{before.concept}»"
     if usc_id:
         extra = ""
-        if before.op_id and before.op_id != usc_id and before.tag == "pedido":
-            extra = f" (🆔 {before.op_id} → {usc_id}, y sus facturas)"
-        print(f"  🏛️ conciliada: {what} = USC {usc_id}{extra}")
+        if before.op_id and before.op_id != usc_id and before.tag == "compromiso":
+            extra = f" (🆔 {before.op_id} → {usc_id}, y sus gastos)"
+        print(f"  ☑️ conciliado: {what} = {usc_id}{extra}")
     else:
-        print(f"  🏛️ sin marca: {what}")
+        print(f"  ☑️ sin marca: {what}")
     return 0
 
 

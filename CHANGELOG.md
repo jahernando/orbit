@@ -10,39 +10,32 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
-### Unreleased — ledger con hojas de pedido, conciliación con la USC y export (ADR-053)
+### Unreleased — ledger: la cuenta del proyecto (ingresos, compromisos, gastos) · ADR-053
 
-- **Modelo**: `#pedido` (hoja de pedido: compromete, no mueve caja; `🆔` = nº
-  de autorización de la USC o uno provisional `P01`) y `#gasto` (factura o
-  dietas; `🆔` = nº de factura opcional; `🔗` = la hoja que cierra). Resumen:
-  dotación · gastado · comprometido · disponible; una fila por operación.
-- **CLI**: `log --entry pedido|gasto` con `--id` y `--pedido`; el interrogador
-  pregunta los números y lista las hojas abiertas. Estricto al escribir.
-- **`ledger <p> --check`**: errores (justificantes, `🔗` roto, números
-  repetidos, entradas ilegibles; también en `orbit doctor`) y dos avisos (hoja
-  abierta > 60 días, documento económico sin movimiento; `.ledger-ignore`).
-- **`ledger <p> --check <Execucion.pdf> <obrigas.xls>`**: guarda los ficheros
-  de la USC en `cloud/logs/` con fecha, empareja **por número** y pone la
-  columna **USC** en `ledger.md` (`ok` · `!↑` · `!↓` · `!`), derivada de los
-  ficheros más recientes.
-- **`ledger <p> --export <dir>`**: `ledger.pdf`, `ledger.xlsx` y
-  `justificantes/` (solo lo enlazado). Extra `ledger` (reportlab, openpyxl).
-- `archive` no parte una hoja de su factura.
-- **`ledger.json`** junto a `ledger.md` (derivado, sin fecha de generación):
-  interfaz para la revisión contable externa (`usc-ledger`), con `key` por
-  entrada.
-- **Tipos en palabras del usuario**: `#folla`, `#dietas`, `#factura`,
-  `#ingreso` (`#pedido`/`#gasto` se siguen leyendo). `log --entry ledger`
-  pregunta el tipo; **PDF, beneficiario e importe obligatorios**; el PDF se
-  importa solo a `cloud/logs/`.
-- **Marca de conciliado** `🏛️ <nº USC>`: `ledger <p> --mark <clave> <nº>` /
-  `--unmark`; la pone `usc-ledger`. Columnas **Tipo** y **USC** (de la marca)
-  en `ledger.md`, PDF y xlsx. `--check <ficheros>` queda como informe en
-  terminal, sin escribir.
-- `log --ref` pasa a `--pedido`. Descartados tras probarlos (simplificación):
-  `#anulacion`, `#conciliacion`, facturas parciales, moneda original (`💱`),
-  emparejado aproximado y reescritura de números, y las comprobaciones
-  heurísticas (facturas candidatas, duplicados, variantes de nombre…).
+- **Tres tipos**: `#ingreso`, `#compromiso` (reserva dinero; referencia `🆔`,
+  provisional `P01` si no se da) y `#gasto`. Un gasto con `🔗 REF` consume un
+  compromiso; **varios gastos** por compromiso; se cierra solo al cubrirlo, o
+  con `🔒` (`log --cierra` en el último gasto, o `ledger <p> --close REF`).
+- **Obligatorio**: beneficiario e importe (€). **Opcional**: justificante
+  (se importa solo a `cloud/logs/`), referencia, nota (`--nota`, `📝`).
+- `log --entry ledger` pregunta el tipo; al anotar un gasto lista los
+  compromisos abiertos con lo pendiente.
+- **`ledger.md`**: resumen y tabla de movimientos con **Gastado** y
+  **Disponible** acumulados. **`ledger.json`** (contrato para herramientas de
+  fuera, con `key` por movimiento).
+- **Conciliado**: `☑️ <ref externa>`, puesto por una herramienta externa con
+  `ledger <p> --mark <clave> <ref>` / `--unmark`.
+- **`ledger <p> --check`**: errores (justificante que no existe, `🔗` roto,
+  referencia repetida, entrada ilegible; también en `orbit doctor`) y dos
+  avisos (compromiso abierto > 60 días, documento sin movimiento;
+  `.ledger-ignore`).
+- La revisión con la USC sale de orbit (herramienta `usc-ledger`).
+  Provisionales hasta entonces: `--check <ficheros USC>` (informe en
+  terminal) y `--export <dir>`.
+- `archive` no parte un compromiso de sus gastos.
+- Descartado en el camino: vocabulario de la USC en orbit (folla, dietas,
+  factura, autorización), `#anulacion`, `#conciliacion`, moneda original,
+  emparejado aproximado y comprobaciones heurísticas.
 
 ---
 

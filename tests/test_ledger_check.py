@@ -58,7 +58,7 @@ class TestErrors:
 
     def test_gasto_sin_justificante(self, proj):
         _write(proj, ("2026-08-31", "Dietas #gasto", "🏷️ p · 💶 -10,00"))
-        assert _find(proj, ERROR, "#factura sin justificante")   # #gasto = factura
+        assert _find(proj) == []          # el justificante es opcional
 
     def test_ingreso_sin_justificante_no_se_canta(self, proj):
         _write(proj, INGRESO)
@@ -67,20 +67,20 @@ class TestErrors:
     def test_referencia_rota_e_id_repetido(self, proj):
         f = _pdf(proj, "2026-09-01_folla.pdf")
         _write(proj,
-               ("2026-09-01", f"[Folla]({f}) #pedido", "💶 -1,00 · 🆔 P01"),
-               ("2026-09-02", f"[Folla 2]({f}) #pedido", "💶 -2,00 · 🆔 P01"),
+               ("2026-09-01", f"[Folla]({f}) #compromiso", "💶 -1,00 · 🆔 P01"),
+               ("2026-09-02", f"[Folla 2]({f}) #compromiso", "💶 -2,00 · 🆔 P01"),
                ("2026-09-03", f"[Fra]({f}) #gasto", "💶 -1,00 · 🔗 P09"))
         assert _find(proj, ERROR, "repetido")
-        assert _find(proj, ERROR, "P09 no es ningún pedido")
+        assert _find(proj, ERROR, "P09 no es ningún compromiso")
 
     def test_factura_repetida(self, proj):
         f = _pdf(proj, "2026-08-31_x.pdf")
         _write(proj, ("2026-08-01", f"[A]({f}) #gasto", "💶 -1,00 · 🆔 F1"),
                ("2026-09-20", f"[B]({f}) #gasto", "💶 -2,00 · 🆔 F1"))
-        assert _find(proj, ERROR, "la factura F1 está dos veces")
+        assert _find(proj, ERROR, "la referencia F1 está en dos gastos")
 
     def test_sin_importe(self, proj):
-        _write(proj, ("2026-09-01", "Folla #pedido", "🆔 P01"))
+        _write(proj, ("2026-09-01", "Folla #compromiso", "🆔 P01"))
         assert _find(proj, ERROR, "sin importe")
 
     def test_ledger_limpio(self, proj):
@@ -93,13 +93,13 @@ class TestWarnings:
 
     def test_pedido_abierto_mucho_tiempo(self, proj):
         f = _pdf(proj, "2026-06-01_folla.pdf")
-        _write(proj, ("2026-06-01", f"[Folla]({f}) #pedido", "💶 -1,00 · 🆔 P01"))
+        _write(proj, ("2026-06-01", f"[Folla]({f}) #compromiso", "💶 -1,00 · 🆔 P01"))
         assert _find(proj, WARNING, "abierto hace 120 días")
 
     def test_umbral_configurable(self, proj, tmp_path):
         (tmp_path / "orbit.json").write_text('{"ledger": {"open_days": 200}}')
         f = _pdf(proj, "2026-06-01_folla.pdf")
-        _write(proj, ("2026-06-01", f"[Folla]({f}) #pedido", "💶 -1,00 · 🆔 P01"))
+        _write(proj, ("2026-06-01", f"[Folla]({f}) #compromiso", "💶 -1,00 · 🆔 P01"))
         assert not _find(proj, text="abierto hace")
 
     def test_documento_sin_movimiento_e_ignorados(self, proj):
@@ -126,17 +126,17 @@ class TestIntegracion:
         _write(proj, INGRESO)
         assert run_ledger_check("proyx") == 0                # solo un aviso
         assert run_ledger_check("proyx", strict=True) == 1
-        _write(proj, ("2026-08-31", "Sin pdf #gasto", "💶 -1,00"))
+        _write(proj, ("2026-08-31", "Roto #gasto", "💶 -1,00 · 🔗 P09"))
         assert run_ledger_check("proyx") == 1
         assert "1 error" in capsys.readouterr().out
 
     def test_doctor_solo_ve_errores(self, proj):
         from views.doctor.doctor import check_project
         _pdf(proj, "2026-09-02_folla_suelta.pdf")
-        _write(proj, ("2026-08-31", "Sin pdf #gasto", "💶 -1,00"))
+        _write(proj, ("2026-08-31", "Roto #gasto", "💶 -1,00 · 🔗 P09"),)
         msgs = [i.msg for i in check_project(proj)]
         assert [m for m in msgs if m.startswith("Ledger:")] == \
-            ["Ledger: #factura sin justificante"]
+            ["Ledger: 2026-08-31 Roto: 🔗 P09 no es ningún compromiso"]
 
     def test_cli(self, proj, capsys):
         import orbit

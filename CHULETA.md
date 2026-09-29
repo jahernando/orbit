@@ -548,97 +548,105 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 - `--entry`: filtra por tipo de entrada (`idea` · `referencia` · `apunte` · `problema` · `solucion` · `resultado` · `decision` · `evaluacion` · `plan`)
 - `--in`: busca en un tipo de fichero específico (por defecto logbook)
 
-### Ledger — libro de caja por proyecto
+### Ledger — la cuenta del proyecto
 
-Cada documento económico se anota **una vez**, como entrada de logbook con su
-PDF: `#folla` (hoja de pedido), `#dietas`, `#factura` o `#ingreso`. No hay
-fichero-verdad nuevo; `ledger.md` y `ledger.json` son derivados.
+Una cuenta por proyecto, con tres tipos de movimiento: **`#ingreso`** (entra
+dinero), **`#compromiso`** (lo reservas: una hoja de pedido, una reserva…) y
+**`#gasto`** (sale). Cada movimiento es una entrada de logbook; `ledger.md` y
+`ledger.json` son derivados. Sirve igual para una partida de la USC que para
+cuentas personales.
 
 ```bash
-orbit log <proyecto> --entry ledger              # en terminal: pregunta el tipo y todo lo demás
-orbit log <proyecto> "<concepto>" <pdf> --entry folla|dietas|factura|ingreso \
-          --amount N --payee P [--id NUM] [--pedido AUT] [--tag PARTIDA] [--date D]
+orbit log <proyecto> --entry ledger                  # en terminal: pregunta el tipo y lo demás
+orbit log <proyecto> "<concepto>" [<justificante>] --entry ingreso|compromiso|gasto \
+          --amount N --payee P [--id REF] [--compromiso REF [--cierra]] [--nota "…"] \
+          [--tag PARTIDA] [--date D]
 
 orbit ledger <proyecto>                          # regenera ledger.md y ledger.json + resumen
 orbit ledger <proyecto> --check [--strict]       # coherencia interna (no escribe)
-orbit ledger <proyecto> --mark <clave> <nº USC>  # conciliada (lo usa usc-ledger)
+orbit ledger <proyecto> --close <REF>            # cierra a mano un compromiso
+orbit ledger <proyecto> --mark <clave> <REF_EXT> # conciliado (lo usa una herramienta externa)
 orbit ledger <proyecto> --unmark <clave>
 orbit ls ledger [proyecto]                       # solo imprime (no toca el disco)
 ```
 
-**`--entry ledger`** en terminal: `¿Qué es? [1] folla [2] dietas [3] factura
-[4] ingreso`, y después PDF → partida (solo la primera vez) → concepto →
-beneficiario → importe en € → fecha → números. **PDF, beneficiario e importe
-son obligatorios.** El PDF se copia a `cloud/logs/` con fecha (si ya está
-dentro del proyecto, solo se enlaza).
+- **Obligatorio:** beneficiario (en un ingreso, quién paga) e importe en €.
+- **Opcional:** justificante (PDF: se copia solo a `cloud/logs/` con fecha; si
+  ya está dentro del proyecto, solo se enlaza), referencia `--id` (nº de
+  autorización, de factura…), nota `--nota`.
+- Un **compromiso** lleva siempre referencia: si no la das, una provisional
+  (`P01`, `P02`…).
 
-| Tipo | Qué es | `🆔` | Efecto |
-|---|---|---|---|
-| `#folla` | hoja de pedido | nº de **autorización** USC; si aún no lo hay, provisional (`P01`, se asigna solo) | suma a **comprometido**; no mueve caja |
-| `#factura` | factura | nº de **factura** (opcional); `--pedido AUT` (`🔗`) = la folla que **cierra** | suma a **gastado**; libera lo comprometido de su folla |
-| `#dietas` | liquidación de dietas | nº (opcional) | suma a **gastado** |
-| `#ingreso` | dotación | — | suma a la dotación |
+**Asociar un gasto a un compromiso**: `--compromiso REF` (en terminal, `--entry
+ledger` → gasto **te lista los compromisos abiertos** con lo pendiente y eliges
+uno; Enter = ninguno). Un compromiso admite **varios gastos**. Sigue **abierto**
+—y lo no gastado sigue comprometido— hasta que:
+- lo gastado contra él llega a lo comprometido (se cierra solo), o
+- lo cierras: `--cierra` en el último gasto (en terminal te lo pregunta si el
+  gasto no lo cubre), o `orbit ledger <proyecto> --close REF` (anulado, o el
+  sobrante que ya no se va a gastar).
 
 ```markdown
-2026-09-18 💶 [Folla vuelo Ginebra](./cloud/logs/2026-09-18_folla.pdf) #folla
-  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.250,00 · 🆔 CM26XXXX0001 · 🏛️ CM26XXXX0001
+2026-09-18 💶 [Reserva vuelo](./cloud/logs/2026-09-18_reserva.pdf) #compromiso
+  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.250,00 · 🆔 CM26XXXX0001
 
-2026-10-02 💶 [Factura vuelo Ginebra](./cloud/logs/2026-10-02_factura.pdf) #factura
-  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.262,40 · 🆔 F-4471 · 🔗 CM26XXXX0001
+2026-10-02 💶 [Factura vuelo](./cloud/logs/2026-10-02_factura.pdf) #gasto
+  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.200,00 · 🆔 F-4471 · 🔗 CM26XXXX0001 · 🔒 cierra
+  📝 al cambio del día
 ```
 
 - **El signo lo pone la tag**: `--amount` sin signo; acepta `218,40` ·
   `4.000,00` · `218.40`; más de 2 decimales se rechaza. `Decimal`, nunca float.
 - **Partida**: `--tag` solo en el primer movimiento; los demás la heredan.
-- **Al escribir se es estricto**: número repetido, `--pedido` a una folla que
-  no existe o ya está cerrada, factura ya anotada → no se escribe.
-- `#pedido` y `#gasto` (las etiquetas de antes) se siguen leyendo, como folla y
-  factura; `--entry pedido|gasto` escribe ya `#folla` / `#factura`.
+- **Al escribir se es estricto**: referencia repetida, `--compromiso` a uno que
+  no existe o ya está cerrado → no se escribe.
+- Dietas, factura, devolución…: en el concepto o la nota. Moneda extranjera:
+  el importe en €, el original en la nota.
 
-**Conciliado** = la entrada lleva `🏛️ <nº de la USC>`. Lo pone la herramienta
-externa **`usc-ledger`** (la revisión contable frente a la USC) llamando a
-`orbit ledger <proyecto> --mark <clave> <nº USC>`; la `clave` es el campo
-`key` de `ledger.json`. Si la folla tenía un nº provisional, pasa a ser el de
-la USC, también en el `🔗` de sus facturas. Sin `🏛️`, no está conciliada.
-`--unmark` la quita (p. ej. si la USC cambia el importe). La revisión que
-genera `usc-ledger` se guarda como un documento más:
-`log <proyecto> "Revisión USC 2026-09-29" usc-ledger.pdf --import`.
+**`ledger.md`**: resumen (dotación · gastado · comprometido pendiente ·
+**disponible**) y la tabla de **movimientos** en orden, cada uno con
+**Gastado** y **Disponible** acumulados a esa fecha (disponible = ingresos −
+gastado − comprometido pendiente), su referencia, el compromiso que consume
+(🔒 si lo cierra), el estado de los compromisos (abierto / cerrado) y si está
+**conciliado**. Se regenera al anotar y en cada `save`.
 
-**`ledger.md`**: resumen (dotación · gastado · comprometido · **disponible** =
-dotación − gastado − comprometido), **operaciones** (una fila por folla con su
-factura, o por dietas/factura sin folla: fecha · tipo · Aut. · factura ·
-concepto con enlaces · beneficiario · comprometido · gastado · estado · **USC**
-= nº de la marca, o `—` si no está conciliada) y **dotación**. Se regenera al
-anotar y en cada `save`. **`ledger.json`**, al lado, es lo mismo para
-máquinas (una fila por entrada con `key`, tipo, etiqueta, fecha, concepto,
-beneficiario, importe como texto decimal, números, estado, justificante y su
-ruta absoluta, y la marca `usc`); lo lee `usc-ledger`.
+**`ledger.json`**, al lado, lo mismo para máquinas (una fila por movimiento con
+`key`, tipo, fecha, concepto, beneficiario, importe como texto decimal,
+referencia, compromiso, cierre, estado, nota, justificante y su ruta absoluta,
+y `conciliated`). Lo leen herramientas de fuera, como **`usc-ledger`** (la
+revisión con la contabilidad de la USC).
+
+**Conciliado** = la entrada lleva `☑️ <referencia externa>`. Lo pone una
+herramienta de conciliación (p. ej. `usc-ledger`, o una con el extracto del
+banco) llamando a `orbit ledger <proyecto> --mark <clave> <REF_EXT>` (la
+`clave` es el campo `key` de `ledger.json`). Si un compromiso tenía referencia
+provisional, pasa a ser la externa, también en el `🔗` de sus gastos. `--unmark`
+la quita.
 
 **Comprobación** (`--check`). No escribe nada.
 
-- ❌ **errores** (salen también en `orbit doctor`): folla, dietas o factura sin
-  justificante o con uno que no existe · `🔗` a una folla que no existe ·
-  número repetido · entrada ilegible.
-- ⚠️ **avisos** (solo aquí): folla abierta más de 60 días · documento de
+- ❌ **errores** (salen también en `orbit doctor`): justificante enlazado que
+  no existe · `🔗` a un compromiso que no existe · referencia repetida ·
+  entrada ilegible.
+- ⚠️ **avisos** (solo aquí): compromiso abierto más de 60 días · documento de
   `cloud/logs/` con pinta económica que no enlaza nadie (los legítimos, en
   `<proyecto>/.ledger-ignore`).
 - `--strict`: los avisos también dan error. Umbral y patrón en `orbit.json` →
   `"ledger": {"open_days": 60, "doc_patterns": …}`.
 - **Provisional, hasta que exista `usc-ledger`**: `--check <Execucion.pdf>
-  <obrigas.xls>` imprime una comparación con la USC por número (ok · `!↑` en la
-  USC y no aquí · `!↓` aquí y no en la USC · `!` importe distinto). No guarda
-  ni marca nada.
+  <obrigas.xls>` imprime una comparación con la USC por referencia. No escribe.
 
 **Export** (`--export <dir>`, provisional hasta `usc-ledger`): `ledger.pdf`,
-`ledger.xlsx` y `justificantes/` con solo lo enlazado. Con errores no exporta.
-Necesita `pip install reportlab openpyxl` (extra `ledger`).
+`ledger.xlsx` y `justificantes/` con solo lo enlazado. Necesita `pip install
+reportlab openpyxl` (extra `ledger`).
 
 **Archivar un proyecto con movimientos**: `archive` borra las entradas
 anteriores al corte, así que antes pregunta si consolidar su saldo neto en una
 entrada `#arrastre` por partida (sí: el saldo no cambia; no: una `#arrastre`
-de importe 0 marca el corte y `ledger.md` avisa). `--force` consolida. **Una
-folla solo se archiva entera y cerrada**: si sigue abierta o su factura es
-posterior al corte, se quedan las dos. El arrastre solo suma lo que mueve caja.
+de importe 0 marca el corte y `ledger.md` avisa). `--force` consolida. **Un
+compromiso solo se archiva entero y cerrado**: si sigue abierto o alguno de sus
+gastos es posterior al corte, se quedan todos. El arrastre solo suma lo que
+mueve caja.
 
 ---
 

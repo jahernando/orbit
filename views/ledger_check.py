@@ -3,11 +3,10 @@
 `orbit ledger <proyecto> --check` lee la verdad (el logbook y los ficheros de
 `cloud/logs/`) y devuelve hallazgos en dos niveles:
 
-* **error** — el ledger no es fiable tal cual: un `#pedido` o `#gasto` sin
-  justificante o con un justificante que no existe, un `🔗` a un pedido que no
-  existe, un número repetido, una entrada ilegible. Bloquean el export y salen
-  en `orbit doctor`.
-* **aviso** — pedidos abiertos hace mucho y documentos económicos de
+* **error** — el ledger no es fiable tal cual: un justificante enlazado que no
+  existe, un `🔗` a un compromiso que no existe, una referencia repetida, una
+  entrada ilegible. Bloquean el export y salen en `orbit doctor`.
+* **aviso** — compromisos abiertos hace mucho y documentos económicos de
   `cloud/logs/` sin movimiento. No bloquean (salvo `--strict`) y **no** van al
   doctor: cualquier issue del doctor hace preguntar al `save`.
 
@@ -42,7 +41,7 @@ IGNORE_FILE = ".ledger-ignore"
 #: patrón es una regex sobre el nombre de fichero normalizado (minúsculas, sin
 #: tildes) y cubre gallego, castellano e inglés.
 DEFAULTS = {
-    "open_days": 60,            # pedido abierto más de N días → aviso
+    "open_days": 60,            # compromiso abierto más de N días → aviso
     "doc_patterns": (r"folla|pedimento|pedido|purchase.?order|factura"
                      r"|(?<![a-z])fra(?![a-z])|invoice|recibo|receipt|ticket"
                      r"|dieta|liquidacion"),
@@ -126,18 +125,14 @@ def _check_entries(project_dir: Path, movements: List[Movement],
 
     seen = {}
     for m in movements:
-        if m.tag not in (ORDER_TAG, EXPENSE_TAG):
-            continue
-        if not m.link:
-            out.append(Finding(ERROR, f"#{m.label or m.tag} sin justificante", m.raw))
-        else:
+        if m.link:
             path = _resolve_link(project_dir, m.link)
             if path is not None and not path.exists():
                 out.append(Finding(ERROR, f"el justificante no existe: {m.link}",
                                    m.raw))
         if m.tag == EXPENSE_TAG and m.op_id:
             if m.op_id in seen:
-                out.append(Finding(ERROR, f"la factura {m.op_id} está dos veces "
+                out.append(Finding(ERROR, f"la referencia {m.op_id} está en dos gastos "
                                    f"(también «{seen[m.op_id].concept}»)", m.raw))
             seen.setdefault(m.op_id, m)
     return out
@@ -145,7 +140,7 @@ def _check_entries(project_dir: Path, movements: List[Movement],
 
 def _check_open_orders(operations, today: date, cfg: dict) -> List[Finding]:
     limit = today - timedelta(days=int(cfg["open_days"]))
-    return [Finding(WARNING, f"pedido {op.op_id} abierto hace "
+    return [Finding(WARNING, f"compromiso {op.op_id} abierto hace "
                     f"{(today - op.date).days} días: {op.concept}",
                     op.entries[0].raw)
             for op in operations if op.state == OPEN and op.date < limit]

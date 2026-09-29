@@ -44,7 +44,8 @@ XLSX_FILE = "ledger.xlsx"
 
 _STATE_LABEL = {DIRECT: "gasto directo"}
 _FUNDS = {INCOME_TAG: "Ingreso", CARRY_TAG: "Arrastre"}
-_TAG_LABEL = {"gasto": "Gasto", "ingreso": "Ingreso", "arrastre": "Arrastre", "pedido": "Pedido"}
+_TAG_LABEL = {"gasto": "Gasto", "ingreso": "Ingreso", "arrastre": "Arrastre",
+              "compromiso": "Compromiso"}
 
 
 # ── Justificantes ────────────────────────────────────────────────────────────
@@ -115,7 +116,7 @@ def _summary_rows(s: Summary) -> List[Tuple[str, Decimal]]:
     if s.carried:
         rows.append(("Saldo arrastrado", s.carried))
     rows += [("Dotación", s.income), ("Gastado", s.spent),
-             ("Comprometido (pedidos abiertos)", s.committed),
+             ("Comprometido (pendiente)", s.committed),
              ("Disponible", s.available)]
     return rows
 
@@ -172,8 +173,8 @@ def write_pdf(path: Path, title: str, partida: Optional[str], summary: Summary,
     story += [t, Spacer(1, 5 * mm), Paragraph("Operaciones", styles["Heading2"])]
 
     from views.ledger import kind_cell, usc_cell
-    headers = ["Fecha", "Tipo", "Aut.", "Factura", "Concepto y justificantes",
-               "Beneficiario", "Comprometido", "Gastado", "Estado", "USC"]
+    headers = ["Fecha", "Tipo", "Ref.", "Ref. gasto", "Concepto y justificantes",
+               "Beneficiario", "Comprometido", "Gastado", "Estado", "Conciliado"]
     rows = [[p(h, head) for h in headers]]
     dated = []
     for op in operations:
@@ -250,8 +251,8 @@ def write_xlsx(path: Path, title: str, partida: Optional[str], summary: Summary,
     from views.ledger import kind_cell, usc_cell
 
     ws = wb.create_sheet("Operaciones")
-    ws.append(["Fecha", "Tipo", "Aut.", "Factura", "Concepto", "Beneficiario",
-               "Comprometido", "Gastado", "Pendiente", "Estado", "USC"])
+    ws.append(["Fecha", "Tipo", "Ref.", "Ref. gasto", "Concepto", "Beneficiario",
+               "Comprometido", "Gastado", "Pendiente", "Estado", "Conciliado"])
     for op in operations:
         ws.append([op.date, kind_cell(op), op.op_id or "", ", ".join(op.invoice_ids),
                    op.concept, op.payee or "", op.committed or None,

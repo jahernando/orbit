@@ -1,7 +1,7 @@
 """test_ledger_commitments.py — el modelo de compromisos (ADR-053).
 
 Cubre:
-  - parse_entry:      #pedido (🆔, signo), #gasto con 🆔 (factura) y 🔗
+  - parse_entry:      #compromiso (🆔, signo), #gasto con 🆔 (factura) y 🔗
   - balance:          los pedidos no mueven caja
   - build_operations: pedido → factura, gasto directo, 🔗 colgante,
                       id repetido, factura sobre pedido ya cerrado
@@ -54,7 +54,7 @@ INGRESO = ("2026-07-01", "Dotación #ingreso", "🏷️ viaje · 💶 10.000,00"
 
 
 def _pedido(fecha, id_, importe, concepto="Folla"):
-    return (fecha, f"[{concepto}](cloud/logs/folla.pdf) #pedido",
+    return (fecha, f"[{concepto}](cloud/logs/folla.pdf) #compromiso",
             f"🏷️ viaje · 👤 Agencia · 💶 -{importe} · 🆔 {id_}")
 
 
@@ -72,14 +72,14 @@ def _factura(fecha, importe, ref=None, concepto="Factura", nfac=None):
 class TestParse:
 
     def test_pedido_con_id_y_signo_negativo(self):
-        mov, problem = parse_entry("2026-09-18", "💶 Folla #pedido",
+        mov, problem = parse_entry("2026-09-18", "💶 Folla #compromiso",
                                    ["🏷️ viaje · 💶 1.578,64 · 🆔 CM26XX0001"])
         assert problem is not None            # sin signo → la tag lo corrige
         assert mov.amount == D("-1578.64")
         assert mov.op_id == "CM26XX0001" and not mov.is_cash
 
     def test_pedido_sin_id_se_canta(self):
-        mov, problem = parse_entry("2026-09-18", "💶 Folla #pedido",
+        mov, problem = parse_entry("2026-09-18", "💶 Folla #compromiso",
                                    ["💶 -10,00"])
         assert mov is not None and mov.op_id is None
         assert "sin id" in problem
@@ -131,7 +131,7 @@ class TestOperations:
         _write(proj, _factura("2026-10-03", "10,00", "P09"))
         movs, ops, problems = _ops(proj)
         assert ops[0].state == DIRECT
-        assert any("P09 no es ningún pedido" in p for p in problems)
+        assert any("P09 no es ningún compromiso" in p for p in problems)
         assert balance(movs) == D("-10.00")
 
     def test_id_repetido(self, proj):

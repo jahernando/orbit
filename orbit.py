@@ -334,7 +334,7 @@ def cmd_log(args):
                                  prepare_movement, read_movements,
                                  resolve_partida)
         tty = _sys.stdin.isatty()
-        label = {"pedido": "folla", "gasto": "factura"}.get(args.entry, args.entry)
+        label = args.entry
         if label == "ledger":
             if not tty:
                 print("Error: sin terminal, indica qué es → --entry "
@@ -355,41 +355,43 @@ def cmd_log(args):
         partida    = getattr(args, "tag", None)
         op_id      = getattr(args, "op_id", None)
         order_ref  = getattr(args, "order_ref", None)
+        closes     = getattr(args, "closes", False)
+        note       = getattr(args, "note", None)
         known, _ = read_movements(project_dir)
-        if tty and not (message and amount_raw and ref and payee):
+        if tty and not (message and amount_raw and payee):
             try:
                 (message, amount_raw, payee, partida, fecha,
                  ref) = interrogate_movement(
                     project_dir, label,
                     concept=message, amount=amount_raw, payee=payee,
                     partida=partida, fecha=fecha, ref=ref)
-                op_id, order_ref = interrogate_commitment(
-                    known, kind, op_id=op_id, ref=order_ref)
+                op_id, order_ref, closes, note = interrogate_commitment(
+                    known, kind, op_id=op_id, ref=order_ref,
+                    amount=amount_raw, closes=closes, note=note)
             except Cancelled:
                 print("⚠️  movimiento cancelado")
                 return 1
         if not message:
             print("Error: falta el concepto → orbit log <proyecto> \"<concepto>\" "
-                  f"<pdf> --entry {label} --amount N --payee P")
+                  f"[<justificante>] --entry {label} --amount N --payee P")
             return 1
         if not payee:
             print("Error: falta el beneficiario → --payee \"<nombre>\" "
                   "(en un ingreso, quién lo paga)")
             return 1
-        # El justificante es obligatorio y se guarda en el proyecto: se
-        # importa a cloud/logs/ con fecha, salvo que ya esté dentro.
-        src = Path(ref).expanduser() if ref else None
-        if src is not None and not src.is_absolute() and (project_dir / ref).is_file():
-            src = project_dir / ref
-        if src is None or not src.is_file():
-            print("Error: falta el PDF (justificante) → orbit log <proyecto> "
-                  f"\"<concepto>\" <fichero.pdf> --entry {label} …"
-                  + (f"  (no encuentro {ref})" if ref else ""))
-            return 1
-        try:
-            local_link = "./" + str(src.resolve().relative_to(project_dir.resolve()))
-        except ValueError:
-            deliver, as_link = True, False
+        # El justificante es opcional; si lo hay, se guarda en el proyecto:
+        # se importa a cloud/logs/ con fecha, salvo que ya esté dentro.
+        if ref and "://" not in ref:
+            src = Path(ref).expanduser()
+            if not src.is_absolute() and (project_dir / ref).is_file():
+                src = project_dir / ref
+            if not src.is_file():
+                print(f"Error: no encuentro el justificante {ref}")
+                return 1
+            try:
+                local_link = "./" + str(src.resolve().relative_to(project_dir.resolve()))
+            except ValueError:
+                deliver, as_link = True, False
         if kind == ORDER_TAG and not op_id:
             op_id = next_order_id(known)       # se anuncia en el eco
         try:
@@ -397,7 +399,7 @@ def cmd_log(args):
             partida = resolve_partida(project_dir, partida)
             body, amount = prepare_movement(
                 label, amount_raw, partida, payee, op_id=op_id,
-                ref=order_ref)
+                ref=order_ref, closes=closes, note=note)
         except ValueError as exc:
             print(f"⚠️  {exc}")
             return 1
@@ -430,7 +432,8 @@ def cmd_log(args):
         detalle = " · ".join(filter(None, [
             f"{entry_tag.upper()} {format_amount(amount)} {currency_symbol()}",
             f"🆔 {op_id}" if op_id else None,
-            f"cierra {order_ref}" if order_ref else None,
+            (f"consume {order_ref}" + (" y lo cierra" if closes else ""))
+            if order_ref else None,
             payee,
             f"#{partida}",
             f"disponible {format_amount(summarize(movements).available)} "
@@ -445,6 +448,9 @@ def cmd_log(args):
 
 
 def cmd_ledger(args):
+    if getattr(args, "close", None):
+        from views.ledger import run_ledger_close
+        return run_ledger_close(args.project, args.close)
     if getattr(args, "mark", None) or getattr(args, "unmark", None):
         from views.ledger import run_ledger_mark
         if args.mark:
@@ -1752,14 +1758,18 @@ def _build_parser():
     log_p.add_argument("--no-date", action="store_true", dest="no_date",
                        help="Skip the YYYY-MM-DD_ prefix on the imported filename (non-md imports only).")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
-    # Ledger (--entry ingreso|pedido|gasto): la fecha del movimiento es --date.
+    # Ledger (--entry ledger|ingreso|compromiso|gasto): la fecha es --date.
     log_p.add_argument("--amount", default=None, metavar="N",
                        help="Ledger: importe sin signo (lo pone la tag). Ej: 218,40")
     log_p.add_argument("--id", dest="op_id", default=None, metavar="ID",
-                       help="Ledger: nº de autorización USC (#pedido; defecto: provisional P01…) "
-                            "o nº de factura (#gasto)")
-    log_p.add_argument("--pedido", dest="order_ref", default=None, metavar="ID",
-                       help="Ledger, #gasto: pedido (hoja) que cierra")
+                       help="Ledger: referencia (compromiso: defecto provisional P01…; "
+                            "gasto: nº de factura…)")
+    log_p.add_argument("--compromiso", dest="order_ref", default=None, metavar="REF",
+                       help="Ledger, #gasto: el compromiso que consume")
+    log_p.add_argument("--cierra", dest="closes", action="store_true",
+                       help="Ledger, #gasto con --compromiso: lo cierra aunque no esté cubierto")
+    log_p.add_argument("--nota", dest="note", default=None, metavar="TEXTO",
+                       help="Ledger: nota libre")
     log_p.add_argument("--payee", default=None, metavar="P",
                        help="Ledger: beneficiario, obligatorio (pagador si es ingreso)")
     log_p.add_argument("--tag", default=None, metavar="PARTIDA",
@@ -1933,9 +1943,11 @@ def _build_parser():
                                "concilia y pone la columna USC en ledger.md")
     ledger_p.add_argument("--strict", action="store_true",
                           help="Con --check: los avisos también dan código de error")
-    ledger_p.add_argument("--mark", nargs=2, default=None, metavar=("CLAVE", "NUM_USC"),
-                          help="Marca una entrada como conciliada con la USC (🏛️ NUM_USC). "
-                               "CLAVE = campo key de ledger.json. Lo usa usc-ledger")
+    ledger_p.add_argument("--close", default=None, metavar="REF",
+                          help="Cierra a mano un compromiso (anulado, o el sobrante)")
+    ledger_p.add_argument("--mark", nargs=2, default=None, metavar=("CLAVE", "REF_EXT"),
+                          help="Marca una entrada como conciliada con una fuente externa "
+                               "(☑️ REF_EXT). CLAVE = campo key de ledger.json")
     ledger_p.add_argument("--unmark", default=None, metavar="CLAVE",
                           help="Quita la marca de conciliada de una entrada")
     ledger_p.add_argument("--export", default=None, metavar="DIR",

@@ -53,7 +53,7 @@ def _ledger(proj):
     _pdf(proj, "2026-09-01_nomina_SENSIBLE.pdf")          # no enlazado
     _write(proj,
            ("2026-08-06", f"[Dotación]({c}) #ingreso", "🏷️ p · 💶 20.000,00"),
-           ("2026-09-18", f"[Folla vuelo]({a}) #pedido",
+           ("2026-09-18", f"[Folla vuelo]({a}) #compromiso",
             "👤 Axencia · 💶 -1.578,64 · 🆔 CM26XXXX0001"),
            ("2026-10-02", f"[Factura vuelo]({b}) #gasto",
             "👤 Axencia · 💶 -1.580,10 · 🆔 F-4471 · 🔗 CM26XXXX0001"))
@@ -92,8 +92,8 @@ def test_xlsx(proj, tmp_path):
     assert Decimal(str(resumen["Disponible"])) == Decimal("18419.90")
 
     ops = list(wb["Operaciones"].iter_rows(values_only=True))
-    assert ops[0][:4] == ("Fecha", "Tipo", "Aut.", "Factura")
-    assert ops[1][1:5] == ("folla", "CM26XXXX0001", "F-4471", "Folla vuelo")
+    assert ops[0][:4] == ("Fecha", "Tipo", "Ref.", "Ref. gasto")
+    assert ops[1][1:5] == ("compromiso", "CM26XXXX0001", "F-4471", "Folla vuelo")
     assert ops[1][9] == "cerrado" and ops[1][10] == "—"
     assert wb["Operaciones"].cell(2, 5).hyperlink.target == \
         "justificantes/2026-09-18_folla.pdf"
@@ -104,7 +104,7 @@ def test_xlsx(proj, tmp_path):
 
 
 def test_errores_bloquean(proj, tmp_path):
-    _write(proj, ("2026-08-31", "Dietas sin justificante #gasto", "💶 -10,00"))
+    _write(proj, ("2026-08-31", "[Dietas](cloud/logs/no-existe.pdf) #gasto", "💶 -10,00"))
     with pytest.raises(ValueError, match="no se exporta"):
         export_ledger(proj, tmp_path / "share")
     assert not (tmp_path / "share").exists()
