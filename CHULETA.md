@@ -550,9 +550,11 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 
 ### Ledger — libro de caja por proyecto
 
-Un movimiento **es una entrada de logbook** con tag `#gasto` o `#ingreso`; no hay
-fichero-verdad nuevo. `ledger.md` (tabla + saldo) es un derivado 100 %
-regenerable: nadie lo edita a mano y si se rompe se vuelve a generar.
+Un movimiento **es una entrada de logbook** con tag `#ingreso`, `#gasto`,
+`#pedido`, `#anulacion` o `#conciliacion` (y `#arrastre`, que escribe
+`archive`); no hay fichero-verdad nuevo. `ledger.md` (resumen + operaciones) es
+un derivado 100 % regenerable: nadie lo edita a mano y si se rompe se vuelve a
+generar.
 
 ```bash
 orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto|ingreso \
@@ -640,7 +642,10 @@ quedan así (se pueden escribir a mano o con `log`, arriba):
   de un pedido en otra moneda lleva `~`.
 
 Las entradas no se editan nunca: el estado de cada operación (abierto /
-cerrado / anulado) se reconstruye leyendo la cadena.
+cerrado / anulado) se reconstruye leyendo la cadena. Un `🔗` a un pedido que
+no existe, un id repetido o una factura sobre un pedido ya cerrado salen en
+`ledger.md` como avisos (y el dinero cuenta igual). Un ledger sin pedidos
+funciona como antes: comprometido = 0.
 
 **Dos ids** (vocabulario de la USC): el `🆔` de un `#pedido` es el **número de
 autorización** (`CM26XXXX0001`, `621A-25-XXXX-14`); si aún no lo tienes,
@@ -674,10 +679,10 @@ perceptor, importe imputado —ImpOrzamento—, fecha de pago).
   importe y fecha.
 - **Solo en la USC**: te da el `orbit log` que la crearía (falta el justificante).
   **Solo en el ledger**: lo que la USC aún no ha tramitado o reconocido.
-- **Lo único que escribe**: en terminal, pregunta una a una (`[s/N]`) si poner
-  el número oficial en cada coincidencia probable; si era un pedido con id
-  provisional, cambia también los `🔗` de sus facturas. Deja undo y regenera
-  `ledger.md`. Todo lo demás es lectura.
+- **Números oficiales**: en terminal, pregunta una a una (`[s/N]`) si poner
+  el número de la USC en cada coincidencia probable; si era un pedido con id
+  provisional, cambia también los `🔗` de sus facturas. Deja undo. Es la única
+  edición de entradas ya escritas; lo demás que escribe (abajo) es nuevo.
 - Sin el excel no compara facturas (el PDF no trae el nº de autorización de
   cada obligación).
 - **Guarda los ficheros** en `cloud/logs/` con la fecha de la USC
@@ -705,11 +710,12 @@ perceptor, importe imputado —ImpOrzamento—, fecha de pago).
 
 - `ledger.pdf` — resumen (con fecha de generación), operaciones (Aut. ·
   Factura · concepto con enlaces a los justificantes · comprometido · gastado ·
-  estado · moneda original) y dotación. Para leer.
+  estado · moneda original · **USC**, con las filas `!↑`) y dotación. Para leer.
 - `ledger.xlsx` — hojas *Resumen*, *Operaciones* y *Movimientos* (una fila por
   entrada, con su justificante enlazado); importes como números. Copia editable.
 - `justificantes/` — **solo** los ficheros que enlaza algún movimiento; nada
-  más de `cloud/logs/` sale de ahí.
+  más de `cloud/logs/` sale de ahí. La ejecución y las obrigas de la USC
+  (enlazadas por la `#conciliacion`) tampoco: son informes internos.
 
 Antes pasa `--check`: **con errores no exporta**; los avisos se cuentan y se
 sigue. Es idempotente: regenera `ledger.*` y sincroniza `justificantes/`
@@ -718,7 +724,7 @@ relativos (`justificantes/…`): funcionan con la carpeta descargada o
 sincronizada. Publicarla (OneDrive…) es cosa de otra herramienta. Necesita
 `pip install reportlab openpyxl` (extra `ledger`).
 
-**Comprobación** (`ledger <proyecto> --check`). Lee el logbook y
+**Comprobación** (`ledger <proyecto> --check`, sin ficheros). Lee el logbook y
 `cloud/logs/`, no escribe nada. Tres niveles:
 
 | Nivel | Qué mira |
@@ -734,10 +740,7 @@ sincronizada. Publicarla (OneDrive…) es cosa de otra herramienta. Necesita
   (`*Congreso*`) en `<proyecto>/.ledger-ignore` (`#` = comentario).
 - Umbrales y patrones en `orbit.json` → `"ledger": {"open_days": 60,
   "diff_pct": 10, "duplicate_days": 7, "order_patterns": …, "invoice_patterns":
-  …, "expense_patterns": …}` (regex sobre el nombre en minúsculas y sin tildes). Un `🔗` a un pedido que
-no existe, un id repetido o una factura sobre un pedido ya cerrado salen en
-`ledger.md` como avisos (y el dinero cuenta igual). Un ledger sin pedidos
-funciona como antes: comprometido = 0.
+  …, "expense_patterns": …}` (regex sobre el nombre en minúsculas y sin tildes).
 
 **Archivar un proyecto con movimientos**: `archive` borra las entradas
 anteriores al corte, así que antes pregunta si consolidar su saldo neto:
@@ -767,18 +770,25 @@ Obsidian. Solo existe en proyectos con movimientos: es el primer fichero de
 proyecto **opcional**. Contiene la partida, el **resumen** (saldo arrastrado ·
 dotación · gastado · comprometido · **disponible** = dotación − gastado −
 comprometido), la última conciliación, la tabla de **operaciones** (una fila
-por pedido con sus facturas, o por gasto directo: comprometido, gastado,
-estado), la tabla de **dotación** (ingresos y arrastres), los avisos y, si
-`archive` cortó el histórico sin arrastre, el aviso de que el saldo no incluye
-lo anterior.
+por pedido con sus facturas, o por gasto directo; con columna **USC** si hay
+conciliación), la tabla de **dotación** (ingresos y arrastres), los avisos y,
+si `archive` cortó el histórico sin arrastre, el aviso de que el saldo no
+incluye lo anterior.
 
 ```markdown
-| Fecha | Tipo | Concepto | Beneficiario | Importe | Saldo |
-|---|---|---|---|---|---|
-| 2026-07-01 | Ingreso | Anticipo PID2024 | UCM | +4.000,00 | 4.000,00 |
-| 2026-07-14 | Gasto | Vuelo Madrid–Ginebra | Iberia | -218,40 | 3.781,60 |
+| Resumen | € |
+|---|---:|
+| Dotación | 20.000,00 |
+| Gastado | -1.408,32 |
+| Comprometido (pedidos abiertos) | -1.250,00 |
+| **Disponible** | **17.341,68** |
 
-**Saldo actual: 3.781,60 €**
+## Operaciones
+
+| Fecha | Aut. | Factura | Concepto | Beneficiario | Comprometido | Gastado | Estado | Moneda orig. | USC |
+|---|---|---|---|---|---:|---:|---|---:|---|
+| 2026-08-31 | — | — | Dietas congreso | Ana Núñez | — | 1.408,32 | gasto directo | — | !↓ |
+| 2026-09-18 | CM26XXXX0001 | — | Folla vuelo Ginebra | Axencia Viaxes | 1.250,00 | — | abierto | — | ok CM26XXXX0001 |
 ```
 
 ---
