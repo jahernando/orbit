@@ -46,6 +46,22 @@ def _confirm(prompt: str, force: bool, default: bool = True) -> bool:
     return ans in ("s", "si", "sí", "y", "yes")
 
 
+# ── Ledger: entradas que el corte no puede llevarse ─────────────────────────
+
+def _header_key(line: str) -> Optional[str]:
+    """Cabecera normalizada (`fecha resto`), la misma que `Movement.raw`."""
+    from core.ledger import _ENTRY_RE
+    m = _ENTRY_RE.match(line.strip())
+    return f"{m.group(1)} {m.group(2)}".strip() if m else None
+
+
+def _ledger_protected(project_dir: Path, cutoff: date) -> set:
+    """Cabeceras de operaciones con pedido que no se pueden archivar aún."""
+    from core.ledger import protected_headers, read_movements
+    movements, _ = read_movements(project_dir)
+    return protected_headers(movements, cutoff) if movements else set()
+
+
 # ── Counting helpers (dry-run / preview) ─────────────────────────────────────
 
 def _count_old_logbook(project_dir: Path, cutoff: date) -> int:
@@ -53,12 +69,13 @@ def _count_old_logbook(project_dir: Path, cutoff: date) -> int:
     logbook = find_logbook_file(project_dir)
     if not logbook or not logbook.exists():
         return 0
+    protected = _ledger_protected(project_dir, cutoff)
     count = 0
     for line in logbook.read_text().splitlines():
         if line.startswith("  "):
             continue
         m = _DATE_RE.match(line.strip())
-        if m:
+        if m and _header_key(line) not in protected:
             try:
                 if date.fromisoformat(m.group(1)) < cutoff:
                     count += 1
@@ -131,6 +148,7 @@ def _clean_logbook(project_dir: Path, cutoff: date) -> int:
         return 0
 
     lines = logbook.read_text().splitlines()
+    protected = _ledger_protected(project_dir, cutoff)
     keep = []
     removed = 0
     removing = False
@@ -144,7 +162,7 @@ def _clean_logbook(project_dir: Path, cutoff: date) -> int:
 
         removing = False
         m = _DATE_RE.match(line.strip())
-        if m:
+        if m and _header_key(line) not in protected:
             try:
                 d = date.fromisoformat(m.group(1))
                 if d < cutoff:
@@ -179,7 +197,13 @@ def _carry_preview(project_dir: Path, cutoff: date):
     from core.ledger import read_movements
 
     movements, _ = read_movements(project_dir)
-    doomed = [m for m in movements if m.date < cutoff]
+    protected = _ledger_protected(project_dir, cutoff)
+    # Solo lo que mueve caja entra en el arrastre; un pedido no es dinero.
+    doomed = [m for m in movements
+              if m.date < cutoff and m.raw not in protected]
+    if not any(m.is_cash for m in doomed):
+        return 0, None, {}
+    doomed = [m for m in doomed if m.is_cash]
     if not doomed:
         return 0, None, {}
 

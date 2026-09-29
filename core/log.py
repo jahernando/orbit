@@ -9,6 +9,7 @@ VALID_TYPES = ["idea", "referencia", "apunte", "problema", "solucion", "resultad
                "decision", "evaluacion",
                "plan", "email",
                "gasto", "ingreso", "arrastre",   # ledger (core/ledger.py)
+               "pedido", "anulacion", "conciliacion",
                "tarea", "evento"]   # tarea/evento kept for backwards compat
 
 
@@ -171,6 +172,9 @@ TAG_EMOJI = {
     "gasto":       "💶",
     "ingreso":     "💶",
     "arrastre":    "💶",
+    "pedido":      "💶",
+    "anulacion":   "💶",
+    "conciliacion": "💶",
     "tarea":       "✅",   # legacy
     "evento":      "📅",   # legacy
 }

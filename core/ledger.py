@@ -19,6 +19,26 @@ El **signo lo deriva la tag**, nunca el usuario: `#gasto` es negativo e
 `#ingreso` positivo. `#arrastre` es la excepción (signo libre) porque consolida
 un neto que puede ir en cualquier dirección; la escribe solo `orbit archive`.
 
+**Compromisos** (ADR-053): la hoja de pedido compromete crédito y la factura o
+la liquidación de dietas lo gasta. Tres tags más, que no mueven caja:
+
+- `#pedido` compromete (negativo como un gasto) y lleva id: `🆔 P03`. Es el
+  número de **autorización** de la USC (`🆔 CM26XXXX0001`) o, mientras no se
+  conoce, uno provisional (`P03`) que `ledger --reconcile` sustituye.
+- `#gasto` puede llevar su propio id, el **número de factura** (`🆔 F-4471`),
+  y con `🔗 P03` cierra ese pedido (libera todo lo comprometido e imputa el
+  importe real); con `🔗 P03 parcial` gasta sin cerrarlo.
+- `#anulacion` con `🔗 P03` cierra el pedido sin gasto.
+- `#conciliacion` anota el saldo oficial de la USC en una fecha (control).
+
+Las entradas nunca se editan: el estado de cada operación (abierto / cerrado
+/ anulado) lo reconstruye :func:`build_operations` leyendo la cadena.
+
+**Moneda**: todo se calcula en la del workspace (`💶`, EUR). Si el documento
+vino en otra, se anota aparte y solo como información: `💱 1.150,00 CHF`. En un
+`#pedido` el `💶` es una estimación; en un `#gasto`, lo que cargó la USC.
+Nunca se convierte: el tipo de cambio se deduce de los dos importes.
+
 Este módulo no escribe nada: serializa/parsea importes y cuerpo, y extrae los
 movimientos del logbook. El generador de `ledger.md` y el verbo `orbit ledger`
 llegan en F3.
@@ -26,7 +46,7 @@ llegan en F3.
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -37,12 +57,18 @@ from typing import List, Optional, Tuple
 EXPENSE_TAG = "gasto"
 INCOME_TAG  = "ingreso"
 CARRY_TAG   = "arrastre"
+ORDER_TAG   = "pedido"
+CANCEL_TAG  = "anulacion"
+RECON_TAG   = "conciliacion"
+
+#: Tags que mueven caja: el saldo es la suma de sus importes.
+CASH_TAGS = (EXPENSE_TAG, INCOME_TAG, CARRY_TAG)
 
 #: Tags que convierten una entrada de logbook en un movimiento del ledger.
-LEDGER_TAGS = (EXPENSE_TAG, INCOME_TAG, CARRY_TAG)
+LEDGER_TAGS = CASH_TAGS + (ORDER_TAG, CANCEL_TAG, RECON_TAG)
 
 #: Tags que puede teclear el usuario (`#arrastre` la escribe solo `archive`).
-USER_TAGS = (EXPENSE_TAG, INCOME_TAG)
+USER_TAGS = (EXPENSE_TAG, INCOME_TAG, ORDER_TAG, CANCEL_TAG, RECON_TAG)
 
 #: Emoji único para las tres direcciones: la línea del diario queda neutra y la
 #: dirección la llevan la tag y el signo, nunca el color ni la forma.
@@ -51,6 +77,15 @@ LEDGER_EMOJI = "💶"
 PARTIDA_EMOJI = "🏷️"
 PAYEE_EMOJI   = "👤"
 AMOUNT_EMOJI  = "💶"
+ID_EMOJI      = "🆔"      # id de operación, en el #pedido
+REF_EMOJI     = "🔗"      # referencia a un pedido, en #gasto / #anulacion
+ORIG_EMOJI    = "💱"      # importe y moneda originales (informativo)
+
+#: Tags que admiten importe en otra moneda.
+_ORIG_TAGS = (EXPENSE_TAG, INCOME_TAG, ORDER_TAG)
+
+#: Palabra que, tras la referencia, marca una factura parcial (no cierra).
+PARTIAL_WORD = "parcial"
 
 #: Orden canónico del cuerpo: partida · beneficiario · importe.
 _BODY_SEP = " · "
@@ -66,7 +101,7 @@ def sign_for(tag: str) -> int:
 
     `#arrastre` devuelve 0 = signo libre (lo fija el neto que consolida).
     """
-    return {EXPENSE_TAG: -1, INCOME_TAG: 1, CARRY_TAG: 0}.get(tag, 0)
+    return {EXPENSE_TAG: -1, INCOME_TAG: 1, ORDER_TAG: -1}.get(tag, 0)
 
 
 def currency_symbol(workspace_root: Optional[Path] = None) -> str:
@@ -188,8 +223,10 @@ def signed_amount(tag: str, magnitude: Decimal) -> Decimal:
 
 # ── Cuerpo del movimiento ────────────────────────────────────────────────────
 
-def build_body(amount: Decimal, partida: Optional[str] = None,
-               payee: Optional[str] = None) -> List[str]:
+def build_body(amount: Optional[Decimal], partida: Optional[str] = None,
+               payee: Optional[str] = None, *, orig: Optional[tuple] = None,
+               op_id: Optional[str] = None, ref: Optional[str] = None,
+               partial: bool = False) -> List[str]:
     """Cuerpo de un movimiento: **una línea** de tokens `emoji valor` unidos por `·`.
 
         🏷️ viaje · 👤 Iberia · 💶 -218,40
@@ -206,24 +243,72 @@ def build_body(amount: Decimal, partida: Optional[str] = None,
         tokens.append(f"{PARTIDA_EMOJI} {partida.strip()}")
     if payee and payee.strip():
         tokens.append(f"{PAYEE_EMOJI} {payee.strip()}")
-    tokens.append(f"{AMOUNT_EMOJI} {format_amount(amount)}")
+    if amount is not None:
+        tokens.append(f"{AMOUNT_EMOJI} {format_amount(amount)}")
+    if orig:
+        tokens.append(f"{ORIG_EMOJI} {format_orig(*orig)}")
+    if op_id:
+        tokens.append(f"{ID_EMOJI} {op_id}")
+    if ref:
+        tokens.append(f"{REF_EMOJI} {ref}" + (f" {PARTIAL_WORD}" if partial else ""))
     return [_BODY_SEP.join(tokens)]
+
+
+# ── Moneda original ──────────────────────────────────────────────────────────
+
+_CODE_RE = re.compile(r"^[A-Za-z]{3}$")
+
+
+def parse_orig(raw: str) -> tuple:
+    """`1.150,00 CHF` (o `CHF 1150`) → `(Decimal('1150.00'), 'CHF')`.
+
+    El código es ISO 4217 (tres letras). El importe va sin signo: el signo lo
+    lleva el `💶`, que es el que cuenta.
+    """
+    parts = (raw or "").split()
+    if len(parts) != 2:
+        raise ValueError(f"'{(raw or '').strip()}': escribe importe y moneda, "
+                         "p. ej. 1.150,00 CHF")
+    a, b = parts
+    if _CODE_RE.match(b):
+        amount, code = a, b
+    elif _CODE_RE.match(a):
+        code, amount = a, b
+    else:
+        raise ValueError(f"'{raw.strip()}': la moneda va en código de tres "
+                         "letras (CHF, USD, GBP, JPY…)")
+    value = abs(parse_amount(amount, allow_sign=True))
+    return value, code.upper()
+
+
+def format_orig(value: Decimal, code: str) -> str:
+    return f"{format_amount(abs(value))} {code}"
 
 
 def prepare_movement(tag: str, amount_raw: Optional[str],
                      partida: Optional[str],
-                     payee: Optional[str] = None
+                     payee: Optional[str] = None, *,
+                     op_id: Optional[str] = None,
+                     ref: Optional[str] = None, partial: bool = False,
+                     orig_raw: Optional[str] = None,
                      ) -> Tuple[List[str], Decimal]:
     """Valida un movimiento tecleado y devuelve `(cuerpo, importe)`.
 
     Lanza `ValueError` con un mensaje dirigido al usuario. Es la puerta única
     de escritura desde la CLI: exige partida e importe, y rechaza el signo
-    porque lo pone la tag.
+    porque lo pone la tag. Que el id no esté repetido y que el `🔗` apunte a un
+    pedido abierto lo comprueba :func:`check_links`, que necesita el logbook.
+
+    - `#pedido` exige `op_id` (nº de autorización o provisional); en `#gasto`
+      es opcional (nº de factura); `#anulacion` exige `ref` y no lleva importe;
+      `#conciliacion` admite signo (es un saldo, no un movimiento).
+    - `partial` solo en `#gasto` con `ref`; `orig_raw` (`1.150,00 CHF`) solo
+      en ingreso, gasto y pedido.
     """
     if tag == CARRY_TAG:
         raise ValueError(
             f"#{CARRY_TAG} lo escribe solo `orbit archive`; usa "
-            f"--entry {EXPENSE_TAG} o --entry {INCOME_TAG}"
+            f"--entry {EXPENSE_TAG}, {INCOME_TAG}, {ORDER_TAG}…"
         )
     if tag not in USER_TAGS:
         raise ValueError(f"#{tag} no es una tag del ledger")
@@ -237,11 +322,39 @@ def prepare_movement(tag: str, amount_raw: Optional[str],
     if re.search(r"\s|#", partida):
         raise ValueError(f"la partida '{partida}' no puede llevar espacios ni '#'")
 
+    if tag == ORDER_TAG and not op_id:
+        raise ValueError(f"un #{ORDER_TAG} necesita id: --id P01")
+    if op_id and tag not in (ORDER_TAG, EXPENSE_TAG):
+        raise ValueError(f"--id solo va en #{ORDER_TAG} (autorización) o "
+                         f"#{EXPENSE_TAG} (factura)")
+    if op_id and re.search(r"\s|#|·", op_id):
+        raise ValueError(f"el id '{op_id}' no puede llevar espacios, '#' ni '·'")
+    if tag == CANCEL_TAG and not ref:
+        raise ValueError(f"una #{CANCEL_TAG} necesita el pedido: --pedido P01")
+    if ref and tag not in (EXPENSE_TAG, CANCEL_TAG):
+        raise ValueError(f"--pedido solo va en #{EXPENSE_TAG} o #{CANCEL_TAG}")
+    if partial and not (tag == EXPENSE_TAG and ref):
+        raise ValueError("--partial solo va en un #gasto con --pedido")
+    orig = None
+    if orig_raw:
+        if tag not in _ORIG_TAGS:
+            raise ValueError(f"--orig no va en #{tag}")
+        orig = parse_orig(orig_raw)
+
+    if tag == CANCEL_TAG:
+        if amount_raw is not None and str(amount_raw).strip():
+            raise ValueError(f"una #{CANCEL_TAG} no lleva importe: no mueve dinero")
+        return build_body(None, partida, payee, ref=ref), Decimal("0.00")
+
     if amount_raw is None or not str(amount_raw).strip():
         raise ValueError("un movimiento necesita importe: --amount <cantidad>")
 
-    amount = signed_amount(tag, parse_amount(str(amount_raw)))
-    return build_body(amount, partida, payee), amount
+    if tag == RECON_TAG:
+        amount = parse_amount(str(amount_raw), allow_sign=True)
+    else:
+        amount = signed_amount(tag, parse_amount(str(amount_raw)))
+    return build_body(amount, partida, payee, orig=orig, op_id=op_id,
+                      ref=ref, partial=partial), amount
 
 
 # ── Lectura de la verdad ─────────────────────────────────────────────────────
@@ -258,14 +371,26 @@ class Movement:
 
     `amount` viene **con signo aplicado**; `partida` es la primera tag que no
     sea de dirección (puede faltar en entradas escritas a mano).
+
+    `raw` es la línea de cabecera tal cual (`fecha resto`): la usa `archive`
+    para reconocer las entradas que no puede borrar.
     """
     date:    date
-    tag:     str                    # gasto | ingreso | arrastre
+    tag:     str                    # ver LEDGER_TAGS
     concept: str
     amount:  Decimal
     partida: Optional[str] = None
     payee:   Optional[str] = None
     link:    Optional[str] = None
+    op_id:   Optional[str] = None   # 🆔: autorización (#pedido) o factura (#gasto)
+    ref:     Optional[str] = None   # 🔗 (#gasto / #anulacion)
+    partial: bool = False           # 🔗 … parcial
+    orig:    Optional[tuple] = None # 💱 (importe, código)
+    raw:     str = ""
+
+    @property
+    def is_cash(self) -> bool:
+        return self.tag in CASH_TAGS
 
     @property
     def is_cut(self) -> bool:
@@ -299,7 +424,8 @@ def _parse_body(body: List[str]) -> dict:
     for line in body:
         for token in line.split(_BODY_SEP.strip()):
             token = token.strip()
-            for emoji in (PARTIDA_EMOJI, PAYEE_EMOJI, AMOUNT_EMOJI):
+            for emoji in (PARTIDA_EMOJI, PAYEE_EMOJI, AMOUNT_EMOJI,
+                          ID_EMOJI, REF_EMOJI, ORIG_EMOJI):
                 if token.startswith(emoji):
                     value = token[len(emoji):].strip()
                     if value:
@@ -337,6 +463,8 @@ def parse_entry(date_str: str, header: str,
 
     fields = _parse_body(body)
     raw_amount = fields.get(AMOUNT_EMOJI)
+    if raw_amount is None and tag == CANCEL_TAG:
+        raw_amount = "0"                # anular no mueve dinero
     if raw_amount is None:
         return None, f"{date_str} {content}: movimiento sin importe ({AMOUNT_EMOJI})"
     try:
@@ -344,9 +472,27 @@ def parse_entry(date_str: str, header: str,
     except ValueError as exc:
         return None, f"{date_str} {content}: {exc}"
 
+    op_id = fields.get(ID_EMOJI) if tag in (ORDER_TAG, EXPENSE_TAG) else None
+    ref, partial = None, False
+    if tag in (EXPENSE_TAG, CANCEL_TAG) and fields.get(REF_EMOJI):
+        words = fields[REF_EMOJI].split()
+        ref = words[0]
+        partial = tag == EXPENSE_TAG and PARTIAL_WORD in (w.lower() for w in words[1:])
+
     # La tag manda sobre el signo escrito: es la fuente semántica de la
     # dirección. Un signo contradictorio (edición a mano) se corrige y se canta.
     problem = None
+    if tag == ORDER_TAG and not op_id:
+        problem = f"{date_str} {content}: #{ORDER_TAG} sin id ({ID_EMOJI} P01…)"
+    elif tag == CANCEL_TAG and not ref:
+        problem = f"{date_str} {content}: #{CANCEL_TAG} sin {REF_EMOJI} al pedido"
+
+    orig = None
+    if fields.get(ORIG_EMOJI):
+        try:
+            orig = parse_orig(fields[ORIG_EMOJI])
+        except ValueError as exc:
+            problem = f"{date_str} {content}: {ORIG_EMOJI} {exc}"
     factor = sign_for(tag)
     if factor and amount and (amount > 0) != (factor > 0):
         problem = (f"{date_str} {content}: el signo contradice #{tag}, "
@@ -362,7 +508,9 @@ def parse_entry(date_str: str, header: str,
         partida = partida.lstrip("#")
 
     return Movement(date=when, tag=tag, concept=content, amount=amount,
-                    partida=partida, payee=payee or None, link=link), problem
+                    partida=partida, payee=payee or None, link=link,
+                    op_id=op_id, ref=ref, partial=partial, orig=orig,
+                    raw=f"{date_str} {header}".strip()), problem
 
 
 def scan_text(text: str) -> Tuple[List[Movement], List[str]]:
@@ -395,8 +543,291 @@ def read_movements(project_dir: Path) -> Tuple[List[Movement], List[str]]:
 
 
 def balance(movements: List[Movement]) -> Decimal:
-    """Saldo = suma de los importes con signo."""
-    return sum((m.amount for m in movements), Decimal("0")).quantize(_CENTS)
+    """Saldo de caja = suma de los importes con signo de lo que mueve caja.
+
+    Pedidos, anulaciones y conciliaciones no cuentan: comprometer no es gastar.
+    """
+    return sum((m.amount for m in movements if m.is_cash),
+               Decimal("0")).quantize(_CENTS)
+
+
+# ── Operaciones: pedido → factura(s) ────────────────────────────────────────
+
+OPEN, CLOSED, CANCELLED, DIRECT = "abierto", "cerrado", "anulado", "directo"
+
+
+@dataclass
+class Operation:
+    """Una fila de `ledger.md`: un pedido con sus facturas, o un gasto directo.
+
+    `committed` y `spent` son magnitudes (≥ 0), no importes con signo.
+    """
+    date:      date
+    concept:   str
+    state:     str                          # abierto | cerrado | anulado | directo
+    op_id:     Optional[str] = None
+    payee:     Optional[str] = None
+    link:      Optional[str] = None
+    committed: Decimal = Decimal("0.00")
+    spent:     Decimal = Decimal("0.00")
+    entries:   List[Movement] = field(default_factory=list)
+
+    @property
+    def invoice_ids(self) -> List[str]:
+        """Números de factura (🆔 de los #gasto) de la operación."""
+        return [m.op_id for m in self.entries
+                if m.tag == EXPENSE_TAG and m.op_id]
+
+    @property
+    def pending(self) -> Decimal:
+        """Lo que sigue comprometido: nada si está cerrado o anulado.
+
+        Con facturas parciales, lo comprometido menos lo ya facturado (nunca
+        negativo: una parcial que se pasa no genera crédito).
+        """
+        if self.state != OPEN:
+            return Decimal("0.00")
+        return max(self.committed - self.spent, Decimal("0.00"))
+
+
+def build_operations(movements: List[Movement]
+                     ) -> Tuple[List[Operation], List[str]]:
+    """Reconstruye las operaciones leyendo la cadena de entradas.
+
+    Devuelve `(operaciones, problemas)`, ordenadas por fecha. Un `#gasto` con
+    `🔗` a un pedido que no existe se lista como gasto directo **y** se canta:
+    el dinero salió, así que el saldo tiene que contarlo igualmente.
+    """
+    ops: List[Operation] = []
+    orders = {}
+    problems: List[str] = []
+
+    for m in movements:
+        if m.tag != ORDER_TAG:
+            continue
+        op = Operation(date=m.date, concept=m.concept, state=OPEN,
+                       op_id=m.op_id, payee=m.payee, link=m.link,
+                       committed=abs(m.amount), entries=[m])
+        ops.append(op)
+        if not m.op_id:
+            continue
+        if m.op_id in orders:
+            problems.append(f"{m.date.isoformat()} {m.concept}: id {m.op_id} "
+                            f"repetido (ya lo usa «{orders[m.op_id].concept}»)")
+            continue
+        orders[m.op_id] = op
+
+    for m in movements:
+        if m.tag == EXPENSE_TAG:
+            op = orders.get(m.ref) if m.ref else None
+            if m.ref and op is None:
+                problems.append(f"{m.date.isoformat()} {m.concept}: "
+                                f"{REF_EMOJI} {m.ref} no es ningún pedido")
+            if op is None:
+                ops.append(Operation(date=m.date, concept=m.concept,
+                                     state=DIRECT, payee=m.payee, link=m.link,
+                                     spent=abs(m.amount), entries=[m]))
+                continue
+            if op.state != OPEN:
+                problems.append(f"{m.date.isoformat()} {m.concept}: el pedido "
+                                f"{op.op_id} ya estaba {op.state}")
+            op.spent += abs(m.amount)
+            op.entries.append(m)
+            if not m.partial and op.state == OPEN:
+                op.state = CLOSED
+        elif m.tag == CANCEL_TAG and m.ref:
+            op = orders.get(m.ref)
+            if op is None:
+                problems.append(f"{m.date.isoformat()} {m.concept}: "
+                                f"{REF_EMOJI} {m.ref} no es ningún pedido")
+                continue
+            op.entries.append(m)
+            if op.state == OPEN:
+                op.state = CANCELLED
+            else:
+                problems.append(f"{m.date.isoformat()} {m.concept}: el pedido "
+                                f"{op.op_id} ya estaba {op.state}")
+
+    ops.sort(key=lambda o: o.date)
+    return ops, problems
+
+
+@dataclass(frozen=True)
+class Summary:
+    """Cabecera de `ledger.md`. Importes con signo (gastado y comprometido < 0).
+
+    `available` = arrastre + dotación + gastado + comprometido, es decir
+    dotación − gastado − comprometido cuando se leen como magnitudes.
+    """
+    carried:   Decimal
+    income:    Decimal
+    spent:     Decimal
+    committed: Decimal
+    last_recon: Optional[Movement] = None
+
+    @property
+    def cash(self) -> Decimal:
+        return self.carried + self.income + self.spent
+
+    @property
+    def available(self) -> Decimal:
+        return self.cash + self.committed
+
+
+def summarize(movements: List[Movement],
+              operations: Optional[List[Operation]] = None) -> Summary:
+    if operations is None:
+        operations, _ = build_operations(movements)
+
+    def total(tag):
+        return sum((m.amount for m in movements if m.tag == tag),
+                   Decimal("0")).quantize(_CENTS)
+
+    recons = [m for m in movements if m.tag == RECON_TAG]
+    return Summary(
+        carried=total(CARRY_TAG), income=total(INCOME_TAG),
+        spent=total(EXPENSE_TAG),
+        committed=-sum((o.pending for o in operations), Decimal("0")).quantize(_CENTS),
+        last_recon=recons[-1] if recons else None,
+    )
+
+
+_ID_NUM_RE = re.compile(r"^([A-Za-z]*)(\d+)$")
+
+
+def next_order_id(movements: List[Movement]) -> str:
+    """Siguiente id de pedido: `P01`, `P02`… siguiendo el más alto que haya.
+
+    Respeta el prefijo y el ancho del último id numérico (`P09` → `P10`,
+    `OP003` → `OP004`); sin pedidos, `P01`.
+    """
+    best = None
+    for m in movements:
+        hit = _ID_NUM_RE.match(m.op_id or "") if m.tag == ORDER_TAG else None
+        if hit and (best is None or int(hit.group(2)) > int(best.group(2))):
+            best = hit
+    if best is None:
+        return "P01"
+    prefix, digits = best.group(1), best.group(2)
+    return f"{prefix}{int(digits) + 1:0{len(digits)}d}"
+
+
+def open_orders(movements: List[Movement]) -> List[Operation]:
+    return [op for op in build_operations(movements)[0] if op.state == OPEN]
+
+
+def check_links(movements: List[Movement], tag: str,
+                op_id: Optional[str] = None, ref: Optional[str] = None) -> None:
+    """Coherencia con lo ya escrito. Lanza `ValueError` para el usuario.
+
+    Al escribir se es estricto (id repetido, `🔗` a un pedido inexistente o ya
+    cerrado); al leer, lo mismo solo se avisa, porque el dinero ya salió.
+    """
+    orders = {op.op_id: op for op in build_operations(movements)[0]
+              if op.op_id and op.state != DIRECT}
+    if tag == ORDER_TAG and op_id in orders:
+        raise ValueError(f"el id {op_id} ya lo usa «{orders[op_id].concept}»; "
+                         f"el siguiente libre es {next_order_id(movements)}")
+    if tag == EXPENSE_TAG and op_id:
+        twin = next((m for m in movements
+                     if m.tag == EXPENSE_TAG and m.op_id == op_id), None)
+        if twin:
+            raise ValueError(f"la factura {op_id} ya está anotada: "
+                             f"{twin.date.isoformat()} «{twin.concept}»")
+    if ref:
+        op = orders.get(ref)
+        if op is None:
+            known = ", ".join(o.op_id for o in open_orders(movements)) or "ninguno"
+            raise ValueError(f"no hay ningún pedido {ref} (abiertos: {known})")
+        if op.state != OPEN:
+            raise ValueError(f"el pedido {ref} ya está {op.state}")
+
+
+def _entry_spans(lines: List[str]):
+    """(índice de cabecera, [índices de cuerpo], clave `fecha resto`)."""
+    i = 0
+    while i < len(lines):
+        m = _ENTRY_RE.match(lines[i].strip()) if not lines[i].startswith("  ") else None
+        if not m:
+            i += 1
+            continue
+        body = []
+        j = i + 1
+        while j < len(lines) and lines[j].startswith("  ") and lines[j].strip():
+            body.append(j)
+            j += 1
+        yield i, body, f"{m.group(1)} {m.group(2)}".strip()
+        i = j
+
+
+def _set_token(line: str, emoji: str, value: str) -> str:
+    """Pone `emoji value` en una línea de tokens (sustituye o añade al final)."""
+    indent = line[:len(line) - len(line.lstrip())]
+    tokens = [t.strip() for t in line.strip().split(_BODY_SEP.strip())]
+    for k, tok in enumerate(tokens):
+        if tok.startswith(emoji):
+            tokens[k] = f"{emoji} {value}"
+            break
+    else:
+        tokens.append(f"{emoji} {value}")
+    return indent + _BODY_SEP.join(t for t in tokens if t)
+
+
+def rewrite_ids(project_dir: Path, raw: str, new_id: str) -> int:
+    """Pone `🆔 new_id` en la entrada cuya cabecera es *raw* y, si era un
+    pedido con id, cambia también los `🔗` que lo apuntaban.
+
+    Es la única escritura del ledger que **edita** entradas ya escritas: la
+    usa `ledger --reconcile` para pasar un id provisional al oficial, y solo
+    tras confirmar. Deja undo. Devuelve cuántas entradas ha tocado.
+    """
+    from core.log import find_logbook_file
+    from core.undo import save_snapshot
+
+    logbook = find_logbook_file(project_dir)
+    lines = logbook.read_text().splitlines()
+    movements, _ = read_movements(project_dir)
+    target = next((m for m in movements if m.raw == raw), None)
+    if target is None:
+        raise ValueError(f"no encuentro la entrada «{raw}»")
+    old_id = target.op_id if target.tag == ORDER_TAG else None
+
+    touched = 0
+    for head, body, key in _entry_spans(lines):
+        if key == raw:
+            idx = next((b for b in body if AMOUNT_EMOJI in lines[b]
+                        or ID_EMOJI in lines[b]), body[-1] if body else None)
+            if idx is None:
+                lines.insert(head + 1, f"  {ID_EMOJI} {new_id}")
+            else:
+                lines[idx] = _set_token(lines[idx], ID_EMOJI, new_id)
+            touched += 1
+        elif old_id:
+            ref_re = re.compile(rf"({REF_EMOJI}\s+){re.escape(old_id)}(?=\s|·|$)")
+            for b in body:
+                lines[b], n = ref_re.subn(rf"\g<1>{new_id}", lines[b])
+                touched += n
+    save_snapshot(logbook)
+    logbook.write_text("\n".join(lines) + "\n")
+    return touched
+
+
+def protected_headers(movements: List[Movement], cutoff: date) -> set:
+    """Cabeceras que `archive` no puede borrar aunque sean anteriores al corte.
+
+    Una operación con pedido solo se archiva **entera** y **terminada**: si
+    sigue abierta, o alguna de sus entradas es posterior al corte, se quedan
+    todas. Borrar el pedido dejaría la factura posterior con un `🔗` colgante
+    y el comprometido desaparecería del saldo; borrar una parcial de un pedido
+    abierto haría que lo pendiente volviera a contar entero.
+    """
+    keep = set()
+    for op in build_operations(movements)[0]:
+        if op.state == DIRECT:
+            continue
+        if op.state == OPEN or any(m.date >= cutoff for m in op.entries):
+            keep.update(m.raw for m in op.entries)
+    return keep
 
 
 def project_partida(project_dir: Path) -> Optional[str]:
@@ -496,15 +927,22 @@ def interrogate_movement(project_dir: Path, tag: str, *,
     if not partida and not project_partida(project_dir):
         partida = _ask_required(
             f"{PARTIDA_EMOJI}  Tipo (partida)",
-            lambda v: prepare_movement(tag, "0", v),
+            lambda v: prepare_movement(EXPENSE_TAG, "0", v),
         )
     if not concept:
         concept = _ask_required("📝 Item")
-    if not payee:
+    if not payee and tag not in (CANCEL_TAG, RECON_TAG):
         payee = _ask_line("👤 Beneficiario") or None
-    if not amount:
+    if not amount and tag == RECON_TAG:
         amount = _ask_required(
-            f"{AMOUNT_EMOJI} Importe (sin signo)",
+            f"{AMOUNT_EMOJI} Saldo oficial",
+            lambda v: parse_amount(v, allow_sign=True),
+        )
+    elif not amount and tag != CANCEL_TAG:
+        label = ("Importe estimado en EUR (sin signo)" if tag == ORDER_TAG
+                 else "Importe (sin signo)")
+        amount = _ask_required(
+            f"{AMOUNT_EMOJI} {label}",
             lambda v: parse_amount(v),
         )
     if not fecha:
@@ -513,6 +951,75 @@ def interrogate_movement(project_dir: Path, tag: str, *,
         ref = _ask_line("📎 Enlace (ruta o URL)") or None
 
     return concept, amount, payee, partida, fecha, ref
+
+
+def interrogate_commitment(movements: List[Movement], tag: str, *,
+                           op_id: Optional[str], ref: Optional[str],
+                           partial: bool, orig: Optional[str]):
+    """Segunda mitad del interrogador: id, pedido que se factura y moneda.
+
+    Solo pregunta lo que falta y lo que aplica a *tag*. Devuelve
+    `(op_id, ref, partial, orig)`. Lanza `Cancelled` si el usuario aborta.
+    """
+    if tag == ORDER_TAG and not op_id:
+        suggested = next_order_id(movements)
+        for _ in range(3):
+            op_id = _ask_line(f"{ID_EMOJI} Nº de autorización USC "
+                              f"(Enter = provisional)", suggested)
+            try:
+                check_links(movements, tag, op_id=op_id)
+                break
+            except ValueError as exc:
+                print(f"     ⚠️  {exc}")
+        else:
+            raise Cancelled
+
+    if tag in (EXPENSE_TAG, CANCEL_TAG) and not ref:
+        opens = open_orders(movements)
+        if opens or tag == CANCEL_TAG:
+            print("     Pedidos abiertos:" if opens else "     (no hay pedidos abiertos)")
+            for op in opens:
+                print(f"       {op.op_id:<6} {op.date.isoformat()}  "
+                      f"{format_amount(op.pending):>10}  {op.concept}")
+
+        def _valid(v):
+            check_links(movements, tag, ref=v)
+        if tag == CANCEL_TAG:
+            ref = _ask_required(f"{REF_EMOJI} Pedido que se anula", _valid)
+        elif opens:
+            for _ in range(3):
+                ref = _ask_line(f"{REF_EMOJI} Pedido que factura "
+                                "(Enter = gasto sin pedido)") or None
+                if ref is None:
+                    break
+                try:
+                    _valid(ref)
+                    break
+                except ValueError as exc:
+                    print(f"     ⚠️  {exc}")
+            else:
+                raise Cancelled
+
+    if tag == EXPENSE_TAG and not op_id:
+        op_id = _ask_line(f"{ID_EMOJI} Nº de factura (Enter = sin número)") or None
+
+    if tag == EXPENSE_TAG and ref and not partial:
+        answer = _ask_line("   ¿Factura parcial (el pedido sigue abierto)? [s/N]")
+        partial = (answer or "").lower() in ("s", "si", "sí", "y", "yes")
+
+    if tag in _ORIG_TAGS and not orig:
+        orig = _ask_line(f"{ORIG_EMOJI} Importe en moneda original "
+                         "(p. ej. 1.150,00 CHF; Enter = EUR)") or None
+        while orig:
+            try:
+                parse_orig(orig)
+                break
+            except ValueError as exc:
+                print(f"     ⚠️  {exc}")
+                orig = _ask_line(f"{ORIG_EMOJI} Importe en moneda original "
+                                 "(Enter = EUR)") or None
+
+    return op_id, ref, partial, orig
 
 
 def _ask_tty(prompt: str) -> bool:

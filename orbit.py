@@ -319,21 +319,34 @@ def cmd_log(args):
 
     body = partida = None
     amount = None
+    op_id = order_ref = None
     message, ref, fecha = args.message, args.ref, args.date
     if args.entry in LEDGER_TAGS:
         import sys as _sys
-        from core.ledger import (Cancelled, interrogate_movement,
-                                 prepare_movement, resolve_partida)
+        from core.ledger import (CANCEL_TAG, ORDER_TAG, Cancelled, check_links,
+                                 interrogate_commitment, interrogate_movement,
+                                 next_order_id, prepare_movement,
+                                 read_movements, resolve_partida)
         amount_raw = getattr(args, "amount", None)
         payee      = getattr(args, "payee", None)
         partida    = getattr(args, "tag", None)
-        if _sys.stdin.isatty() and not (message and amount_raw):
+        op_id      = getattr(args, "op_id", None)
+        order_ref  = getattr(args, "order_ref", None)
+        partial    = getattr(args, "partial", False)
+        orig       = getattr(args, "orig", None)
+        known, _ = read_movements(project_dir)
+        complete = (message and order_ref) if args.entry == CANCEL_TAG \
+            else (message and amount_raw)
+        if _sys.stdin.isatty() and not complete:
             try:
                 (message, amount_raw, payee, partida, fecha,
                  ref) = interrogate_movement(
                     project_dir, args.entry,
                     concept=message, amount=amount_raw, payee=payee,
                     partida=partida, fecha=fecha, ref=ref)
+                op_id, order_ref, partial, orig = interrogate_commitment(
+                    known, args.entry, op_id=op_id, ref=order_ref,
+                    partial=partial, orig=orig)
             except Cancelled:
                 print("⚠️  movimiento cancelado")
                 return 1
@@ -341,10 +354,14 @@ def cmd_log(args):
             print("Error: falta el concepto → orbit log <proyecto> \"<concepto>\" "
                   f"--entry {args.entry} --amount N")
             return 1
+        if args.entry == ORDER_TAG and not op_id:
+            op_id = next_order_id(known)       # se anuncia en el eco
         try:
+            check_links(known, args.entry, op_id=op_id, ref=order_ref)
             partida = resolve_partida(project_dir, partida)
             body, amount = prepare_movement(
-                args.entry, amount_raw, partida, payee)
+                args.entry, amount_raw, partida, payee, op_id=op_id,
+                ref=order_ref, partial=partial, orig_raw=orig)
         except ValueError as exc:
             print(f"⚠️  {exc}")
             return 1
@@ -365,15 +382,29 @@ def cmd_log(args):
         continuations=body,
     )
     if rc == 0 and amount is not None:
-        from core.ledger import balance, currency_symbol, format_amount, read_movements
+        from core.ledger import currency_symbol, format_amount, read_movements, summarize
         from views.ledger import write_ledger
         write_ledger(project_dir)
         movements, _ = read_movements(project_dir)
+        cierre = None
+        if order_ref:
+            cierre = (f"anula {order_ref}" if args.entry == "anulacion" else
+                      f"factura parcial de {order_ref}" if partial else
+                      f"cierra {order_ref}")
+        head = args.entry.upper()
+        if args.entry != "anulacion":         # anular no mueve dinero
+            head += f" {format_amount(amount)} {currency_symbol()}"
+        if orig:
+            from core.ledger import format_orig, parse_orig
+            head += f" (💱 {format_orig(*parse_orig(orig))})"
         detalle = " · ".join(filter(None, [
-            f"{args.entry.upper()} {format_amount(amount)} {currency_symbol()}",
+            head,
+            f"🆔 {op_id}" if op_id else None,
+            cierre,
             payee,
             f"#{partida}",
-            f"saldo {format_amount(balance(movements))} {currency_symbol()}",
+            f"disponible {format_amount(summarize(movements).available)} "
+            f"{currency_symbol()}",
         ]))
         print(f"  💶 {detalle}")
     if rc == 0 and args.open:
@@ -384,6 +415,12 @@ def cmd_log(args):
 
 
 def cmd_ledger(args):
+    if getattr(args, "reconcile", None):
+        from views.ledger_reconcile import run_ledger_reconcile
+        return run_ledger_reconcile(args.project, args.reconcile)
+    if getattr(args, "check", False):
+        from views.ledger_check import run_ledger_check
+        return run_ledger_check(args.project, strict=args.strict)
     from views.ledger import run_ledger
     return run_ledger(args.project)
 
@@ -1679,9 +1716,18 @@ def _build_parser():
     log_p.add_argument("--no-date", action="store_true", dest="no_date",
                        help="Skip the YYYY-MM-DD_ prefix on the imported filename (non-md imports only).")
     log_p.add_argument("--date", default=None, help="Entry date YYYY-MM-DD (default: today)")
-    # Ledger (--entry gasto|ingreso): la fecha del movimiento es --date.
+    # Ledger (--entry gasto|ingreso|pedido|anulacion|conciliacion): la fecha
+    # del movimiento es --date.
     log_p.add_argument("--amount", default=None, metavar="N",
                        help="Ledger: importe sin signo (lo pone la tag). Ej: 218,40")
+    log_p.add_argument("--id", dest="op_id", default=None, metavar="ID",
+                       help="Ledger, #pedido: id de la operación (defecto: el siguiente, P01…)")
+    log_p.add_argument("--pedido", dest="order_ref", default=None, metavar="ID",
+                       help="Ledger, #gasto/#anulacion: pedido que cierra o anula")
+    log_p.add_argument("--partial", action="store_true",
+                       help="Ledger, #gasto con --pedido: factura parcial (el pedido sigue abierto)")
+    log_p.add_argument("--orig", default=None, metavar="'N MON'",
+                       help="Ledger: importe en moneda original, informativo. Ej: '1.150,00 CHF'")
     log_p.add_argument("--payee", default=None, metavar="P",
                        help="Ledger: beneficiario (pagador si es ingreso)")
     log_p.add_argument("--tag", default=None, metavar="PARTIDA",
@@ -1849,6 +1895,13 @@ def _build_parser():
     ledger_p = subparsers.add_parser(
         "ledger", help="Regenera ledger.md del proyecto e imprime tabla + saldo")
     add_project_arg(ledger_p, help="Project name (partial match)")
+    ledger_p.add_argument("--check", action="store_true",
+                          help="Comprueba el ledger: errores, avisos e info (no escribe)")
+    ledger_p.add_argument("--strict", action="store_true",
+                          help="Con --check: los avisos también dan código de error")
+    ledger_p.add_argument("--reconcile", nargs="+", default=None, metavar="FICHERO",
+                          help="Concilia con la ejecución de la USC: el PDF de "
+                               "ejecución y/o el excel de obrigas")
 
     subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,calendar,cronos,hitos,logbook,report-summary}.md + 📊panel/ring/rings.md")
 

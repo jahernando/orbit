@@ -1,8 +1,10 @@
 """views/ledger.py — `ledger.md`, la vista derivada del libro de caja.
 
-Lee la verdad (entradas `#gasto`/`#ingreso`/`#arrastre` del logbook) y emite la
-tabla con saldo corrido. **Nadie edita este fichero**: es 100 % regenerable, así
-que si se rompe basta con volver a generarlo.
+Lee la verdad (las entradas del ledger en el logbook) y emite un resumen
+(dotación · gastado · comprometido · disponible) y **una fila por operación**:
+un pedido con sus facturas, o un gasto directo (ADR-053). **Nadie edita este
+fichero**: es 100 % regenerable, así que si se rompe basta con volver a
+generarlo.
 
 Dos particularidades respecto al resto de `views/`:
 
@@ -19,35 +21,78 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from core.ledger import (
-    CARRY_TAG, EXPENSE_TAG, INCOME_TAG, Movement,
-    balance, currency_symbol, format_amount, read_movements,
+    CARRY_TAG, DIRECT, INCOME_TAG, ORDER_TAG, Movement, Operation, Summary,
+    build_operations, currency_symbol, format_amount, format_orig,
+    read_movements, summarize,
 )
 
 LEDGER_FILE = "ledger.md"
 
-_KIND_LABEL = {EXPENSE_TAG: "Gasto", INCOME_TAG: "Ingreso", CARRY_TAG: "Arrastre"}
+_FUNDS_LABEL = {INCOME_TAG: "Ingreso", CARRY_TAG: "Arrastre"}
 
 
-def _concept_cell(mov: Movement) -> str:
-    """Concepto, enlazado al justificante si lo hay."""
-    text = mov.concept.replace("|", "\\|")
-    return f"[{text}]({mov.link})" if mov.link else text
+def _esc(text: Optional[str]) -> str:
+    return (text or "—").replace("|", "\\|")
 
 
-def _rows(movements: List[Movement]) -> Tuple[List[str], Decimal]:
-    """Filas de la tabla con saldo corrido. Devuelve (filas, saldo final)."""
-    rows, running = [], Decimal("0.00")
-    for mov in movements:
-        running += mov.amount
-        rows.append("| {} | {} | {} | {} | {} | {} |".format(
-            mov.date.isoformat(),
-            _KIND_LABEL.get(mov.tag, mov.tag),
-            _concept_cell(mov),
-            (mov.payee or "—").replace("|", "\\|"),
-            format_amount(mov.amount, plus=True),
-            format_amount(running),
-        ))
-    return rows, running
+def _link(text: str, url: Optional[str]) -> str:
+    text = _esc(text)
+    return f"[{text}]({url})" if url else text
+
+
+def _concept_cell(op: Operation) -> str:
+    """Concepto del pedido (o del gasto) con su justificante, y detrás los
+    justificantes de las facturas/anulaciones que lo cierran."""
+    head, rest = op.entries[0], op.entries[1:]
+    cell = _link(op.concept, head.link)
+    for m in rest:
+        cell += " · " + _link(m.concept, m.link)
+    return cell
+
+
+def _money(value: Decimal) -> str:
+    return format_amount(value) if value else "—"
+
+
+def _committed_cell(op: Operation) -> str:
+    """Lo comprometido; con `~` si el pedido vino en otra moneda (el EUR del
+    pedido es una estimación al tipo del día)."""
+    cell = _money(op.committed)
+    head = op.entries[0]
+    if op.committed and head.tag == ORDER_TAG and head.orig:
+        cell = "~" + cell
+    return cell
+
+
+def _orig_cell(op: Operation) -> str:
+    """Importes en moneda original de las entradas de la operación."""
+    seen = [format_orig(*m.orig) for m in op.entries if m.orig]
+    return " → ".join(dict.fromkeys(seen)) or "—"
+
+
+def _state_label(op: Operation) -> str:
+    return "gasto directo" if op.state == DIRECT else op.state
+
+
+def _summary_rows(s: Summary, symbol: str) -> List[Tuple[str, str]]:
+    rows = []
+    if s.carried:
+        rows.append(("Saldo arrastrado", format_amount(s.carried)))
+    rows += [
+        ("Dotación", format_amount(s.income)),
+        ("Gastado", format_amount(s.spent)),
+        ("Comprometido (pedidos abiertos)", format_amount(s.committed)),
+        ("Disponible", format_amount(s.available)),
+    ]
+    return rows
+
+
+def _recon_line(s: Summary, symbol: str) -> str:
+    r = s.last_recon
+    if r is None:
+        return "Última conciliación: —"
+    return (f"Última conciliación: {r.date.isoformat()} · "
+            f"{format_amount(r.amount)} {symbol}")
 
 
 def build_ledger_md(project_dir: Path) -> str:
@@ -55,7 +100,9 @@ def build_ledger_md(project_dir: Path) -> str:
     from core.ledger import project_partida
 
     movements, problems = read_movements(project_dir)
-    rows, total = _rows(movements)
+    operations, op_problems = build_operations(movements)
+    problems = problems + op_problems
+    summary = summarize(movements, operations)
     symbol = currency_symbol()
     partida = project_partida(project_dir)
 
@@ -69,16 +116,41 @@ def build_ledger_md(project_dir: Path) -> str:
         out += [f"> ⚠️ Histórico truncado en {cut.date.isoformat()} sin arrastre "
                 f"— el saldo no incluye los movimientos anteriores.", ""]
 
-    if rows:
-        out += ["| Fecha | Tipo | Concepto | Beneficiario | Importe | Saldo |",
-                "|---|---|---|---|---|---|"] + rows + [""]
-    else:
-        out += ["*Sin movimientos.*", ""]
+    out += [f"| Resumen | {symbol} |", "|---|---:|"]
+    for label, value in _summary_rows(summary, symbol):
+        if label == "Disponible":
+            label, value = f"**{label}**", f"**{value}**"
+        out.append(f"| {label} | {value} |")
+    out += ["", _recon_line(summary, symbol), ""]
 
-    out += [f"**Saldo actual: {format_amount(total)} {symbol}**", ""]
+    out += ["## Operaciones", ""]
+    if operations:
+        out += ["| Fecha | Aut. | Factura | Concepto | Beneficiario | "
+                "Comprometido | Gastado | Estado | Moneda orig. |",
+                "|---|---|---|---|---|---:|---:|---|---:|"]
+        for op in operations:
+            out.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                op.date.isoformat(), _esc(op.op_id),
+                _esc(", ".join(op.invoice_ids) or None), _concept_cell(op),
+                _esc(op.payee), _committed_cell(op), _money(op.spent),
+                _state_label(op), _orig_cell(op)))
+        out.append("")
+    else:
+        out += ["*Sin operaciones.*", ""]
+
+    funds = [m for m in movements if m.tag in _FUNDS_LABEL and not m.is_cut]
+    if funds:
+        out += ["## Dotación", "",
+                "| Fecha | Tipo | Concepto | Origen | Importe |",
+                "|---|---|---|---|---:|"]
+        for m in funds:
+            out.append(f"| {m.date.isoformat()} | {_FUNDS_LABEL[m.tag]} | "
+                       f"{_link(m.concept, m.link)} | {_esc(m.payee)} | "
+                       f"{format_amount(m.amount, plus=True)} |")
+        out.append("")
 
     if problems:
-        out += ["## ⚠️ Entradas que no he podido leer", ""]
+        out += ["## ⚠️ Entradas que no he podido leer o no cuadran", ""]
         out += [f"- {p}" for p in problems]
         out += ["", "Corrígelas en `logbook.md` y vuelve a lanzar `orbit ledger`.", ""]
 
@@ -155,7 +227,8 @@ def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
               f"--entry gasto --amount N --tag <partida>")
         return 0
 
-    rows, total = _rows(movements)
+    operations, op_problems = build_operations(movements)
+    summary = summarize(movements, operations)
     partida = project_partida(project_dir)
     symbol = currency_symbol()
 
@@ -164,14 +237,25 @@ def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
     for cut in (m for m in movements if m.is_cut):
         print(f"  ⚠️  Histórico truncado en {cut.date.isoformat()} sin arrastre: "
               f"el saldo no incluye lo anterior")
-    for mov in movements:
-        print(f"  {mov.date.isoformat()}  {_KIND_LABEL.get(mov.tag, mov.tag):<8} "
-              f"{format_amount(mov.amount, plus=True):>12}  {mov.concept}"
-              + (f" · {mov.payee}" if mov.payee else ""))
+    for m in movements:
+        if m.tag in _FUNDS_LABEL and not m.is_cut:
+            print(f"  {m.date.isoformat()}  {_FUNDS_LABEL[m.tag]:<13} "
+                  f"{format_amount(m.amount, plus=True):>12}  {m.concept}"
+                  + (f" · {m.payee}" if m.payee else ""))
+    for op in operations:
+        amount = op.spent if op.state in ("cerrado", DIRECT) else op.committed
+        ids = [i for i in [op.op_id] + op.invoice_ids if i]
+        ident = f"{' · '.join(ids)} " if ids else ""
+        orig = _orig_cell(op)
+        print(f"  {op.date.isoformat()}  {_state_label(op):<13} "
+              f"{format_amount(-amount):>12}  {ident}{op.concept}"
+              + (f" · {op.payee}" if op.payee else "")
+              + (f" · 💱 {orig}" if orig != "—" else ""))
     print(f"  {'─' * 46}")
-    print(f"  Saldo actual: {format_amount(total)} {symbol} "
-          f"({len(movements)} movimiento{'s' if len(movements) != 1 else ''})")
-    for problem in problems:
+    for label, value in _summary_rows(summary, symbol):
+        print(f"  {label + ':':<33}{value:>12} {symbol}")
+    print(f"  {_recon_line(summary, symbol)}")
+    for problem in problems + op_problems:
         print(f"  ⚠️  {problem}")
     return 0
 

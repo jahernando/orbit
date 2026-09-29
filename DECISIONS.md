@@ -964,6 +964,34 @@ Tres fricciones reales:
 
 ---
 
+## ADR-053 — Ledger con compromisos: el pedido compromete, la factura gasta
+
+**Estado**: aceptada (2026-09-29), en curso (F1–F3 + conciliación; faltan export y migración). Amplía ADR-048.
+
+**Contexto**: al preparar el ledger de un proyecto para compartirlo con la USC apareció que hojas de pedido y facturas estaban todas como `#gasto`. En contabilidad pública la hoja de pedido *compromete* crédito y la factura (o la liquidación de dietas) lo *gasta*: contar las dos es contar el dinero dos veces, y contar solo una esconde lo comprometido.
+
+**Decisión**:
+1. **Cadena de entradas, nunca edición**: `#pedido` (con id `🆔`, único en el proyecto), `#gasto` con `🔗 id` que lo cierra, `#anulacion` con `🔗 id`, `#conciliacion` (saldo oficial, control). El estado de cada operación se reconstruye leyendo la cadena (`build_operations`), igual que el saldo se reconstruye leyendo los movimientos. Coherente con el logbook append-only.
+2. **Una factura con `🔗` cierra el pedido por defecto**; la parcial se marca (`🔗 P03 parcial`). Se descartó cerrar por suma (factura ≥ pedido): la factura puede ser menor que el pedido y entonces no cerraría nunca. El caso común (un pedido, una factura) no necesita marca.
+3. **Solo mueven caja** `#ingreso`, `#gasto` y `#arrastre`; disponible = dotación − gastado − comprometido, siendo comprometido lo pendiente de los pedidos abiertos (con parciales, lo comprometido menos lo facturado, nunca negativo).
+4. **Errores de la cadena no esconden dinero**: una factura con `🔗` a un pedido inexistente se cuenta como gasto directo y se avisa.
+5. **`archive` no parte operaciones**: una operación con pedido solo se archiva entera y terminada. Borrar el pedido dejaría la factura posterior con un `🔗` colgante y haría desaparecer lo comprometido.
+6. **Fuera de `orbit doctor`** los avisos del ledger (pendiente F3): cualquier issue del doctor hace preguntar al `save`, y los avisos heurísticos (facturas candidatas, huérfanos) saldrían en cada save.
+7. **Moneda: `💶` es siempre lo que cuenta**; `💱 1.150,00 CHF` es informativo y nunca se convierte (el tipo de cambio se deduce). Sin marca de "estimado" en el importe: el de un pedido lo es por definición, y `~-1.234` complicaría el parser; la vista pone `~` a lo comprometido de un pedido con `💱`.
+8. **Estricto al escribir, tolerante al leer**: `log` rechaza id repetido y `--pedido` a un pedido inexistente o cerrado; lo escrito a mano con esos fallos se lee y se avisa. Sin `--id` se asigna el siguiente (prefijo y ancho del último) y se anuncia.
+9. **Comprobación en `ledger --check`, no en el doctor** (salvo los errores): los avisos son heurísticas (facturas candidatas por palabra compartida, huérfanos por patrón de nombre) y metidos en el doctor harían preguntar en cada `save`. La factura candidata no exige que el nombre diga "factura" (muchas llegan como `<proveedor>_<número>.pdf`); un fichero que contiene el número de autorización de un pedido se señala como documento de esa autorización, no como factura. Los falsos positivos se silencian en `.ledger-ignore`, no bajando la sensibilidad.
+10. **Ids oficiales y conciliación línea a línea con la USC.** El `🆔` del pedido es el número de autorización de la USC y el del gasto el número de factura; así la conciliación con la ejecución oficial (`--reconcile`, PDF + excel de obrigas) casa por número, no adivinando. Mientras no hay número oficial se usa uno provisional; `--reconcile` lo sustituye tras confirmación, y es la **única edición** de entradas ya escritas que hace orbit en el ledger (se aceptan ediciones in-place desde ADR-048). La conciliación no crea entradas: da el `orbit log` que las crearía, porque el justificante lo tiene que poner el usuario. Se compara con `ImpOrzamento` (lo imputado al presupuesto), no con la base ni el IVA.
+
+**Fases**: F1 modelo + vista + archive · F2 moneda (`💱`) y CLI para pedidos · F3 comprobación (`ledger --check`: errores/avisos) · F4 export PDF + xlsx + justificantes · F5 migración de los datos reales.
+
+**Consecuencias**:
+- Pros: el saldo deja de mezclar compromisos y gastos; next-pn24 (solo facturas) no cambia; un ledger sin pedidos da los mismos números.
+- Contras: `ledger.md` pierde la tabla con saldo corrido (una fila por operación no admite saldo corrido con sentido); los pedidos se escriben a mano hasta F2.
+
+**Verificación**: `tests/test_ledger_commitments.py`.
+
+---
+
 ## ADR-052 — El `⏩` de una tarea la deja sin fecha; títulos únicos por agenda
 
 **Estado**: aceptada (2026-09-28). Enmienda el punto 3 de ADR-051.

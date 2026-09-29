@@ -635,6 +635,32 @@ def _check_refs(project_name: str, project_dir: Path, file_path: Path,
     return issues
 
 
+# ── Ledger: solo los errores (ADR-053) ──────────────────────────────────────
+
+def _check_ledger_errors(project_name: str, project_dir: Path,
+                         logbook: Path) -> list:
+    """Errores del ledger como Issues. Los avisos se quedan en `ledger --check`:
+    aquí harían preguntar a cada `save`. El justificante inexistente ya lo
+    detecta `_check_refs`, así que no se repite."""
+    try:
+        from views.ledger_check import ledger_errors
+        errors = ledger_errors(project_dir)
+    except Exception:
+        return []
+    if not errors:
+        return []
+    lines = logbook.read_text().splitlines() if logbook.exists() else []
+    issues = []
+    for f in errors:
+        if f.msg.startswith("el justificante no existe"):
+            continue
+        num = next((i + 1 for i, line in enumerate(lines)
+                    if f.where and line.strip() == f.where), 0)
+        issues.append(Issue(project_name, logbook.name, num,
+                            f.where or "", f"Ledger: {f.msg}"))
+    return issues
+
+
 # ── Main check function ──────────────────────────────────────────────────────
 
 def check_project(project_dir: Path, max_logbook_lines: int = 200) -> list:
@@ -655,6 +681,8 @@ def check_project(project_dir: Path, max_logbook_lines: int = 200) -> list:
     # max_lines mirrors _check_logbook so we don't blow up on old entries.
     issues.extend(_check_refs(name, project_dir, logbook, max_lines=max_logbook_lines))
     issues.extend(_check_refs(name, project_dir, highlights, max_lines=max_logbook_lines))
+
+    issues.extend(_check_ledger_errors(name, project_dir, logbook))
 
     # Check cronogramas
     cronos_dir = project_dir / "cronos"

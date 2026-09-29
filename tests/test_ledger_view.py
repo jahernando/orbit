@@ -135,28 +135,35 @@ class TestInterrogador:
 
 class TestBuildLedgerMd:
 
-    def test_tabla_con_saldo_corrido(self, proj):
+    def test_resumen_operaciones_y_dotacion(self, proj):
         _mov(proj, INCOME_TAG, "4.000,00", "Anticipo", payee="UCM",
              fecha="2026-07-01")
         _mov(proj, EXPENSE_TAG, "218,40", "Vuelo", payee="Iberia",
              fecha="2026-07-14")
         md = build_ledger_md(proj)
-        assert "| 2026-07-01 | Ingreso | Anticipo | UCM | +4.000,00 | 4.000,00 |" in md
-        assert "| 2026-07-14 | Gasto | Vuelo | Iberia | -218,40 | 3.781,60 |" in md
-        assert "**Saldo actual: 3.781,60 €**" in md
+        assert "| Dotación | 4.000,00 |" in md
+        assert "| Gastado | -218,40 |" in md
+        assert "| Comprometido (pedidos abiertos) | 0,00 |" in md
+        assert "| **Disponible** | **3.781,60** |" in md
+        assert ("| 2026-07-14 | — | — | Vuelo | Iberia | — | 218,40 | "
+                "gasto directo |") in md
+        assert "| 2026-07-01 | Ingreso | Anticipo | UCM | +4.000,00 |" in md
 
     def test_partida_en_cabecera_no_en_columna(self, proj):
         # Con una sola partida por proyecto, una columna constante no informa.
         _mov(proj, EXPENSE_TAG, "10", partida="viaje")
         md = build_ledger_md(proj)
         assert "Partida: **#viaje**" in md
-        assert "| Fecha | Tipo | Concepto | Beneficiario | Importe | Saldo |" in md
+        assert ("| Fecha | Aut. | Factura | Concepto | Beneficiario | "
+                "Comprometido | Gastado | Estado |") in md
 
     def test_tipo_en_palabra(self, proj):
         # Redundante con el signo a propósito: la dirección no depende de un
         # único canal.
         _mov(proj, INCOME_TAG, "10")
-        assert "| Ingreso |" in build_ledger_md(proj)
+        _mov(proj, EXPENSE_TAG, "5")
+        md = build_ledger_md(proj)
+        assert "| Ingreso |" in md and "| gasto directo |" in md
 
     def test_sin_beneficiario(self, proj):
         _mov(proj, EXPENSE_TAG, "10", "Varios")
@@ -183,7 +190,8 @@ class TestBuildLedgerMd:
         )
         md = build_ledger_md(proj)
         assert "truncado" not in md
-        assert "**Saldo actual: 1.000,00 €**" in md
+        assert "| Saldo arrastrado | 1.000,00 |" in md
+        assert "| **Disponible** | **1.000,00** |" in md
 
     def test_entradas_ilegibles_se_cantan(self, proj):
         (proj / "logbook.md").write_text(
@@ -195,8 +203,8 @@ class TestBuildLedgerMd:
 
     def test_sin_movimientos(self, proj):
         md = build_ledger_md(proj)
-        assert "*Sin movimientos.*" in md
-        assert "**Saldo actual: 0,00 €**" in md
+        assert "*Sin operaciones.*" in md
+        assert "| **Disponible** | **0,00** |" in md
 
     def test_pipe_en_el_texto_no_rompe_la_tabla(self, proj):
         _mov(proj, EXPENSE_TAG, "10", "Cable HDMI | 2m")
@@ -238,7 +246,7 @@ class TestWriteLedger:
         write_ledger(proj)
         texto = (proj / LEDGER_FILE).read_text()
         assert (proj / LEDGER_FILE).exists()
-        assert "*Sin movimientos.*" in texto
+        assert "*Sin operaciones.*" in texto
 
 
 class TestRefreshAll:
@@ -261,7 +269,7 @@ class TestRunLsLedger:
         assert run_ls_ledger("testproj") == 0
         out = capsys.readouterr().out
         assert "Hotel" in out and "Reintegro" in out
-        assert "Saldo actual: 81,60" in out
+        assert "81,60" in out and "Disponible" in out
 
     def test_no_escribe_ledger_md(self, proj, capsys):
         # `ls` lee; regenerar el fichero es cosa de `ledger` y del hook de save.

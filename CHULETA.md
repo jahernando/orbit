@@ -556,9 +556,15 @@ regenerable: nadie lo edita a mano y si se rompe se vuelve a generar.
 
 ```bash
 orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto|ingreso \
-          --amount N [--tag PARTIDA] [--payee P] [--import] [--date D]
+          --amount N [--tag PARTIDA] [--payee P] [--orig "N MON"] [--import] [--date D]
+orbit log <proyecto> "<concepto>" [<pdf>] --entry pedido --amount N [--id AUT] [--orig "N MON"]
+orbit log <proyecto> "<concepto>" [<pdf>] --entry gasto --amount N [--id NFAC] [--pedido AUT] [--partial]
+orbit log <proyecto> "<concepto>" --entry anulacion --pedido P03
+orbit log <proyecto> "<concepto>" --entry conciliacion --amount N
 
 orbit ledger <proyecto>       # regenera ledger.md + imprime tabla y saldo
+orbit ledger <proyecto> --check [--strict]   # comprueba el ledger (no escribe)
+orbit ledger <proyecto> --reconcile <Execucion.pdf> <obrigasexcel.xls>   # concilia con la USC
 orbit ls ledger [proyecto]    # solo imprime (no toca el disco)
 ```
 
@@ -592,6 +598,108 @@ citas en `agenda.md` (`▶️ … · ⏰ … · 🔔 …`). Los tokens ausentes 
 - `#arrastre` es la tercera tag del ledger, pero **no se teclea**: la escribe
   solo `orbit archive`.
 
+**Compromisos: pedido → factura** (ADR-053). La hoja de pedido *compromete*
+crédito; la factura o la liquidación de dietas lo *gasta*. En `logbook.md`
+quedan así (se pueden escribir a mano o con `log`, arriba):
+
+```markdown
+2026-09-18 💶 [Folla vuelo Ginebra](cloud/logs/…folla.pdf) #pedido
+  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.578,64 · 🆔 P03
+
+2026-10-02 💶 [Factura vuelo Ginebra](cloud/logs/…factura.pdf) #gasto
+  🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.580,10 · 🔗 P03
+
+2026-09-25 💶 Pedido cancelado #anulacion
+  🔗 P04
+
+2026-09-30 💶 Saldo según contabilidad #conciliacion
+  💶 19.926,79
+```
+
+| Tag | Qué es | Efecto |
+|---|---|---|
+| `#pedido` | hoja de pedido, con id `🆔` (único en el proyecto) | suma a **comprometido**; no mueve caja |
+| `#gasto` + `🔗 P03` | factura del pedido | **cierra** el pedido: libera todo lo comprometido e imputa el importe real (la diferencia no es error) |
+| `#gasto` + `🔗 P03 parcial` | factura parcial | gasta sin cerrar; queda comprometido lo que falte |
+| `#gasto` sin `🔗` | dietas, gastos sin pedido | gasto directo |
+| `#anulacion` + `🔗 P03` | pedido cancelado | cierra sin gasto (sin importe) |
+| `#conciliacion` | saldo oficial en una fecha | solo control; sale en la cabecera |
+
+- `--id` es opcional: sin él, orbit asigna el siguiente (`P01`, `P02`…,
+  respetando prefijo y ancho del último) y lo dice en el eco.
+- `--pedido` exige un pedido **existente y abierto**, y un id repetido se rechaza:
+  al escribir se es estricto; al leer lo escrito a mano, solo se avisa.
+- En terminal, lo que falte se pregunta: el id (Enter = el sugerido), el
+  pedido que se factura (lista los abiertos; Enter = gasto sin pedido), si es
+  parcial, y la moneda original.
+- **Moneda** (`--orig "1.150,00 CHF"`, o `CHF 1150`): informativa, código ISO
+  de tres letras. **Todo se calcula en `💶`** (EUR): en un pedido es una
+  estimación al tipo del día; en un gasto, lo que carga la USC. Nunca se
+  convierte. En `ledger.md` sale en la columna *Moneda orig.* y lo comprometido
+  de un pedido en otra moneda lleva `~`.
+
+Las entradas no se editan nunca: el estado de cada operación (abierto /
+cerrado / anulado) se reconstruye leyendo la cadena.
+
+**Dos ids** (vocabulario de la USC): el `🆔` de un `#pedido` es el **número de
+autorización** (`CM26XXXX0001`, `621A-25-XXXX-14`); si aún no lo tienes,
+`--id` se omite y se pone uno provisional (`P01`) que `--reconcile` cambia por
+el oficial. El `🆔` de un `#gasto` es el **número de factura** (NúmFac), y su
+`🔗` la autorización que consume. En `ledger.md` son las columnas **Aut.** y
+**Factura**; un gasto sin hoja (dietas) solo tiene la segunda.
+
+**Conciliación con la USC** (`ledger <proyecto> --reconcile …`). Acepta el PDF
+de *Execución Orzamentaria da Partida* y/o el excel de *obrigas* (que en
+realidad es HTML). Del PDF lee el resumen (crédito · gastos incluidas
+autorizaciones · dispoñible), las dotaciones y las autorizaciones con su
+tercero; del excel, autorizaciones y obligaciones (nº de factura, NIF,
+perceptor, importe imputado —ImpOrzamento—, fecha de pago).
+
+```
+                                   USC      ledger  diferencia
+  Crédito                    20.000,00   20.000,00           —
+  Gastado + comprometido      1.800,00    3.200,00   +1.400,00
+  Disponible                 18.200,00   16.800,00   -1.400,00
+  ── Autorizaciones ↔ #pedido
+  ✓ aut. CM26XXXX0001 …  ↔ CM26XXXX0001 … Folla vuelo Ginebra
+  ≈ aut. 621A-25-XXXX-14 … ↔ P01 … Folla tasa Congreso   (probable: importe, fecha y tercero)
+  ・ solo en el ledger: P03 … (la USC aún no la ha tramitado)
+  ＋ solo en la USC: … → log <proyecto> "<concepto>" <folla.pdf> --import --entry pedido …
+```
+
+- Empareja primero **por número** (✓ seguro) y lo demás por **importe + fecha
+  a ≤ 30 días + tercero** (≈ probable). Las dotaciones, sin número, siempre por
+  importe y fecha.
+- **Solo en la USC**: te da el `orbit log` que la crearía (falta el justificante).
+  **Solo en el ledger**: lo que la USC aún no ha tramitado o reconocido.
+- **Lo único que escribe**: en terminal, pregunta una a una (`[s/N]`) si poner
+  el número oficial en cada coincidencia probable; si era un pedido con id
+  provisional, cambia también los `🔗` de sus facturas. Deja undo y regenera
+  `ledger.md`. Todo lo demás es lectura.
+- Sin el excel no compara facturas (el PDF no trae el nº de autorización de
+  cada obligación).
+
+**Comprobación** (`ledger <proyecto> --check`). Lee el logbook y
+`cloud/logs/`, no escribe nada. Tres niveles:
+
+| Nivel | Qué mira |
+|---|---|
+| ❌ error | justificante enlazado que no existe · `#gasto`/`#pedido` sin justificante · `🔗` a un pedido que no existe · id repetido · entrada ilegible (p. ej. sin `💶`) |
+| ⚠️ aviso | documento de una autorización sin enlazar (fichero con su número) · factura con el mismo número dos veces · pedido abierto más de 60 días · factura candidata sin enlazar (fichero de `cloud/logs/` que comparte palabra con el concepto o beneficiario de un pedido abierto) · documento económico sin movimiento (folla, pedimento, factura, invoice, dietas…) · `#gasto` que enlaza una hoja de pedido · factura que difiere más de un 10 % del pedido · posible duplicado (mismo importe y beneficiario a ≤ 7 días) · beneficiario escrito de varias formas · conciliación que no cuadra ni con la caja ni con el disponible · `#ingreso` sin justificante · signo corregido |
+| ℹ️ info | nombres de fichero raros: fecha duplicada, extensión repetida |
+
+- Código de salida 1 si hay errores; con `--strict`, también con avisos.
+- `orbit doctor` (y por tanto el aviso antes de `save`) solo ve los **errores**;
+  los avisos se quedan aquí para no preguntar en cada save.
+- Documentos legítimos que parecen económicos: una línea por nombre o patrón
+  (`*Congreso*`) en `<proyecto>/.ledger-ignore` (`#` = comentario).
+- Umbrales y patrones en `orbit.json` → `"ledger": {"open_days": 60,
+  "diff_pct": 10, "duplicate_days": 7, "order_patterns": …, "invoice_patterns":
+  …, "expense_patterns": …}` (regex sobre el nombre en minúsculas y sin tildes). Un `🔗` a un pedido que
+no existe, un id repetido o una factura sobre un pedido ya cerrado salen en
+`ledger.md` como avisos (y el dinero cuenta igual). Un ledger sin pedidos
+funciona como antes: comprometido = 0.
+
 **Archivar un proyecto con movimientos**: `archive` borra las entradas
 anteriores al corte, así que antes pregunta si consolidar su saldo neto:
 
@@ -608,15 +716,22 @@ anteriores al corte, así que antes pregunta si consolidar su saldo neto:
   saldo queda incompleto, pero **el fichero lo dice**.
 - `--force` consolida (preserva el saldo). `--dry-run` avisa de cuántos
   movimientos hay en juego y de su neto, sin tocar nada.
+- **Una operación con pedido solo se archiva entera y terminada**: si el pedido
+  sigue abierto, o alguna de sus entradas (factura, anulación) es posterior al
+  corte, se quedan todas. El arrastre solo suma lo que mueve caja.
 - Archivados sucesivos componen: el segundo barrido se lleva el arrastre del
   primero y lo funde en el nuevo neto.
 
 `ledger.md` se regenera al anotar un movimiento y en `save` (chain
 `commit_post`), que es lo que recoge los movimientos escritos a mano en
 Obsidian. Solo existe en proyectos con movimientos: es el primer fichero de
-proyecto **opcional**. Contiene la partida en cabecera, la tabla con saldo
-corrido y, si `archive` cortó el histórico sin arrastre, el aviso de que el
-saldo no incluye lo anterior.
+proyecto **opcional**. Contiene la partida, el **resumen** (saldo arrastrado ·
+dotación · gastado · comprometido · **disponible** = dotación − gastado −
+comprometido), la última conciliación, la tabla de **operaciones** (una fila
+por pedido con sus facturas, o por gasto directo: comprometido, gastado,
+estado), la tabla de **dotación** (ingresos y arrastres), los avisos y, si
+`archive` cortó el histórico sin arrastre, el aviso de que el saldo no incluye
+lo anterior.
 
 ```markdown
 | Fecha | Tipo | Concepto | Beneficiario | Importe | Saldo |

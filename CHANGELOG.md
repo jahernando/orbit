@@ -10,6 +10,67 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — ledger: dos ids y `ledger --reconcile` con la USC (ADR-053)
+
+- El `🆔` del `#pedido` es el nº de autorización de la USC (o uno provisional);
+  el `#gasto` lleva también `🆔`, el nº de factura. `ledger.md`: columnas
+  **Aut.** y **Factura**. `log --entry gasto --id NFAC`; el interrogador los
+  pregunta.
+- `views/ledger_reconcile.py`: lee el PDF de ejecución (`pdftotext -layout`) y
+  el excel de obrigas (HTML latin-1, por nombre de columna); empareja por
+  número y, si no, por importe + fecha + tercero; lista lo que casa, lo que
+  solo está en la USC (con el `orbit log` que lo crearía) y lo que solo está en
+  el ledger, y compara los tres totales.
+- `core.ledger.rewrite_ids`: escribe el número oficial (y los `🔗` que
+  apuntaban al provisional), solo tras confirmar una a una.
+- `--check`: documento de autorización sin enlazar; factura repetida.
+
+---
+
+### Unreleased — ledger F3: `ledger <proyecto> --check [--strict]` (ADR-053)
+
+- `views/ledger_check.py`: errores (justificante inexistente o ausente en
+  gasto/pedido, `🔗` roto, id repetido, entrada ilegible), avisos (pedido
+  abierto > 60 días, factura candidata, documento económico sin movimiento,
+  gasto que enlaza una folla, diferencia > 10 %, duplicados, variantes de
+  beneficiario, conciliación que no cuadra) e info (nombres raros).
+- `orbit doctor` incorpora solo los errores del ledger.
+- `.ledger-ignore` por proyecto; umbrales y patrones en `orbit.json` → `ledger`.
+- `log --ref` pasa a `log --pedido` (no confundir con el justificante).
+
+---
+
+### Unreleased — ledger F2: moneda original y `log` para pedidos (ADR-053)
+
+- `log --entry pedido|anulacion|conciliacion` y flags `--id`, `--pedido`,
+  `--partial`, `--orig "N MON"`. Sin `--id`, el siguiente libre (se anuncia en
+  el eco). `--pedido` a un pedido inexistente o cerrado, o un id repetido, se
+  rechazan antes de escribir.
+- Interrogador: id sugerido, lista de pedidos abiertos para `--pedido`, ¿parcial?,
+  moneda original.
+- `💱` en el cuerpo (`1.150,00 CHF`), informativo: todo se calcula en `💶`.
+  `ledger.md` gana la columna *Moneda orig.*; lo comprometido de un pedido en
+  otra moneda lleva `~` (estimado).
+- Eco: `ANULACION` sin importe; la moneda original entre paréntesis.
+
+---
+
+### Unreleased — ledger F1: compromisos (pedido → factura), ADR-053
+
+- Tags nuevas: `#pedido` (compromete, id `🆔`), `#anulacion` y `#conciliacion`;
+  `#gasto` con `🔗 P03` cierra el pedido (`🔗 P03 parcial` no lo cierra).
+- `core/ledger.py`: `build_operations` reconstruye cada operación desde la
+  cadena de entradas; `summarize` da dotación · gastado · comprometido ·
+  disponible; `balance` solo suma lo que mueve caja.
+- `ledger.md` y `ledger <proyecto>`: resumen + una fila por operación + tabla
+  de dotación + avisos (🔗 colgante, id repetido, factura sobre pedido cerrado).
+  Sustituye a la tabla con saldo corrido.
+- `archive`: una operación con pedido solo se archiva entera y terminada; el
+  arrastre no cuenta pedidos.
+- El eco de `log --entry gasto|ingreso` da el disponible, no el saldo de caja.
+
+---
+
 ### Unreleased — `agenda clean [proyecto...] [--dry-run]`
 
 Alias de `archive <proyecto> --agenda --months 0`: borra de la agenda lo
