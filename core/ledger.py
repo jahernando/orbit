@@ -55,11 +55,24 @@ ORDER_TAG   = "pedido"
 #: Tags que mueven caja: el saldo es la suma de sus importes.
 CASH_TAGS = (EXPENSE_TAG, INCOME_TAG, CARRY_TAG)
 
-#: Tags que convierten una entrada de logbook en un movimiento del ledger.
-LEDGER_TAGS = CASH_TAGS + (ORDER_TAG,)
+# Lo que el usuario escribe (la *etiqueta*, en sus palabras) frente a lo que
+# significa para el saldo (el *tipo*: pedido compromete, gasto gasta).
+FOLLA, DIETAS, FACTURA = "folla", "dietas", "factura"
 
-#: Tags que puede teclear el usuario (`#arrastre` la escribe solo `archive`).
-USER_TAGS = (EXPENSE_TAG, INCOME_TAG, ORDER_TAG)
+#: etiqueta escrita en el logbook → tipo. `#pedido` y `#gasto` son las de
+#: antes y se siguen leyendo.
+LABEL_KIND = {FOLLA: ORDER_TAG, DIETAS: EXPENSE_TAG, FACTURA: EXPENSE_TAG,
+              INCOME_TAG: INCOME_TAG, CARRY_TAG: CARRY_TAG,
+              ORDER_TAG: ORDER_TAG, EXPENSE_TAG: EXPENSE_TAG}
+
+#: Cómo se muestran las etiquetas antiguas.
+_LEGACY_LABEL = {ORDER_TAG: FOLLA, EXPENSE_TAG: FACTURA}
+
+#: Tags que convierten una entrada de logbook en un movimiento del ledger.
+LEDGER_TAGS = tuple(LABEL_KIND)
+
+#: Lo que se ofrece al usuario al anotar (`#arrastre` la escribe `archive`).
+USER_LABELS = (FOLLA, DIETAS, FACTURA, INCOME_TAG)
 
 #: Emoji único para las tres direcciones: la línea del diario queda neutra y la
 #: dirección la llevan la tag y el signo, nunca el color ni la forma.
@@ -68,8 +81,9 @@ LEDGER_EMOJI = "💶"
 PARTIDA_EMOJI = "🏷️"
 PAYEE_EMOJI   = "👤"
 AMOUNT_EMOJI  = "💶"
-ID_EMOJI      = "🆔"      # nº de autorización (#pedido) o de factura (#gasto)
-REF_EMOJI     = "🔗"      # el pedido que cierra un #gasto
+ID_EMOJI      = "🆔"      # nº de autorización (folla) o de factura (factura/dietas)
+REF_EMOJI     = "🔗"      # la folla que cierra una factura
+USC_EMOJI     = "🏛️"      # marca de conciliado: el nº con que lo tiene la USC
 
 #: Orden canónico del cuerpo: partida · beneficiario · importe.
 _BODY_SEP = " · "
@@ -252,10 +266,11 @@ def prepare_movement(tag: str, amount_raw: Optional[str],
     if tag == CARRY_TAG:
         raise ValueError(
             f"#{CARRY_TAG} lo escribe solo `orbit archive`; usa "
-            f"--entry {EXPENSE_TAG}, {INCOME_TAG}, {ORDER_TAG}…"
+            f"--entry {', '.join(USER_LABELS)}"
         )
-    if tag not in USER_TAGS:
+    if tag not in LABEL_KIND:
         raise ValueError(f"#{tag} no es una tag del ledger")
+    tag = LABEL_KIND[tag]                 # folla → pedido, dietas → gasto…
 
     partida = (partida or "").strip().lstrip("#").strip()
     if not partida:
@@ -308,9 +323,20 @@ class Movement:
     partida: Optional[str] = None
     payee:   Optional[str] = None
     link:    Optional[str] = None
-    op_id:   Optional[str] = None   # 🆔: autorización (#pedido) o factura (#gasto)
-    ref:     Optional[str] = None   # 🔗 (#gasto): el pedido que cierra
+    op_id:   Optional[str] = None   # 🆔: autorización (folla) o factura
+    ref:     Optional[str] = None   # 🔗 (factura): la folla que cierra
+    label:   str = ""               # lo escrito: folla | dietas | factura | ingreso…
+    usc:     Optional[str] = None   # 🏛️: conciliado, con este nº de la USC
     raw:     str = ""
+
+    @property
+    def key(self) -> str:
+        """Clave con la que una herramienta de fuera (la conciliación) señala
+        esta entrada: `fecha:etiqueta:nº` o, sin nº, un hash del concepto.
+        Solo tiene que valer entre leer `ledger.json` y marcar."""
+        import hashlib
+        tail = self.op_id or hashlib.sha1(self.concept.encode()).hexdigest()[:8]
+        return f"{self.date.isoformat()}:{self.label or self.tag}:{tail}"
 
     @property
     def is_cash(self) -> bool:
@@ -349,7 +375,7 @@ def _parse_body(body: List[str]) -> dict:
         for token in line.split(_BODY_SEP.strip()):
             token = token.strip()
             for emoji in (PARTIDA_EMOJI, PAYEE_EMOJI, AMOUNT_EMOJI,
-                          ID_EMOJI, REF_EMOJI):
+                          ID_EMOJI, REF_EMOJI, USC_EMOJI):
                 if token.startswith(emoji):
                     value = token[len(emoji):].strip()
                     if value:
@@ -368,9 +394,11 @@ def parse_entry(date_str: str, header: str,
     vez de falsear el saldo en silencio.
     """
     tags = _TAG_RE.findall(header)
-    tag = next((t for t in tags if t in LEDGER_TAGS), None)
-    if tag is None:
+    label = next((t for t in tags if t in LEDGER_TAGS), None)
+    if label is None:
         return None, None
+    tag = LABEL_KIND[label]
+    label = _LEGACY_LABEL.get(label, label)
 
     try:
         when = date.fromisoformat(date_str)
@@ -403,7 +431,7 @@ def parse_entry(date_str: str, header: str,
     # dirección. Un signo contradictorio (edición a mano) se corrige y se canta.
     problem = None
     if tag == ORDER_TAG and not op_id:
-        problem = f"{date_str} {content}: #{ORDER_TAG} sin id ({ID_EMOJI} P01…)"
+        problem = f"{date_str} {content}: #{label} sin id ({ID_EMOJI} P01…)"
     factor = sign_for(tag)
     if factor and amount and (amount > 0) != (factor > 0):
         problem = (f"{date_str} {content}: el signo contradice #{tag}, "
@@ -420,7 +448,8 @@ def parse_entry(date_str: str, header: str,
 
     return Movement(date=when, tag=tag, concept=content, amount=amount,
                     partida=partida, payee=payee or None, link=link,
-                    op_id=op_id, ref=ref,
+                    op_id=op_id, ref=ref, label=label,
+                    usc=fields.get(USC_EMOJI),
                     raw=f"{date_str} {header}".strip()), problem
 
 
@@ -632,6 +661,69 @@ def check_links(movements: List[Movement], tag: str,
             raise ValueError(f"el pedido {ref} ya está {op.state}")
 
 
+def _body_line_index(lines: List[str], raw: str) -> Optional[int]:
+    """Índice de la línea de tokens de la entrada con cabecera *raw*
+    (la creada si no tenía cuerpo)."""
+    for i, line in enumerate(lines):
+        if line.startswith("  "):
+            continue
+        m = _ENTRY_RE.match(line.strip())
+        if not m or f"{m.group(1)} {m.group(2)}".strip() != raw:
+            continue
+        j = i + 1
+        while j < len(lines) and lines[j].startswith("  ") and lines[j].strip():
+            if AMOUNT_EMOJI in lines[j] or ID_EMOJI in lines[j]:
+                return j
+            j += 1
+        lines.insert(i + 1, "  ")
+        return i + 1
+    return None
+
+
+def _set_token(line: str, emoji: str, value: Optional[str]) -> str:
+    """Pone (o quita, con None) el token `emoji valor` de una línea de cuerpo."""
+    tokens = [t.strip() for t in line.strip().split(_BODY_SEP.strip()) if t.strip()]
+    tokens = [t for t in tokens if not t.startswith(emoji)]
+    if value:
+        tokens.append(f"{emoji} {value}")
+    return "  " + _BODY_SEP.join(tokens)
+
+
+def mark_conciliated(project_dir: Path, key: str,
+                     usc_id: Optional[str]) -> Movement:
+    """Marca (o desmarca, con `usc_id=None`) una entrada como conciliada con
+    la USC: `🏛️ <nº de la USC>` en su cuerpo. Lo usa la herramienta de
+    conciliación, que es quien sabe con qué casa cada entrada.
+
+    Si la entrada es una folla con nº provisional, el `🆔` pasa a ser el de la
+    USC, y los `🔗` de sus facturas también. Deja undo. Devuelve la entrada tal
+    como estaba. Lanza `ValueError` si la clave no existe.
+    """
+    from core.log import find_logbook_file
+    from core.undo import save_snapshot
+
+    movements, _ = read_movements(project_dir)
+    target = next((m for m in movements if m.key == key), None)
+    if target is None:
+        raise ValueError(f"no hay ninguna entrada con clave {key}")
+    logbook = find_logbook_file(project_dir)
+    lines = logbook.read_text().splitlines()
+    idx = _body_line_index(lines, target.raw)
+    lines[idx] = _set_token(lines[idx], USC_EMOJI, usc_id)
+    renamed = (usc_id and target.tag == ORDER_TAG and target.op_id != usc_id
+               and _ID_NUM_RE.match(target.op_id or ""))
+    if usc_id and target.tag in (ORDER_TAG, EXPENSE_TAG) and (
+            not target.op_id or renamed):
+        lines[idx] = _set_token(lines[idx], ID_EMOJI, usc_id)
+    if renamed:
+        ref_re = re.compile(rf"({REF_EMOJI}\s+){re.escape(target.op_id)}(?=\s|·|$)")
+        lines = [ref_re.sub(rf"\g<1>{usc_id}", ln) if ln.startswith("  ") else ln
+                 for ln in lines]
+    save_snapshot(logbook)
+    logbook.write_text("\n".join(lines) + "\n")
+    return target
+
+
 def protected_headers(movements: List[Movement], cutoff: date) -> set:
     """Cabeceras que `archive` no puede borrar aunque sean anteriores al corte.
 
@@ -734,7 +826,7 @@ def interrogate_movement(project_dir: Path, tag: str, *,
                          fecha: Optional[str], ref: Optional[str]):
     """Rellena por teclado los huecos de un movimiento. Solo pregunta lo que falta.
 
-    Orden: tipo (partida) → item → beneficiario → importe → fecha → enlace.
+    Orden: PDF → partida → item → beneficiario → importe → fecha.
     La partida solo se pregunta si el proyecto aún no tiene ninguna: un
     proyecto tiene una sola y los demás movimientos la heredan.
 
@@ -742,7 +834,13 @@ def interrogate_movement(project_dir: Path, tag: str, *,
     Lanza `Cancelled` si el usuario aborta.
     """
     print(f"━━━ log · {tag} (Enter = saltar lo opcional) ━━━")
+    tag = LABEL_KIND.get(tag, tag)          # folla → pedido, dietas → gasto…
 
+    if not ref:
+        def _exists(v):
+            if not (Path(v).expanduser().is_file() or (project_dir / v).is_file()):
+                raise ValueError(f"no encuentro el fichero {v}")
+        ref = _ask_required("📎 PDF (ruta)", _exists)
     if not partida and not project_partida(project_dir):
         partida = _ask_required(
             f"{PARTIDA_EMOJI}  Tipo (partida)",
@@ -761,8 +859,6 @@ def interrogate_movement(project_dir: Path, tag: str, *,
         )
     if not fecha:
         fecha = _ask_line("📅 Fecha", date.today().isoformat())
-    if not ref:
-        ref = _ask_line("📎 Enlace (ruta o URL)") or None
 
     return concept, amount, payee, partida, fecha, ref
 
@@ -810,6 +906,19 @@ def interrogate_commitment(movements: List[Movement], tag: str, *,
         op_id = _ask_line(f"{ID_EMOJI} Nº de factura (Enter = sin número)") or None
 
     return op_id, ref
+
+
+def ask_label() -> str:
+    """`--entry ledger` en terminal: qué se anota. Lanza `Cancelled`."""
+    options = {"1": FOLLA, "2": DIETAS, "3": FACTURA, "4": INCOME_TAG}
+    for _ in range(3):
+        raw = _ask_line("¿Qué es? [1] folla  [2] dietas  [3] factura  [4] ingreso")
+        choice = options.get((raw or "").strip()) or (
+            raw.strip().lower() if raw and raw.strip().lower() in USER_LABELS else None)
+        if choice:
+            return choice
+        print("     (1-4)")
+    raise Cancelled
 
 
 def _ask_tty(prompt: str) -> bool:

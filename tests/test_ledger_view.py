@@ -63,17 +63,17 @@ class TestInterrogador:
         _answers(monkeypatch, "Renfe", "89,90", "2026-07-18", "")
         concept, amount, payee, partida, fecha, ref = interrogate_movement(
             proj, EXPENSE_TAG, concept="Tren", amount=None, payee=None,
-            partida=None, fecha=None, ref=None)
+            partida=None, fecha=None, ref="doc.pdf")
         assert (concept, amount, payee) == ("Tren", "89,90", "Renfe")
         assert fecha == "2026-07-18"
-        assert ref is None
+        assert ref == "doc.pdf"
 
     def test_partida_solo_en_el_primer_movimiento(self, proj, monkeypatch):
         # Proyecto virgen: la primera pregunta es la partida.
         _answers(monkeypatch, "viaje", "Vuelo", "Iberia", "218,40", "", "")
         _c, _a, _p, partida, _f, _r = interrogate_movement(
             proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
-            partida=None, fecha=None, ref=None)
+            partida=None, fecha=None, ref="doc.pdf")
         assert partida == "viaje"
 
     def test_partida_no_se_repregunta(self, proj, monkeypatch):
@@ -82,7 +82,7 @@ class TestInterrogador:
         _answers(monkeypatch, "Folios", "Papelería", "12,00", "", "")
         concept, *_ = interrogate_movement(
             proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
-            partida=None, fecha=None, ref=None)
+            partida=None, fecha=None, ref="doc.pdf")
         assert concept == "Folios"
 
     def test_fecha_por_defecto_hoy(self, proj, monkeypatch):
@@ -91,7 +91,7 @@ class TestInterrogador:
         _answers(monkeypatch, "Tren", "Renfe", "10,00", "", "")   # Enter en fecha
         *_, fecha, _ref = interrogate_movement(
             proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
-            partida=None, fecha=None, ref=None)
+            partida=None, fecha=None, ref="doc.pdf")
         assert fecha == date.today().isoformat()
 
     def test_importe_invalido_se_vuelve_a_pedir(self, proj, monkeypatch, capsys):
@@ -99,7 +99,7 @@ class TestInterrogador:
         _answers(monkeypatch, "Tren", "Renfe", "-10", "doscientos", "89,90", "", "")
         _c, amount, *_ = interrogate_movement(
             proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
-            partida=None, fecha=None, ref=None)
+            partida=None, fecha=None, ref="doc.pdf")
         assert amount == "89,90"
         assert "sin signo" in capsys.readouterr().out
 
@@ -108,9 +108,21 @@ class TestInterrogador:
         _answers(monkeypatch, "Tren", "", "Renfe", "10,00", "", "")
         _c, _a, payee, *_ = interrogate_movement(
             proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
-            partida=None, fecha=None, ref=None)
+            partida=None, fecha=None, ref="doc.pdf")
         assert payee == "Renfe"
         assert "obligatorio" in capsys.readouterr().out
+
+    def test_pdf_primero_y_debe_existir(self, proj, monkeypatch, capsys, tmp_path):
+        _mov(proj, EXPENSE_TAG, "10")
+        pdf = tmp_path / "fra.pdf"
+        pdf.write_text("%PDF")
+        _answers(monkeypatch, "/no/existe.pdf", str(pdf), "Tren", "Renfe",
+                 "10,00", "")
+        *_, ref = interrogate_movement(
+            proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
+            partida=None, fecha=None, ref=None)
+        assert ref == str(pdf)
+        assert "no encuentro el fichero" in capsys.readouterr().out
 
     def test_ctrl_c_cancela(self, proj, monkeypatch):
         _mov(proj, EXPENSE_TAG, "10")
@@ -146,17 +158,17 @@ class TestBuildLedgerMd:
         assert "| Gastado | -218,40 |" in md
         assert "| Comprometido (pedidos abiertos) | 0,00 |" in md
         assert "| **Disponible** | **3.781,60** |" in md
-        assert ("| 2026-07-14 | — | — | Vuelo | Iberia | — | 218,40 | "
-                "gasto directo |") in md
-        assert "| 2026-07-01 | Ingreso | Anticipo | UCM | +4.000,00 |" in md
+        assert ("| 2026-07-14 | factura | — | — | Vuelo | Iberia | — | 218,40 | "
+                "gasto directo | — |") in md
+        assert "| 2026-07-01 | Ingreso | Anticipo | UCM | +4.000,00 | — |" in md
 
     def test_partida_en_cabecera_no_en_columna(self, proj):
         # Con una sola partida por proyecto, una columna constante no informa.
         _mov(proj, EXPENSE_TAG, "10", partida="viaje")
         md = build_ledger_md(proj)
         assert "Partida: **#viaje**" in md
-        assert ("| Fecha | Aut. | Factura | Concepto | Beneficiario | "
-                "Comprometido | Gastado | Estado |") in md
+        assert ("| Fecha | Tipo | Aut. | Factura | Concepto | Beneficiario | "
+                "Comprometido | Gastado | Estado | USC |") in md
 
     def test_tipo_en_palabra(self, proj):
         # Redundante con el signo a propósito: la dirección no depende de un

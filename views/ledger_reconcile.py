@@ -18,9 +18,10 @@ Emparejado **solo por número**: si el número no está en el ledger, no se
 adivina (a lo sumo se sugiere). Las dotaciones, que no tienen número, por
 importe.
 
-Lo único que escribe: copia los ficheros a `cloud/logs/` con la fecha de la
-USC. `ledger.md` saca la **columna USC** de los más recientes que haya allí
-(:func:`usc_status`): sin estado guardado aparte.
+**Provisional**: es un informe en terminal y no escribe nada. La
+conciliación de verdad la hace una herramienta aparte, `usc-ledger`, que marca
+en orbit lo conciliado con `orbit ledger <proyecto> --mark <clave> <nº USC>`.
+Este módulo se retira cuando exista; sus lectores sirven de referencia.
 """
 
 import re
@@ -471,116 +472,10 @@ def print_reconciliation(project_dir: Path, label: str, report: UscReport,
         print("\n  (sin el excel de obrigas no comparo facturas)")
 
 
-# ── Guardar los ficheros ─────────────────────────────────────────────────────
-
-_EXEC_GLOB, _OBL_GLOB = "*_Execucion_*.pdf", "*_obrigas*.xls"
-
-
-def _target_name(path: Path, when: date, partida: Optional[str], is_pdf: bool) -> str:
-    """`2026-09-29_Execucion_<partida>.pdf` / `2026-09-29_obrigas_<partida>.xls`.
-
-    Se quita el ` (6)` que añade el navegador y no se repite la fecha si el
-    nombre ya empieza por una.
-    """
-    stem = re.sub(r"\s*\(\d+\)$", "", path.stem).strip().replace(" ", "_")
-    if not is_pdf and stem.lower().startswith("obrigas"):
-        stem = f"obrigas_{partida}" if partida else "obrigas"
-    if not re.match(r"^\d{4}-\d{2}-\d{2}_", stem):
-        stem = f"{when.isoformat()}_{stem}"
-    return stem + path.suffix.lower()
-
-
-def import_usc_files(project_dir: Path, paths: List[Path],
-                     report: UscReport) -> List[str]:
-    """Copia los ficheros a `cloud/logs/` con la fecha de la USC. Devuelve
-    los nombres con que quedan."""
-    import shutil
-    when = report.as_of or date.today()
-    logs = project_dir / "cloud" / "logs"
-    logs.mkdir(parents=True, exist_ok=True)
-    names = []
-    for path in paths:
-        is_pdf = path.read_bytes()[:5] == b"%PDF-"
-        name = _target_name(path, when, report.partida, is_pdf)
-        target = logs / name
-        if path.resolve() != target.resolve():
-            shutil.copy2(path, target)
-        names.append(name)
-    return names
-
-
-def latest_usc_files(project_dir: Path) -> List[Path]:
-    """El PDF de ejecución y el excel de obrigas más recientes de `cloud/logs/`
-    (por la fecha del nombre)."""
-    logs = project_dir / "cloud" / "logs"
-    if not logs.is_dir():
-        return []
-    out = []
-    for pattern in (_EXEC_GLOB, _OBL_GLOB):
-        found = sorted(logs.glob(pattern))
-        if found:
-            out.append(found[-1])
-    return out
-
-
-# ── Estado para la columna USC de ledger.md ─────────────────────────────────
-
-@dataclass
-class UscStatus:
-    """Lo que la vista necesita: marca por movimiento y lo que falta aquí."""
-    as_of:    Optional[date]
-    marks:    dict = field(default_factory=dict)      # raw → (marca, nº USC)
-    only_usc: List[object] = field(default_factory=list)
-    notes:    dict = field(default_factory=dict)      # raw → texto
-    error:    Optional[str] = None
-
-    def for_operation(self, op) -> Tuple[str, str]:
-        """Peor marca de las entradas de la operación y los nº de la USC."""
-        marks = [self.marks[m.raw] for m in op.entries if m.raw in self.marks]
-        if not marks:
-            return "", ""
-        worst = max(marks, key=lambda x: _SEVERITY[x[0]])[0]
-        ids = " · ".join(dict.fromkeys(i for _mk, i in marks if i))
-        return worst, ids
-
-
-def status_from(movements: List[Movement], report: UscReport,
-                result: Optional[dict] = None) -> UscStatus:
-    result = result or reconcile(movements, report)
-    st = UscStatus(as_of=report.as_of)
-    for key, rec in result.items():
-        for p in rec.pairs:
-            usc_id = (p.usc.id if key == "auts" else
-                      p.usc.invoice if key == "obls" else "")
-            st.marks[p.mov.raw] = (PROBLEM if p.note else OK, usc_id or "")
-            if p.note:
-                st.notes[p.mov.raw] = p.note
-        for m in rec.only_ledger:
-            st.marks[m.raw] = (ONLY_HERE, "")
-        st.only_usc += rec.only_usc
-    return st
-
-
-def usc_status(project_dir: Path, movements: List[Movement]) -> Optional[UscStatus]:
-    """Estado frente a los ficheros de la USC más recientes de `cloud/logs/`,
-    o None si no hay ninguno. Si no se pueden leer, lo dice en `error`."""
-    paths = latest_usc_files(project_dir)
-    if not paths:
-        return None
-    try:
-        report = load_report(paths)
-    except (ValueError, OSError) as exc:
-        return UscStatus(as_of=None, error=str(exc))
-    if report.as_of is None:
-        from views.ledger_check import _date_of_file
-        report.as_of = _date_of_file(paths[0].name)
-    return status_from(movements, report)
-
-
 # ── `ledger --check <ficheros>` ──────────────────────────────────────────────
 
 def run_reconcile(project_dir: Path, label: str, files: List[str]) -> Optional[dict]:
-    """Guarda los ficheros, concilia e imprime. None si no se pudieron leer."""
+    """Concilia e imprime (no escribe). None si no se pudieron leer."""
     paths = [Path(f).expanduser() for f in files]
     missing = [p for p in paths if not p.exists()]
     if missing:
@@ -591,9 +486,6 @@ def run_reconcile(project_dir: Path, label: str, files: List[str]) -> Optional[d
     except ValueError as exc:
         print(f"⚠️  {exc}")
         return None
-    names = import_usc_files(project_dir, paths, report)
-    print(f"  📥 guardados en cloud/logs/: {', '.join(names)}")
-
     movements, _ = read_movements(project_dir)
     result = reconcile(movements, report)
     print()

@@ -129,7 +129,7 @@ def _check_entries(project_dir: Path, movements: List[Movement],
         if m.tag not in (ORDER_TAG, EXPENSE_TAG):
             continue
         if not m.link:
-            out.append(Finding(ERROR, f"#{m.tag} sin justificante", m.raw))
+            out.append(Finding(ERROR, f"#{m.label or m.tag} sin justificante", m.raw))
         else:
             path = _resolve_link(project_dir, m.link)
             if path is not None and not path.exists():
@@ -206,18 +206,13 @@ def run_ledger_check(project: str, strict: bool = False,
         return 1
     usc_bad = 0
     if files:
+        # Informe provisional en terminal, hasta que exista usc-ledger.
         from views.ledger_reconcile import run_reconcile
-        if run_reconcile(project_dir, project, files) is None:
+        result = run_reconcile(project_dir, project, files)
+        if result is None:
             return 1
-        from views.ledger import load_usc, write_ledger
-        write_ledger(project_dir, force=True)
-        status = load_usc(project_dir, read_movements(project_dir)[0])
-        if status is not None and status.error is None:
-            marks = [mk for mk, _i in status.marks.values()]
-            usc_bad = marks.count("!") + len(status.only_usc)
-            print(f"\n  USC → ledger.md: {marks.count('ok')} ok · "
-                  f"{len(status.only_usc)} !↑ · {marks.count('!↓')} !↓ · "
-                  f"{marks.count('!')} !")
+        usc_bad = sum(len(r.only_usc) + sum(1 for p in r.pairs if p.note)
+                      for r in result.values())
         print()
     findings = check_ledger(project_dir)
     n_err = sum(1 for f in findings if f.level == ERROR)

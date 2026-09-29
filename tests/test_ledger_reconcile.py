@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from core.ledger import read_movements
+from core.ledger import build_operations, read_movements
 from views.ledger_reconcile import (
     Mod, hints, load_report, parse_execution_text, parse_obligations, reconcile,
 )
@@ -205,76 +205,78 @@ def _usc(md, concept):
 
 
 class TestCheckConFicheros:
+    """Informe provisional en terminal (hasta que exista usc-ledger): no
+    guarda ficheros ni toca el ledger."""
 
-    def test_guarda_con_fecha_y_no_toca_el_logbook(self, proj, usc_files):
+    def test_informe_sin_escribir(self, proj, usc_files, capsys):
         _write(proj, *LEDGER)
         antes = (proj / "logbook.md").read_text()
         _check(*map(str, usc_files))
-        logs = sorted(f.name for f in (proj / "cloud" / "logs").iterdir())
-        assert logs == ["2026-09-29_Execucion_2010.XXXX.64100.pdf",
-                        "2026-09-29_obrigas_2010.XXXX.64100.xls"]
+        out = capsys.readouterr().out
+        assert "Conciliación con la USC" in out and "!↑ aut. AUT-001" in out
         assert (proj / "logbook.md").read_text() == antes
-
-    def test_columna_usc(self, proj, usc_files):
-        _write(proj, *LEDGER)
-        _check(*map(str, usc_files))
-        md = (proj / "ledger.md").read_text()
-        assert "Conciliado con la USC el 2026-09-29" in md
-        assert _usc(md, "Folla vuelo · Factura vuelo") == "ok CM26XX0001 · F-4471"
-        assert _usc(md, "Folla congreso") == "!↓"
-        assert _usc(md, "Dietas") == "!↓"
-        assert "| AUT-001 | — | (solo en la USC) | CONGRESO SL |" in md
-
-    def test_la_columna_sobrevive_a_regenerar(self, proj, usc_files):
-        from views.ledger import write_ledger
-        _write(proj, *LEDGER)
-        _check(*map(str, usc_files))
-        write_ledger(proj, force=True)                   # p. ej. en un save
-        assert "| USC |" in (proj / "ledger.md").read_text()
-
-    def test_usa_los_ficheros_mas_recientes(self, proj, usc_files):
-        _write(proj, *LEDGER)
-        _check(*map(str, usc_files))
-        logs = proj / "cloud" / "logs"
-        (logs / "2026-01-01_Execucion_viejo.pdf").write_bytes(b"%PDF-viejo")
-        from views.ledger_reconcile import latest_usc_files
-        assert [p.name for p in latest_usc_files(proj)][0].startswith("2026-09-29")
-
-    def test_importe_distinto_es_problema(self, proj, usc_files):
-        _write(proj, LEDGER[0], ("2026-09-18", "Folla #pedido",
-                                 "💶 -1.500,00 · 🆔 CM26XX0001"))
-        _check(*map(str, usc_files))
-        md = (proj / "ledger.md").read_text()
-        assert _usc(md, "Folla") == "! CM26XX0001"
-        assert "No encaja con la USC" in md and "importe distinto" in md
+        assert not (proj / "cloud").exists()
 
     def test_strict(self, proj, usc_files):
         _write(proj, LEDGER[0])
         assert _check(*map(str, usc_files), "--strict") == 1   # hay !↑
 
-    def test_si_faltan_los_ficheros_la_columna_avisa(self, proj, usc_files):
+
+# ── Marca de conciliado (🏛️), la pone usc-ledger por la CLI de orbit ─────────
+
+def _mark(*argv):
+    import orbit
+    args = orbit._build_parser().parse_args(["ledger", "proyx", *argv])
+    return orbit.cmd_ledger(args)
+
+
+class TestMarca:
+
+    def test_marcar_y_desmarcar(self, proj, capsys):
         _write(proj, *LEDGER)
-        _check(*map(str, usc_files))
-        (proj / "cloud" / "logs" / "2026-09-29_Execucion_2010.XXXX.64100.pdf").write_text("roto")
-        from views.ledger import build_ledger_md
-        md = build_ledger_md(proj)
-        assert "| USC |" not in md or "Columna USC no disponible" in md
+        movs = read_movements(proj)[0]
+        folla = next(m for m in movs if m.op_id == "CM26XX0001")
+        assert folla.usc is None
+        assert _mark("--mark", folla.key, "CM26XX0001") == 0
+        m = next(m for m in read_movements(proj)[0] if m.op_id == "CM26XX0001")
+        assert m.usc == "CM26XX0001"
+        md = (proj / "ledger.md").read_text()
+        assert "| CM26XX0001 |" in md.split("Folla vuelo")[1].splitlines()[0]
+        assert _mark("--unmark", folla.key) == 0
+        assert next(m for m in read_movements(proj)[0]
+                    if m.op_id == "CM26XX0001").usc is None
 
+    def test_provisional_pasa_al_numero_oficial(self, proj):
+        _write(proj,
+               ("2026-08-30", "Folla #folla", "👤 X · 💶 -300,00 · 🆔 P01"),
+               ("2026-09-10", "Fra #factura", "👤 X · 💶 -300,00 · 🔗 P01"))
+        folla = read_movements(proj)[0][0]
+        assert _mark("--mark", folla.key, "621A-XX") == 0
+        movs = read_movements(proj)[0]
+        assert movs[0].op_id == "621A-XX" and movs[0].usc == "621A-XX"
+        assert movs[1].ref == "621A-XX"                 # su factura, también
+        ops, problems = build_operations(movs)
+        assert problems == [] and ops[0].state == "cerrado"
 
-def test_export_lleva_columna_usc_y_no_los_ficheros_usc(proj, usc_files, tmp_path):
-    openpyxl = pytest.importorskip("openpyxl")
-    pytest.importorskip("reportlab")
-    from views.ledger_export import export_ledger
-    folla = proj / "cloud" / "logs" / "2026-09-18_folla.pdf"
-    folla.parent.mkdir(parents=True, exist_ok=True)
-    folla.write_text("%PDF")
-    _write(proj, ("2026-09-18", "[Folla vuelo](cloud/logs/2026-09-18_folla.pdf) #pedido",
-                  "👤 Axencia Viaxes · 💶 -1.578,64 · 🆔 CM26XX0001"))
-    _check(*map(str, usc_files))
-    out = tmp_path / "share"
-    export_ledger(proj, out)
-    assert [f.name for f in (out / "justificantes").iterdir()] == ["2026-09-18_folla.pdf"]
-    ws = openpyxl.load_workbook(out / "ledger.xlsx")["Operaciones"]
-    assert ws.cell(1, 10).value == "USC"
-    values = [ws.cell(r, 10).value for r in range(2, ws.max_row + 1)]
-    assert "ok CM26XX0001" in values and "!↑" in values
+    def test_gasto_sin_numero_recibe_el_de_la_usc(self, proj):
+        _write(proj, ("2026-08-31", "Dietas #dietas", "👤 Ana · 💶 -10,00"))
+        m = read_movements(proj)[0][0]
+        _mark("--mark", m.key, "LIQ-7")
+        m = read_movements(proj)[0][0]
+        assert (m.op_id, m.usc, m.label) == ("LIQ-7", "LIQ-7", "dietas")
+
+    def test_clave_inexistente(self, proj, capsys):
+        _write(proj, *LEDGER)
+        assert _mark("--mark", "2026-01-01:folla:nada", "X") == 1
+        assert "no hay ninguna entrada" in capsys.readouterr().out
+
+    def test_ledger_json_lleva_clave_y_marca(self, proj):
+        import json
+        from views.ledger import write_ledger
+        _write(proj, *LEDGER)
+        write_ledger(proj, force=True)
+        rows = json.loads((proj / "ledger.json").read_text())["movements"]
+        assert all(r["key"] for r in rows)
+        _mark("--mark", rows[2]["key"], "CM26XX0001")
+        rows = json.loads((proj / "ledger.json").read_text())["movements"]
+        assert rows[2]["usc"] == "CM26XX0001"

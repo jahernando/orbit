@@ -58,7 +58,7 @@ class TestErrors:
 
     def test_gasto_sin_justificante(self, proj):
         _write(proj, ("2026-08-31", "Dietas #gasto", "🏷️ p · 💶 -10,00"))
-        assert _find(proj, ERROR, "#gasto sin justificante")
+        assert _find(proj, ERROR, "#factura sin justificante")   # #gasto = factura
 
     def test_ingreso_sin_justificante_no_se_canta(self, proj):
         _write(proj, INGRESO)
@@ -136,7 +136,7 @@ class TestIntegracion:
         _write(proj, ("2026-08-31", "Sin pdf #gasto", "💶 -1,00"))
         msgs = [i.msg for i in check_project(proj)]
         assert [m for m in msgs if m.startswith("Ledger:")] == \
-            ["Ledger: #gasto sin justificante"]
+            ["Ledger: #factura sin justificante"]
 
     def test_cli(self, proj, capsys):
         import orbit

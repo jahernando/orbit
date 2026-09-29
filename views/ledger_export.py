@@ -124,7 +124,7 @@ def _summary_rows(s: Summary) -> List[Tuple[str, Decimal]]:
 
 def write_pdf(path: Path, title: str, partida: Optional[str], summary: Summary,
               operations: List[Operation], movements: List[Movement], plan,
-              generated: datetime, status=None) -> None:
+              generated: datetime) -> None:
     from xml.sax.saxutils import escape
 
     from reportlab.lib import colors
@@ -171,46 +171,26 @@ def write_pdf(path: Path, title: str, partida: Optional[str], summary: Summary,
     t.setStyle(grid)
     story += [t, Spacer(1, 5 * mm), Paragraph("Operaciones", styles["Heading2"])]
 
-    from views.ledger import usc_cell, usc_extra_rows
-    usc = status is not None and status.error is None
-    if usc:
-        when = status.as_of.isoformat() if status.as_of else "—"
-        story.insert(2, Paragraph(
-            f"Conciliado con la USC el {when}. Columna USC: ok = casa (con el "
-            "nº de la USC) · !↑ = en la USC y no aquí · !↓ = aquí y no en la "
-            "USC · ! = no encaja.", styles["Normal"]))
-    headers = ["Fecha", "Aut.", "Factura", "Concepto y justificantes",
-               "Beneficiario", "Comprometido", "Gastado", "Estado"]
-    if usc:
-        headers.append("USC")
+    from views.ledger import kind_cell, usc_cell
+    headers = ["Fecha", "Tipo", "Aut.", "Factura", "Concepto y justificantes",
+               "Beneficiario", "Comprometido", "Gastado", "Estado", "USC"]
     rows = [[p(h, head) for h in headers]]
     dated = []
     for op in operations:
         docs = " · ".join(link(m.concept, m) for m in op.entries)
         committed = format_amount(op.committed) if op.committed else "—"
         row = [
-            p(op.date.isoformat()), p(escape(op.op_id or "—")),
+            p(op.date.isoformat()), p(escape(kind_cell(op))),
+            p(escape(op.op_id or "—")),
             p(escape(", ".join(op.invoice_ids) or "—")), p(docs),
             p(escape(op.payee or "—")), p(committed, right),
             p(format_amount(op.spent) if op.spent else "—", right),
             p(_STATE_LABEL.get(op.state, op.state)),
         ]
-        if usc:
-            row.append(p(escape(usc_cell(op, status))))
+        row.append(p(escape(usc_cell(op))))
         dated.append((op.date, row))
-    if usc:
-        extra, _funds, mark = usc_extra_rows(status)
-        for d, aut, inv, concept, payee, committed, spent in extra:
-            dated.append((d or date.min, [
-                p(d.isoformat() if d else "—"), p(escape(aut or "—")),
-                p(escape(inv or "—")), p(escape(concept)), p(escape(payee or "—")),
-                p(format_amount(committed) if committed else "—", right),
-                p(format_amount(spent) if spent else "—", right),
-                p("—"), p(mark)]))
-    dated.sort(key=lambda r: r[0])
     rows += [r for _d, r in dated]
-    widths = ([18, 28, 24, 78, 38, 24, 22, 20, 21] if usc
-              else [18, 28, 24, 90, 40, 26, 24, 23])
+    widths = [18, 16, 28, 22, 70, 36, 23, 20, 20, 20]
     t = Table(rows, colWidths=[w * mm for w in widths], repeatRows=1)
     t.setStyle(grid)
     story += [t]
@@ -244,7 +224,7 @@ def write_pdf(path: Path, title: str, partida: Optional[str], summary: Summary,
 
 def write_xlsx(path: Path, title: str, partida: Optional[str], summary: Summary,
                operations: List[Operation], movements: List[Movement], plan,
-               generated: datetime, status=None) -> None:
+               generated: datetime) -> None:
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
@@ -267,38 +247,24 @@ def write_xlsx(path: Path, title: str, partida: Optional[str], summary: Summary,
     ws.column_dimensions["A"].width = 34
     ws.column_dimensions["B"].width = 18
 
-    from views.ledger import usc_cell, usc_extra_rows
-    usc = status is not None and status.error is None
-    if usc:
-        ws.append(["Conciliado con la USC",
-                   status.as_of.isoformat() if status.as_of else "—"])
+    from views.ledger import kind_cell, usc_cell
 
     ws = wb.create_sheet("Operaciones")
-    ws.append(["Fecha", "Aut.", "Factura", "Concepto", "Beneficiario",
-               "Comprometido", "Gastado", "Pendiente", "Estado"]
-              + (["USC"] if usc else []))
+    ws.append(["Fecha", "Tipo", "Aut.", "Factura", "Concepto", "Beneficiario",
+               "Comprometido", "Gastado", "Pendiente", "Estado", "USC"])
     for op in operations:
-        ws.append([op.date, op.op_id or "", ", ".join(op.invoice_ids),
+        ws.append([op.date, kind_cell(op), op.op_id or "", ", ".join(op.invoice_ids),
                    op.concept, op.payee or "", op.committed or None,
                    op.spent or None, op.pending or None,
-                   _STATE_LABEL.get(op.state, op.state)]
-                  + ([usc_cell(op, status)] if usc else []))
+                   _STATE_LABEL.get(op.state, op.state), usc_cell(op)])
         row = ws.max_row
         ws.cell(row, 1).number_format = "yyyy-mm-dd"
-        for c in (6, 7, 8):
+        for c in (7, 8, 9):
             ws.cell(row, c).number_format = money
         url = _doc_link(op.entries[0], plan)
         if url:
-            ws.cell(row, 4).hyperlink = url
-            ws.cell(row, 4).style = "Hyperlink"
-    if usc:
-        extra, _funds, mark = usc_extra_rows(status)
-        for d, aut, inv, concept, payee, committed, spent in extra:
-            ws.append([d, aut or "", inv or "", concept, payee or "",
-                       committed, spent, None, "—", mark])
-            ws.cell(ws.max_row, 1).number_format = "yyyy-mm-dd"
-            for c in (6, 7):
-                ws.cell(ws.max_row, c).number_format = money
+            ws.cell(row, 5).hyperlink = url
+            ws.cell(row, 5).style = "Hyperlink"
 
     ws = wb.create_sheet("Movimientos")
     ws.append(["Fecha", "Tipo", "Id", "Pedido", "Concepto", "Beneficiario",
@@ -307,7 +273,7 @@ def write_xlsx(path: Path, title: str, partida: Optional[str], summary: Summary,
         if m.is_cut:
             continue
         url = _doc_link(m, plan)
-        ws.append([m.date, _TAG_LABEL.get(m.tag, m.tag), m.op_id or "",
+        ws.append([m.date, m.label or _TAG_LABEL.get(m.tag, m.tag), m.op_id or "",
                    m.ref or "", m.concept, m.payee or "",
                    m.amount if m.amount else None,
                    Path(url).name if url else ""])
@@ -351,14 +317,12 @@ def export_ledger(project_dir: Path, dest: Path,
     title = f"Ledger — {_base_name(project_dir)}"
     generated = generated or datetime.now()
 
-    from views.ledger import load_usc
-    status = load_usc(project_dir, movements)
     dest.mkdir(parents=True, exist_ok=True)
     plan = plan_attachments(project_dir, movements)
     write_pdf(dest / PDF_FILE, title, partida, summary, operations, movements,
-              plan, generated, status)
+              plan, generated)
     write_xlsx(dest / XLSX_FILE, title, partida, summary, operations,
-               movements, plan, generated, status)
+               movements, plan, generated)
     copied, removed = sync_attachments(dest, plan)
     return {"warnings": sum(1 for f in findings if f.level == WARNING),
             "copied": copied, "removed": removed, "attachments": len(plan)}

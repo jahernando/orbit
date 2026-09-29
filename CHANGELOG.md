@@ -29,8 +29,16 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
   `justificantes/` (solo lo enlazado). Extra `ledger` (reportlab, openpyxl).
 - `archive` no parte una hoja de su factura.
 - **`ledger.json`** junto a `ledger.md` (derivado, sin fecha de generación):
-  interfaz para la revisión contable externa. **Beneficiario obligatorio** en
-  `log --entry ingreso|pedido|gasto`.
+  interfaz para la revisión contable externa (`usc-ledger`), con `key` por
+  entrada.
+- **Tipos en palabras del usuario**: `#folla`, `#dietas`, `#factura`,
+  `#ingreso` (`#pedido`/`#gasto` se siguen leyendo). `log --entry ledger`
+  pregunta el tipo; **PDF, beneficiario e importe obligatorios**; el PDF se
+  importa solo a `cloud/logs/`.
+- **Marca de conciliado** `🏛️ <nº USC>`: `ledger <p> --mark <clave> <nº>` /
+  `--unmark`; la pone `usc-ledger`. Columnas **Tipo** y **USC** (de la marca)
+  en `ledger.md`, PDF y xlsx. `--check <ficheros>` queda como informe en
+  terminal, sin escribir.
 - `log --ref` pasa a `--pedido`. Descartados tras probarlos (simplificación):
   `#anulacion`, `#conciliacion`, facturas parciales, moneda original (`💱`),
   emparejado aproximado y reescritura de números, y las comprobaciones

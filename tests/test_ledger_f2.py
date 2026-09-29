@@ -30,9 +30,16 @@ def proj(tmp_path, monkeypatch):
     p.mkdir()
     (p / "project.md").write_text("# 💻testproj\n")
     (p / "logbook.md").write_text("# Logbook — 💻testproj\n\n")
+    # --import copia a cloud_root: hace falta un orbit.json con él.
+    import json
+    cloud = tmp_path / "cloudroot"
+    cloud.mkdir()
+    (tmp_path / "orbit.json").write_text(json.dumps({"cloud_root": str(cloud)}))
     monkeypatch.setattr("core.config.ORBIT_HOME", tmp_path)
     monkeypatch.setattr("core.config._ORBIT_JSON", tmp_path / "orbit.json")
+    monkeypatch.setattr("core.config.PROJECTS_DIR", tmp_path)
     monkeypatch.setattr("core.log.PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr("core.deliver.ORBIT_DIR", tmp_path)
     return p
 
 
@@ -41,9 +48,19 @@ def _answers(monkeypatch, *values):
     monkeypatch.setattr(builtins, "input", lambda _prompt="": next(it))
 
 
-def _log(*argv):
+def _log(concept, *argv, pdf=True):
+    """`orbit log testproj <concepto> <pdf> …` con un PDF de fuera del proyecto
+    (se importa a cloud/logs/)."""
     import orbit
-    args = orbit._build_parser().parse_args(["log", "testproj", *argv])
+    import tempfile
+    extra = []
+    if pdf:
+        f = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False,
+                                        prefix=concept.replace(" ", "_") + "_")
+        f.write(b"%PDF")
+        f.close()
+        extra = [f.name]
+    args = orbit._build_parser().parse_args(["log", "testproj", concept, *extra, *argv])
     return orbit.cmd_log(args)
 
 
@@ -207,10 +224,50 @@ class TestLogCli:
                     "--id", "P01", "--payee", "X") == 1
 
     def test_beneficiario_obligatorio(self, proj, capsys):
-        assert _log("Folla", "--entry", "pedido", "--amount", "100",
+        assert _log("Folla", "--entry", "folla", "--amount", "100",
                     "--tag", "viaje") == 1
         assert "falta el beneficiario" in capsys.readouterr().out
-        assert "#pedido" not in (proj / "logbook.md").read_text()
+        assert "#folla" not in (proj / "logbook.md").read_text()
+
+    def test_pdf_obligatorio(self, proj, capsys):
+        assert _log("Folla", "--entry", "folla", "--amount", "100", "--tag",
+                    "viaje", "--payee", "X", pdf=False) == 1
+        assert "falta el PDF" in capsys.readouterr().out
+
+    def test_pdf_se_importa_y_tags_nuevas(self, proj):
+        assert _log("Folla vuelo", "--entry", "folla", "--amount", "100",
+                    "--tag", "viaje", "--payee", "Axencia") == 0
+        assert _log("Dietas congreso", "--entry", "dietas", "--amount", "50",
+                    "--payee", "Ana") == 0
+        text = (proj / "logbook.md").read_text()
+        assert "#folla" in text and "#dietas" in text
+        movs = read_movements(proj)[0]
+        assert [(m.tag, m.label) for m in movs] == [("pedido", "folla"),
+                                                    ("gasto", "dietas")]
+        assert all("cloud/logs/" in m.link for m in movs)
+        cloud = proj.parent.parent / "cloudroot"
+        assert len(list(cloud.rglob("*.pdf"))) == 2
+
+    def test_pdf_ya_dentro_del_proyecto_no_se_copia(self, proj):
+        logs = proj / "cloud" / "logs"
+        logs.mkdir(parents=True)
+        (logs / "2026-09-01_folla.pdf").write_text("%PDF")
+        import orbit
+        args = orbit._build_parser().parse_args(
+            ["log", "testproj", "Folla", "cloud/logs/2026-09-01_folla.pdf",
+             "--entry", "folla", "--amount", "10", "--tag", "viaje", "--payee", "X"])
+        assert orbit.cmd_log(args) == 0
+        assert len(list(logs.iterdir())) == 1
+        assert read_movements(proj)[0][0].link == "./cloud/logs/2026-09-01_folla.pdf"
+
+    def test_ledger_sin_terminal_pide_el_tipo(self, proj, capsys):
+        assert _log("X", "--entry", "ledger", "--amount", "1", "--payee", "X") == 1
+        assert "folla|dietas|factura|ingreso" in capsys.readouterr().out
+
+    def test_etiquetas_antiguas_escriben_las_nuevas(self, proj):
+        assert _log("Fra", "--entry", "gasto", "--amount", "1", "--tag", "v",
+                    "--payee", "X") == 0
+        assert "#factura" in (proj / "logbook.md").read_text()
 
 
 # ── ledger.json: el contrato con la revisión externa ─────────────────────────

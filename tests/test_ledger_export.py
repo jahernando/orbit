@@ -92,10 +92,10 @@ def test_xlsx(proj, tmp_path):
     assert Decimal(str(resumen["Disponible"])) == Decimal("18419.90")
 
     ops = list(wb["Operaciones"].iter_rows(values_only=True))
-    assert ops[0][:3] == ("Fecha", "Aut.", "Factura")
-    assert ops[1][1:4] == ("CM26XXXX0001", "F-4471", "Folla vuelo")
-    assert ops[1][8] == "cerrado"
-    assert wb["Operaciones"].cell(2, 4).hyperlink.target == \
+    assert ops[0][:4] == ("Fecha", "Tipo", "Aut.", "Factura")
+    assert ops[1][1:5] == ("folla", "CM26XXXX0001", "F-4471", "Folla vuelo")
+    assert ops[1][9] == "cerrado" and ops[1][10] == "—"
+    assert wb["Operaciones"].cell(2, 5).hyperlink.target == \
         "justificantes/2026-09-18_folla.pdf"
 
     movs = wb["Movimientos"]

@@ -4,6 +4,7 @@
 import argparse
 import re
 import sys
+from pathlib import Path
 from typing import Optional
 
 from core.log import VALID_TYPES, add_entry, add_entry_with_ref, find_project, find_logbook_file, find_proyecto_file
@@ -321,45 +322,81 @@ def cmd_log(args):
     amount = None
     op_id = order_ref = None
     message, ref, fecha = args.message, args.ref, args.date
-    if args.entry in LEDGER_TAGS:
+    entry_tag = args.entry
+    deliver = getattr(args, "deliver", False)
+    as_link = getattr(args, "link", False)
+    local_link = None                      # PDF que ya está dentro del proyecto
+    if args.entry == "ledger" or args.entry in LEDGER_TAGS:
         import sys as _sys
-        from core.ledger import (ORDER_TAG, Cancelled, check_links,
-                                 interrogate_commitment, interrogate_movement,
-                                 next_order_id, prepare_movement,
-                                 read_movements, resolve_partida)
+        from core.ledger import (LABEL_KIND, ORDER_TAG, USER_LABELS, Cancelled,
+                                 ask_label, check_links, interrogate_commitment,
+                                 interrogate_movement, next_order_id,
+                                 prepare_movement, read_movements,
+                                 resolve_partida)
+        tty = _sys.stdin.isatty()
+        label = {"pedido": "folla", "gasto": "factura"}.get(args.entry, args.entry)
+        if label == "ledger":
+            if not tty:
+                print("Error: sin terminal, indica qué es → --entry "
+                      + "|".join(USER_LABELS))
+                return 1
+            try:
+                label = ask_label()
+            except Cancelled:
+                print("⚠️  movimiento cancelado")
+                return 1
+        if label not in USER_LABELS:
+            print(f"⚠️  #{label} lo escribe solo `orbit archive`")
+            return 1
+        kind = LABEL_KIND[label]
+        entry_tag = label
         amount_raw = getattr(args, "amount", None)
         payee      = getattr(args, "payee", None)
         partida    = getattr(args, "tag", None)
         op_id      = getattr(args, "op_id", None)
         order_ref  = getattr(args, "order_ref", None)
         known, _ = read_movements(project_dir)
-        if _sys.stdin.isatty() and not (message and amount_raw):
+        if tty and not (message and amount_raw and ref and payee):
             try:
                 (message, amount_raw, payee, partida, fecha,
                  ref) = interrogate_movement(
-                    project_dir, args.entry,
+                    project_dir, label,
                     concept=message, amount=amount_raw, payee=payee,
                     partida=partida, fecha=fecha, ref=ref)
                 op_id, order_ref = interrogate_commitment(
-                    known, args.entry, op_id=op_id, ref=order_ref)
+                    known, kind, op_id=op_id, ref=order_ref)
             except Cancelled:
                 print("⚠️  movimiento cancelado")
                 return 1
         if not message:
             print("Error: falta el concepto → orbit log <proyecto> \"<concepto>\" "
-                  f"--entry {args.entry} --amount N")
+                  f"<pdf> --entry {label} --amount N --payee P")
             return 1
         if not payee:
             print("Error: falta el beneficiario → --payee \"<nombre>\" "
                   "(en un ingreso, quién lo paga)")
             return 1
-        if args.entry == ORDER_TAG and not op_id:
+        # El justificante es obligatorio y se guarda en el proyecto: se
+        # importa a cloud/logs/ con fecha, salvo que ya esté dentro.
+        src = Path(ref).expanduser() if ref else None
+        if src is not None and not src.is_absolute() and (project_dir / ref).is_file():
+            src = project_dir / ref
+        if src is None or not src.is_file():
+            print("Error: falta el PDF (justificante) → orbit log <proyecto> "
+                  f"\"<concepto>\" <fichero.pdf> --entry {label} …"
+                  + (f"  (no encuentro {ref})" if ref else ""))
+            return 1
+        try:
+            local_link = "./" + str(src.resolve().relative_to(project_dir.resolve()))
+        except ValueError:
+            deliver, as_link = True, False
+        if kind == ORDER_TAG and not op_id:
             op_id = next_order_id(known)       # se anuncia en el eco
         try:
-            check_links(known, args.entry, op_id=op_id, ref=order_ref)
+            check_links(known, kind, op_id=op_id, ref=order_ref)
             partida = resolve_partida(project_dir, partida)
             body, amount = prepare_movement(
-                args.entry, amount_raw, partida, payee, op_id=op_id,
+                label, amount_raw, partida, payee, op_id=op_id,
                 ref=order_ref)
         except ValueError as exc:
             print(f"⚠️  {exc}")
@@ -368,25 +405,30 @@ def cmd_log(args):
         print("Error: falta el mensaje → orbit log <proyecto> \"mensaje\"")
         return 1
 
-    rc = add_entry_with_ref(
-        project=args.project,
-        ref=ref,
-        message=message,
-        tipo=args.entry,
-        fecha=_d(fecha),
-        deliver=getattr(args, "deliver", False),
-        as_link=getattr(args, "link", False),
-        no_date=getattr(args, "no_date", False),
-        project_dir=project_dir,
-        continuations=body,
-    )
+    if local_link:
+        from core.log import add_entry
+        rc = add_entry(args.project, message, entry_tag, local_link, _d(fecha),
+                       project_dir=project_dir, continuations=body)
+    else:
+        rc = add_entry_with_ref(
+            project=args.project,
+            ref=ref,
+            message=message,
+            tipo=entry_tag,
+            fecha=_d(fecha),
+            deliver=deliver,
+            as_link=as_link,
+            no_date=getattr(args, "no_date", False),
+            project_dir=project_dir,
+            continuations=body,
+        )
     if rc == 0 and amount is not None:
         from core.ledger import currency_symbol, format_amount, read_movements, summarize
         from views.ledger import write_ledger
         write_ledger(project_dir)
         movements, _ = read_movements(project_dir)
         detalle = " · ".join(filter(None, [
-            f"{args.entry.upper()} {format_amount(amount)} {currency_symbol()}",
+            f"{entry_tag.upper()} {format_amount(amount)} {currency_symbol()}",
             f"🆔 {op_id}" if op_id else None,
             f"cierra {order_ref}" if order_ref else None,
             payee,
@@ -403,6 +445,11 @@ def cmd_log(args):
 
 
 def cmd_ledger(args):
+    if getattr(args, "mark", None) or getattr(args, "unmark", None):
+        from views.ledger import run_ledger_mark
+        if args.mark:
+            return run_ledger_mark(args.project, args.mark[0], args.mark[1])
+        return run_ledger_mark(args.project, args.unmark, None)
     if getattr(args, "export", None):
         from views.ledger_export import run_ledger_export
         return run_ledger_export(args.project, args.export)
@@ -1886,6 +1933,11 @@ def _build_parser():
                                "concilia y pone la columna USC en ledger.md")
     ledger_p.add_argument("--strict", action="store_true",
                           help="Con --check: los avisos también dan código de error")
+    ledger_p.add_argument("--mark", nargs=2, default=None, metavar=("CLAVE", "NUM_USC"),
+                          help="Marca una entrada como conciliada con la USC (🏛️ NUM_USC). "
+                               "CLAVE = campo key de ledger.json. Lo usa usc-ledger")
+    ledger_p.add_argument("--unmark", default=None, metavar="CLAVE",
+                          help="Quita la marca de conciliada de una entrada")
     ledger_p.add_argument("--export", default=None, metavar="DIR",
                           help="Genera ledger.pdf, ledger.xlsx y justificantes/ en DIR "
                                "(no exporta si hay errores)")
