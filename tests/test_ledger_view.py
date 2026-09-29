@@ -79,7 +79,7 @@ class TestInterrogador:
     def test_partida_no_se_repregunta(self, proj, monkeypatch):
         _mov(proj, EXPENSE_TAG, "10", partida="fungible")
         # Si preguntara la partida, faltaría una respuesta → StopIteration.
-        _answers(monkeypatch, "Folios", "", "12,00", "", "")
+        _answers(monkeypatch, "Folios", "Papelería", "12,00", "", "")
         concept, *_ = interrogate_movement(
             proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
             partida=None, fecha=None, ref=None)
@@ -88,7 +88,7 @@ class TestInterrogador:
     def test_fecha_por_defecto_hoy(self, proj, monkeypatch):
         from datetime import date
         _mov(proj, EXPENSE_TAG, "10")
-        _answers(monkeypatch, "Tren", "", "10,00", "", "")   # Enter en fecha
+        _answers(monkeypatch, "Tren", "Renfe", "10,00", "", "")   # Enter en fecha
         *_, fecha, _ref = interrogate_movement(
             proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
             partida=None, fecha=None, ref=None)
@@ -96,20 +96,21 @@ class TestInterrogador:
 
     def test_importe_invalido_se_vuelve_a_pedir(self, proj, monkeypatch, capsys):
         _mov(proj, EXPENSE_TAG, "10")
-        _answers(monkeypatch, "Tren", "", "-10", "doscientos", "89,90", "", "")
+        _answers(monkeypatch, "Tren", "Renfe", "-10", "doscientos", "89,90", "", "")
         _c, amount, *_ = interrogate_movement(
             proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
             partida=None, fecha=None, ref=None)
         assert amount == "89,90"
         assert "sin signo" in capsys.readouterr().out
 
-    def test_beneficiario_vacio_es_none(self, proj, monkeypatch):
+    def test_beneficiario_obligatorio(self, proj, monkeypatch, capsys):
         _mov(proj, EXPENSE_TAG, "10")
-        _answers(monkeypatch, "Tren", "", "10,00", "", "")
+        _answers(monkeypatch, "Tren", "", "Renfe", "10,00", "", "")
         _c, _a, payee, *_ = interrogate_movement(
             proj, EXPENSE_TAG, concept=None, amount=None, payee=None,
             partida=None, fecha=None, ref=None)
-        assert payee is None
+        assert payee == "Renfe"
+        assert "obligatorio" in capsys.readouterr().out
 
     def test_ctrl_c_cancela(self, proj, monkeypatch):
         _mov(proj, EXPENSE_TAG, "10")

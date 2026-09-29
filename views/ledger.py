@@ -28,6 +28,12 @@ from core.ledger import (
 )
 
 LEDGER_FILE = "ledger.md"
+LEDGER_JSON = "ledger.json"
+
+#: Versión del formato de `ledger.json`. Es el contrato con herramientas de
+#: fuera de orbit (la revisión contable frente a la USC): si cambia de forma
+#: incompatible, se sube.
+JSON_VERSION = 1
 
 _FUNDS_LABEL = {INCOME_TAG: "Ingreso", CARRY_TAG: "Arrastre"}
 
@@ -232,8 +238,62 @@ def _unchanged(path: Path, body: str) -> bool:
     return marker in previous and previous.endswith(body)
 
 
+def build_ledger_json(project_dir: Path) -> str:
+    """Contenido de `ledger.json`: los movimientos en forma legible por máquina.
+
+    Es la interfaz para herramientas de fuera de orbit, que no deben leer el
+    markdown. Sin fecha de generación, para que regenerar sin cambios no toque
+    el fichero. Importes como texto decimal con signo (`"-1578.64"`), nunca
+    float. `justificante` es el enlace tal cual (relativo al proyecto) y
+    `justificante_path` la ruta absoluta, si es un fichero local.
+    """
+    import json
+    from core.ledger import ORDER_TAG, project_partida
+    from views.ledger_check import _resolve_link
+
+    movements, problems = read_movements(project_dir)
+    operations, op_problems = build_operations(movements)
+    summary = summarize(movements, operations)
+    state_of = {}
+    for op in operations:
+        for m in op.entries:
+            state_of[m.raw] = op.state
+
+    rows = []
+    for m in movements:
+        path = _resolve_link(project_dir, m.link) if m.link else None
+        rows.append({
+            "date": m.date.isoformat(),
+            "type": m.tag,
+            "concept": m.concept,
+            "payee": m.payee,
+            "amount": str(m.amount),
+            "id": m.op_id,
+            "order": m.ref,
+            "state": state_of.get(m.raw) if m.tag in (ORDER_TAG, "gasto") else None,
+            "justificante": m.link,
+            "justificante_path": str(path.resolve()) if path is not None else None,
+        })
+    data = {
+        "version": JSON_VERSION,
+        "project": project_dir.name,
+        "partida": project_partida(project_dir),
+        "currency": "EUR",
+        "summary": {
+            "income": str(summary.income + summary.carried),
+            "spent": str(summary.spent),
+            "committed": str(summary.committed),
+            "available": str(summary.available),
+        },
+        "movements": rows,
+        "problems": problems + op_problems,
+    }
+    return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+
+
 def write_ledger(project_dir: Path, force: bool = False) -> Optional[Path]:
-    """Regenera `ledger.md`. Devuelve la ruta escrita, o None si no tocaba.
+    """Regenera `ledger.md` (y `ledger.json`). Devuelve la ruta de `ledger.md`
+    si lo escribió, o None si no tocaba.
 
     Creación perezosa: sin movimientos y sin fichero previo, no se crea nada.
     Si el fichero existe pero ya no hay movimientos, se reescribe vacío en vez
@@ -245,6 +305,11 @@ def write_ledger(project_dir: Path, force: bool = False) -> Optional[Path]:
     path = project_dir / LEDGER_FILE
     if not movements and not path.exists():
         return None
+
+    data = build_ledger_json(project_dir)
+    json_path = project_dir / LEDGER_JSON
+    if force or not json_path.exists() or json_path.read_text() != data:
+        json_path.write_text(data)
 
     body = build_ledger_md(project_dir)
     if not force and _unchanged(path, body):

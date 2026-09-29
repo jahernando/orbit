@@ -979,6 +979,7 @@ Tres fricciones reales:
 6. **Comprobación mínima**: errores que hacen el ledger no fiable (también en `orbit doctor`, y bloquean el export) y dos avisos (hoja abierta mucho tiempo, documento económico sin movimiento), solo en `--check` para no hacer preguntar al `save`.
 7. **Export** a una carpeta: PDF, xlsx y solo los justificantes enlazados (en `cloud/logs/` hay documentos sensibles). Publicarla es cosa de otra herramienta.
 8. **`archive` no parte una hoja de su factura.**
+9. **La revisión contable con la USC sale de orbit.** orbit lleva el ledger local y publica `ledger.json` (derivado, versionado) como contrato; una herramienta aparte toma ese fichero, los de la USC y la revisión anterior, y genera la revisión (con la USC como verdad, sus justificantes y los pendientes a cada lado, con notas que pasan de una revisión a la siguiente). La revisión vuelve a orbit como un documento más del logbook. La conciliación de `--check <ficheros>`, la columna USC y `--export` se quedan en orbit hasta que la herramienta exista; después se retiran.
 
 **Descartado tras implementarlo** (misma sesión, por complejidad frente a uso): `#anulacion` (se borra o edita la entrada), `#conciliacion` como entrada, facturas parciales, moneda original (`💱`), emparejado aproximado por importe/fecha/tercero con reescritura de números, y comprobaciones heurísticas (facturas candidatas, duplicados, variantes de beneficiario, diferencia pedido/factura, nombres raros). Si alguna hace falta con datos reales, se recupera del historial de git.
 

@@ -555,9 +555,9 @@ Un movimiento **es una entrada de logbook** con tag `#ingreso`, `#pedido` o
 `ledger.md` es un derivado 100 % regenerable: nadie lo edita a mano.
 
 ```bash
-orbit log <proyecto> "<concepto>" [<pdf>] --entry ingreso --amount N [--tag PARTIDA] [--payee P]
-orbit log <proyecto> "<concepto>" <folla.pdf> --import --entry pedido --amount N [--id AUT]
-orbit log <proyecto> "<concepto>" <factura.pdf> --import --entry gasto --amount N [--id NFAC] [--pedido AUT]
+orbit log <proyecto> "<concepto>" [<pdf>] --entry ingreso --amount N --payee P [--tag PARTIDA]
+orbit log <proyecto> "<concepto>" <folla.pdf> --import --entry pedido --amount N --payee P [--id AUT]
+orbit log <proyecto> "<concepto>" <factura.pdf> --import --entry gasto --amount N --payee P [--id NFAC] [--pedido AUT]
 
 orbit ledger <proyecto>                          # regenera ledger.md + resumen en terminal
 orbit ledger <proyecto> --check [--strict]       # comprobación interna (no escribe)
@@ -582,6 +582,7 @@ orbit ls ledger [proyecto]                       # solo imprime (no toca el disc
   🏷️ viaje · 👤 Axencia Viaxes · 💶 -1.262,40 · 🆔 F-4471 · 🔗 CM26XXXX0001
 ```
 
+- **Beneficiario e importe, siempre** (`--payee`; en un ingreso, quién lo paga).
 - **El signo lo pone la tag**: `--amount` se teclea sin signo. Acepta `218,40` ·
   `4.000,00` · `218.40`; más de 2 decimales se rechaza. Aritmética en `Decimal`.
 - **Partida**: `--tag` solo en el primer movimiento del proyecto; los demás la
@@ -605,6 +606,18 @@ con su factura, o por gasto directo: Aut. · Factura · concepto con enlaces ·
 beneficiario · comprometido · gastado · estado · **USC**) y tabla de
 **dotación**. Se regenera al anotar y en cada `save`. Solo existe en proyectos
 con movimientos.
+
+**`ledger.json`**, al lado, con lo mismo en forma legible por máquina (una
+fila por movimiento: fecha, tipo, concepto, beneficiario, importe como texto
+decimal, 🆔, 🔗, estado, justificante y su ruta absoluta; versión del formato
+en `"version"`). Es la interfaz para herramientas de fuera de orbit, como la
+revisión contable frente a la USC: no leen el markdown.
+
+**Revisión contable con la USC** (herramienta aparte, no de orbit): toma
+`ledger.json`, los ficheros de la USC y la revisión anterior, y genera la
+revisión nueva con sus justificantes y los pendientes. El resultado se guarda
+en el logbook como cualquier documento:
+`log <proyecto> "Revisión USC 2026-09-29" revision.pdf --import`.
 
 **Comprobación** (`--check`, sin ficheros). No escribe nada.
 

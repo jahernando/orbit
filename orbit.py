@@ -349,6 +349,10 @@ def cmd_log(args):
             print("Error: falta el concepto → orbit log <proyecto> \"<concepto>\" "
                   f"--entry {args.entry} --amount N")
             return 1
+        if not payee:
+            print("Error: falta el beneficiario → --payee \"<nombre>\" "
+                  "(en un ingreso, quién lo paga)")
+            return 1
         if args.entry == ORDER_TAG and not op_id:
             op_id = next_order_id(known)       # se anuncia en el eco
         try:
@@ -1710,7 +1714,7 @@ def _build_parser():
     log_p.add_argument("--pedido", dest="order_ref", default=None, metavar="ID",
                        help="Ledger, #gasto: pedido (hoja) que cierra")
     log_p.add_argument("--payee", default=None, metavar="P",
-                       help="Ledger: beneficiario (pagador si es ingreso)")
+                       help="Ledger: beneficiario, obligatorio (pagador si es ingreso)")
     log_p.add_argument("--tag", default=None, metavar="PARTIDA",
                        help="Ledger: partida del movimiento. Ej: viaje, fungible")
     log_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",

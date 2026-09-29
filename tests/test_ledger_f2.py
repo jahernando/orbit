@@ -176,14 +176,14 @@ class TestLogCli:
 
     def test_pedido_y_factura(self, proj, capsys):
         assert _log("Dotación", "--entry", "ingreso", "--amount", "10.000",
-                    "--tag", "viaje") == 0
+                    "--tag", "viaje", "--payee", "Consellería") == 0
         assert _log("Folla vuelo", "--entry", "pedido", "--amount", "1.578,64",
                     "--payee", "Axencia") == 0
         assert "🆔 P01" in capsys.readouterr().out     # id asignado, anunciado
         assert _log("Folla tasa", "--entry", "pedido", "--amount", "300",
-                    "--id", "CM26XX0002") == 0
+                    "--id", "CM26XX0002", "--payee", "Congreso") == 0
         assert _log("Factura vuelo", "--entry", "gasto", "--amount", "1.580,10",
-                    "--id", "F-4471", "--pedido", "P01") == 0
+                    "--id", "F-4471", "--pedido", "P01", "--payee", "Axencia") == 0
         assert "cierra P01" in capsys.readouterr().out
 
         ops, problems = self._ops(proj)
@@ -192,15 +192,49 @@ class TestLogCli:
                                                    "CM26XX0002": OPEN}
 
     def test_ref_inexistente_no_escribe(self, proj, capsys):
-        _log("Folla", "--entry", "pedido", "--amount", "100", "--tag", "viaje")
+        _log("Folla", "--entry", "pedido", "--amount", "100", "--tag", "viaje",
+             "--payee", "X")
         antes = (proj / "logbook.md").read_text()
         assert _log("Fra", "--entry", "gasto", "--amount", "100",
-                    "--pedido", "P09") == 1
+                    "--pedido", "P09", "--payee", "X") == 1
         assert "no hay ningún pedido P09" in capsys.readouterr().out
         assert (proj / "logbook.md").read_text() == antes
 
     def test_id_repetido_no_escribe(self, proj):
         _log("Folla", "--entry", "pedido", "--amount", "100", "--tag", "viaje",
-             "--id", "P01")
+             "--id", "P01", "--payee", "X")
         assert _log("Otra", "--entry", "pedido", "--amount", "5",
-                    "--id", "P01") == 1
+                    "--id", "P01", "--payee", "X") == 1
+
+    def test_beneficiario_obligatorio(self, proj, capsys):
+        assert _log("Folla", "--entry", "pedido", "--amount", "100",
+                    "--tag", "viaje") == 1
+        assert "falta el beneficiario" in capsys.readouterr().out
+        assert "#pedido" not in (proj / "logbook.md").read_text()
+
+
+# ── ledger.json: el contrato con la revisión externa ─────────────────────────
+
+def test_ledger_json(proj):
+    import json
+    from views.ledger import LEDGER_JSON, write_ledger
+    folla = proj / "cloud" / "logs" / "2026-09-18_folla.pdf"
+    folla.parent.mkdir(parents=True)
+    folla.write_text("%PDF")
+    _movs(proj, "2026-08-06 💶 Dotación #ingreso\n  🏷️ p · 👤 Consellería · 💶 20.000,00\n\n"
+                "2026-09-18 💶 [Folla](./cloud/logs/2026-09-18_folla.pdf) #pedido\n"
+                "  🏷️ p · 👤 Axencia · 💶 -1.578,64 · 🆔 CM26XX0001\n\n"
+                "2026-10-02 💶 Fra #gasto\n  🏷️ p · 👤 Axencia · 💶 -1.580,10 · "
+                "🆔 F-1 · 🔗 CM26XX0001\n")
+    write_ledger(proj, force=True)
+    data = json.loads((proj / LEDGER_JSON).read_text())
+    assert data["version"] == 1 and data["partida"] == "p"
+    assert data["summary"]["available"] == "18419.90"
+    folla_row = data["movements"][1]
+    assert folla_row["type"] == "pedido" and folla_row["id"] == "CM26XX0001"
+    assert folla_row["amount"] == "-1578.64" and folla_row["state"] == "cerrado"
+    assert folla_row["justificante_path"] == str(folla.resolve())
+    assert data["movements"][2]["order"] == "CM26XX0001"
+    antes = (proj / LEDGER_JSON).stat().st_mtime_ns
+    write_ledger(proj)                            # sin cambios: no lo toca
+    assert (proj / LEDGER_JSON).stat().st_mtime_ns == antes

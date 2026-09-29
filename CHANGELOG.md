@@ -28,6 +28,9 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 - **`ledger <p> --export <dir>`**: `ledger.pdf`, `ledger.xlsx` y
   `justificantes/` (solo lo enlazado). Extra `ledger` (reportlab, openpyxl).
 - `archive` no parte una hoja de su factura.
+- **`ledger.json`** junto a `ledger.md` (derivado, sin fecha de generación):
+  interfaz para la revisión contable externa. **Beneficiario obligatorio** en
+  `log --entry ingreso|pedido|gasto`.
 - `log --ref` pasa a `--pedido`. Descartados tras probarlos (simplificación):
   `#anulacion`, `#conciliacion`, facturas parciales, moneda original (`💱`),
   emparejado aproximado y reescritura de números, y las comprobaciones

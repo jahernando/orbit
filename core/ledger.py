@@ -751,7 +751,7 @@ def interrogate_movement(project_dir: Path, tag: str, *,
     if not concept:
         concept = _ask_required("📝 Item")
     if not payee:
-        payee = _ask_line("👤 Beneficiario") or None
+        payee = _ask_required("👤 Beneficiario")
     if not amount:
         label = ("Importe estimado en EUR (sin signo)" if tag == ORDER_TAG
                  else "Importe (sin signo)")
