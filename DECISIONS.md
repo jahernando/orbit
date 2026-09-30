@@ -964,9 +964,39 @@ Tres fricciones reales:
 
 ---
 
+## ADR-054 — El ledger es un libro propio: `ledger.md` es la verdad, el logbook solo lleva el rastro
+
+**Estado**: aceptada (2026-09-29), pendiente de implementar. **Sustituye a ADR-048** y enmienda ADR-053 (§4 la cadena se lee del libro; §6 `--mark` pasa a `edit --confirm`; §8 `archive` deja de tocar el ledger). Diseño completo en la nota de trabajo `claude/notes/2026-09-29_diseno-ledger-libro-propio.md` del workspace.
+
+**Contexto**: ADR-048 hizo de cada movimiento una entrada del logbook, cuando un movimiento tenía tres campos. Desde entonces el movimiento tiene unos diez (tipo, fecha, categoría, beneficiario, importe, referencia, compromiso, cierre, validación, notas), una herramienta externa escribe en él (conciliación) y el usuario quiere entradas **numeradas** y un **periodo de validez** por partida. En el logbook el orden es por fecha, así que los números se rompen al anotar hacia atrás o al archivar; que un programa de fuera edite el diario es mala separación; y `archive`, al borrar entradas del logbook, obligó a inventar el `#arrastre`.
+
+**Decisión**:
+1. **`ledger.md` es la verdad**: cabecera (🏷️ partida, 📆 validez, obligatorias) + movimientos en gramática de items (ADR-046): `- 💶 NNNN título #tipo` y cuerpo `📅 · 🗂️ categoría · 👤 · 💶 · 🆔 · 🔗 N · 🔒`, `☑️ fecha · ID externo`, `🚫 fecha`, `📝 …`. Opcional por proyecto.
+2. **Numeración por orden de anotación**, 4 dígitos, por proyecto. Un número nunca se reutiliza, renumera ni borra: lo equivocado se **anula** (🚫) y deja de contar. `🔗` apunta al nº del compromiso; desaparecen las referencias provisionales `P01`.
+3. **Validez**: toda fecha debe caer en 📆; se rechaza al escribir (`--force`) y es error en `check`/`doctor`.
+4. **Categoría (🗂️)**, lista cerrada en `orbit.json`, obligatoria en compromiso y gasto. 🏷️ queda solo para la partida, en la cabecera.
+5. **El logbook recibe solo un rastro** (`💶 título · ledger N #tipo`), sin enlace ni importe: nada que pueda divergir. Lo escribe `ledger add` por defecto (`--no-log`).
+6. **Escritura desacoplada de `log`**: `ledger P add` (pregunta lo que falte), `edit N`, `close N`, `cancel N`, `init`, `check`. `edit` deja **una** nota automática `📝 fecha modificado: campo a → b …`; no cambia el tipo; sobre una entrada validada exige `--force` y le quita el ☑️.
+7. **Validar es cosa de fuera, vía CLI**: `ledger P edit N --confirm ID [--amount …]` pone `☑️ fecha · ID` (nota solo si cambia algo). Una entrada que solo existe en la fuente oficial: la herramienta imprime el `ledger P add …` relleno y no escribe.
+8. **Justificantes en `cloud/ledger-logs/`**, separados de `cloud/logs/` (que tiene documentos sensibles).
+9. **Derivados**: `ledger-summary.md` (resumen validado vs vivo, por categoría, compromisos abiertos, movimientos con acumulados) y `ledger.json` v2 (clave = nº). Verdad y resumen nunca en el mismo fichero.
+10. **Auditoría = git**: las ediciones a mano del md las recoge `orbit save`; la nota automática es comodidad, no el registro.
+
+**Descartado**: seguir en el logbook con más campos (gramática forzada, sin numeración estable); números por ejercicio (`2026-0012`; el ejercicio sale de la fecha); borrar entradas; que la herramienta externa edite el markdown o añada entradas sola; nota propia al confirmar (el ☑️ ya lleva fecha e ID); resumen dentro de `ledger.md`.
+
+**Consecuencias**:
+- Pros: entradas con la forma que necesitan; números estables y citables; la herramienta externa no toca el diario; `archive` se simplifica (fuera `#arrastre`); justificantes económicos aislados.
+- Contras: cuarto fichero-verdad (opcional); reescritura de lectura/escritura del ledger, `archive`, `doctor` y `ls ledger`; migración de los proyectos existentes (mover PDFs y reescribir enlaces); `ledger.json` cambia de versión y la spec de `usc-ledger` se ajusta.
+
+**Plan**: F1 libro nuevo en paralelo (si `ledger.md` tiene cabecera de libro, manda) → F2 `ledger migrate` (dry-run, PDFs, enlaces, rastro) → un día de uso → F3 retirada de lo viejo.
+
+**Verificación**: pendiente (`tests/test_ledger_book*.py`).
+
+---
+
 ## ADR-053 — El ledger es la cuenta del proyecto: ingresos, compromisos y gastos
 
-**Estado**: aceptada (2026-09-29). Amplía ADR-048.
+**Estado**: aceptada (2026-09-29). Amplía ADR-048. **Enmendada por ADR-054** (la verdad pasa a `ledger.md`; el modelo de cuenta se mantiene).
 
 **Contexto**: al preparar el ledger de un proyecto para compartirlo con la USC apareció que hojas de pedido y facturas estaban todas como `#gasto`: contar las dos es contar el dinero dos veces, y contar solo una esconde lo comprometido. En la misma sesión se probó a meter en orbit el vocabulario y la conciliación de la USC (folla, dietas, factura, autorización, lectura de sus ficheros); resultó demasiado complejo y demasiado específico. El usuario lo reformuló: el ledger de orbit tiene que ser una cuenta genérica, que sirva para la USC y para sus cuentas personales.
 
@@ -1102,7 +1132,7 @@ La forma obvia (un verbo `use <proyecto>` que cambia de contexto dentro del shel
 
 ## ADR-048 — El libro de caja vive en el logbook; `ledger.md` es un derivado
 
-**Estado**: aceptada (2026-07-28).
+**Estado**: **DEROGADA por ADR-054** (2026-09-29); aceptada el 2026-07-28. El código la sigue aplicando hasta la retirada (F3 de ADR-054).
 
 **Contexto**: los proyectos de gestión necesitan llevar ingresos y gastos (con su justificante en PDF) y saber el saldo. La forma obvia era un quinto fichero-verdad por proyecto con una tabla markdown editable a mano. Pero orbit acababa de converger sus tres ficheros-verdad a una gramática única de items (ADR-045/046), y una tabla-como-verdad significaba un segundo parser, un segundo doctor, una segunda ruta de migración y edición in-place de tablas. Además obligaba a duplicar la huella del movimiento en el logbook, con el riesgo de desincronización entre ambas copias.
 
