@@ -57,8 +57,8 @@ def _header_key(line: str) -> Optional[str]:
 
 def _ledger_protected(project_dir: Path, cutoff: date) -> set:
     """Cabeceras de operaciones con pedido que no se pueden archivar aún."""
-    from core.ledger import protected_headers, read_movements
-    movements, _ = read_movements(project_dir)
+    from core.ledger import protected_headers, read_logbook_movements
+    movements, _ = read_logbook_movements(project_dir)
     return protected_headers(movements, cutoff) if movements else set()
 
 
@@ -194,9 +194,11 @@ def _carry_preview(project_dir: Path, cutoff: date):
 
     Devuelve `(n_movimientos, neto_total, {partida: neto})`.
     """
-    from core.ledger import read_movements
+    from core.ledger import read_logbook_movements
 
-    movements, _ = read_movements(project_dir)
+    # Con libro propio (ADR-054) el logbook solo lleva rastros sin importe:
+    # no hay dinero que el corte se pueda llevar.
+    movements, _ = read_logbook_movements(project_dir)
     protected = _ledger_protected(project_dir, cutoff)
     # Solo lo que mueve caja entra en el arrastre; un pedido no es dinero.
     doomed = [m for m in movements

@@ -165,11 +165,95 @@ def _check_orphans(project_dir: Path, movements: List[Movement],
             and economic.search(_norm(f.name))]
 
 
+def _check_book(project_dir: Path, book, today: date, cfg: dict) -> List[Finding]:
+    """Hallazgos del libro propio (ADR-054)."""
+    from core.ledger_book import LEDGER_LOGS, categories, trail_nums
+
+    out = [Finding(WARNING if "el signo contradice" in p else ERROR, p)
+           for p in book.problems]
+    if not book.partida:
+        out.append(Finding(ERROR, "la cabecera no tiene partida (- 🏷️ Partida: X)"))
+    if not (book.valid_from and book.valid_to):
+        out.append(Finding(ERROR, "la cabecera no tiene validez "
+                                  "(- 📆 Validez: AAAA-MM-DD → AAAA-MM-DD)"))
+
+    seen = set()
+    for i, e in enumerate(book.entries, 1):
+        if e.num in seen:
+            out.append(Finding(ERROR, f"nº {e.num} repetido", f"ledger {e.num}"))
+        elif int(e.num) != i:
+            out.append(Finding(ERROR, f"numeración no correlativa: se esperaba "
+                                      f"{i:04d} y hay {e.num} (los números no se "
+                                      f"borran: se anulan)", f"ledger {e.num}"))
+        seen.add(e.num)
+
+    cats = categories()
+    by_num = {e.num: e for e in book.entries}
+    ids = {}
+    for e in book.live():
+        where = f"ledger {e.num} {e.title}"
+        if not e.payee:
+            out.append(Finding(ERROR, "sin beneficiario (👤)", where))
+        if e.tag != "ingreso" and not e.category:
+            out.append(Finding(ERROR, "sin categoría (🗂️)", where))
+        elif e.category and e.category not in cats:
+            out.append(Finding(ERROR, f"categoría «{e.category}» desconocida "
+                                      f"({', '.join(cats)})", where))
+        if e.date and not book.in_range(e.date):
+            out.append(Finding(ERROR, f"{e.date} fuera de la validez "
+                                      f"({book.valid_from} → {book.valid_to})", where))
+        if e.link:
+            path = _resolve_link(project_dir, e.link)
+            if path is not None and not path.exists():
+                out.append(Finding(ERROR, f"el justificante no existe: {e.link}", where))
+        if e.commit:
+            target = by_num.get(e.commit)
+            if target is None or target.tag != ORDER_TAG:
+                out.append(Finding(ERROR, f"🔗 {e.commit} no es un compromiso", where))
+            elif not target.live:
+                out.append(Finding(ERROR, f"🔗 {e.commit} está anulado", where))
+        if e.op_id and e.tag == EXPENSE_TAG:
+            if e.op_id in ids:
+                out.append(Finding(ERROR, f"la referencia {e.op_id} está también en "
+                                          f"la entrada {ids[e.op_id]}", where))
+            ids.setdefault(e.op_id, e.num)
+
+    movements = book.movements()
+    operations, op_problems = build_operations(movements)
+    out += [Finding(ERROR, p) for p in op_problems]
+    out += _check_open_orders(operations, today, cfg)
+
+    logs = project_dir / "cloud" / LEDGER_LOGS
+    if logs.is_dir():
+        linked = {p.name for p in (_resolve_link(project_dir, e.link)
+                                   for e in book.entries if e.link) if p is not None}
+        out += [Finding(WARNING, f"justificante sin entrada: cloud/{LEDGER_LOGS}/{f.name}")
+                for f in sorted(logs.iterdir())
+                if f.is_file() and not f.name.startswith(".") and f.name not in linked]
+    out += _check_orphans(project_dir, movements, cfg)
+
+    trails = set(trail_nums(project_dir))
+    missing = [e.num for e in book.live() if e.num not in trails]
+    if missing:
+        out.append(Finding(WARNING, f"sin rastro en el logbook: {', '.join(missing)}"))
+    unknown = sorted(n for n in trails if n not in by_num)
+    if unknown:
+        out.append(Finding(WARNING, f"rastro en el logbook sin entrada en el libro: "
+                                    f"{', '.join(unknown)}"))
+    return out
+
+
 def check_ledger(project_dir: Path, today: Optional[date] = None,
                  cfg: Optional[dict] = None) -> List[Finding]:
     """Todos los hallazgos del ledger de *project_dir*, errores primero."""
+    from core.ledger_book import read_book
+
     today = today or date.today()
     cfg = cfg or load_config()
+    book = read_book(project_dir)
+    if book is not None:
+        return sorted(_check_book(project_dir, book, today, cfg),
+                      key=lambda f: f.level != ERROR)
     movements, read_problems = read_movements(project_dir)
     if not movements and not read_problems:
         return []

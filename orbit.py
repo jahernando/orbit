@@ -147,7 +147,12 @@ def _handle_output(args, run_fn, cmd_label: str = "", open_file_path=None):
             _append_to_note(append_note, content, cmd_label)
         return 0
     else:
-        run_fn()
+        if cmd_label.startswith("ls"):
+            from core.termlink import linkified
+            with linkified(cmd_label):
+                run_fn()
+        else:
+            run_fn()
         return 0
 
 
@@ -327,6 +332,11 @@ def cmd_log(args):
     as_link = getattr(args, "link", False)
     local_link = None                      # PDF que ya está dentro del proyecto
     if args.entry == "ledger" or args.entry in LEDGER_TAGS:
+        from core.ledger_book import is_book
+        if is_book(project_dir):
+            print(f"⚠️  {project_dir.name} lleva libro de contabilidad (ledger.md): "
+                  f"anota con → orbit ledger {args.project} add")
+            return 1
         import sys as _sys
         from core.ledger import (LABEL_KIND, ORDER_TAG, USER_LABELS, Cancelled,
                                  ask_label, check_links, interrogate_commitment,
@@ -448,6 +458,29 @@ def cmd_log(args):
 
 
 def cmd_ledger(args):
+    from core.ledger_book import is_book
+    from core.log import find_project as _find
+
+    action = getattr(args, "action", None)
+    if action:
+        from views.ledger_book import run_book_action
+        for name in ("date", "valid_from", "valid_to"):
+            if getattr(args, name, None):
+                setattr(args, name, _d(getattr(args, name)))
+        return run_book_action(args)
+    # Flags de ADR-053 sobre un libro: se traducen a sus verbos.
+    project_dir = _find(args.project) if args.project else None
+    if project_dir and is_book(project_dir):
+        from views.ledger_book import run_book_action
+        if getattr(args, "close", None):
+            args.action, args.target = "close", args.close
+            return run_book_action(args)
+        if getattr(args, "mark", None):
+            args.action, args.target, args.confirm = "edit", args.mark[0], args.mark[1]
+            return run_book_action(args)
+        if getattr(args, "unmark", None):
+            args.action, args.target, args.unconfirm = "edit", args.unmark, True
+            return run_book_action(args)
     if getattr(args, "close", None):
         from views.ledger import run_ledger_close
         return run_ledger_close(args.project, args.close)
@@ -1953,6 +1986,50 @@ def _build_parser():
     ledger_p.add_argument("--export", default=None, metavar="DIR",
                           help="Genera ledger.pdf, ledger.xlsx y justificantes/ en DIR "
                                "(no exporta si hay errores)")
+    # Libro propio (ADR-054): ledger <proyecto> <acción> [N | PDF] [flags]
+    ledger_p.add_argument("action", nargs="?", default=None,
+                          choices=["init", "add", "edit", "close", "cancel", "check",
+                                   "migrate"],
+                          help="Libro de contabilidad: init · add [PDF] · edit N · "
+                               "close N · cancel N · check · migrate")
+    ledger_p.add_argument("target", nargs="?", default=None,
+                          help="add: justificante (PDF) · edit/close/cancel: nº de "
+                               "entrada o trozo del título/beneficiario (sin él, se elige "
+                               "de la lista)")
+    ledger_p.add_argument("file", nargs="?", default=None,
+                          help="edit: justificante nuevo (como --doc)")
+    ledger_p.add_argument("--partida", default=None, help="init: partida del libro")
+    ledger_p.add_argument("--from", dest="valid_from", default=None, metavar="DATE",
+                          help="init: inicio de la validez")
+    ledger_p.add_argument("--to", dest="valid_to", default=None, metavar="DATE",
+                          help="init: fin de la validez")
+    ledger_p.add_argument("--type", dest="mov_type", default=None,
+                          choices=["ingreso", "compromiso", "gasto"], help="add: tipo")
+    ledger_p.add_argument("--date", default=None, help="add/edit: fecha del movimiento")
+    ledger_p.add_argument("--title", default=None, help="add/edit: título (concepto)")
+    ledger_p.add_argument("--payee", default=None,
+                          help="add/edit: beneficiario (en un ingreso, quién paga)")
+    ledger_p.add_argument("--amount", default=None, help="add/edit: importe en € sin signo")
+    ledger_p.add_argument("--cat", default=None, help="add/edit: categoría (orbit.json)")
+    ledger_p.add_argument("--id", dest="op_id", default=None,
+                          help="add/edit: referencia del documento (factura, autorización…)")
+    ledger_p.add_argument("--commit", default=None, metavar="N",
+                          help="add (gasto): nº del compromiso que consume")
+    ledger_p.add_argument("--closes", action="store_true",
+                          help="add (gasto con --commit): cierra el compromiso")
+    ledger_p.add_argument("--nota", default=None, help="add/edit: nota")
+    ledger_p.add_argument("--doc", default=None, help="edit: justificante nuevo")
+    ledger_p.add_argument("--confirm", default=None, metavar="ID",
+                          help="edit: validada contra una fuente externa (☑️ hoy · ID)")
+    ledger_p.add_argument("--unconfirm", action="store_true", help="edit: quita el ☑️")
+    ledger_p.add_argument("--no-log", dest="no_log", action="store_true",
+                          help="add: sin rastro en el logbook")
+    ledger_p.add_argument("--cats", default=None, metavar="N=CAT,…",
+                          help="migrate: categoría de cada entrada (p. ej. 2=congresos,3=viajes)")
+    ledger_p.add_argument("--dry-run", dest="dry_run", action="store_true",
+                          help="migrate: enseña el plan sin tocar nada")
+    ledger_p.add_argument("--force", action="store_true",
+                          help="fecha fuera de validez, o corregir/anular una entrada confirmada")
 
     subparsers.add_parser("dash", help="Refresh dashboard: 📊panel/secretary/{agenda,projects,calendar,cronos,hitos,logbook,report-summary}.md + 📊panel/ring/rings.md")
 

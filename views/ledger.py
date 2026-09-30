@@ -110,7 +110,7 @@ def running_rows(movements: List[Movement], operations) -> List[Row]:
     committed, used, closed = {}, {}, set()
     rows = []
     for m in movements:
-        key = m.op_id
+        key = m.order_key
         if m.tag == ORDER_TAG:
             committed[key] = abs(m.amount)
             used.setdefault(key, Decimal("0.00"))
@@ -277,7 +277,15 @@ def write_ledger(project_dir: Path, force: bool = False) -> Optional[Path]:
     Si el fichero existe pero ya no hay movimientos, se reescribe vacío en vez
     de borrarlo — un derivado se regenera, no se elimina a espaldas del usuario.
     """
+    from core.ledger_book import read_book
     from views import autogen_banner
+
+    # Con libro propio (ADR-054) `ledger.md` es la verdad: lo derivado va a
+    # `ledger-summary.md` y `ledger.json`, y `ledger.md` no se toca.
+    book = read_book(project_dir)
+    if book is not None:
+        from views.ledger_book import write_book_views
+        return write_book_views(project_dir, book, force=force)
 
     movements, _ = read_movements(project_dir)
     path = project_dir / LEDGER_FILE
@@ -325,11 +333,22 @@ def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
     """
     from core.ledger import project_partida
 
+    from core.ledger_book import is_book, read_book
+
+    book = read_book(project_dir)
+    if book is not None:
+        from views.ledger_book import print_book
+        return print_book(project_dir, book, label=label)
+
     movements, problems = read_movements(project_dir)
     if not movements:
-        print(f"[{project_dir.name}] sin movimientos. "
-              f"Anota uno con: orbit log {label or project_dir.name} \"<concepto>\" "
-              f"--entry gasto --amount N --tag <partida>")
+        hint = (f"orbit ledger {label or project_dir.name} add"
+                if is_book(project_dir) else
+                f"orbit log {label or project_dir.name} \"<concepto>\" "
+                f"--entry gasto --amount N --tag <partida>")
+        print(f"[{project_dir.name}] sin movimientos. Anota uno con: {hint}")
+        for problem in problems:
+            print(f"  ⚠️  {problem}")
         return 0
 
     operations, op_problems = build_operations(movements)
@@ -348,7 +367,7 @@ def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
             continue
         extra = [x for x in (m.op_id, f"🔗 {m.ref}" if m.ref else None,
                              r.state, f"☑️ {m.usc}" if m.usc else None) if x]
-        print(f"  {m.date.isoformat()}  {_kind_label(m):<10} "
+        print(f"  {m.num + '  ' if m.num else ''}{m.date.isoformat()}  {_kind_label(m):<10} "
               f"{format_amount(m.amount, plus=True):>12}  "
               f"gastado {format_amount(r.spent):>10}  "
               f"disp. {format_amount(r.available):>10}  {m.concept}"
@@ -370,7 +389,13 @@ def run_ledger(project: str) -> int:
     if not project_dir:
         return 1
 
-    if read_movements(project_dir)[0]:
+    from core.ledger_book import is_book, link_in_project_md
+
+    if is_book(project_dir):
+        if link_in_project_md(project_dir):
+            print(f"  🔗 project.md enlaza ahora el ledger")
+        write_ledger(project_dir, force=True)
+    elif read_movements(project_dir)[0]:
         write_ledger(project_dir, force=True)
     return print_ledger(project_dir, label=project)
 

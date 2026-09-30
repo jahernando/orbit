@@ -550,6 +550,72 @@ orbit search "algo" --append catedra:busqueda        # resultados de búsqueda �
 
 ### Ledger — la cuenta del proyecto
 
+#### Libro de contabilidad propio (ADR-054, en paralelo hasta migrar)
+
+Si el proyecto tiene **libro** (`ledger.md` con cabecera de partida y
+validez), **él es la verdad**; si no, sigue valiendo lo de más abajo (los
+movimientos en el logbook). En un proyecto con libro, `log --entry gasto…` se
+rechaza.
+
+```bash
+orbit ledger <p> init --partida X --from D --to D   # crea ledger.md (proyecto sin movimientos)
+orbit ledger <p> add ["Título"] [PDF]               # en terminal pregunta lo que falte
+orbit ledger <p> add [PDF] --type ingreso|compromiso|gasto --title … --payee … \
+          --amount N --cat C [--date D] [--id REF] [--commit N [--closes]] \
+          [--nota …] [--no-log] [--force]
+orbit ledger <p> edit E [PDF] [--title --payee --cat --doc --amount --date --id --nota] [--force]
+orbit ledger <p> edit E --confirm ID [--amount …]   # ☑️ hoy · ID (herramienta externa)
+orbit ledger <p> edit E --unconfirm
+orbit ledger <p> close E                            # cierra un compromiso a mano (🔒)
+orbit ledger <p> cancel E [--force]                 # anula (🚫): se queda y no cuenta
+# E = nº de entrada o un trozo del título / beneficiario / referencia; sin E
+#     (o si coinciden varias) te enseña la lista y eliges. --title es el título NUEVO.
+orbit ledger <p> edit ginebra factura.pdf           # cambia el justificante de «…Ginebra…»
+orbit ledger <p> check [--strict]
+orbit ledger <p> migrate --from D --to D [--partida X] [--cats 2=viajes,3=congresos…] \
+          [--dry-run] [--force]                     # logbook → libro (una vez por proyecto)
+```
+
+**`migrate`** pasa los movimientos del logbook de ese proyecto al libro:
+numera por fecha, `🔗 P01` → `🔗 <nº>` (las referencias provisionales
+desaparecen), mueve los PDF de `cloud/logs/` a `cloud/ledger-logs/` y
+reescribe los enlaces que apuntaban a ellos en el resto del proyecto
+(logbook, highlights, notes…), y sustituye cada entrada del logbook por su
+rastro. En terminal pregunta la categoría que falte; sin terminal, `--cats`.
+Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
+
+```markdown
+- 💶 0006 [Vuelo Ginebra](./cloud/ledger-logs/2026-09-18_billete.pdf) #compromiso
+  📅 2026-09-18 · 🗂️ viajes · 👤 Viajes Ejemplo, S.L. · 💶 -1.250,00 · 🆔 CM26XXXX0001
+  ☑️ 2026-11-03 · 2026/000123
+  📝 2026-10-05 modificado: 👤 Viajes Ejemplo → Viajes Ejemplo, S.L.
+```
+
+- **Números** por orden de anotación: no se reutilizan, renumeran ni borran
+  (lo equivocado se **anula**). `🔗` apunta al **nº** del compromiso.
+- **Obligatorio**: tipo, fecha (dentro de la validez; `--force` si no),
+  título, beneficiario, importe y, salvo en ingresos, **categoría** (lista
+  cerrada en `orbit.json` → `ledger.categories`; por defecto viajes ·
+  congresos · personal · fungible · inventariable).
+- **Justificantes** a `cloud/ledger-logs/` (con fecha).
+- **Rastro en el logbook**: `💶 título · ledger N #tipo`, sin enlace ni
+  importe (`--no-log` lo omite; `edit --title/--date` lo actualiza).
+- **`edit`** deja una nota `📝 fecha modificado: campo a → b`; no cambia el
+  tipo (se anula y se anota otra). Una entrada **confirmada** solo se corrige
+  con `--force`, y pierde el ☑️. `--confirm` sin cambios no deja nota.
+- **Derivados**: `ledger-summary.md` (validado ☑️ frente a vivo, por
+  categoría, compromisos abiertos, movimientos con acumulados) y `ledger.json`
+  v2 (clave = nº). `ledger.md` no se regenera nunca.
+- **`ls ledger [p]`** lista el libro: nº, fecha, tipo, categoría, importe,
+  disponible acumulado, ☑️/🚫, y el resumen validado frente a vivo con el
+  total por categoría. Solo lee.
+- **`project.md`** enlaza el libro en su pie (`[ledger] ([resumen])`): lo añade
+  `init`/`migrate`, y `orbit ledger <p>` en proyectos ya migrados.
+- `--mark N ID` / `--unmark N` / `--close N` siguen valiendo sobre un libro
+  (se traducen a `edit --confirm` / `--unconfirm` / `close`).
+
+#### Movimientos en el logbook (ADR-048/053, hasta migrar)
+
 Una cuenta por proyecto, con tres tipos de movimiento: **`#ingreso`** (entra
 dinero), **`#compromiso`** (lo reservas: una hoja de pedido, una reserva…) y
 **`#gasto`** (sale). Cada movimiento es una entrada de logbook; `ledger.md` y
@@ -765,6 +831,10 @@ orbit ls notes    [project]    # notas con estado git
 - `ls log` lista las cabeceras de entrada del logbook; `ls <proyecto>` hace lo mismo (forma antigua)
 - `ls ledger` **no regenera** `ledger.md` — para eso está `orbit ledger <proyecto>`
 - Sin proyecto, `ls hl/log/ledger/files/notes` barren el workspace entero
+- **Enlaces clicables**: en una terminal que los entiende (iTerm2, WezTerm, kitty, VS Code…)
+  cada `[texto](enlace)`, la cabecera `[proyecto]`, los ficheros de `ls files/notes` y los
+  proyectos de `ls projects` salen como `texto ↗`: ⌘-clic o ctrl-clic (según iTerm2) abre el fichero o la web. Con
+  `--open`/`--log`/`--append`, una tubería o `ORBIT_NO_LINKS=1`, sale el markdown de siempre
 - `--unplanned`: solo tareas sin fecha asignada (futuribles)
 - `--someday`: solo tareas sin fecha (reposo) — equivalente a `--unplanned` tras F5
 - `--no-fed`: excluye proyectos federados del listado

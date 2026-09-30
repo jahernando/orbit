@@ -10,6 +10,26 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — ledger: libro de contabilidad propio (F1) · ADR-054
+
+- **`ledger.md` pasa a ser la verdad** cuando tiene cabecera de libro
+  (🏷️ partida + 📆 validez): movimientos numerados, `🗂️` categoría, `☑️ fecha
+  · ID`, `🚫` anulada, `📝` notas. Sin libro, todo sigue como en ADR-053.
+- Verbos: `ledger <p> init | add [PDF] | edit N | close N | cancel N | check`.
+  `add` pregunta lo que falte; `edit` deja nota automática y exige `--force`
+  sobre una entrada confirmada (le quita el ☑️); `--confirm ID` para
+  herramientas externas.
+- Rastro en el logbook (`💶 título · ledger N #tipo`), justificantes en
+  `cloud/ledger-logs/`, derivados `ledger-summary.md` + `ledger.json` v2.
+- `check`/`doctor`: numeración, validez, categoría, beneficiario, `🔗`,
+  justificantes; avisos de rastro y de PDFs sin entrada.
+- `read_movements` despacha al libro; `archive` ya no ofrece arrastre si hay
+  libro.
+- **F2 — `ledger <p> migrate --from D --to D [--cats …] [--dry-run]`**:
+  logbook → libro (numeración por fecha, `🔗` a nº, PDFs a `ledger-logs/` con
+  enlaces reescritos en todo el proyecto, rastro en el logbook).
+  Pendiente: F3 (retirar lo de ADR-048/053).
+
 ### Unreleased — ledger: la cuenta del proyecto (ingresos, compromisos, gastos) · ADR-053
 
 - **Tres tipos**: `#ingreso`, `#compromiso` (reserva dinero; referencia `🆔`,

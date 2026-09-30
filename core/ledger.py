@@ -336,12 +336,23 @@ class Movement:
     closes:  bool = False           # 🔒: cierra el compromiso
     note:    Optional[str] = None   # 📝
     raw:     str = ""
+    # Solo en el libro propio (ADR-054, core/ledger_book.py):
+    num:          Optional[str] = None   # nº de entrada
+    category:     Optional[str] = None   # 🗂️
+    confirmed_on: Optional[str] = None   # fecha del ☑️
+
+    @property
+    def order_key(self) -> Optional[str]:
+        """Con qué se enlaza un compromiso: su nº en el libro; su 🆔 en el logbook."""
+        return self.num or self.op_id
 
     @property
     def key(self) -> str:
         """Clave con la que una herramienta de fuera (la conciliación) señala
-        esta entrada: `fecha:etiqueta:nº` o, sin nº, un hash del concepto.
-        Solo tiene que valer entre leer `ledger.json` y marcar."""
+        esta entrada: en el libro, su nº; en el logbook, `fecha:etiqueta:nº`
+        o, sin nº, un hash del concepto."""
+        if self.num:
+            return self.num
         import hashlib
         tail = self.op_id or hashlib.sha1(self.concept.encode()).hexdigest()[:8]
         return f"{self.date.isoformat()}:{self.label or self.tag}:{tail}"
@@ -481,6 +492,20 @@ def scan_text(text: str) -> Tuple[List[Movement], List[str]]:
 
 
 def read_movements(project_dir: Path) -> Tuple[List[Movement], List[str]]:
+    """Movimientos del proyecto, ordenados para el saldo corrido.
+
+    Si el proyecto tiene libro (`ledger.md` como verdad, ADR-054), salen de
+    él —solo los vivos, sin anulados—; si no, del logbook (ADR-048/053).
+    """
+    from core.ledger_book import read_book
+
+    book = read_book(project_dir)
+    if book is not None:
+        return book.movements(), list(book.problems)
+    return read_logbook_movements(project_dir)
+
+
+def read_logbook_movements(project_dir: Path) -> Tuple[List[Movement], List[str]]:
     """Movimientos del logbook de un proyecto, ordenados para el saldo corrido.
 
     Orden: fecha ascendente y, **en empate, `#arrastre` primero** — el saldo
@@ -555,18 +580,19 @@ def build_operations(movements: List[Movement]
     for m in movements:
         if m.tag != ORDER_TAG:
             continue
+        key = m.order_key
         op = Operation(date=m.date, concept=m.concept,
                        state=CLOSED if m.closes else OPEN,
-                       op_id=m.op_id, payee=m.payee, link=m.link,
+                       op_id=key, payee=m.payee, link=m.link,
                        committed=abs(m.amount), entries=[m])
         ops.append(op)
-        if not m.op_id:
+        if not key:
             continue
-        if m.op_id in orders:
-            problems.append(f"{m.date.isoformat()} {m.concept}: id {m.op_id} "
-                            f"repetido (ya lo usa «{orders[m.op_id].concept}»)")
+        if key in orders:
+            problems.append(f"{m.date.isoformat()} {m.concept}: id {key} "
+                            f"repetido (ya lo usa «{orders[key].concept}»)")
             continue
-        orders[m.op_id] = op
+        orders[key] = op
 
     for m in movements:
         if m.tag == EXPENSE_TAG:
@@ -789,6 +815,11 @@ def project_partida(project_dir: Path) -> Optional[str]:
     primera que aparezca es la del proyecto. Si algún día hay varias, esta
     función es el único punto que hay que abrir.
     """
+    from core.ledger_book import read_book
+
+    book = read_book(project_dir)
+    if book is not None:
+        return book.partida
     movements, _ = read_movements(project_dir)
     return next((m.partida for m in movements if m.partida), None)
 
