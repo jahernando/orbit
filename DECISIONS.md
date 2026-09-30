@@ -964,6 +964,28 @@ Tres fricciones reales:
 
 ---
 
+## ADR-055 — El cronograma es un atributo de una tarea o un hito
+
+**Estado**: aceptada (2026-09-30). F1 implementada; F2–F4 pendientes. Diseño en `claude/notes/2026-09-30_crono_como_atributo.md` (workspace).
+
+**Contexto**: el cronograma era una entidad aparte: `crono add`, un `deadline:` que nombraba un hito por subcadena del título (frágil: renombrar el hito lo rompía; `Entrega` casaba con varios), bloque propio en `day`/`organize` y visor `cronos.md`. La decisión de 2026-05 ("cronograma = tarea compuesta") nunca llegó a la agenda.
+
+**Decisión**:
+
+1. **El item enlaza su crono** al final de la cabecera: `- [ ] ✏️ título #tarea [📊](cronos/crono-x.md)`. Al final y no al principio: tras el checkbox va el emoji-tipo. Solo tareas e hitos, no recurrentes; un crono ↔ un item abierto.
+2. **La fecha límite es la del item**; el `deadline:` del fichero se vuelve redundante.
+3. **El porcentaje se calcula al mostrar**, nunca se escribe en `agenda.md` (cada paso hecho ensuciaría git).
+4. **El cierre es del usuario**: al 100% la vista lo señala (`📊 ✓ 100%`), nada se cierra solo.
+5. Fases: F1 `--crono` + % en vistas (aditiva) · F2 pasos activos sangrados bajo su item en `day`/`organize` + verbos `task/ms crono …` por título · F3 el triaje no quita la fecha a un item con crono (excepción a ADR-052) + doctor · F4 retirar `crono add/list/done`, `deadline:`, bloque 📊 y `cronos.md` (destructiva, tras vivirlo).
+
+**Consecuencias**:
+- Pros: fecha en un solo sitio; enlace estable ante renombrados; el crono se ve donde se decide (la fila del item).
+- Contras: durante F1–F3 conviven dos formas (enlace y `deadline:`); un crono enlazado y con `deadline:` propio puede discrepar hasta F4.
+
+**Verificación**: `tests/test_crono_item.py`.
+
+---
+
 ## ADR-054 — El ledger es un libro propio: `ledger.md` es la verdad, el logbook solo lleva el rastro
 
 **Estado**: aceptada (2026-09-29), pendiente de implementar. **Sustituye a ADR-048** y enmienda ADR-053 (§4 la cadena se lee del libro; §6 `--mark` pasa a `edit --confirm`; §8 `archive` deja de tocar el ledger). Diseño completo en la nota de trabajo `claude/notes/2026-09-29_diseno-ledger-libro-propio.md` del workspace.
