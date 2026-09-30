@@ -127,6 +127,14 @@ orbit task edit <p> "Informe final" --crono none                      # desasoci
   `📊 37% (3/8)` o `[📊 37%](…)`; nunca se escribe
   en `agenda.md`. `📊 ✓ 100%` = listo para cerrar (lo cierras tú); `📊 ?` =
   fichero no encontrado.
+- `NAME` que no existe tal cual se busca por coincidencia parcial única entre
+  los cronos del proyecto (`--crono hk` adopta `crono-hk-general.md`).
+- Sus pasos activos o vencidos salen bajo el item en `day`/`organize` y en la
+  celda del item en el panel del secretario (`<br>↳ …`); un paso así hace
+  aflorar el item en *Hoy*.
+- La fecha del item es el plazo del crono: el `⏩` del triaje no la quita y
+  `--fup none` se rechaza.
+- Al calendario (`.ics`) va solo el item; los pasos del crono enlazado no.
 
 ### Títulos únicos por agenda
 
@@ -992,9 +1000,14 @@ como marca en la fila (`❗⏩09-01`, `(+N)` si tiene más). **No salen** los
 recordatorios, ni las tareas sin fecha y sin `⏩` vencido, ni los proyectos
 federados (se leen, no se editan).
 
-Debajo, **📊 Cronogramas (solo lectura, sin número)**: los pasos activos hoy o
-vencidos. Un paso sin fecha propia no cuenta: su fecha es la de hoy por defecto
-y saldría todos los días.
+**Tarea / hito con crono**: sus pasos activos hoy o vencidos salen sangrados
+bajo la fila (`↳ 1.2 Redactar intro · ⚠️ vencido 09-28`). Un paso así hace
+aflorar el item aunque su fecha quede lejos (en ⚠️ Vencidas si algún paso venció,
+si no en Hoy). Un paso sin fecha propia no cuenta: su fecha es la de hoy por
+defecto y saldría todos los días.
+
+Debajo, **📊 Cronogramas (solo lectura, sin número)**: los cronos **sin item**
+(los de `crono add`), con sus pasos activos hoy o vencidos.
 
 Eliges un número y una acción (mismo menú que `organize`):
 
@@ -1002,7 +1015,7 @@ Eliges un número y una acción (mismo menú que `organize`):
 |---|---|
 | `h` | hora (`HH:MM` o `HH:MM-HH:MM`); si la cita no es de hoy, pide fecha (Enter = hoy) |
 | `f` | fecha (`mañana`, `viernes`, `+3`, `YYYY-MM-DD`) |
-| `u` | followup: `fecha [descripción]`, Enter = mañana, `none` = sin fecha. Si la cita tenía `⏩` vencidos, los **mueve** a esa fecha (conservando su descripción); si no, añade uno. En tareas e hitos no recurrentes, además **quita la fecha y la hora**: el `⏩` es cuándo volver a decidir. `none` la deja sin fecha y sin `⏩` |
+| `u` | followup: `fecha [descripción]`, Enter = mañana, `none` = sin fecha. Si la cita tenía `⏩` vencidos, los **mueve** a esa fecha (conservando su descripción); si no, añade uno. En tareas e hitos no recurrentes, además **quita la fecha y la hora**: el `⏩` es cuándo volver a decidir (salvo si tienen crono: su fecha es el plazo y se conserva). `none` la deja sin fecha y sin `⏩` (rechazado con crono) |
 | `c` | borra un `⏩` (si hay varios, pregunta cuál) |
 | `n` | done (tareas e hitos) |
 | `d` | drop, con confirmación (defecto No) |
@@ -1039,8 +1052,9 @@ fecha**. A diferencia de `day`:
 - **Próximas**: citas con fecha futura (y series recurrentes vivas).
 - **Sin fecha**: tareas e hitos en reposo (hitos primero).
 - Los `⏩` futuros también se ven en la fila.
-- **📊 Cronogramas**: todos los abiertos, con barra de progreso y deadline, más
-  sus pasos activos o vencidos. Solo lectura.
+- **📊 Cronogramas**: todos los abiertos **sin item**, con barra de progreso y
+  deadline, más sus pasos activos o vencidos. Solo lectura. Los que cuelgan de
+  una tarea / hito salen bajo su fila, como en `day`.
 
 `organize` sin proyecto en el panel general no hace nada y remite a `day`.
 

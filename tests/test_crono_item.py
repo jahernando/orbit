@@ -231,3 +231,129 @@ class TestMark:
         lk.line(f"[{ws.name}]")
         out = lk.line("  [ ] T [📊 50%](./cronos/crono-a.md)")
         assert "\033]8;;file://" in out and "crono-a.md" in out
+
+
+# ── F2: pasos bajo su item ──────────────────────────────────────────────────
+
+def _write_dated_crono(proj, rel, steps):
+    """steps: [(done, título, inicio ISO, duración)]."""
+    path = proj / rel
+    path.parent.mkdir(exist_ok=True)
+    lines = ["# Cronograma: c", ""]
+    for i, (done, title, start, dur) in enumerate(steps, 1):
+        lines.append(f"- [{'x' if done else ' '}] {i} {title} | {start} | {dur}")
+    path.write_text("\n".join(lines) + "\n")
+
+
+class TestSteps:
+
+    def test_partial_name_adopts_existing(self, ws, capsys):
+        from core.agenda_cmds import run_task_add
+        _write_crono(ws, "cronos/crono-hk-general.md", 0, 1)
+        assert run_task_add(ws.name, "HK", crono="hk") == 0
+        assert _read(ws)["tasks"][-1]["crono"] == "cronos/crono-hk-general.md"
+        assert not (ws / "cronos/crono-hk.md").exists()
+        assert "enlazado a crono existente" in capsys.readouterr().out
+
+    def test_day_surfaces_item_by_overdue_step(self, ws):
+        _write_dated_crono(ws, "cronos/crono-a.md", [
+            (False, "Intro", _d(-10), "3d"),         # vencido
+            (False, "Figuras", _d(-1), "5d"),        # activo hoy
+            (False, "Final", _d(20), "3d")])         # futuro
+        _seed(ws, tasks=[_task(desc="Informe", date=_d(40),
+                               crono="cronos/crono-a.md")])
+        sections = T.collect([ws], TODAY, full=False)
+        (row,) = sections[T.VENCIDAS]
+        assert [s["title"] for s in row.steps] == ["Intro", "Figuras"]
+        text = "\n".join(T.format_listing("t", sections, TODAY, False))
+        assert "↳ 1 Intro · ⚠️ vencido" in text
+        assert "↳ 2 Figuras · hasta" in text
+        assert "Final" not in text
+
+    def test_active_step_goes_to_hoy(self, ws):
+        _write_dated_crono(ws, "cronos/crono-a.md", [(False, "Figuras", _d(-1), "5d")])
+        _seed(ws, milestones=[_task(desc="Entrega", date=_d(40),
+                                    crono="cronos/crono-a.md")])
+        sections = T.collect([ws], TODAY, full=False)
+        assert [r.item["desc"] for r in sections[T.HOY]] == ["Entrega"]
+
+    def test_no_steps_no_surface(self, ws):
+        _write_dated_crono(ws, "cronos/crono-a.md", [(False, "Final", _d(20), "3d")])
+        _seed(ws, tasks=[_task(desc="Informe", date=_d(40), crono="cronos/crono-a.md")])
+        sections = T.collect([ws], TODAY, full=False)
+        assert not any(sections.values())
+
+    def test_linked_crono_leaves_separate_block(self, ws):
+        _write_dated_crono(ws, "cronos/crono-a.md", [(False, "X", _d(-3), "1d")])
+        _write_dated_crono(ws, "cronos/crono-libre.md", [(False, "Y", _d(-3), "1d")])
+        _seed(ws, tasks=[_task(desc="Informe", crono="cronos/crono-a.md")])
+        names = [c.name for c in T.collect_cronos([ws], TODAY, full=True)]
+        assert names == ["c"] and len(names) == 1   # solo el libre
+        assert (ws / "cronos/crono-libre.md").exists()
+
+    def test_ics_skips_linked_crono(self, ws):
+        from views.cal.ics import _collect_project_items
+        _write_dated_crono(ws, "cronos/crono-a.md", [(False, "X", _d(3), "1d")])
+        _write_dated_crono(ws, "cronos/crono-libre.md", [(False, "Y", _d(3), "1d")])
+        _seed(ws, tasks=[_task(desc="Informe", date=_d(9), crono="cronos/crono-a.md")])
+        items = _collect_project_items(ws)
+        descs = [it["desc"] for kind, it in items]
+        assert "Informe" in descs
+        assert any(d.startswith("crono-libre:") for d in descs)
+        assert not any(d.startswith("crono-a:") for d in descs)
+
+    def test_secretary_today_block(self, ws):
+        from views.secretary import agenda as A
+        _write_dated_crono(ws, "cronos/crono-a.md", [(False, "Intro", _d(-10), "3d")])
+        _seed(ws, tasks=[_task(desc="Informe", date=_d(40), crono="cronos/crono-a.md")])
+        crono = {A._crono_key(ws, "tasks", _read(ws)["tasks"][0]):
+                 (ws, "tasks", _read(ws)["tasks"][0],
+                  [{"index": "1", "title": "Intro", "start": None,
+                    "end": TODAY.fromisoformat(_d(-8))}])}
+        rows = A._today_block([], [], (), crono=crono, today=TODAY)
+        row = rows[-1]
+        assert row.startswith("| ☐ | ⚠️ |")
+        assert "Informe [📊 0%](" in row
+        assert "<br>↳ 1 Intro · ⚠️ vencido" in row
+
+    def test_secretary_steps_hang_once_on_existing_row(self, ws):
+        from views.secretary import agenda as A
+        _seed(ws, tasks=[_task(desc="Informe", date=_d(-1), crono="cronos/crono-a.md")])
+        t = _read(ws)["tasks"][0]
+        step = {"index": "1", "title": "Intro", "start": None,
+                "end": TODAY.fromisoformat(_d(-8))}
+        crono = {A._crono_key(ws, "tasks", t): (ws, "tasks", t, [step])}
+        rows = A._today_block([], [(ws, t)], (), crono=crono, today=TODAY)
+        body = "\n".join(rows)
+        assert body.count("↳ 1 Intro") == 1
+        assert len(rows) == 2          # cabecera + fila vencida, sin fila extra
+
+
+# ── F3 (parte): la fecha de un item con crono es su plazo ──────────────────
+
+class TestKeepsDate:
+
+    def test_triage_fup_keeps_date(self, ws, monkeypatch):
+        from tests.test_triage import _feed
+        _seed(ws, tasks=[_task(desc="X", date=ISO, crono="cronos/crono-a.md")])
+        _feed(monkeypatch, _d(3))
+        row = T.Row("task", ws, _read(ws)["tasks"][-1], T.HOY)
+        assert T._act_fup(row, TODAY)
+        it = _read(ws)["tasks"][-1]
+        assert it["date"] == ISO
+        assert f"⏩ {_d(3)}" in it["notes"]
+
+    def test_triage_fup_none_refused(self, ws, monkeypatch, capsys):
+        from tests.test_triage import _feed
+        _seed(ws, tasks=[_task(desc="X", date=ISO, crono="cronos/crono-a.md")])
+        _feed(monkeypatch, "none")
+        row = T.Row("task", ws, _read(ws)["tasks"][-1], T.HOY)
+        assert not T._act_fup(row, TODAY)
+        assert _read(ws)["tasks"][-1]["date"] == ISO
+        assert "plazo de su crono" in capsys.readouterr().out
+
+    def test_edit_fup_none_refused(self, ws, capsys):
+        from core.agenda_cmds import run_ms_edit
+        _seed(ws, milestones=[_task(desc="E", date=ISO, crono="cronos/crono-a.md")])
+        assert run_ms_edit(ws.name, "E", fup="none") == 1
+        assert _read(ws)["milestones"][-1]["date"] == ISO

@@ -966,7 +966,7 @@ Tres fricciones reales:
 
 ## ADR-055 — El cronograma es un atributo de una tarea o un hito
 
-**Estado**: aceptada (2026-09-30). F1 implementada; F2–F4 pendientes. Diseño en `claude/notes/2026-09-30_crono_como_atributo.md` (workspace).
+**Estado**: aceptada (2026-09-30). F1, F2 y el triaje de F3 implementados; pendientes los verbos `task/ms crono …`, el doctor y F4. Diseño en `claude/notes/2026-09-30_crono_como_atributo.md` (workspace).
 
 **Contexto**: el cronograma era una entidad aparte: `crono add`, un `deadline:` que nombraba un hito por subcadena del título (frágil: renombrar el hito lo rompía; `Entrega` casaba con varios), bloque propio en `day`/`organize` y visor `cronos.md`. La decisión de 2026-05 ("cronograma = tarea compuesta") nunca llegó a la agenda.
 
@@ -976,7 +976,8 @@ Tres fricciones reales:
 2. **La fecha límite es la del item**; el `deadline:` del fichero se vuelve redundante.
 3. **El porcentaje se calcula al mostrar**, nunca se escribe en `agenda.md` (cada paso hecho ensuciaría git).
 4. **El cierre es del usuario**: al 100% la vista lo señala (`📊 ✓ 100%`), nada se cierra solo.
-5. Fases: F1 `--crono` + % en vistas (aditiva) · F2 pasos activos sangrados bajo su item en `day`/`organize` + verbos `task/ms crono …` por título · F3 el triaje no quita la fecha a un item con crono (excepción a ADR-052) + doctor · F4 retirar `crono add/list/done`, `deadline:`, bloque 📊 y `cronos.md` (destructiva, tras vivirlo).
+5. **Al calendario va solo el item**: los pasos de un crono enlazado no se exportan al `.ics` (por ahora).
+6. Fases: F1 `--crono` + % en vistas (aditiva) · F2 pasos activos sangrados bajo su item en `day`/`organize` + verbos `task/ms crono …` por título · F3 el triaje no quita la fecha a un item con crono (excepción a ADR-052) + doctor · F4 retirar `crono add/list/done`, `deadline:`, bloque 📊 y `cronos.md` (destructiva, tras vivirlo).
 
 **Consecuencias**:
 - Pros: fecha en un solo sitio; enlace estable ante renombrados; el crono se ve donde se decide (la fila del item).

@@ -10,7 +10,17 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
-### Unreleased — crono como atributo de tarea / hito (F1) · ADR-055
+### Unreleased — crono como atributo de tarea / hito (F1–F2 + triaje de F3) · ADR-055
+
+- **F2 — pasos bajo su item**: en `day`/`organize` los pasos activos hoy o
+  vencidos salen sangrados (`↳`) bajo la tarea / hito; un paso así hace
+  aflorar el item (⚠️ Vencidas o Hoy). En el panel del secretario van en la
+  misma celda (`<br>↳ …`) y el item entra en *Hoy*. El bloque 📊 Cronogramas
+  queda solo para cronos sin item.
+- `.ics`: un crono enlazado ya no se exporta; al calendario va solo el item.
+- `--crono NOMBRE` adopta por coincidencia parcial única un crono existente.
+- **F3 (triaje)**: un item con crono conserva su fecha con el `⏩` del
+  triaje; `none` / `--fup none` se rechazan (excepción a ADR-052).
 
 - **`--crono [NOMBRE]`** en `task add/edit` y `ms add/edit`: el item enlaza su
   cronograma al final de la cabecera (`[📊](cronos/crono-x.md)`); crea el

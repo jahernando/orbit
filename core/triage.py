@@ -26,7 +26,6 @@ laterales, ADR-043).
 
 from __future__ import annotations
 
-import copy
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -37,6 +36,7 @@ from core.agenda.display import (item_followups, add_followup,
                                  drop_followup, drop_followup_at,
                                  format_item_block)
 from core.config import iter_project_dirs
+from core.cronograma import item_steps, step_label
 from core.dateparse import parse_date as _parse_date
 from core.log import resolve_file
 from core.project import _is_new_project, _find_new_project
@@ -63,8 +63,6 @@ SECTION_TITLE = {
     PROXIMAS: "Próximas", SIN_FECHA: "Sin fecha",
 }
 
-_PROBE_SHIFT = timedelta(days=397)   # "otro hoy" para detectar fechas flotantes
-
 _DAY_NAMES = ["lunes", "martes", "miércoles", "jueves", "viernes",
               "sábado", "domingo"]
 
@@ -75,6 +73,7 @@ class Row:
     project_dir: Path
     item: dict
     section: str
+    steps: list = field(default_factory=list)   # pasos del crono (ADR-055)
 
 
 @dataclass
@@ -226,8 +225,16 @@ def collect(dirs: list, today: date, full: bool) -> dict:
         for kind, key in _SECTION_OF.items():
             for item in data.get(key) or []:
                 section = classify(item, kind, today, full)
+                steps = []
+                if item.get("crono") and _is_open(item, kind):
+                    steps = item_steps(project_dir, item, today)
+                    # Un paso activo o vencido hace aflorar su item.
+                    if steps and section is None:
+                        overdue = any(st["end"] < today for st in steps)
+                        section = VENCIDAS if overdue else HOY
                 if section:
-                    out[section].append(Row(kind, project_dir, item, section))
+                    out[section].append(Row(kind, project_dir, item, section,
+                                            steps))
     for section, rows in out.items():
         rows.sort(key=lambda r: _sort_key(r, today))
     return out
@@ -239,52 +246,36 @@ def number_rows(sections: dict) -> list:
 
 
 def collect_cronos(dirs: list, today: date, full: bool) -> list:
-    """Cronogramas abiertos con sus pasos activos hoy o vencidos.
+    """Cronogramas abiertos **sin item** con sus pasos activos hoy o vencidos.
 
-    En modo día solo entran los que tienen algún paso así; en modo
-    proyecto, todos los abiertos (para ver su progreso).
+    Los cronos enlazados por una tarea / hito abierto (ADR-055) no salen
+    aquí: sus pasos van sangrados bajo su item. En modo día solo entran los
+    que tienen algún paso así; en modo proyecto, todos los abiertos.
     """
-    from core.cronograma import (_parse_crono_file, _compute_dates,
-                                 _parent_indices, _is_leaf, _leaf_deadline,
-                                 _resolve_deadline)
+    from core.cronograma import (_parse_crono_file, _resolve_deadline,
+                                 active_steps, linked_cronos)
     out = []
     for project_dir in dirs:
         cronos_dir = project_dir / "cronos"
         if not cronos_dir.exists():
             continue
+        agenda = resolve_file(project_dir, "agenda")
+        linked = linked_cronos(_read_agenda(agenda)) if agenda.exists() else set()
         for f in sorted(cronos_dir.glob("crono-*.md")):
+            if f"cronos/{f.name}" in linked:
+                continue
             data = _parse_crono_file(f)
-            tasks = data["tasks"]
-            if not tasks:
+            if not data["tasks"]:
                 continue
-            # Un paso sin fecha propia hereda `initial-time` (hoy por
-            # defecto): su fecha "flota" y saldría activo todos los días.
-            # Se detecta calculando también con otro "hoy": si cambia, flota.
-            probe = copy.deepcopy(tasks)
-            _compute_dates(tasks, data["metadata"], today)
-            _compute_dates(probe, data["metadata"], today + _PROBE_SHIFT)
-            floating = {p["index"] for t, p in zip(tasks, probe)
-                        if _leaf_deadline(t) != _leaf_deadline(p)}
-            parents = _parent_indices(tasks)
-            leaves = [t for t in tasks if _is_leaf(t, parents)]
-            done = sum(1 for t in leaves if t["done"])
-            if done == len(leaves):
+            done, total, raw = active_steps(data, today)
+            if done == total:
                 continue
-            steps = []
-            for t in leaves:
-                if t["done"] or t["index"] in floating:
-                    continue
-                end = _leaf_deadline(t)
-                start = t.get("start_date")
-                if end is None:
-                    continue
-                if end < today or (start and start <= today <= end):
-                    steps.append(CronoStep(t["index"], t["title"], start, end))
+            steps = [CronoStep(s["index"], s["title"], s["start"], s["end"])
+                     for s in raw]
             if not steps and not full:
                 continue
-            steps.sort(key=lambda s: (s.end, s.index))
             out.append(CronoView(
-                project_dir, data["name"], done, len(leaves),
+                project_dir, data["name"], done, total,
                 _resolve_deadline(data["metadata"], project_dir, today),
                 steps))
     return out
@@ -348,6 +339,8 @@ def format_listing(title: str, sections: dict, today: date,
         for row in rows:
             n += 1
             lines.append(format_row(n, row, today, show_project))
+            for st in row.steps:
+                lines.append(f"          ↳ {step_label(st, today)}")
     if n == 0:
         lines.append("  (nada que triar)")
     return lines
@@ -473,8 +466,13 @@ def parse_fup_input(raw: str, today: date) -> Optional[tuple]:
 
 
 def _undatable(row: Row) -> bool:
-    """Tareas e hitos no recurrentes: pueden quedarse sin fecha."""
-    return row.kind in ("task", "ms") and not row.item.get("recur")
+    """Tareas e hitos no recurrentes: pueden quedarse sin fecha.
+
+    Excepción (ADR-055): un item con crono conserva su fecha — es el plazo
+    del cronograma; su ⏩ se añade sin tocarla.
+    """
+    return (row.kind in ("task", "ms") and not row.item.get("recur")
+            and not row.item.get("crono"))
 
 
 def _edit_kind_undate(row: Row, *, drop_followups: bool) -> None:
@@ -500,6 +498,7 @@ def _act_fup(row: Row, today: date) -> bool:
     if new_date == "none":
         if not _undatable(row):
             why = ("es recurrente" if row.item.get("recur")
+                   else "su fecha es el plazo de su crono" if row.item.get("crono")
                    else f"un {KIND_LABEL[row.kind]} necesita fecha")
             print(f"  ⚠️  No se puede dejar sin fecha: {why}. Usa [d]rop o [c]lear-⏩.")
             return False

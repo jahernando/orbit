@@ -302,12 +302,18 @@ def _collect_project_items(project_dir: Path) -> list:
             items.append((kind, it))
 
     # Cronograms: synthesize the next-open-leaf event same as gsync does.
-    items.extend(_collect_cronos(project_dir))
+    # A crono linked by an open task/milestone (ADR-055) is not exported:
+    # only its item goes to the calendar (the steps stay out).
+    from core.cronograma import linked_cronos
+    items.extend(_collect_cronos(project_dir, skip=linked_cronos(data)))
     return items
 
 
-def _collect_cronos(project_dir: Path) -> list:
-    """Mirror gsync._sync_cronos_for_project synthesis (next open leaf)."""
+def _collect_cronos(project_dir: Path, skip=frozenset()) -> list:
+    """Mirror gsync._sync_cronos_for_project synthesis (next open leaf).
+
+    *skip*: rutas ``cronos/crono-x.md`` que no se exportan (enlazadas).
+    """
     cronos_dir = project_dir / "cronos"
     if not cronos_dir.exists():
         return []
@@ -322,6 +328,8 @@ def _collect_cronos(project_dir: Path) -> list:
         return []
     out = []
     for path in files:
+        if f"cronos/{path.name}" in skip:
+            continue
         name = path.stem.removeprefix("crono-")
         try:
             data = _parse_crono_file(path)

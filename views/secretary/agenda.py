@@ -289,7 +289,64 @@ def _counter_lines(today_items, overdue, n_milestones,
     return lines
 
 
-def _render_followup_row(project_dir, kind, item, fup) -> str:
+def _crono_key(project_dir, kind, item) -> tuple:
+    """Clave de un item entre colectores (cada uno relee la agenda): los
+    títulos de tareas / hitos abiertos son únicos por agenda (ADR-052)."""
+    return (str(project_dir), kind, item.get("desc") or "")
+
+
+def _collect_crono_steps(today) -> dict:
+    """{clave: (project_dir, kind, item, pasos)} de tareas / hitos abiertos
+    cuyo crono tiene pasos activos hoy o vencidos (ADR-055). Locales."""
+    from core.cronograma import item_steps
+    out = {}
+    for project_dir in _iter_local_projects():
+        data = _read_agenda_safe(project_dir)
+        if data is None:
+            continue
+        for kind in ("tasks", "milestones"):
+            for item in data.get(kind, []):
+                if not item.get("crono") or item.get("status") in ("done", "cancelled"):
+                    continue
+                steps = item_steps(project_dir, item, today)
+                if steps:
+                    out[_crono_key(project_dir, kind, item)] = (
+                        project_dir, kind, item, steps)
+    return out
+
+
+def _steps_br(steps, today) -> str:
+    """Pasos del crono en la misma celda, uno por línea (``<br>↳ …``)."""
+    from core.cronograma import step_label
+    return "".join(f"<br>↳ {step_label(st, today)}".replace("|", "\\|")
+                   for st in steps)
+
+
+def _add_steps(desc, project_dir, kind, item, crono, shown, today) -> str:
+    """Cuelga los pasos del crono de la celda (una vez por item)."""
+    if not crono:
+        return desc
+    key = _crono_key(project_dir, kind, item)
+    if key not in crono or key in shown:
+        return desc
+    shown.add(key)
+    return desc + _steps_br(crono[key][3], today)
+
+
+def _render_crono_row(project_dir, kind, item, steps, today) -> str:
+    """Item que aflora solo por su crono: col2 ⚠️ si algún paso venció."""
+    desc = (item.get("desc") or "").replace("|", "\\|")
+    link = crono_link_md(project_dir, item)
+    if link:
+        desc = f"{desc} {link}"
+    desc += _steps_br(steps, today)
+    alert = "⚠️" if any(st["end"] < today for st in steps) else ""
+    return (f"| {KIND_EMOJI[kind]} | {alert} |  |  |  | {desc} | "
+            f"{proj_link_md(project_dir)} |")
+
+
+def _render_followup_row(project_dir, kind, item, fup,
+                         crono=None, shown=None, today=None) -> str:
     """Fila followup de cualquier cita. col1=tipo, col2=⏩.
 
     El emoji de tipo va en col1 (no en la descripción): la columna estado
@@ -302,24 +359,26 @@ def _render_followup_row(project_dir, kind, item, fup) -> str:
     if note:
         label += f" — {note}"
     desc = label.replace("|", "\\|")
-    crono = crono_link_md(project_dir, item)
-    if crono:
-        desc = f"{desc} {crono}"
+    link = crono_link_md(project_dir, item)
+    if link:
+        desc = f"{desc} {link}"
+    desc = _add_steps(desc, project_dir, kind, item, crono, shown, today)
     return f"| {emoji} | ⏩ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
-def _render_overdue_row(project_dir, t) -> str:
+def _render_overdue_row(project_dir, t, crono=None, shown=None, today=None) -> str:
     """Fila vencida (task planned arrastrada a hoy). col1=tipo (☐), col2=⚠️."""
     desc_raw = t.get("desc", "") or ""
     d = t.get("date", "")
     desc = f"{desc_raw} (📅{d})".replace("|", "\\|")
-    crono = crono_link_md(project_dir, t)
-    if crono:
-        desc = f"{desc} {crono}"
+    link = crono_link_md(project_dir, t)
+    if link:
+        desc = f"{desc} {link}"
+    desc = _add_steps(desc, project_dir, "tasks", t, crono, shown, today)
     return f"| {KIND_EMOJI['tasks']} | ⚠️ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
-def _render_items_table(items) -> list:
+def _render_items_table(items, crono=None, shown=None, today=None) -> list:
     """Render filas de un día (events/tasks/milestones/reminders).
 
     Variante de `_agenda_table.render_day_rows` que NO emite el header;
@@ -341,34 +400,48 @@ def _render_items_table(items) -> list:
         st, en = time_pair(item, DEFAULT_MIN.get(kind))
         ov = "" if kind == "reminders" else overlap_char(overlaps.get(idx, 0))
         desc = _desc_with_event_indicators(kind, item, _pdir)
+        desc = _add_steps(desc, _pdir, kind, item, crono, shown, today)
         rows.append(f"| {emoji} | {bell} | {ov} | {st} | {en} | {desc} | {proj_md} |")
     for kind, item, _pdir, proj_md in untimed:
         emoji = KIND_EMOJI[kind]
         bell = bell_cell(kind, item)
         desc = _desc_with_event_indicators(kind, item, _pdir)
+        desc = _add_steps(desc, _pdir, kind, item, crono, shown, today)
         rows.append(f"| {emoji} | {bell} |  |  |  | {desc} | {proj_md} |")
     return rows
 
 
-def _today_block(today_items, overdue, followups_today=()) -> list:
-    """Tabla única de Hoy: citas + ⚠️ vencidas (cap) + ⏩ por triar.
+def _today_block(today_items, overdue, followups_today=(), crono=None,
+                 today=None) -> list:
+    """Tabla única de Hoy: citas + ⚠️ vencidas (cap) + ⏩ por triar + items
+    que afloran por su crono.
 
-    Si todo está vacío, devuelve un texto placeholder.
+    *crono* (``_collect_crono_steps``): los pasos activos o vencidos se
+    cuelgan en la celda de su item (``<br>↳``), una sola vez; los items que
+    no salían por otra vía se añaden al final. Si todo está vacío, devuelve
+    un texto placeholder.
     """
-    if not today_items and not overdue and not followups_today:
+    crono = crono or {}
+    if not today_items and not overdue and not followups_today and not crono:
         return ["*Sin citas para hoy.*"]
 
+    shown: set = set()
     rows = [TABLE_HEADER]
-    rows.extend(_render_items_table(today_items))
+    rows.extend(_render_items_table(today_items, crono, shown, today))
 
     overflow = max(len(overdue) - OVERDUE_CAP, 0)
     for project_dir, t in overdue[:OVERDUE_CAP]:
-        rows.append(_render_overdue_row(project_dir, t))
+        rows.append(_render_overdue_row(project_dir, t, crono, shown, today))
     if overflow:
         rows.append(f"|  | ⚠️ |  |  |  | *…y {overflow} más vencidas* |  |")
 
     for project_dir, kind, item, fup in followups_today:
-        rows.append(_render_followup_row(project_dir, kind, item, fup))
+        rows.append(_render_followup_row(project_dir, kind, item, fup,
+                                         crono, shown, today))
+
+    for key, (project_dir, kind, item, steps) in crono.items():
+        if key not in shown:
+            rows.append(_render_crono_row(project_dir, kind, item, steps, today))
 
     return rows
 
@@ -437,7 +510,8 @@ def generate(out_path: Path) -> None:
     lines.append("")
     lines.append(f"## 📅 Hoy — {_short_date_es(today)}")
     lines.append("")
-    lines.extend(_today_block(today_items, overdue, followups_today))
+    lines.extend(_today_block(today_items, overdue, followups_today,
+                              crono=_collect_crono_steps(today), today=today))
     lines.append("")
 
     next_blocks = _next_days_block(today, by_day, followups_by_day)

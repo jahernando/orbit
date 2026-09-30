@@ -1906,3 +1906,72 @@ def crono_mark(project_dir: Path, item: dict, *, link_prefix: Optional[str] = No
     if link_prefix is None:
         return label
     return f"[{label}]({link_prefix}/{rel})"
+
+
+_PROBE_SHIFT = timedelta(days=397)   # "otro hoy" para detectar fechas flotantes
+
+
+def active_steps(data: dict, today: date) -> tuple:
+    """``(hechas, total, pasos)`` de un crono ya parseado.
+
+    *pasos*: hojas abiertas activas hoy (inicio ≤ hoy ≤ fin) o vencidas, como
+    dicts ``{index, title, start, end}`` ordenados por fin. Un paso sin fecha
+    propia hereda ``initial-time`` (hoy por defecto): su fecha "flota" y
+    saldría activo todos los días, así que se descarta. Se detecta
+    recalculando con otro "hoy": si su fecha cambia, flota.
+    """
+    import copy
+    tasks = data["tasks"]
+    probe = copy.deepcopy(tasks)
+    _compute_dates(tasks, data["metadata"], today)
+    _compute_dates(probe, data["metadata"], today + _PROBE_SHIFT)
+    floating = {p["index"] for t, p in zip(tasks, probe)
+                if _leaf_deadline(t) != _leaf_deadline(p)}
+    parents = _parent_indices(tasks)
+    leaves = [t for t in tasks if _is_leaf(t, parents)]
+    done = sum(1 for t in leaves if t["done"])
+    steps = []
+    for t in leaves:
+        if t["done"] or t["index"] in floating:
+            continue
+        end = _leaf_deadline(t)
+        start = t.get("start_date")
+        if end is None:
+            continue
+        if end < today or (start and start <= today <= end):
+            steps.append({"index": t["index"], "title": t["title"],
+                          "start": start, "end": end})
+    steps.sort(key=lambda s: (s["end"], s["index"]))
+    return done, len(leaves), steps
+
+
+def item_steps(project_dir: Path, item: dict, today: date) -> list:
+    """Pasos activos hoy o vencidos del crono que enlaza *item* ([] si no)."""
+    rel = item.get("crono")
+    if not rel:
+        return []
+    path = project_dir / rel
+    if not path.is_file():
+        return []
+    try:
+        return active_steps(_parse_crono_file(path), today)[2]
+    except Exception:
+        return []
+
+
+def step_label(step: dict, today: date) -> str:
+    """``1.2 Redactar intro · ⚠️ vencido 09-28`` / ``… · hasta 10-03``."""
+    end = step["end"]
+    short = end.strftime("%m-%d") if end.year == today.year else end.isoformat()
+    when = f"⚠️ vencido {short}" if end < today else f"hasta {short}"
+    return f"{step['index']} {step['title']} · {when}"
+
+
+def linked_cronos(data: dict) -> set:
+    """Rutas de crono enlazadas por tareas / hitos abiertos de una agenda."""
+    out = set()
+    for key in ("tasks", "milestones"):
+        for it in data.get(key) or []:
+            if it.get("crono") and it.get("status") not in ("done", "cancelled"):
+                out.add(it["crono"])
+    return out

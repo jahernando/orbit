@@ -214,18 +214,27 @@ def _undate_refusal(cfg: dict) -> str:
 
 
 def _resolve_crono_arg(crono, title: str, data: dict, *,
-                       exclude: Optional[dict] = None) -> tuple:
+                       exclude: Optional[dict] = None,
+                       project_dir: Optional[Path] = None) -> tuple:
     """``--crono [NOMBRE]`` → ``(ruta_relativa | 'none' | None, error | None)``.
 
     Sin nombre (cadena vacía) el crono se nombra por el título del item.
+    Con NOMBRE que no existe tal cual, se busca por coincidencia parcial
+    (única) entre los cronos del proyecto antes de crear uno nuevo: así
+    ``--crono hk`` adopta ``crono-hk-general.md`` en vez de crear otro.
     Un fichero crono pertenece a un solo item abierto de la agenda.
     """
     if crono is None:
         return None, None
     if is_none_word(crono):
         return "none", None
-    from core.cronograma import crono_rel_path
-    rel = crono_rel_path(crono.strip() or title)
+    from core.cronograma import crono_rel_path, _find_crono_file
+    name = crono.strip()
+    rel = crono_rel_path(name or title)
+    if name and project_dir is not None and not (project_dir / rel).exists():
+        found = _find_crono_file(project_dir, name)
+        if found is not None:
+            rel = f"cronos/{found.name}"
     for key in ("tasks", "milestones"):
         for it in data.get(key) or []:
             if it is exclude or it.get("crono") != rel:
@@ -751,7 +760,8 @@ def _generic_add(type_name: str, project: str, text: str,
             return 1
 
     # --crono [NOMBRE]: el item enlaza su cronograma (tarea compuesta).
-    crono_rel, err = _resolve_crono_arg(crono, text, existing)
+    crono_rel, err = _resolve_crono_arg(crono, text, existing,
+                                        project_dir=target_dir)
     if err:
         print(err)
         return 1
@@ -1057,7 +1067,7 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
         return 1
 
     crono_rel, err = _resolve_crono_arg(crono, new_text or old_desc, data,
-                                        exclude=item)
+                                        exclude=item, project_dir=project_dir)
     if err:
         print(err)
         return 1
@@ -1078,6 +1088,10 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
         if item.get("recur"):
             print(f"⚠️  «{old_desc}» es recurrente: no se puede dejar sin fecha. "
                   "Quita antes la recurrencia (--recur none) o usa drop.")
+            return 1
+        if item.get("crono") and crono_rel != "none":
+            print(f"⚠️  La fecha de «{old_desc}» es el plazo de {item['crono']}: "
+                  "no se puede dejar sin fecha. Cámbiala con --date.")
             return 1
         new_date, new_time = "none", "none"
         if cfg["has_ring"]:
