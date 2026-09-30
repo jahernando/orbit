@@ -211,3 +211,23 @@ class TestMark:
         assert "Hito 📊 50% (1/2)" in _format_item_line("milestone", ms[0], "[p]")
         _icon, _time, desc, _p = _item_to_table_row("milestone", ms[0], "[p]")
         assert f"[📊 50%]({ws.parent.name}/{ws.name}/cronos/crono-a.md)" in desc
+
+    def test_ls_tasks_and_ms_show_link(self, ws, capsys):
+        from core.agenda_cmds import run_task_list, run_ms_list
+        _write_crono(ws, "cronos/crono-a.md", 1, 2)
+        _write_crono(ws, "cronos/crono-b.md", 0, 1)
+        _seed(ws, tasks=[_task(desc="T", crono="cronos/crono-a.md")],
+              milestones=[_task(desc="M", date=ISO, crono="cronos/crono-b.md")])
+        assert run_task_list(projects=[ws.name]) == 0
+        assert run_ms_list(projects=[ws.name]) == 0
+        out = capsys.readouterr().out
+        assert "T [📊 50%](./cronos/crono-a.md)" in out
+        assert f"M [📊 0%](./cronos/crono-b.md) ({ISO})" in out
+
+    def test_ls_link_is_clickable_in_terminal(self, ws):
+        from core.termlink import Linkifier
+        _write_crono(ws, "cronos/crono-a.md", 1, 2)
+        lk = Linkifier("ls tasks", projects={ws.name: ws})
+        lk.line(f"[{ws.name}]")
+        out = lk.line("  [ ] T [📊 50%](./cronos/crono-a.md)")
+        assert "\033]8;;file://" in out and "crono-a.md" in out

@@ -118,6 +118,14 @@ def run_task_edit(project: Optional[str], text: Optional[str],
                          crono=crono)
 
 
+def _crono_ls(project_dir, item: dict) -> str:
+    """`` [📊 37%](./cronos/…)`` para `ls`: la terminal lo vuelve clicable
+    (core.termlink resuelve la ruta contra el proyecto de la sección)."""
+    from core.cronograma import crono_mark
+    mark = crono_mark(project_dir, item, link_prefix=".")
+    return f" {mark}" if mark else ""
+
+
 def run_task_list(projects: Optional[list] = None,
                   status_filter: str = "pending",
                   date_filter: Optional[str] = None,
@@ -174,7 +182,8 @@ def run_task_list(projects: Optional[list] = None,
                 if t.get("until"):
                     recur_s += f":{t['until']}"
             ring_s   = f" 🔔{t['ring']}"   if t.get("ring")  else ""
-            print(f"  {status_s} {t['desc']}{date_s}{time_s}{recur_s}{ring_s}")
+            crono_s  = _crono_ls(project_dir, t)
+            print(f"  {status_s} {t['desc']}{crono_s}{date_s}{time_s}{recur_s}{ring_s}")
             total += 1
 
     if not total:
@@ -322,7 +331,7 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
         for ms in mss:
             status_s = {"pending": "[ ]", "done": "[x]", "cancelled": "[-]"}[ms["status"]]
             date_s   = f" ({ms['date']})" if ms.get("date") else ""
-            print(f"  {status_s} {ms['desc']}{date_s}")
+            print(f"  {status_s} {ms['desc']}{_crono_ls(project_dir, ms)}{date_s}")
             total += 1
 
     if not total:

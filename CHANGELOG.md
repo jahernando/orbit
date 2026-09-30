@@ -20,7 +20,7 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
   fichero: renombrar el item no lo rompe. El lector tolera el enlace al
   principio de la cabecera.
 - **Porcentaje en las vistas** (derivado, nunca en la verdad): `day` /
-  `organize`, `agenda`, secretario (`agenda.md`, filas vencidas/⏩), `hitos.md`
+  `organize`, `agenda`, `ls tasks`/`ls ms` (enlace clicable OSC 8), secretario (`agenda.md`, filas vencidas/⏩), `hitos.md`
   y echo del CLI.
 - Aditivo: `crono add`, el bloque 📊 de `day`/`organize` y `deadline:` siguen
   igual (se retiran en F4).

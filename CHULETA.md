@@ -123,7 +123,8 @@ orbit task edit <p> "Informe final" --crono none                      # desasoci
 - Un crono pertenece a **un solo item abierto**; no va en citas recurrentes.
 - El enlace es por fichero: renombrar el item (`--text`) no lo rompe.
 - El **porcentaje** (hojas hechas) sale en las vistas — `day`, `organize`,
-  `agenda`, panel, echo — como `📊 37% (3/8)` o `[📊 37%](…)`; nunca se escribe
+  `agenda`, `ls tasks`/`ls ms` (clicable en la terminal), panel, echo — como
+  `📊 37% (3/8)` o `[📊 37%](…)`; nunca se escribe
   en `agenda.md`. `📊 ✓ 100%` = listo para cerrar (lo cierras tú); `📊 ?` =
   fichero no encontrado.
 
