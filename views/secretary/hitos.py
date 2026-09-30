@@ -102,7 +102,11 @@ def generate(out_path: Path) -> None:
         fecha = _fecha_cell(d, today)
         proj = proj_link_md(project_dir)
         desc = (m.get("desc") or "").replace("|", "\\|")
-        crono = _crono_cell(project_dir, m.get("desc") or "")
+        if m.get("crono"):
+            from views.secretary._agenda_table import crono_link_md
+            crono = crono_link_md(project_dir, m)
+        else:
+            crono = _crono_cell(project_dir, m.get("desc") or "")
         lines.append(f"| 🏁 | {fecha} | {proj} | {desc} | {crono or '—'} |")
 
     out_path.write_text("\n".join(lines) + "\n")

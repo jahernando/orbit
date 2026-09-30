@@ -88,6 +88,16 @@ def _add_add_args(p, date_required=False, time_required=False, has_ring=True):
                    help="Guided mode: prompt for the optional gaps (ring/desc/room/followups); TTY only")
 
 
+def _add_crono_link_arg(p, editing=False):
+    """``--crono [NOMBRE]``: el item (tarea / hito) enlaza su cronograma."""
+    help_ = ("Link a cronograma (named after the title if no NAME); "
+             "creates cronos/crono-<name>.md if missing")
+    if editing:
+        help_ += "; 'none' unlinks (file kept)"
+    p.add_argument("--crono", nargs="?", const="", default=None,
+                   metavar="NAME", help=help_)
+
+
 def _add_edit_args(p, has_end=False, has_end_time=False):
     """Common args for ``edit`` subcommands."""
     p.add_argument("--text", dest="new_text", default=None, help="New description")

@@ -31,10 +31,11 @@ def run_task_add(project: str, text: str, date_val: Optional[str] = None,
                  recur: Optional[str] = None, until: Optional[str] = None,
                  ring: Optional[str] = None, time_val: Optional[str] = None,
                  desc: Optional[str] = None, fup: Optional[str] = None,
-                 ask: bool = False) -> int:
+                 ask: bool = False,
+                 crono: Optional[str] = None) -> int:
     return _generic_add("task", project, text, date_val=date_val, recur=recur,
                         until=until, ring=ring, time_val=time_val, desc=desc,
-                        fup=fup, ask=ask)
+                        fup=fup, ask=ask, crono=crono)
 
 
 def run_task_done(project: Optional[str], text: Optional[str]) -> int:
@@ -102,7 +103,8 @@ def run_task_edit(project: Optional[str], text: Optional[str],
                   new_ring: Optional[str] = None, new_time: Optional[str] = None,
                   new_desc: Optional[str] = None, fup: Optional[str] = None,
                   force: bool = False, occurrence: bool = False,
-                  series: bool = False) -> int:
+                  series: bool = False,
+                  crono: Optional[str] = None) -> int:
     project_dir = _resolve_project(project)
     if project_dir is None:
         return 1
@@ -112,7 +114,8 @@ def run_task_edit(project: Optional[str], text: Optional[str],
                          new_text=new_text, new_date=new_date, new_time=new_time,
                          new_recur=new_recur, new_until=new_until, new_ring=new_ring,
                          new_desc=new_desc, fup=fup,
-                         force=force, occurrence=occurrence, series=series)
+                         force=force, occurrence=occurrence, series=series,
+                         crono=crono)
 
 
 def run_task_list(projects: Optional[list] = None,
@@ -200,10 +203,11 @@ def run_ms_add(project: str, text: str, date_val: Optional[str] = None,
                recur: Optional[str] = None, until: Optional[str] = None,
                ring: Optional[str] = None, time_val: Optional[str] = None,
                desc: Optional[str] = None, fup: Optional[str] = None,
-               ask: bool = False) -> int:
+               ask: bool = False,
+               crono: Optional[str] = None) -> int:
     return _generic_add("milestone", project, text, date_val=date_val, recur=recur,
                         until=until, ring=ring, time_val=time_val, desc=desc,
-                        fup=fup, ask=ask)
+                        fup=fup, ask=ask, crono=crono)
 
 
 def run_ms_done(project: Optional[str], text: Optional[str]) -> int:
@@ -271,7 +275,8 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
                 new_ring: Optional[str] = None, new_time: Optional[str] = None,
                 new_desc: Optional[str] = None, fup: Optional[str] = None,
                 force: bool = False, occurrence: bool = False,
-                series: bool = False) -> int:
+                series: bool = False,
+                crono: Optional[str] = None) -> int:
     project_dir = _resolve_project(project)
     if project_dir is None:
         return 1
@@ -281,7 +286,8 @@ def run_ms_edit(project: Optional[str], text: Optional[str],
                          new_text=new_text, new_date=new_date, new_time=new_time,
                          new_recur=new_recur, new_until=new_until, new_ring=new_ring,
                          new_desc=new_desc, fup=fup,
-                         force=force, occurrence=occurrence, series=series)
+                         force=force, occurrence=occurrence, series=series,
+                         crono=crono)
 
 
 def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",

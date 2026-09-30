@@ -194,6 +194,9 @@ def format_item_block(kind: str, item: dict, *, verbose: bool = False,
         line = _format_reminder_line(item)
     if not verbose:
         line = _ORBIT_ID_TOKEN.sub("", line)
+    if k in ("task", "milestone") and item.get("crono"):
+        from core.agenda.newfmt import crono_link
+        line += f" {crono_link(item)}"
     out = []
     if banner:
         head = banner + (f" · {state}" if state else "")

@@ -90,7 +90,8 @@ def _validate_common(*, date: Optional[str], time: Optional[str],
 
 def _build_item(kind: str, *, text: str, date, time, recur, until,
                 ring, end_date, notes_in, agenda, room,
-                orbit_id: Optional[str] = None) -> dict:
+                orbit_id: Optional[str] = None,
+                crono: Optional[str] = None) -> dict:
     """Construct the item dict for the appointments section.
 
     ``orbit_id``: opcional. Si se pasa, queda en el item y se serializa
@@ -108,6 +109,8 @@ def _build_item(kind: str, *, text: str, date, time, recur, until,
                   "until": until, "notes": notes, "time": time}
     if orbit_id:
         item["orbit_id"] = orbit_id
+    if crono:
+        item["crono"] = crono
     if cfg["has_status"]:
         item["status"] = "pending"
     if cfg["has_ring"]:
@@ -139,7 +142,8 @@ def add_task(project: str, text: str, *,
              until: Optional[str] = None,
              ring: Optional[str] = None,
              notes: Optional[list] = None,
-             orbit_id: Optional[str] = None) -> dict:
+             orbit_id: Optional[str] = None,
+             crono: Optional[str] = None) -> dict:
     """Add a task to ``project``'s agenda. Returns the created task dict.
 
     Raises :class:`ValueError` for invalid args or unknown project.
@@ -152,6 +156,9 @@ def add_task(project: str, text: str, *,
     ``orbit_id`` opcional: fija el id de la task al crearse (lo usa
     ``core/focus.py`` para poder referenciar el bloque desde el archivo
     semanal sin reabrir la agenda).
+
+    ``crono`` opcional: ruta (relativa al proyecto) del cronograma que la
+    tarea enlaza en su cabecera. El fichero lo crea quien llama.
     """
     if not text or not str(text).strip():
         raise ValueError("text is required")
@@ -161,7 +168,8 @@ def add_task(project: str, text: str, *,
     item = _build_item("task", text=text, date=date, time=time,
                        recur=recur, until=until, ring=ring,
                        end_date=None, notes_in=notes,
-                       agenda=None, room=None, orbit_id=orbit_id)
+                       agenda=None, room=None, orbit_id=orbit_id,
+                       crono=crono)
     return _append_and_write("task", project_dir, item)
 
 
@@ -171,8 +179,12 @@ def add_milestone(project: str, text: str, *,
                   recur: Optional[str] = None,
                   until: Optional[str] = None,
                   ring: Optional[str] = None,
-                  notes: Optional[list] = None) -> dict:
-    """Add a milestone. Returns the created milestone dict."""
+                  notes: Optional[list] = None,
+                  crono: Optional[str] = None) -> dict:
+    """Add a milestone. Returns the created milestone dict.
+
+    ``crono``: como en :func:`add_task`.
+    """
     if not text or not str(text).strip():
         raise ValueError("text is required")
     project_dir = _resolve_project_or_raise(project)
@@ -181,7 +193,7 @@ def add_milestone(project: str, text: str, *,
     item = _build_item("milestone", text=text, date=date, time=time,
                        recur=recur, until=until, ring=ring,
                        end_date=None, notes_in=notes,
-                       agenda=None, room=None)
+                       agenda=None, room=None, crono=crono)
     return _append_and_write("milestone", project_dir, item)
 
 

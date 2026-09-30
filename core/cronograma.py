@@ -1823,3 +1823,86 @@ def _find_crono_file(project_dir: Path, name: str) -> Optional[Path]:
         return matches[0]
 
     return None
+
+
+# ── Crono como atributo de tarea / hito ──────────────────────────────────────
+#
+# El item de la agenda enlaza a su fichero con ``[📊](cronos/crono-<slug>.md)``
+# al final de la cabecera; ``item["crono"]`` guarda esa ruta relativa al
+# directorio del proyecto. La fecha límite es la del item. El porcentaje se
+# calcula al mostrar, nunca se escribe en la verdad.
+
+def crono_slug(name: str) -> str:
+    """Slug de fichero: minúsculas, sin diacríticos (Obsidian/NFD), ``-``."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", name)
+    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s or "crono"
+
+
+def crono_rel_path(name: str) -> str:
+    """Ruta relativa (al proyecto) del fichero crono para *name*.
+
+    *name* puede venir ya como ``crono-x`` o ``crono-x.md``.
+    """
+    stem = name[:-3] if name.endswith(".md") else name
+    slug = crono_slug(stem)
+    if not slug.startswith("crono-"):
+        slug = f"crono-{slug}"
+    return f"{_CRONO_DIR}/{slug}.md"
+
+
+def ensure_crono_file(project_dir: Path, rel: str, title: str) -> bool:
+    """Crea el fichero crono si no existe. True si lo ha creado."""
+    path = project_dir / rel
+    if path.exists():
+        return False
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(
+        f"# Cronograma: {title}\n"
+        f"\n"
+        f"- [ ] 1 Primera tarea | {date.today().isoformat()} | 1W\n",
+        encoding="utf-8")
+    return True
+
+
+def crono_progress(project_dir: Path, rel: str) -> Optional[tuple]:
+    """``(hechas, total)`` de las hojas del crono, o None si no se puede leer."""
+    path = project_dir / rel
+    if not path.is_file():
+        return None
+    try:
+        tasks = _parse_crono_file(path)["tasks"]
+    except Exception:
+        return None
+    parents = _parent_indices(tasks)
+    leaves = [t for t in tasks if _is_leaf(t, parents)]
+    return (sum(1 for t in leaves if t["done"]), len(leaves))
+
+
+def crono_mark(project_dir: Path, item: dict, *, link_prefix: Optional[str] = None) -> str:
+    """Marca de progreso de un item con crono ('' si no tiene).
+
+    Sin *link_prefix*: texto para terminal, ``📊 37% (3/8)``.
+    Con *link_prefix* (ruta desde el visor hasta el proyecto, p. ej.
+    ``../../☀️mission/proj``): enlace markdown ``[📊 37%](prefix/cronos/…)``.
+    """
+    rel = item.get("crono")
+    if not rel:
+        return ""
+    prog = crono_progress(project_dir, rel)
+    if prog is None:
+        label = "📊 ?"
+    else:
+        done, total = prog
+        pct = done * 100 // total if total else 0
+        if total and done == total:
+            label = "📊 ✓ 100%"
+        elif link_prefix is None:
+            label = f"📊 {pct}% ({done}/{total})"
+        else:
+            label = f"📊 {pct}%"
+    if link_prefix is None:
+        return label
+    return f"[{label}]({link_prefix}/{rel})"

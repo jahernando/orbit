@@ -682,11 +682,11 @@ def cmd_task_new(args):
     """Task subcommand dispatcher."""
     action = _ga(args, "action") or "add"
     if action == "add":
-        return run_task_add(**_add_args(args))
+        return run_task_add(**_add_args(args), crono=_ga(args, "crono"))
     if action == "done":   return run_task_done(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "drop":   return run_task_drop(**_drop_args(args))
     if action == "edit":
-        return run_task_edit(**_edit_args(args))
+        return run_task_edit(**_edit_args(args), crono=_ga(args, "crono"))
     if action == "log":    return run_task_log(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "fup":    return _cmd_fup("task", args)
     if action == "crono":  return cmd_crono(args)
@@ -696,10 +696,10 @@ def cmd_task_new(args):
 def cmd_ms(args):
     """Milestone subcommand dispatcher."""
     action = _ga(args, "action") or "list"
-    if action == "add":    return run_ms_add(**_add_args(args))
+    if action == "add":    return run_ms_add(**_add_args(args), crono=_ga(args, "crono"))
     if action == "done":   return run_ms_done(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "drop":   return run_ms_drop(**_drop_args(args))
-    if action == "edit":   return run_ms_edit(**_edit_args(args))
+    if action == "edit":   return run_ms_edit(**_edit_args(args), crono=_ga(args, "crono"))
     if action == "log":    return run_ms_log(project=_ga(args, "project"), text=_ga(args, "text"))
     if action == "fup":    return _cmd_fup("milestone", args)
     return 1

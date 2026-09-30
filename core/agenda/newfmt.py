@@ -53,6 +53,8 @@ _PRIMARY_TAG = {
     "event": "#evento", "reminder": "#recordatorio",
 }
 _STATUS_CHAR = {"pending": " ", "done": "x", "cancelled": "-"}
+# Cronograma link hung at the end of a task/milestone header.
+CRONO_EMOJI = "📊"
 
 # (model kind, _read_agenda key), in truth-order.
 _KINDS = [
@@ -83,16 +85,25 @@ def _temporal_line(item: dict) -> Optional[str]:
     return " · ".join(tokens) if tokens else None
 
 
+def crono_link(item: dict) -> str:
+    """``[📊](cronos/crono-x.md)`` if the item carries a crono, else ''."""
+    rel = item.get("crono")
+    return f"[{CRONO_EMOJI}]({rel})" if rel else ""
+
+
 def _header(kind: str, item: dict) -> str:
-    """Render the single-line header (bullet + state + type-emoji + title + tag)."""
+    """Render the single-line header (bullet + state + type-emoji + title + tag).
+
+    A task/milestone with a cronograma ends with its link (after the tags),
+    so the type emoji keeps its slot right after the checkbox.
+    """
     tag   = _PRIMARY_TAG[kind]
     title = (item.get("desc") or "").strip()
-    if kind == "task":
+    if kind in ("task", "milestone"):
         char = _STATUS_CHAR.get(item.get("status", "pending"), " ")
-        return f"- [{char}] {_TYPE_EMOJI[kind]} {title} {tag}"
-    if kind == "milestone":
-        char = _STATUS_CHAR.get(item.get("status", "pending"), " ")
-        return f"- [{char}] {_TYPE_EMOJI[kind]} {title} {tag}"
+        crono = crono_link(item)
+        tail = f" {crono}" if crono else ""
+        return f"- [{char}] {_TYPE_EMOJI[kind]} {title} {tag}{tail}"
     if kind == "reminder":
         prefix = "- [-] " if item.get("cancelled") else "- "
         return f"{prefix}{_TYPE_EMOJI[kind]} {title} {tag}"
@@ -181,6 +192,7 @@ _HEADER_RE = re.compile(r"^- (?:\[( |x|-)\] )?(?:(✏️|🏁|📅|💬) )?(.*)$
 _ID_COMMENT_RE = re.compile(r"\s*<!-- orbit:([0-9a-f]{8}) -->\s*$")
 _TAG_RE    = re.compile(r"#\S+")
 _LINK_RE   = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+_CRONO_LINK_RE = re.compile(r"\s*\[📊\]\(([^)]+)\)\s*")
 _STATUS_FROM_CHAR = {" ": "pending", "x": "done", "-": "cancelled"}
 # markdown link emoji → structured note prefix (📹 is the URL-room display icon)
 _LINK_EMOJI_TO_PREFIX = {"📋": "📋", "🚪": "🚪", "📹": "🚪", "✉️": "✉️"}
@@ -239,6 +251,11 @@ def parse_item_new(header: str, body: list) -> tuple:
     if not m:
         return (None, None)
     state_char, emoji, rest = m.group(1), m.group(2), m.group(3)
+    # The crono link is written at the end but tolerated anywhere in the header.
+    crono_m = _CRONO_LINK_RE.search(rest)
+    crono = crono_m.group(1).strip() if crono_m else None
+    if crono_m:
+        rest = (rest[:crono_m.start()] + " " + rest[crono_m.end():]).strip()
     title, _tags = _split_title_tags(rest)
 
     if emoji == "🏁":
@@ -263,6 +280,8 @@ def parse_item_new(header: str, body: list) -> tuple:
         item["ff"] = None
         item["snooze_count"] = 0
         item["failed_count"] = 0
+        if crono:
+            item["crono"] = crono
     elif kind == "event":
         item["end"] = None
         item["ring"] = None

@@ -265,6 +265,10 @@ def _collect_data(dirs, start, end, dated_only=False):
     for project_dir in dirs:
         agenda_path = resolve_file(project_dir, "agenda")
         data = _read_agenda(agenda_path)
+        # Items con crono: el % se calcula al pintar y necesita el proyecto.
+        for key in ("tasks", "milestones"):
+            data[key] = [dict(it, _pdir=project_dir) if it.get("crono") else it
+                         for it in data[key]]
 
         tasks = []
         for t in data["tasks"]:
@@ -859,6 +863,18 @@ def _item_time_key(item):
     return (1, "")
 
 
+def _crono_suffix(item, markdown=False) -> str:
+    """`` 📊 37% (3/8)`` (o enlace markdown) si el item enlaza un crono."""
+    pdir = item.get("_pdir")
+    if not pdir or not item.get("crono"):
+        return ""
+    from core.cronograma import crono_mark
+    prefix = None
+    if markdown and not get_federation_emoji(pdir):
+        prefix = f"{pdir.parent.name}/{pdir.name}"
+    return " " + crono_mark(pdir, item, link_prefix=prefix)
+
+
 def _format_item_line(kind, item, proj_tag, markdown=False):
     """Format a single item line with project tag for date-ordered view.
 
@@ -888,7 +904,8 @@ def _format_item_line(kind, item, proj_tag, markdown=False):
                     overdue = " ⚠️"
             except ValueError:
                 pass
-        return f"{pfx}☐ 🏁 {item['desc']}{overdue}  {proj_tag}"
+        crono = _crono_suffix(item, markdown)
+        return f"{pfx}☐ 🏁 {item['desc']}{crono}{overdue}  {proj_tag}"
 
     else:  # task
         overdue = ""
@@ -903,7 +920,8 @@ def _format_item_line(kind, item, proj_tag, markdown=False):
             recur_s = f" 🔄{item['recur']}"
             if item.get("until"):
                 recur_s += f":{item['until']}"
-        return f"{pfx}{check} {item['desc']}{recur_s}{overdue}  {proj_tag}"
+        crono = _crono_suffix(item, markdown)
+        return f"{pfx}{check} {item['desc']}{crono}{recur_s}{overdue}  {proj_tag}"
 
 
 def _item_to_table_row(kind, item, proj_tag):
@@ -928,7 +946,8 @@ def _item_to_table_row(kind, item, proj_tag):
                     overdue = " ⚠️"
             except ValueError:
                 pass
-        return "☐ 🏁", "", f"{item['desc']}{overdue}", proj_tag
+        crono = _crono_suffix(item, markdown=True)
+        return "☐ 🏁", "", f"{item['desc']}{crono}{overdue}", proj_tag
     else:  # task
         time_s = item.get("time", "")
         overdue = ""
@@ -943,7 +962,8 @@ def _item_to_table_row(kind, item, proj_tag):
             recur_s = f" 🔄{item['recur']}"
             if item.get("until"):
                 recur_s += f":{item['until']}"
-        return "☐", time_s, f"{item['desc']}{recur_s}{overdue}", proj_tag
+        crono = _crono_suffix(item, markdown=True)
+        return "☐", time_s, f"{item['desc']}{crono}{recur_s}{overdue}", proj_tag
 
 
 _TBL_HDR = "| | Hora | Descripción | Proyecto |\n|---|------|------------|----------|"

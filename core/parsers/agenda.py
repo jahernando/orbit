@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from core.parsers._helpers import (
     _add_project_text, _add_add_args, _add_edit_args, _add_drop_args,
-    _add_crono_subparsers, _add_fup_subparser,
+    _add_crono_subparsers, _add_fup_subparser, _add_crono_link_arg,
 )
 
 
@@ -26,6 +26,7 @@ def register_task(subparsers):
     tn_add = tsknew_sub.add_parser("add", help="Add a task (no date → someday / reposo)")
     _add_project_text(tn_add, project_required=True)
     _add_add_args(tn_add)
+    _add_crono_link_arg(tn_add)
 
     tn_done = tsknew_sub.add_parser("done", help="Complete a pending task")
     _add_project_text(tn_done, project_required=False)
@@ -37,6 +38,7 @@ def register_task(subparsers):
     tn_edit = tsknew_sub.add_parser("edit", help="Edit a pending task")
     _add_project_text(tn_edit, project_required=False)
     _add_edit_args(tn_edit)
+    _add_crono_link_arg(tn_edit, editing=True)
 
     tn_log = tsknew_sub.add_parser("log", help="Create logbook entry from a task")
     _add_project_text(tn_log, project_required=False)
@@ -59,6 +61,7 @@ def register_ms(subparsers):
     ms_add = ms_sub.add_parser("add", help="Add a milestone")
     _add_project_text(ms_add, project_required=True)
     _add_add_args(ms_add)
+    _add_crono_link_arg(ms_add)
 
     ms_done = ms_sub.add_parser("done", help="Mark milestone as reached")
     _add_project_text(ms_done, project_required=False)
@@ -70,6 +73,7 @@ def register_ms(subparsers):
     ms_edit = ms_sub.add_parser("edit", help="Edit a milestone")
     _add_project_text(ms_edit, project_required=False)
     _add_edit_args(ms_edit)
+    _add_crono_link_arg(ms_edit, editing=True)
 
     ms_log = ms_sub.add_parser("log", help="Create logbook entry from a milestone")
     _add_project_text(ms_log, project_required=False)

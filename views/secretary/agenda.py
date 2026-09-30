@@ -37,7 +37,7 @@ from pathlib import Path
 from views import autogen_banner
 from views.secretary._agenda_table import (
     DEFAULT_MIN, KIND_EMOJI, TABLE_HEADER,
-    _desc_with_event_indicators, bell_cell, collect_items_by_day,
+    _desc_with_event_indicators, bell_cell, collect_items_by_day, crono_link_md,
     detect_overlaps, overlap_char, proj_link_md, start_min, time_pair,
 )
 
@@ -302,6 +302,9 @@ def _render_followup_row(project_dir, kind, item, fup) -> str:
     if note:
         label += f" — {note}"
     desc = label.replace("|", "\\|")
+    crono = crono_link_md(project_dir, item)
+    if crono:
+        desc = f"{desc} {crono}"
     return f"| {emoji} | ⏩ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
@@ -310,6 +313,9 @@ def _render_overdue_row(project_dir, t) -> str:
     desc_raw = t.get("desc", "") or ""
     d = t.get("date", "")
     desc = f"{desc_raw} (📅{d})".replace("|", "\\|")
+    crono = crono_link_md(project_dir, t)
+    if crono:
+        desc = f"{desc} {crono}"
     return f"| {KIND_EMOJI['tasks']} | ⚠️ |  |  |  | {desc} | {proj_link_md(project_dir)} |"
 
 
@@ -334,12 +340,12 @@ def _render_items_table(items) -> list:
         bell = bell_cell(kind, item)
         st, en = time_pair(item, DEFAULT_MIN.get(kind))
         ov = "" if kind == "reminders" else overlap_char(overlaps.get(idx, 0))
-        desc = _desc_with_event_indicators(kind, item)
+        desc = _desc_with_event_indicators(kind, item, _pdir)
         rows.append(f"| {emoji} | {bell} | {ov} | {st} | {en} | {desc} | {proj_md} |")
     for kind, item, _pdir, proj_md in untimed:
         emoji = KIND_EMOJI[kind]
         bell = bell_cell(kind, item)
-        desc = _desc_with_event_indicators(kind, item)
+        desc = _desc_with_event_indicators(kind, item, _pdir)
         rows.append(f"| {emoji} | {bell} |  |  |  | {desc} | {proj_md} |")
     return rows
 

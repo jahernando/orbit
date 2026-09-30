@@ -95,13 +95,37 @@ orbit project type drop <name>              # elimina tipo
 ## task — tareas
 
 ```bash
-orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE|none] [-i]
+orbit task add     <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE|none] [--crono [NAME]] [-i]
 orbit task done    [<project>] ["<text>"]
 orbit task drop    [<project>] ["<text>"] [--force] [-o] [-s]
 orbit task log     [<project>] ["<text>"]
-orbit task edit    [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE|none]
+orbit task edit    [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE|none] [--crono [NAME]|none]
 orbit task fup     <project> "<text>" <DATE|clean|none> [--desc DESC] # añade/quita followup ⏩; none = sin fecha (ver Followups)
 ```
+
+### Tarea / hito con cronograma (`--crono`)
+
+Una tarea o un hito puede llevar su cronograma: el item enlaza el fichero al
+**final de la cabecera** y la fecha límite es la del propio item.
+
+```bash
+orbit task add  <p> "Informe final" --date 2026-12-15 --crono         # crea cronos/crono-informe-final.md
+orbit ms   add  <p> "Entrega" --date 2026-12-15 --crono plan-q4       # nombre explícito
+orbit task edit <p> "Informe final" --crono                           # asociar a un item existente
+orbit task edit <p> "Informe final" --crono none                      # desasociar (el fichero se queda)
+```
+```
+- [ ] ✏️ Informe final #tarea [📊](cronos/crono-informe-final.md)
+    ▶️ 2026-12-15
+```
+- Sin `NAME`, el crono se nombra por el título (sin tildes, `-` por espacios).
+  Si el fichero ya existe se **enlaza** tal cual: así se adoptan cronos antiguos.
+- Un crono pertenece a **un solo item abierto**; no va en citas recurrentes.
+- El enlace es por fichero: renombrar el item (`--text`) no lo rompe.
+- El **porcentaje** (hojas hechas) sale en las vistas — `day`, `organize`,
+  `agenda`, panel, echo — como `📊 37% (3/8)` o `[📊 37%](…)`; nunca se escribe
+  en `agenda.md`. `📊 ✓ 100%` = listo para cerrar (lo cierras tú); `📊 ?` =
+  fichero no encontrado.
 
 ### Títulos únicos por agenda
 
@@ -193,11 +217,11 @@ Todos los verbos que modifican una cita (`add`, `edit`, `done`, `drop`, `fup`) c
 ## ms — hitos
 
 ```bash
-orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE|none] [-i]
+orbit ms add    <project> "<text>" [--date DATE] [--time HH:MM] [--recur FREQ] [--until DATE] [--ring WHEN] [--desc DESC] [--fup DATE|none] [--crono [NAME]] [-i]
 orbit ms done   [<project>] ["<text>"]
 orbit ms drop   [<project>] ["<text>"] [--force] [-o] [-s]
 orbit ms log    [<project>] ["<text>"]
-orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE|none]
+orbit ms edit   [<project>] ["<text>"] [--text "<new>"] [--date DATE|none] [--time HH:MM|none] [--recur FREQ|none] [--until DATE|none] [--ring WHEN|none] [--desc DESC|none] [--fup DATE|none] [--crono [NAME]|none]
 orbit ms fup    <project> "<text>" <DATE|clean|none> [--desc DESC]
 ```
 
@@ -718,7 +742,9 @@ mueve caja.
 
 ## crono — cronogramas (task compuesta)
 
-Cronogramas: tareas anidadas con dependencias y duración temporal. Conceptualmente son una **task-compuesta** (extensión del sistema task). Se almacenan en `cronos/crono-<nombre>.md` dentro del proyecto, enlazados desde `## 📊 Cronogramas` en agenda.md.
+Cronogramas: tareas anidadas con dependencias y duración temporal. Conceptualmente son una **task-compuesta** (extensión del sistema task). Se almacenan en `cronos/crono-<nombre>.md` dentro del proyecto.
+
+> **En transición**: la forma nueva de crear un cronograma es colgarlo de una tarea o un hito con `--crono` (ver *Tarea / hito con cronograma* en `task`). `crono add` y el `deadline:` por nombre de hito siguen funcionando hasta que se retiren.
 
 ```bash
 orbit task crono add     <project> "<name>"                    # crear cronograma

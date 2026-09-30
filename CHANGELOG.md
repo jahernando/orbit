@@ -10,6 +10,21 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — crono como atributo de tarea / hito (F1) · ADR-055
+
+- **`--crono [NOMBRE]`** en `task add/edit` y `ms add/edit`: el item enlaza su
+  cronograma al final de la cabecera (`[📊](cronos/crono-x.md)`); crea el
+  fichero si falta (nombre = título sin tildes) o enlaza el existente.
+  `edit --crono none` desenlaza sin borrar el fichero.
+- Un crono ↔ un item abierto; rechazado en citas recurrentes. El enlace es por
+  fichero: renombrar el item no lo rompe. El lector tolera el enlace al
+  principio de la cabecera.
+- **Porcentaje en las vistas** (derivado, nunca en la verdad): `day` /
+  `organize`, `agenda`, secretario (`agenda.md`, filas vencidas/⏩), `hitos.md`
+  y echo del CLI.
+- Aditivo: `crono add`, el bloque 📊 de `day`/`organize` y `deadline:` siguen
+  igual (se retiran en F4).
+
 ### Unreleased — ledger: libro de contabilidad propio (F1) · ADR-054
 
 - **`ledger.md` pasa a ser la verdad** cuando tiene cabecera de libro

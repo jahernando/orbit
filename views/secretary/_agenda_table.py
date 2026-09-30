@@ -153,10 +153,30 @@ def bell_cell(kind: str, item: dict) -> str:
     return "🔔" if item.get("time") else ""
 
 
-def _desc_with_event_indicators(kind: str, item: dict) -> str:
+def crono_link_md(project_dir, item: dict) -> str:
+    """``[📊 37%](../../<proyecto>/cronos/…)`` desde 📊panel/secretary/.
+
+    '' si el item no enlaza crono. Federados u otro vault → texto sin link.
+    """
+    if not item.get("crono") or project_dir is None:
+        return ""
+    from core.config import ORBIT_HOME
+    from core.cronograma import crono_mark
+    try:
+        prefix = f"../../{project_dir.relative_to(ORBIT_HOME)}"
+    except ValueError:
+        prefix = None
+    return crono_mark(project_dir, item, link_prefix=prefix)
+
+
+def _desc_with_event_indicators(kind: str, item: dict, project_dir=None) -> str:
     """Returns item.desc + (for events) [📋](agenda) [🚪](room) [✉️](email)
-    indicators as markdown clickable icons. Escapes pipe for table safety."""
+    indicators as markdown clickable icons, or (for task/ms with crono) its
+    ``[📊 N%]`` link when *project_dir* is given. Escapes pipe for table safety."""
     desc = (item.get("desc") or "").replace("|", "\\|")
+    crono = crono_link_md(project_dir, item)
+    if crono:
+        desc = f"{desc} {crono}"
     if kind == "events":
         try:
             from core.agenda.display import event_indicators
@@ -195,12 +215,12 @@ def render_day_rows(items) -> list:
         bell = bell_cell(kind, item)
         start, end = time_pair(item, DEFAULT_MIN.get(kind))
         ov = "" if kind == "reminders" else overlap_char(overlaps.get(idx, 0))
-        desc = _desc_with_event_indicators(kind, item)
+        desc = _desc_with_event_indicators(kind, item, _pdir)
         lines.append(f"| {emoji} | {bell} | {ov} | {start} | {end} | {desc} | {proj_md} |")
     for kind, item, _pdir, proj_md in untimed:
         emoji = KIND_EMOJI[kind]
         bell = bell_cell(kind, item)
-        desc = _desc_with_event_indicators(kind, item)
+        desc = _desc_with_event_indicators(kind, item, _pdir)
         # untimed: overlap/Inicio/Fin vacíos.
         lines.append(f"| {emoji} | {bell} |  |  |  | {desc} | {proj_md} |")
     return lines

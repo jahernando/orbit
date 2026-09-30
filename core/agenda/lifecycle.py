@@ -213,6 +213,39 @@ def _undate_refusal(cfg: dict) -> str:
             f"{cfg['label'].lower()} necesita fecha. Para quitarlo: drop.")
 
 
+def _resolve_crono_arg(crono, title: str, data: dict, *,
+                       exclude: Optional[dict] = None) -> tuple:
+    """``--crono [NOMBRE]`` → ``(ruta_relativa | 'none' | None, error | None)``.
+
+    Sin nombre (cadena vacía) el crono se nombra por el título del item.
+    Un fichero crono pertenece a un solo item abierto de la agenda.
+    """
+    if crono is None:
+        return None, None
+    if is_none_word(crono):
+        return "none", None
+    from core.cronograma import crono_rel_path
+    rel = crono_rel_path(crono.strip() or title)
+    for key in ("tasks", "milestones"):
+        for it in data.get(key) or []:
+            if it is exclude or it.get("crono") != rel:
+                continue
+            if it.get("status") in ("done", "cancelled"):
+                continue
+            return None, (f"⚠️  {rel} ya es el crono de «{it.get('desc')}». "
+                          "Un crono pertenece a un solo item abierto.")
+    return rel, None
+
+
+def _report_crono(project_dir: Path, rel: str, title: str) -> None:
+    """Crea el fichero crono si falta y dice qué ha hecho (echo explícito)."""
+    from core.cronograma import ensure_crono_file
+    if ensure_crono_file(project_dir, rel, title):
+        print(f"  📊 crono creado: {rel}")
+    else:
+        print(f"  📊 enlazado a crono existente: {rel}")
+
+
 def _resolve_project(project: Optional[str]) -> Optional[Path]:
     """Resolve project name to dir. Returns None on failure (prints error)."""
     project_dir = _find_new_project(project) if project else None
@@ -684,7 +717,8 @@ def _generic_add(type_name: str, project: str, text: str,
                  agenda: Optional[str] = None,
                  room: Optional[str] = None,
                  fup: Optional[str] = None,
-                 ask: bool = False) -> int:
+                 ask: bool = False,
+                 crono: Optional[str] = None) -> int:
     """CLI wrapper around :mod:`core.api` ``add_*`` functions.
 
     Handles the CLI-only concerns the API doesn't (Phase 4.B, ADR-032):
@@ -709,11 +743,24 @@ def _generic_add(type_name: str, project: str, text: str,
 
     # Un título por cita abierta y agenda: los verbos localizan por título.
     target_dir = _find_new_project(project) if project else None
+    existing = (_read_agenda(resolve_file(target_dir, "agenda"))
+                if target_dir is not None else {})
     if target_dir is not None:
-        existing = _read_agenda(resolve_file(target_dir, "agenda"))
         if find_open_duplicate(existing.get(cfg["key"]) or [], text):
             print(_duplicate_message(cfg, text, target_dir))
             return 1
+
+    # --crono [NOMBRE]: el item enlaza su cronograma (tarea compuesta).
+    crono_rel, err = _resolve_crono_arg(crono, text, existing)
+    if err:
+        print(err)
+        return 1
+    if crono_rel == "none":
+        print("⚠️  --crono none solo tiene sentido al editar.")
+        return 1
+    if crono_rel and recur:
+        print("⚠️  Un crono no va en una cita recurrente.")
+        return 1
 
     # --fup none = sin fecha: en el alta es la captura cruda de siempre.
     undate = is_none_word(fup)
@@ -765,12 +812,14 @@ def _generic_add(type_name: str, project: str, text: str,
             new_item = api.add_task(project=project, text=text,
                                     date=date_val, time=time_val,
                                     recur=recur, until=until,
-                                    ring=ring, notes=notes_in)
+                                    ring=ring, notes=notes_in,
+                                    crono=crono_rel)
         elif type_name == "milestone":
             new_item = api.add_milestone(project=project, text=text,
                                           date=date_val, time=time_val,
                                           recur=recur, until=until,
-                                          ring=ring, notes=notes_in)
+                                          ring=ring, notes=notes_in,
+                                          crono=crono_rel)
         elif type_name == "event":
             new_item = api.add_event(project=project, text=text,
                                       date=date_val, time=time_val,
@@ -804,6 +853,8 @@ def _generic_add(type_name: str, project: str, text: str,
     print(format_item_block(type_name, new_item,
                             banner=f"{type_name} add · {project_dir.name}",
                             state=state))
+    if crono_rel:
+        _report_crono(project_dir, crono_rel, text)
 
     # Ring scheduling
     if cfg["has_ring"]:
@@ -936,7 +987,8 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
                   new_agenda: Optional[str] = None,
                   new_room: Optional[str] = None,
                   fup: Optional[str] = None,
-                  force=False, occurrence=False, series=False) -> int:
+                  force=False, occurrence=False, series=False,
+                  crono: Optional[str] = None) -> int:
     """Generic edit for all 4 appointment types."""
     cfg = _TYPE_CONFIG[type_name]
 
@@ -1002,6 +1054,24 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
 
     if new_text and find_open_duplicate(items, new_text, exclude=item):
         print(_duplicate_message(cfg, new_text, project_dir))
+        return 1
+
+    crono_rel, err = _resolve_crono_arg(crono, new_text or old_desc, data,
+                                        exclude=item)
+    if err:
+        print(err)
+        return 1
+    has_crono = item.get("crono") if crono_rel != "none" else None
+    if crono_rel and crono_rel != "none":
+        if item.get("crono") and item["crono"] != crono_rel:
+            print(f"⚠️  «{old_desc}» ya enlaza {item['crono']}. "
+                  "Quítalo antes con --crono none.")
+            return 1
+        has_crono = crono_rel
+    recur_after = item.get("recur") if new_recur is None else (
+        None if new_recur == "none" else new_recur)
+    if has_crono and recur_after:
+        print("⚠️  Un crono no va en una cita recurrente.")
         return 1
 
     if undate:
@@ -1079,12 +1149,22 @@ def _generic_edit(type_name: str, project_dir: Path, data: dict,
     if undate:
         item["notes"] = [n for n in item.get("notes") or []
                          if not n.startswith(_FOLLOWUP_NOTE_PREFIX)]
+    unlinked = None
+    if crono_rel == "none":
+        unlinked = item.pop("crono", None)
+    elif crono_rel:
+        item["crono"] = crono_rel
 
     _write_agenda(agenda_path, data)
     from core.agenda.display import format_item_block
     print(format_item_block(type_name, item,
                             banner=f"{type_name} edit · {project_dir.name}",
                             state="sin fecha" if undate else None))
+    if crono_rel == "none":
+        print(f"  📊 crono desenlazado: {unlinked} (el fichero se conserva)"
+              if unlinked else "  📊 no tenía crono")
+    elif crono_rel:
+        _report_crono(project_dir, crono_rel, item["desc"])
 
     # Ring update
     if cfg["has_ring"]:

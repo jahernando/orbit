@@ -328,9 +328,12 @@ def _marks(row: Row, today: date) -> str:
 
 
 def format_row(n: int, row: Row, today: date, show_project: bool) -> str:
+    from core.cronograma import crono_mark
     proj = f"  [{row.project_dir.name}]" if show_project else ""
+    crono = crono_mark(row.project_dir, row.item)
+    crono = f"  {crono}" if crono else ""
     return (f"  {n:>3}. {KIND_EMOJI[row.kind]} {_when(row, today):<11}  "
-            f"{row.item.get('desc', '')}{_marks(row, today)}{proj}")
+            f"{row.item.get('desc', '')}{crono}{_marks(row, today)}{proj}")
 
 
 def format_listing(title: str, sections: dict, today: date,
