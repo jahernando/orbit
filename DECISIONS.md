@@ -964,6 +964,28 @@ Tres fricciones reales:
 
 ---
 
+## ADR-056 — `day fup`: calendario de carga y ⏩ por lotes
+
+**Estado**: aceptada (2026-10-03). Fase 1 (aplazar con vista de carga). Pendientes, en ADR aparte: la prioridad del día y la capacidad por día.
+
+**Contexto**: el día se sobrecarga por arrastre. Lo que no cabe se aplaza a "mañana" (Enter por defecto) y al día siguiente vuelve, con lo nuevo encima: el 2026-10-03 `day` listaba 21 citas mientras las cuatro semanas siguientes tenían casi todos los días entre 1 y 4. Aplazar era de una en una y a ciegas, sin ver dónde había hueco.
+
+**Decisión**:
+
+1. **Calendario de carga en `day fup`**, encima del prompt: semana en curso + 4, de lunes a domingo, sin días pasados. Cinco niveles por número de citas: nula 0 · baja 1–4 · media 5–9 · alta 10–14 · muy alta ≥15. Se cuentan **citas**, no minutos: más fácil de leer y de explicar ("¿por qué este día sale oscuro?"); minutos queda como evolución si engaña.
+2. **Qué cuenta**: hoy, lo que lista `day` (hoy + vencidas + ⏩ ≤ hoy), porque es donde se acumula; un día futuro, las citas que caen ese día más las que tienen un ⏩ en esa fecha. Sin recordatorios, como `day`. Mismo alcance que `day` (workspace o proyecto, sin federados).
+3. **Intensidad = fondo gris** (ANSI-256, más oscuro = más carga; texto negro o blanco según el fondo). Elegido por el usuario frente a una tabla con bordes y glifos, tras verlo con datos reales. Es luminosidad, no tono: vale con daltonismo. Fuera de un terminal (tests, tubería) degrada a glifos `· ░ ▒ ▓ █`. El **número** de citas es opcional, entre paréntesis, apagado por defecto: `orbit.json` → `"load_calendar": {"counts": true}`.
+4. **Lote**: un entero solo es **siempre** un índice; cualquier otra cosa es fecha (`+3`, `viernes`, `YYYY-MM-DD`, `none`). `3 5 7 viernes [desc]` (una fecha para varios), `3:viernes 5:+7` (parejas, fecha de una palabra), `3` o `3 5` (pide la fecha). Con más de una cita se **muestra lo entendido y se confirma** (`[S/n]`) antes de aplicar; un lote con un índice o una fecha inválidos no aplica nada. Cada ⏩ va por la misma acción del triaje (ADR-052: en tareas e hitos no recurrentes quita la fecha). Las salidas de los runners se silencian y se resume una línea de verificación por cita; si una falla, se dice cuál y por qué.
+5. **Motor aparte** (`core/loadcal.py`), para reutilizarlo en el calendario del secretario y en `cal` sin pasar por el triaje.
+
+**Consecuencias**:
+- Pros: aplazar mirando dónde hay hueco; varias citas en una línea; el desbordamiento de hoy se ve como lo que es.
+- Contras: hoy y los días futuros no se cuentan igual (hoy incluye el arrastre), así que no son del todo comparables; una cita con fecha y un ⏩ otro día cuenta dos veces; los grises dependen del tema del terminal.
+
+**Verificación**: `tests/test_loadcal.py`.
+
+---
+
 ## ADR-055 — El cronograma es un atributo de una tarea o un hito
 
 **Estado**: aceptada (2026-09-30). F1, F2 y el triaje de F3 implementados; pendientes los verbos `task/ms crono …`, el doctor y F4. Diseño en `claude/notes/2026-09-30_crono_como_atributo.md` (workspace).

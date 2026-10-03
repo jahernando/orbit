@@ -983,7 +983,7 @@ Proyectos locales se muestran como links a `project.md`; federados con emoji del
 ```bash
 day                  # hoy en todo el workspace
 day next-kr          # hoy en un proyecto (en su panel fijado: `day` a secas)
-day fup              # la misma lista, pero elegir un número pone ⏩ directamente
+day fup              # aplazar: calendario de carga + ⏩ por lotes (3 5 viernes)
 day fup next-kr      # ídem en un proyecto (en su panel fijado: `day fup`)
 ```
 
@@ -1026,8 +1026,26 @@ Eliges un número y una acción (mismo menú que `organize`):
   quedó la cita: `✓ ✏️ «X» · 💻foo → cancelada` (o `completada`, `eliminado de
   la agenda`, `sin fecha · ⏩ 10-02`, `2026-10-01 10:00`…). Si un drop o un done
   no surtió efecto, lo dice con `⚠️ … NO se ha cancelado`.
-- `day fup`: la misma lista, sin menú; eliges número y te pide la fecha del `⏩`
-  (Enter = mañana, `none` = sin fecha).
+- `day fup`: la misma lista, sin menú, con un **calendario de carga** (semana
+  en curso + 4) encima del prompt. El fondo gris de cada día indica cuántas
+  citas tiene: sin fondo = 0, y de claro a oscuro 1–4 · 5–9 · 10–14 · ≥15
+  (fuera de un terminal, glifos `· ░ ▒ ▓ █`). Hoy, entre corchetes, cuenta lo
+  que lista `day` (incluido el arrastre); un día futuro, sus citas y sus `⏩`.
+  Sin recordatorios. El número va entre paréntesis si lo pides en `orbit.json`:
+  `"load_calendar": {"counts": true}`.
+
+  Entrada (un entero solo es siempre un número de cita; lo demás, fecha):
+
+  | Entrada | Efecto |
+  |---|---|
+  | `3 5 7 viernes [desc]` | la misma fecha a varias |
+  | `3:viernes 5:+7` | parejas (fecha de una palabra) |
+  | `3` · `3 5` | pide la fecha (Enter = mañana) |
+  | `3 5 none` | sin fecha |
+
+  Con más de una cita enseña lo entendido y pide confirmación (`[S/n]`); si
+  algún número o fecha no vale, no aplica nada. Ver
+  [ADR-056](DECISIONS.md#adr-056--day-fup-calendario-de-carga-y--por-lotes).
 - Las mutaciones usan los mismos runners que `task edit`, `task done`…: imprimen
   el item resultante, dejan undo y, en recurrentes, preguntan ocurrencia o serie.
 - Al salir (`q`) con cambios, refresca derivados (dash + ring + .ics).

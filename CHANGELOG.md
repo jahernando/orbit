@@ -10,6 +10,17 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `day fup`: calendario de carga y ⏩ por lotes · ADR-056
+
+- `day fup` pinta encima del prompt un calendario (semana en curso + 4) con la
+  carga de cada día como fondo gris en 5 niveles (0 · 1–4 · 5–9 · 10–14 ·
+  ≥15 citas); glifos `· ░ ▒ ▓ █` fuera de un terminal. Número entre
+  paréntesis opcional: `"load_calendar": {"counts": true}`.
+- ⏩ por lotes: `3 5 7 viernes`, `3:viernes 5:+7`, `3 5` (pide fecha), `none`;
+  eco de lo entendido y confirmación; lote inválido no aplica nada.
+- Nuevo `core/loadcal.py` (carga por día + render), reutilizable por el
+  calendario del secretario.
+
 ### Unreleased — crono como atributo de tarea / hito (F1–F2 + triaje de F3) · ADR-055
 
 - **F2 — pasos bajo su item**: en `day`/`organize` los pasos activos hoy o

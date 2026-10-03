@@ -26,6 +26,10 @@ laterales, ADR-043).
 
 from __future__ import annotations
 
+import io
+import re
+import sys
+from contextlib import redirect_stdout
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -486,10 +490,14 @@ def _edit_kind_undate(row: Row, *, drop_followups: bool) -> None:
              new_time="none", new_ring="none", force=True)
 
 
-def _act_fup(row: Row, today: date) -> bool:
+def _act_fup(row: Row, today: date, raw: Optional[str] = None) -> bool:
     """⏩ sobre la cita. En tareas e hitos no recurrentes, además la deja
-    **sin fecha**: el ⏩ es cuándo volver a decidir, no una fecha más."""
-    raw = _prompt("    ⏩ fecha [descripción] (enter = mañana, none = sin fecha): ")
+    **sin fecha**: el ⏩ es cuándo volver a decidir, no una fecha más.
+
+    *raw* (``day fup`` por lotes): la respuesta ya dada; si es None, se pide.
+    """
+    if raw is None:
+        raw = _prompt("    ⏩ fecha [descripción] (enter = mañana, none = sin fecha): ")
     parsed = parse_fup_input(raw, today)
     if parsed is None:
         print(f"  ⚠️  Fecha no reconocida: {raw!r}. Usa YYYY-MM-DD, mañana, +N, none…")
@@ -645,6 +653,139 @@ def describe_after(row: Row, idx: Optional[int], action: str) -> str:
     return f"✓ {head} → {state}"
 
 
+# ── day fup por lotes ─────────────────────────────────────────────────────
+#
+# Gramática (ADR-056): un entero solo es SIEMPRE un índice; lo demás, fecha.
+#   3 5 7 viernes [desc]   → la misma fecha a varios
+#   3:viernes 5:+7         → parejas (fecha de una palabra)
+#   3   /   3 5            → pide la fecha (una para todos)
+#   3 5 none               → sin fecha
+
+_INDEX = re.compile(r"^\d+$")
+_PAIR = re.compile(r"^(\d+):(\S+)$")
+
+
+def parse_fup_batch(raw: str, n_rows: int, today: date):
+    """``[(índices, respuesta | None)]`` o un ``str`` con el error.
+
+    *respuesta* es lo que se pasará a ``_act_fup``; None = hay que pedirla.
+    """
+    groups, pending, rest = [], [], []
+    for tok in raw.split():
+        if rest:
+            rest.append(tok)
+        elif _INDEX.match(tok):
+            pending.append(int(tok))
+        elif _PAIR.match(tok):
+            m = _PAIR.match(tok)
+            groups.append(([int(m.group(1))], m.group(2)))
+        else:
+            rest.append(tok)
+    if pending:
+        groups.append((pending, " ".join(rest) or None))
+    elif rest:
+        return f"falta el número de la cita antes de {' '.join(rest)!r}"
+    if not groups:
+        return "nada que hacer"
+    seen = set()
+    for idxs, answer in groups:
+        for i in idxs:
+            if not 1 <= i <= n_rows:
+                return f"no hay cita {i}"
+            if i in seen:
+                return f"la cita {i} sale dos veces"
+            seen.add(i)
+        if answer is not None:
+            err = _check_fup_answer(answer, today)
+            if err:
+                return err
+    return groups
+
+
+def _check_fup_answer(answer: str, today: date) -> Optional[str]:
+    parsed = parse_fup_input(answer, today)
+    if parsed is None:
+        return f"fecha no reconocida: {answer!r}"
+    if parsed[0] != "none" and parsed[0] < today.isoformat():
+        return f"{parsed[0]} ya ha pasado; un ⏩ mira hacia delante"
+    return None
+
+
+def _fup_target(answer: str, today: date) -> str:
+    iso, desc = parse_fup_input(answer, today)
+    if iso == "none":
+        return "sin fecha"
+    d = date.fromisoformat(iso)
+    out = f"⏩ {iso} ({_DAY_NAMES[d.weekday()][:3]})"
+    return out + (f" «{desc}»" if desc else "")
+
+
+def _run_fup_batch(sel: str, rows: list, today: date,
+                   show_project: bool = False) -> list:
+    """Aplica un lote de ⏩; devuelve las líneas de verificación."""
+    groups = parse_fup_batch(sel, len(rows), today)
+    if isinstance(groups, str):
+        print(f"  ⚠️  {groups}.")
+        return []
+    if len(groups) == 1 and len(groups[0][0]) == 1 and groups[0][1] is None:
+        # Un solo número sin fecha: como siempre, la pide y aplica.
+        row = rows[groups[0][0][0] - 1]
+        print()
+        print(format_row(groups[0][0][0], row, today, show_project).strip())
+        pos = locate_index(row)
+        try:
+            return [describe_after(row, pos, "u")] if _act_fup(row, today) else []
+        except Exception as exc:
+            print(f"  ⚠️  Error: {exc}")
+            return []
+    resolved = []
+    for idxs, answer in groups:
+        if answer is None:
+            answer = _prompt(f"    ⏩ para {' '.join(map(str, idxs))} — fecha "
+                             "[descripción] (enter = mañana, none = sin fecha): ")
+            err = _check_fup_answer(answer, today)
+            if err:
+                print(f"  ⚠️  {err}.")
+                return []
+        resolved += [(i, answer) for i in idxs]
+    print()
+    for i, answer in resolved:
+        row = rows[i - 1]
+        print(f"  {i:>3}. {KIND_EMOJI[row.kind]} «{row.item.get('desc', '')}»"
+              f" → {_fup_target(answer, today)}")
+    ok = _prompt(f"  ¿aplicar {len(resolved)}? [S/n]: ").lower()
+    if ok not in ("", "s", "si", "sí", "y", "yes"):
+        print("  (no se aplica nada)")
+        return []
+    out = []
+    for i, answer in resolved:
+        row = rows[i - 1]
+        pos = locate_index(row)
+        buf = io.StringIO()
+        try:
+            with redirect_stdout(buf):
+                done = _act_fup(row, today, answer)
+        except Exception as exc:
+            done = False
+            buf.write(f"  ⚠️  Error: {exc}\n")
+        if done:
+            out.append(describe_after(row, pos, "u"))
+        else:
+            # El runner explica por qué no; solo se enseña si falla.
+            out.append(f"⚠️  {i}. «{row.item.get('desc', '')}»: "
+                       + (buf.getvalue().strip().splitlines() or ["sin cambios"])[-1].strip())
+    return out
+
+
+def _load_calendar(dirs: list, today: date, n_today: int) -> list:
+    from core import loadcal
+    weeks = loadcal.weeks_from(today)
+    loads = loadcal.day_loads(dirs, today, [d for w in weeks for d in w],
+                              today_count=n_today)
+    return loadcal.render(loads, today, weeks, counts=loadcal.show_counts(),
+                          ansi=sys.stdout.isatty())
+
+
 # ── Bucle ─────────────────────────────────────────────────────────────────
 
 def _refresh(applied: int) -> None:
@@ -664,7 +805,8 @@ def _refresh(applied: int) -> None:
 def run_loop(title: str, dirs: list, full: bool, show_project: bool,
              today_fn: Callable[[], date] = date.today,
              fup_only: bool = False) -> int:
-    """*fup_only* (``day fup``): sin menú; elegir número = poner ⏩."""
+    """*fup_only* (``day fup``): sin menú; calendario de carga y ⏩ por
+    lotes (``3 5 viernes``, ``3:+2``…)."""
     applied = 0
     last = None             # verificación de la última acción
     while True:
@@ -677,6 +819,9 @@ def run_loop(title: str, dirs: list, full: bool, show_project: bool,
         for line in format_cronos(collect_cronos(dirs, today, full), today,
                                   show_project, show_progress=full):
             print(line)
+        if fup_only and rows:
+            for line in _load_calendar(dirs, today, len(rows)):
+                print(line)
         print("─" * 70)
         if last:
             print(last)
@@ -685,10 +830,17 @@ def run_loop(title: str, dirs: list, full: bool, show_project: bool,
             _refresh(applied)
             return 0
 
-        sel = _prompt("#? (número, q=salir) > ")
+        hint = ("#? (3 5 viernes · 3:+2 · 3 · q=salir) > " if fup_only
+                else "#? (número, q=salir) > ")
+        sel = _prompt(hint)
         if not sel or sel.lower() in ("q", "quit", "exit"):
             _refresh(applied)
             return 0
+        if fup_only:
+            done = _run_fup_batch(sel, rows, today, show_project)
+            applied += sum(1 for d in done if d.startswith("✓"))
+            last = "\n".join(done) or None
+            continue
         try:
             idx = int(sel)
         except ValueError:
@@ -701,11 +853,8 @@ def run_loop(title: str, dirs: list, full: bool, show_project: bool,
         row = rows[idx - 1]
         print()
         print(format_row(idx, row, today, show_project).strip())
-        if fup_only:
-            action = "u"
-        else:
-            print(menu_for(row))
-            action = _prompt("  ?> ").lower()
+        print(menu_for(row))
+        action = _prompt("  ?> ").lower()
         if action == "q":
             _refresh(applied)
             return 0
