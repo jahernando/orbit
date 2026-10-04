@@ -19,6 +19,11 @@ En un terminal la intensidad es el **fondo gris** de la celda (más oscuro,
 más carga); fuera de él (tests, tubería) un glifo ``· ░ ▒ ▓ █``. Los dos
 son escala de luminosidad, no de tono. El número de citas va entre
 paréntesis solo si ``orbit.json`` lo pide: ``"load_calendar": {"counts": true}``.
+
+En markdown (``render_md``, para el calendario y la agenda del secretario)
+la intensidad es el mismo gris, como ``<span style="background:…">``; el
+número de citas va en el ``title`` (al pasar el ratón). Los días con un
+hito abierto van en **negrita**.
 """
 
 from __future__ import annotations
@@ -63,20 +68,13 @@ def weeks_from(today: date, n_weeks: int = 4) -> list:
             for w in range(n_weeks + 1)]
 
 
-def day_loads(dirs: list, today: date, days: list,
-              today_count: Optional[int] = None) -> dict:
-    """``{fecha: nº de citas}`` para los días de *days* desde hoy.
-
-    *today_count*: lo que ya contó ``day`` (evita recoger dos veces).
-    """
+def _open_items(dirs: list) -> list:
+    """``[(kind, item, {fechas ⏩})]`` de las citas abiertas, sin recordatorios."""
     from core.agenda.display import item_followups
     from core.agenda_cmds import _read_agenda
     from core.log import resolve_file
-    from core.triage import (_SECTION_OF, _is_open, collect, number_rows,
-                             occurs_on)
+    from core.triage import _SECTION_OF, _is_open
 
-    if today_count is None:
-        today_count = len(number_rows(collect(dirs, today, full=False)))
     items = []
     for project_dir in dirs:
         agenda = resolve_file(project_dir, "agenda")
@@ -90,6 +88,28 @@ def day_loads(dirs: list, today: date, days: list,
                 if _is_open(it, kind):
                     fups = {f["date"] for f in item_followups(it) if f["date"]}
                     items.append((kind, it, fups))
+    return items
+
+
+def milestone_days(dirs: list, today: date, days: list) -> set:
+    """Días de *days* desde hoy en que cae un hito abierto."""
+    from core.triage import occurs_on
+    ms = [it for kind, it, _ in _open_items(dirs) if kind == "ms"]
+    return {d for d in days if d >= today
+            and any(occurs_on(it, "ms", d) for it in ms)}
+
+
+def day_loads(dirs: list, today: date, days: list,
+              today_count: Optional[int] = None) -> dict:
+    """``{fecha: nº de citas}`` para los días de *days* desde hoy.
+
+    *today_count*: lo que ya contó ``day`` (evita recoger dos veces).
+    """
+    from core.triage import collect, number_rows, occurs_on
+
+    if today_count is None:
+        today_count = len(number_rows(collect(dirs, today, full=False)))
+    items = _open_items(dirs)
     out = {}
     for d in days:
         if d < today:
@@ -158,4 +178,73 @@ def render(loads: dict, today: date, weeks: list, *, counts: bool = False,
         else:
             legend.append(f"{GLYPHS[lv]} {name}")
     lines.append("  " + "  ".join(legend) + "    [ ] = hoy")
+    return lines
+
+
+# ── Markdown ──────────────────────────────────────────────────────────────
+
+_HEX = {232: "#080808", 238: "#444444", 243: "#767676", 248: "#a8a8a8",
+        252: "#d0d0d0", 255: "#eeeeee"}
+_MD_WEEKDAYS = ("Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do")
+
+
+def _md_span(text: str, lv: int, title: str = "", bold: bool = False) -> str:
+    if bold:
+        text = f"<b>{text}</b>"
+    tip = f' title="{title}"' if title else ""
+    if _BG[lv] is None:
+        return f"<span{tip}>{text}</span>" if tip else text
+    style = (f"background:{_HEX[_BG[lv]]};color:{_HEX[_FG[lv]]};"
+             "padding:0 4px;border-radius:3px")
+    return f'<span style="{style}"{tip}>{text}</span>'
+
+
+def md_cell(d: date, loads: dict, today: date, ms_days: set = frozenset()) -> str:
+    """Celda markdown: gris de carga, **negrita** si hay hito, ``[dd]`` hoy.
+
+    Días pasados (o sin carga calculada) salen tenues, sin intensidad.
+    """
+    label = f"{d.day:02d}"
+    if d < today or d not in loads:
+        return f'<span style="opacity:.45">{label}</span>'
+    n = loads[d]
+    if d == today:
+        label = f"[{label}]"
+    tip = f"{n} cita" + ("s" if n != 1 else "")
+    if d in ms_days:
+        tip += " · 🏁 hito"
+    return _md_span(label, level(n), tip, bold=d in ms_days)
+
+
+def md_legend() -> str:
+    parts = [_md_span(f"{name}", lv) for lv, name in enumerate(LEVEL_NAMES)]
+    return ("Carga (citas/día): " + " ".join(parts)
+            + " · **negrita** = hito · [ ] = hoy")
+
+
+def render_md(loads: dict, today: date, weeks: list,
+              ms_days: set = frozenset(), *, week_numbers: bool = True,
+              month: Optional[int] = None,
+              last: Optional[date] = None) -> list:
+    """Tabla markdown de *weeks* (listas lunes→domingo).
+
+    *month*: si se da, los días de otro mes quedan en blanco (vista mensual).
+    *last*: los días posteriores quedan en blanco (ventana de la agenda).
+    """
+    head = (["Wk"] if week_numbers else []) + list(_MD_WEEKDAYS)
+    lines = ["| " + " | ".join(head) + " |",
+             "|" + "|".join([":-:"] * len(head)) + "|"]
+    for week in weeks:
+        cells = []
+        if week_numbers:
+            ref = next((d for d in week if month is None or d.month == month),
+                       week[0])
+            cells.append(f"**W{ref.isocalendar()[1]:02d}**")
+        for d in week:
+            if ((month is not None and d.month != month)
+                    or (last is not None and d > last)):
+                cells.append("")
+            else:
+                cells.append(md_cell(d, loads, today, ms_days))
+        lines.append("| " + " | ".join(cells) + " |")
     return lines

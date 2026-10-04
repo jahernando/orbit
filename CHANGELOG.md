@@ -10,6 +10,18 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — calendario de carga en el secretario · ADR-056
+
+- **`📊panel/secretary/calendar.md`** (3 meses) pinta la carga de cada día
+  con el gris de `day fup` (5 niveles, `<span style="background:…">`); el nº
+  de citas va en el `title` (al pasar el ratón). Días con hito abierto en
+  **negrita**, hoy `[dd]`, días pasados tenues. Leyenda arriba.
+- **`agenda.md` del secretario**: mini-calendario de hoy a +7 días con la
+  misma carga, entre los contadores y `## 🎯 Focus`.
+- `core/loadcal.py`: `milestone_days`, `md_cell`, `md_legend`, `render_md`.
+  Cuenta igual que `day fup`: proyectos propios, sin recordatorios (las
+  citas federadas salen en las tablas pero no suman carga).
+
 ### v0.45.0 (2026-10-04) — focus week + focus day · ADR-057
 
 Primera versión numerada desde v0.44.0: incluye también las entradas

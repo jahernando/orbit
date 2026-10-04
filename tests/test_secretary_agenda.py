@@ -397,6 +397,23 @@ class TestGenerate:
         assert "| ⚠️ |" in text
         assert f"(📅{past})" in text
 
+    def test_mini_calendar_with_load(self, agenda_env):
+        today = date.today()
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=(
+                "## 📅 Eventos\n"
+                f"{today.isoformat()} — Reunión ⏰10:00-11:00\n"
+            ),
+        )
+        out = agenda_env["tmp"] / "agenda.md"
+        sec_agenda.generate(out)
+        text = out.read_text()
+        assert "| Lu | Ma | Mi | Ju | Vi | Sa | Do |" in text
+        assert f'title="1 cita">[{today.day:02d}]</span>' in text
+        assert "Carga (citas/día)" in text
+        assert text.index("| Lu |") < text.index("## 📅 Hoy")
+
     def test_followup_today_aparece_con_triaje(self, agenda_env):
         today = date.today()
         _make_project(

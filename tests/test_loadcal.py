@@ -90,6 +90,46 @@ class TestRender:
         assert len(lines) == 2 + 4 + 1             # título, cabecera, 4 semanas, leyenda
 
 
+# ── Markdown (secretario) ────────────────────────────────────────────────────
+
+class TestMarkdown:
+
+    def test_milestone_days_only_open_and_future(self, ws):
+        _seed(ws, milestones=[{"desc": "m1", "date": _d(3), "status": "pending"},
+                              {"desc": "m2", "date": _d(4), "status": "done"},
+                              {"desc": "m0", "date": _d(-2), "status": "pending"}])
+        weeks = L.weeks_from(TODAY)
+        days = [d for w in weeks for d in w]
+        assert L.milestone_days([ws], TODAY, days) == {
+            TODAY.fromisoformat(_d(3))}
+
+    def test_cells_grey_bold_today_and_past(self):
+        from datetime import timedelta
+        d1, d3 = TODAY + timedelta(days=1), TODAY + timedelta(days=3)
+        loads = {TODAY: 21, d1: 0, d3: 6}
+        today = L.md_cell(TODAY, loads, TODAY)
+        assert "[16]" in today and "background:#444444" in today
+        assert 'title="21 citas"' in today
+        assert L.md_cell(d1, loads, TODAY) == '<span title="0 citas">17</span>'
+        ms = L.md_cell(d3, loads, TODAY, {d3})
+        assert "<b>19</b>" in ms and "background:#a8a8a8" in ms and "hito" in ms
+        past = L.md_cell(TODAY - timedelta(days=1), loads, TODAY)
+        assert "opacity" in past and "background" not in past
+
+    def test_render_md_month_and_window(self):
+        from datetime import timedelta
+        weeks = L.weeks_from(TODAY, n_weeks=1)
+        loads = {d: 1 for w in weeks for d in w if d >= TODAY}
+        rows = L.render_md(loads, TODAY, weeks, week_numbers=False,
+                           last=TODAY + timedelta(days=2))
+        assert rows[0] == "| Lu | Ma | Mi | Ju | Vi | Sa | Do |"
+        assert len(rows) == 2 + 2
+        assert rows[2].endswith("18</span> |  |  |")   # 19-20 fuera de ventana
+        assert rows[3].count("|  ") == 7           # semana siguiente en blanco
+        with_wk = L.render_md(loads, TODAY, weeks, month=9)
+        assert with_wk[2].startswith("| **W38** |")
+
+
 # ── Gramática del lote ───────────────────────────────────────────────────────
 
 class TestParseBatch:

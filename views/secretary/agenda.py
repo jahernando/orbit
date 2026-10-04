@@ -475,6 +475,28 @@ def _next_days_block(today, items_by_day, followups_by_day=None) -> list:
     return blocks
 
 
+def _mini_calendar(today, end) -> list:
+    """Mini-calendario de hoy a *end* con la carga de cada día (ADR-056).
+
+    Cuenta como ``day fup``: proyectos propios, sin recordatorios. Las
+    citas federadas salen en las tablas pero no suman carga.
+    """
+    from core import loadcal
+    from core.triage import resolve_dirs
+    dirs = resolve_dirs(None)
+    monday = today - timedelta(days=today.weekday())
+    weeks = []
+    while monday <= end:
+        weeks.append([monday + timedelta(days=i) for i in range(7)])
+        monday += timedelta(days=7)
+    days = [d for w in weeks for d in w if today <= d <= end]
+    loads = loadcal.day_loads(dirs, today, days)
+    ms_days = loadcal.milestone_days(dirs, today, days)
+    return (loadcal.render_md(loads, today, weeks, ms_days,
+                              week_numbers=False, last=end)
+            + ["", loadcal.md_legend(), ""])
+
+
 def generate(out_path: Path) -> None:
     """Escribe `agenda.md` (hot único del workspace) en out_path."""
     today = _date.today()
@@ -511,6 +533,7 @@ def generate(out_path: Path) -> None:
                                 n_overdue_ms=n_overdue_ms,
                                 ring_counts=ring_counts))
     lines.append("")
+    lines.extend(_mini_calendar(today, end))
     from views.secretary.focus import focus_lines
     lines.extend(focus_lines(today))          # [] si focus está apagado
     lines.append(f"## 📅 Hoy — {_short_date_es(today)}")
