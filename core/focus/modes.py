@@ -21,6 +21,7 @@ from core.focus.prompts import (
     _resolve_project_name,
 )
 from core.focus.weekfile import (
+    _append_blocks_to_week_file,
     _RAIL_FROM_EMOJI,
     _build_id_task_index,
     _parse_week_blocks_detailed,
@@ -110,8 +111,17 @@ def _run_mode_libre(mission_dir: Path, template: dict,
         print("⚠️  No se creó ningún bloque. Archivo semanal no escrito.")
         return 1
 
-    _write_week_file(week_file, target, initial_status,
-                     rails_projects, blocks_by_rail)
+    if initial_blocks is not None and week_file.exists():
+        # "añadir bloques": no reescribir la hoja (perdería retrospectiva,
+        # símbolos con fecha y balance) — solo se insertan los nuevos.
+        initial_ids = {oid for blocks in initial_blocks.values()
+                       for _, oid in blocks}
+        new_blocks = {r: [(p, oid) for p, oid in blocks_by_rail[r]
+                          if oid not in initial_ids] for r in _RAILS}
+        _append_blocks_to_week_file(week_file, rails_projects, new_blocks)
+    else:
+        _write_week_file(week_file, target, initial_status,
+                         rails_projects, blocks_by_rail)
     if pre_existing:
         print(f"\n✓ {new_total} bloques añadidos · total semana: {total}")
     else:

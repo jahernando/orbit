@@ -536,6 +536,57 @@ class TestF7Menu:
         assert ids_after == ids_before + 1
 
 
+    def test_add_blocks_option_keeps_retro_and_symbols(self, workspace, mission,
+                                                       other_project, monkeypatch):
+        """Opción 3 no reescribe la hoja: retrospectiva y fechas intactas."""
+        from core.focus import run_focus_week, _week_file_path
+        _write_template_file(mission)
+        _feed_inputs(monkeypatch, [
+            "2", "paper-neutrinos", "1", "lun", "09:00", "", "", "",
+        ])
+        assert run_focus_week() == 0
+        wf = _week_file_path(mission, date.today())
+        from core import api
+        from core.focus import _parse_block_states
+        (oid,) = _parse_block_states(wf.read_text())
+        api.complete_task(project="mission", orbit_id=oid)
+        text = wf.read_text().replace("- ⬜ [orbit:", "- ✅ 10-01 [orbit:")
+        text += "Mi retrospectiva a mano.\n"
+        wf.write_text(text)
+        _feed_inputs(monkeypatch, [
+            "3",
+            "paper-neutrinos", "1", "mie", "09:00", "",   # anchor: +1
+            "paper-neutrinos", "1", "jue", "09:00", "",   # push: sección nueva
+            "",
+        ])
+        assert run_focus_week() == 0
+        out = wf.read_text()
+        assert "Mi retrospectiva a mano." in out
+        assert out.count("- ✅ 10-01 [orbit:") == 1
+        assert out.count("- ⬜ [orbit:") == 2
+        assert "### 🔥 paper-neutrinos" in out
+        assert "- 🔥 Push: [[paper-neutrinos]]" in out
+        from core.focus import _parse_week_file
+        rails = _parse_week_file(out)["blocks_by_rail"]
+        assert (len(rails["anchor"]), len(rails["push"])) == (2, 1)
+
+    def test_append_blocks_unit(self, tmp_path):
+        from core.focus import _append_blocks_to_week_file
+        wf = tmp_path / "w.md"
+        wf.write_text("# Focus\n\n## Carriles\n\n- ⚓ Anchor: [[a]]\n"
+                      "- 🔥 Push: —\n- 🌿 Joy: —\n\n## Bloques\n\n"
+                      "### ⚓ a\n- ✅ 10-01 [orbit:aaaaaaaa]\n\n"
+                      "## Contador (autogenerado)\n\n## Retrospectiva\n\nTexto\n")
+        _append_blocks_to_week_file(
+            wf, {"anchor": ["a"], "push": ["b"]},
+            {"anchor": [("a", "bbbbbbbb")], "push": [("b", "cccccccc")]})
+        out = wf.read_text()
+        assert ("### ⚓ a\n- ✅ 10-01 [orbit:aaaaaaaa]\n- ⬜ [orbit:bbbbbbbb]\n\n"
+                "### 🔥 b\n- ⬜ [orbit:cccccccc]\n\n## Contador") in out
+        assert "- 🔥 Push: [[b]]" in out
+        assert out.endswith("Texto\n")
+
+
 class TestRetrospectivaGuide:
     def test_new_week_file_has_guiding_questions(self, workspace, mission,
                                                   other_project, monkeypatch):

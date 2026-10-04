@@ -76,6 +76,7 @@ from core.focus.prompts import (  # noqa: F401
     _resolve_project_name,
 )
 from core.focus.weekfile import (  # noqa: F401
+    _append_blocks_to_week_file,
     _BALANCE_DONE,
     _BALANCE_PENDING,
     _SYM_OPEN,

@@ -99,6 +99,68 @@ def _format_week_file(target: date, status: str,
     return "\n".join(out)
 
 
+def _append_blocks_to_week_file(week_file: Path,
+                                rails_projects: dict[str, list[str]],
+                                new_blocks: dict[str, list[tuple[str, str]]]
+                                ) -> None:
+    """Añade bloques a una hoja existente sin reescribirla.
+
+    Conserva todo lo demás (retrospectiva, símbolos con fecha, balance,
+    texto libre): solo reescribe las líneas de ``## Carriles`` y mete
+    ``- ⬜ [orbit:id]`` al final de la sección ``### <emoji> <proj>``
+    (que se crea al final de ``## Bloques`` si no existe).
+    """
+    lines = week_file.read_text().splitlines()
+
+    def _section(title: str) -> tuple[Optional[int], int]:
+        start = next((i for i, ln in enumerate(lines)
+                      if ln.strip() == title), None)
+        if start is None:
+            return None, len(lines)
+        end = next((j for j in range(start + 1, len(lines))
+                    if lines[j].startswith("## ")), len(lines))
+        return start, end
+
+    # Carriles: reescribe la línea de cada carril.
+    for rail in _RAILS:
+        projs = rails_projects.get(rail) or []
+        body = ", ".join(f"[[{p}]]" for p in projs) if projs else "—"
+        new_line = f"- {_RAIL_EMOJI[rail]} {_RAIL_LABEL[rail]}: {body}"
+        start, end = _section("## Carriles")
+        if start is None:
+            break
+        for i in range(start + 1, end):
+            if lines[i].strip().startswith(f"- {_RAIL_EMOJI[rail]} "):
+                lines[i] = new_line
+                break
+
+    start, end = _section("## Bloques")
+    if start is None:  # hoja sin Bloques: créala antes del contador / EOF
+        cut, _ = _section("## Contador (autogenerado)")
+        at = cut if cut is not None else len(lines)
+        lines[at:at] = ["## Bloques", ""]
+    for rail in _RAILS:
+        for proj, oid in new_blocks.get(rail, []):
+            start, end = _section("## Bloques")
+            header = f"### {_RAIL_EMOJI[rail]} {proj}"
+            h = next((i for i in range(start + 1, end)
+                      if lines[i].strip() == header), None)
+            entry = f"- {_SYM_OPEN} [orbit:{oid}]"
+            if h is None:
+                # Nueva sección al final de Bloques (tras el último no-vacío).
+                at = end
+                while at > start + 1 and not lines[at - 1].strip():
+                    at -= 1
+                lines[at:at] = ["", header, entry]
+                continue
+            # Tras la última línea de bloque de la sección.
+            at = h + 1
+            while at < end and lines[at].strip().startswith("- "):
+                at += 1
+            lines.insert(at, entry)
+    week_file.write_text("\n".join(lines) + "\n")
+
+
 def _write_week_file(week_file: Path, target: date, status: str,
                      rails_projects: dict[str, list[str]],
                      blocks_by_rail: dict[str, list[tuple[str, str]]]) -> None:
