@@ -4,7 +4,7 @@ Paquete (antes ``core/focus.py`` mono-fichero, ADR-038). El ``__init__``
 re-exporta la API histórica para que ``from core.focus import …`` siga
 funcionando. Submódulos, de base a cima (sin ciclos)::
 
-    common → template, prompts → weekfile → days → hook, year → balance → modes → week, day
+    common → template, prompts → weekfile → days → hook, year → balance → modes → week, day, summary
 
 
 Mission-specific por construcción en v1. Cada workspace declara su propia
@@ -159,3 +159,9 @@ from core.focus.day import (  # noqa: F401
     _project_candidates,
     run_focus_day,
 )
+from core.focus.summary import (  # noqa: F401
+    level as _summary_level,
+    render as _render_summary,
+    run_focus_summary,
+)
+from core.focus.summary import _collect as _collect_summary  # noqa: F401

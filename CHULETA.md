@@ -1097,6 +1097,7 @@ orbit focus week              # planifica la semana actual (ISO)
 orbit focus week --next       # planifica la semana siguiente
 orbit focus week --review     # abre el archivo semanal en $EDITOR
 orbit focus day               # hasta 5 tareas focus de hoy (ver «Focus del día»)
+orbit focus summary           # éxito 0–5 por día y semana (ver «Resumen»)
 ```
 
 Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` agrupados por carril:
@@ -1151,6 +1152,15 @@ Repetido el mismo día: menú `1) añadir` (hasta completar 5) · `2) rehacer` �
 **En la agenda del secretario** (`📊panel/secretary/agenda.md`): sección `## 🎯 Focus` entre los contadores y `📅 Hoy`, con la semana (bloques por carril ✅⬜ y `✅ n/m`) y las tareas de hoy. Lee el estado **en vivo** de la verdad (también lo cerrado a mano en Obsidian). Aparece solo si hay hoja para esta semana; `- Status: off` en la hoja la oculta.
 
 `task done` / `task drop` marcan la línea `✅ MM-DD` / `❌ MM-DD`. **Balance del día**: el primer `save` (con cambios) de un día posterior congela los símbolos (abierta → ❌, desaparecida → ❔) y la cabecera pasa a `### … · balance n/m`; desde ahí no se toca.
+
+### Resumen
+
+```bash
+orbit focus summary              # últimas 8 semanas (la actual incluida)
+orbit focus summary --weeks 12
+```
+
+Una fila por semana: siete celdas de día (focus day) y, **aparte**, la celda de la semana (bloques de focus week, con `n/m bloques`). Cada celda es un nivel **0–5 = round(5 · hechas / total)** — proporción: 3/3 es 5. Vacía = sin focus. El nivel va como dígito y, en terminal, con fondo gris más oscuro cuanto más alto (sin depender del color). `[ ]` = hoy. Pie con totales (días con focus, tareas ✅, días a 5; bloques ✅). Días/semanas balanceados se leen de la hoja; los no balanceados, en vivo de la verdad.
 
 ### Vista anual
 

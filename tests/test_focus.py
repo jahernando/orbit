@@ -1506,3 +1506,67 @@ class TestSecretaryFocus:
             raise RuntimeError("x")
         monkeypatch.setattr(focus, "_focus_lines", _boom)
         assert focus.focus_lines(_D) == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# F6: focus summary
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestFocusSummary:
+    def test_level_is_proportion(self):
+        from core.focus.summary import level
+        assert level(0, 0) is None
+        assert level(3, 3) == 5
+        assert level(0, 4) == 0
+        assert level(1, 2) == 3          # 2.5 → 3
+        assert level(1, 5) == 1
+
+    def test_rows_days_and_week_separate(self, workspace, mission, other_project,
+                                         monkeypatch):
+        from core import api
+        from core.focus import run_focus_day, run_focus_balance
+        from core.focus.summary import _collect
+        _mission_task("aaaaaaaa")
+        _mission_task("bbbbbbbb")
+        _new_week(mission, _W40_MON, [("p", "aaaaaaaa"), ("p", "bbbbbbbb")])
+        _proj_task("🌀paper-neutrinos", "x")
+        _proj_task("🌀paper-neutrinos", "y")
+        _feed_inputs(monkeypatch, ["3 4"])            # x, y (tras los bloques)
+        run_focus_day(today=_D)
+        api.complete_task(project="🌀paper-neutrinos", desc="x")
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        rows = _collect(mission, [_W40_MON - timedelta(days=7), _W40_MON], _D)
+        assert rows[0]["days"] == {} and rows[0]["week"] is None
+        assert rows[1]["days"] == {_D: (1, 2)}
+        assert rows[1]["week"] == (1, 2)
+        # Tras el balance se lee de la hoja y da lo mismo.
+        run_focus_balance(today=date(2026, 10, 6), silent=True)
+        rows = _collect(mission, [_W40_MON], date(2026, 10, 6))
+        assert rows[0]["days"] == {_D: (1, 2)}
+        assert rows[0]["week"] == (1, 2)
+
+    def test_render_plain(self):
+        from core.focus.summary import render
+        rows = [{"monday": _W40_MON, "label": "W40", "year": 2026,
+                 "days": {_D: (3, 3), date(2026, 9, 29): (0, 2)},
+                 "week": (2, 4)}]
+        out = render(rows, _D, ansi=False)
+        line = next(l for l in out if l.strip().startswith("W40"))
+        assert "  0  " in line and "[ 5 ]" in line
+        assert "│  3  2/4 bloques" in line
+        assert "\x1b" not in "\n".join(out)
+        assert any("Días con focus: 2 · tareas ✅ 3/5 · días a 5: 1" in l
+                   for l in out)
+
+    def test_render_ansi_paints(self):
+        from core.focus.summary import render
+        rows = [{"monday": _W40_MON, "label": "W40", "year": 2026,
+                 "days": {_D: (3, 3)}, "week": None}]
+        out = "\n".join(render(rows, _D, ansi=True))
+        assert "\x1b[48;5;238m" in out
+
+    def test_cli(self, workspace, mission, capsys):
+        from core.focus import run_focus_summary
+        assert run_focus_summary(weeks=3, today=_D) == 0
+        out = capsys.readouterr().out
+        assert "W38" in out and "W40" in out and "Sin focus" in out
