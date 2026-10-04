@@ -27,7 +27,7 @@ Principios de diseño:
     highlights.py         ← highlights CRUD
     project.py            ← gestión de proyectos
     arxiv.py              ← feed diario de arXiv por proyecto (bandeja en notes/ → highlights)
-    focus.py              ← planificación semanal por carriles (anchor/push/joy) en mission + vista anual
+    focus/                ← focus por carriles (anchor/push/joy) en mission: common → template, prompts → weekfile → year → modes → week
     manual.py             ← índice de comandos + páginas de manual, derivados de CHULETA.md
     types.py              ← dataclasses compartidas entre core/ y views/ (Issue, …)
   views/                  ← readers de la verdad → artefactos derivados (regla en RULES.md)

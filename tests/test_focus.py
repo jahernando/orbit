@@ -174,7 +174,7 @@ class TestTemplate:
             "## Theme days\n"
             "- Lunes: research\n"
         )
-        monkeypatch.setattr("core.focus.TEMPLATES_DIR", fake_templates)
+        monkeypatch.setattr("core.focus.template.TEMPLATES_DIR", fake_templates)
         t = _bootstrap_template_from_factory(mission)
         assert t["block_duration"] == 60
         assert (mission / "notes" / "focus-template.md").exists()
@@ -940,7 +940,7 @@ class TestYearRefreshOnWeekClose:
             @classmethod
             def today(cls):
                 return fixed_today
-        monkeypatch.setattr(focus, "date", _FixedDate)
+        monkeypatch.setattr(focus.week, "date", _FixedDate)
         _write_template_file(mission)
         api.add_task(project="mission", text="A",
                      date="2026-05-18", time="09:00-10:30", orbit_id="aaaaaaaa")
@@ -960,7 +960,7 @@ class TestYearRefreshOnWeekClose:
         from core import focus
         def _boom(*a, **kw):
             raise RuntimeError("nope")
-        monkeypatch.setattr(focus, "run_focus_year", _boom)
+        monkeypatch.setattr(focus.year, "run_focus_year", _boom)
         # Should not raise.
         focus._refresh_year_silent(mission, 2026)
         captured = capsys.readouterr()
