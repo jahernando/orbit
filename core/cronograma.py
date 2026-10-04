@@ -2022,3 +2022,83 @@ def linked_cronos(data: dict) -> set:
             if it.get("crono") and it.get("status") not in ("done", "cancelled"):
                 out.add(it["crono"])
     return out
+
+
+# ── ls cronos ────────────────────────────────────────────────────────────────
+
+_ITEM_EMOJI = {"tasks": "✏️", "milestones": "🏁"}
+
+
+def _crono_owners(project_dir: Path) -> dict:
+    """``{ruta crono: (kind, item)}``; un item abierto manda sobre uno cerrado."""
+    from core.agenda_cmds import _read_agenda
+    agenda = resolve_file(project_dir, "agenda")
+    if not agenda.exists():
+        return {}
+    data = _read_agenda(agenda)
+    out = {}
+    for kind in ("tasks", "milestones"):
+        for it in data.get(kind) or []:
+            rel = it.get("crono")
+            if not rel:
+                continue
+            is_open = it.get("status") not in ("done", "cancelled")
+            prev = out.get(rel)
+            if prev is None or (is_open and prev[1].get("status")
+                                in ("done", "cancelled")):
+                out[rel] = (kind, it)
+    return out
+
+
+def run_ls_cronos(project: Optional[str] = None,
+                  today: Optional[date] = None) -> int:
+    """Lista los cronos de un proyecto (o de todos los propios).
+
+    Por crono: nombre para ``crono edit`` (enlazado al fichero), progreso,
+    item que lo lleva y siguiente paso sin hacer. Solo lee.
+    """
+    from core.config import iter_project_dirs
+    from core.project import _is_new_project
+    today = today or date.today()
+    if project:
+        project_dir = _find_new_project(project)
+        if not project_dir:
+            print(f"Proyecto no encontrado: {project}")
+            return 1
+        dirs = [project_dir]
+    else:
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+
+    n = 0
+    for project_dir in dirs:
+        files = sorted((project_dir / _CRONO_DIR).glob("crono-*.md"))
+        if not files:
+            continue
+        owners = _crono_owners(project_dir)
+        print(f"[{project_dir.name}]")
+        for f in files:
+            n += 1
+            rel = f"{_CRONO_DIR}/{f.name}"
+            name = f.stem[len("crono-"):]
+            prog = crono_progress(project_dir, rel)
+            if prog is None:
+                pct = "📊 ?"
+            else:
+                done, total = prog
+                pct = ("📊 ✓ 100%" if total and done == total else
+                       f"📊 {done * 100 // total if total else 0}% ({done}/{total})")
+            owner = owners.get(rel)
+            if owner:
+                kind, it = owner
+                closed = " ✓ cerrado" if it.get("status") in ("done", "cancelled") else ""
+                when = f" · {it['date']}" if it.get("date") else ""
+                who = f"{_ITEM_EMOJI[kind]} {it.get('desc', '')}{when}{closed}"
+            else:
+                who = "sin item"
+            print(f"  [{name}]({rel})  {pct}  {who}")
+            step = next_step(project_dir, {"crono": rel}, today)
+            if step:
+                print(f"      ↳ {next_step_label(step, today)}")
+    if n == 0:
+        print("No hay cronogramas" + (f" en {dirs[0].name}" if project else ""))
+    return 0

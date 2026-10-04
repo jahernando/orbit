@@ -24,6 +24,9 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
   tarea / hito con crono sin pasos activos ni vencidos lleva debajo
   `↳ <siguiente paso>` (el de fecha más temprana; sin fechas, el primero
   abierto del fichero). También en Próximos días y en las filas ⏩.
+- **`ls cronos [p]`**: por crono, el nombre que acepta `crono edit` (enlace
+  al fichero), progreso, item que lo lleva y `↳` siguiente paso. Solo lee.
+  Fix: `crono edit … --open` sin editor pasaba `True` como editor.
 - `core/loadcal.py`: `milestone_days`, `md_cell`, `md_legend`, `render_md`.
   Cuenta igual que `day fup`: proyectos propios, sin recordatorios (las
   citas federadas salen en las tablas pero no suman carga).

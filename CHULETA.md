@@ -859,13 +859,16 @@ orbit ls reminders  [project]    # recordatorios activos (alias: ls rem)
 orbit ls hl        [project]    [--type T]
 orbit ls log       [project]    [--type T...] [--date D] [--from D] [--to D]
 orbit ls ledger    [project]    # movimientos y saldo (solo lectura)
+orbit ls cronos    [project]    # cronos: progreso, item que lo lleva, siguiente paso
 orbit ls files    [project]    # ficheros md del proyecto con estado git
 orbit ls notes    [project]    # notas con estado git
 ```
 
 - `ls log` lista las cabeceras de entrada del logbook; `ls <proyecto>` hace lo mismo (forma antigua)
 - `ls ledger` **no regenera** `ledger.md` — para eso está `orbit ledger <proyecto>`
-- Sin proyecto, `ls hl/log/ledger/files/notes` barren el workspace entero
+- `ls cronos` da el nombre que acepta `crono edit <p> <nombre>` (abre en el editor de
+  `orbit.json`; otro con `--open typora`); el nombre es enlace al fichero
+- Sin proyecto, `ls hl/log/ledger/cronos/files/notes` barren el workspace entero
 - **Enlaces clicables**: en una terminal que los entiende (iTerm2, WezTerm, kitty, VS Code…)
   cada `[texto](enlace)`, la cabecera `[proyecto]`, los ficheros de `ls files/notes` y los
   proyectos de `ls projects` salen como `texto ↗`: ⌘-clic o ctrl-clic (según iTerm2) abre el fichero o la web. Con

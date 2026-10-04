@@ -1614,7 +1614,8 @@ def cmd_crono(args):
         return run_crono_done(project=args.project, name=args.name,
                               index=getattr(args, "index", None))
     if action == "edit":
-        editor = getattr(args, "open", "") or ""
+        editor = getattr(args, "open", None)
+        editor = editor if isinstance(editor, str) else ""   # --open solo → True
         return run_crono_edit(project=args.project, name=args.name, editor=editor)
     if action == "reindex":
         return run_crono_reindex(project=args.project, name=args.name)
@@ -1737,6 +1738,11 @@ def cmd_ls(args):
             project=_ga(args, "project"))
         return _handle_output(args, fn, "ls ledger")
 
+    if what == "cronos":
+        from core.cronograma import run_ls_cronos
+        fn = lambda: run_ls_cronos(project=_ga(args, "project"))
+        return _handle_output(args, fn, "ls cronos")
+
     if what == "files":
         fn = lambda: run_ls_files(
             project=_ga(args, "project"))
@@ -1843,7 +1849,7 @@ def _build_parser():
     _add_fed_args(search_p)
 
     # --- ls (unified listing) ---
-    ls_p   = subparsers.add_parser("ls", help="List projects, tasks, milestones, events, highlights, logbook, ledger, files, notes")
+    ls_p   = subparsers.add_parser("ls", help="List projects, tasks, milestones, events, highlights, logbook, ledger, cronos, files, notes")
     ls_sub = ls_p.add_subparsers(dest="what")
 
     # ls projects (default when no subcommand)
@@ -1920,6 +1926,12 @@ def _build_parser():
     add_project_arg(ls_ledger, required=False, help="Project")
     _add_output_args(ls_ledger)
     _add_log_args(ls_ledger)
+
+    # ls cronos [project]
+    ls_cronos = ls_sub.add_parser("cronos", help="List cronogramas: progress, item, next step (read-only)")
+    add_project_arg(ls_cronos, required=False, help="Project")
+    _add_output_args(ls_cronos)
+    _add_log_args(ls_cronos)
 
     # ls files [project]
     ls_files = ls_sub.add_parser("files", help="List project md files with git status")

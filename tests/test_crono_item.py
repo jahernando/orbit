@@ -373,6 +373,28 @@ class TestNextStep:
         assert row.endswith(" |") and "<br>↳ 1 paso 1" in row
 
 
+class TestLsCronos:
+
+    def test_lists_name_progress_owner_and_next(self, ws, capsys):
+        from core.cronograma import run_ls_cronos
+        _write_crono(ws, "cronos/crono-hk-general.md", 1, 3)
+        _write_crono(ws, "cronos/crono-libre.md", 0, 1)
+        _seed(ws, tasks=[_task(desc="HK", date=_d(30),
+                               crono="cronos/crono-hk-general.md")])
+        assert run_ls_cronos(ws.name, today=TODAY) == 0
+        out = capsys.readouterr().out
+        assert f"[{ws.name}]" in out
+        assert (f"[hk-general](cronos/crono-hk-general.md)  📊 33% (1/3)  "
+                f"✏️ HK · {_d(30)}") in out
+        assert "↳ 2 paso 2" in out
+        assert "[libre](cronos/crono-libre.md)  📊 0% (0/1)  sin item" in out
+
+    def test_empty(self, ws, capsys):
+        from core.cronograma import run_ls_cronos
+        assert run_ls_cronos(ws.name, today=TODAY) == 0
+        assert "No hay cronogramas" in capsys.readouterr().out
+
+
 # ── F3 (parte): la fecha de un item con crono es su plazo ──────────────────
 
 class TestKeepsDate:
