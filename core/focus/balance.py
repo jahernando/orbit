@@ -31,6 +31,7 @@ from core.focus.weekfile import (
     _set_balance_line,
     _sync_block_symbols,
 )
+from core.focus.hook import suppressed
 from core.focus.year import _refresh_year_silent
 
 
@@ -62,9 +63,25 @@ def _pending_balances(mission_dir: Path, today: date) -> list[Path]:
     return out
 
 
+def _drop_open_blocks(ids: list[str], id_status: dict[str, str]) -> int:
+    """Drop en mission de los bloques aún abiertos; actualiza *id_status*."""
+    from core import api
+    dropped = 0
+    for oid in ids:
+        if id_status.get(oid) != "pending":
+            continue
+        try:
+            api.drop_task(project=_MISSION_NAME, orbit_id=oid)
+        except ValueError as exc:
+            print(f"  ⚠️  drop [orbit:{oid}]: {exc}")
+            continue
+        id_status[oid] = "cancelled"
+        dropped += 1
+    return dropped
+
+
 def _balance_week(week_file: Path, mission_dir: Path, today: date) -> dict:
     """Balancea una hoja. Devuelve ``{week, done, total, dropped, legacy}``."""
-    from core import api
     text = week_file.read_text()
     legacy = _parse_balance(text) is None
     id_status = _build_id_status_index(mission_dir)
@@ -73,16 +90,8 @@ def _balance_week(week_file: Path, mission_dir: Path, today: date) -> dict:
 
     dropped = 0
     if not legacy:
-        for oid in ids:
-            if id_status.get(oid) != "pending":
-                continue
-            try:
-                api.drop_task(project=_MISSION_NAME, orbit_id=oid)
-            except ValueError as exc:
-                print(f"  ⚠️  drop [orbit:{oid}]: {exc}")
-                continue
-            id_status[oid] = "cancelled"
-            dropped += 1
+        with suppressed():
+            dropped = _drop_open_blocks(ids, id_status)
 
     text = _sync_block_symbols(text, id_status, final=True)
     text = _set_balance_line(text, f"{_BALANCE_DONE} {today.isoformat()}")

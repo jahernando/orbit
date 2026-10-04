@@ -1116,7 +1116,7 @@ Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` 
 
 **Archivo semanal**: `mission/notes/2026-WNN-focus.md`, válido **lunes–domingo**, con cabecera (fechas, status: `normal` o `especial`, balance), proyectos por carril, bloques agrupados con su símbolo de estado, contador autogenerado y retrospectiva (texto libre).
 
-**Símbolos por bloque** (los escribe orbit, no son casillas): `⬜` abierto · `✅` hecho · `❌` no hecho / drop · `❔` no encontrado.
+**Símbolos por bloque** (los escribe orbit, no son casillas): `⬜` abierto · `✅` hecho · `❌` no hecho / drop · `❔` no encontrado. Al hacer `task done` / `task drop` de un bloque (también desde `organize`/triaje), su línea pasa a `✅ MM-DD` / `❌ MM-DD` en la hoja de esta semana, o en la de la anterior si aún no está balanceada. Lo cerrado a mano en Obsidian lo recoge el balance, sin fecha.
 
 **Contador**: regenera al ejecutar `orbit focus week` sobre semana existente. Cuenta tasks `done` en mission por carril (lookup por orbit-id, robusto a renombrados del título) y refresca los símbolos.
 

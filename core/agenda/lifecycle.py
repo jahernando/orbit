@@ -949,6 +949,9 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
             next_info, next_item = _advance_recurrence(item, items, cfg)
 
     _write_agenda(agenda_path, data)
+    if cfg["drop_action"] == "cancel":       # task / milestone → hoja focus
+        from core.focus.hook import mark_closed
+        mark_closed(item, "cancelled")
 
     # Logbook + print. Hybrid echo (design §4): item-block for a single
     # resulting item; series-delete keeps the prose note (no item left).

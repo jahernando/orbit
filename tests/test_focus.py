@@ -549,8 +549,10 @@ class TestF7Menu:
         from core import api
         from core.focus import _parse_block_states
         (oid,) = _parse_block_states(wf.read_text())
-        api.complete_task(project="mission", orbit_id=oid)
-        text = wf.read_text().replace("- ⬜ [orbit:", "- ✅ 10-01 [orbit:")
+        api.complete_task(project="mission", orbit_id=oid)   # hook F3 fecha
+        stamp = f"- ✅ {date.today().strftime('%m-%d')} [orbit:"
+        text = wf.read_text()
+        assert stamp in text
         text += "Mi retrospectiva a mano.\n"
         wf.write_text(text)
         _feed_inputs(monkeypatch, [
@@ -562,7 +564,7 @@ class TestF7Menu:
         assert run_focus_week() == 0
         out = wf.read_text()
         assert "Mi retrospectiva a mano." in out
-        assert out.count("- ✅ 10-01 [orbit:") == 1
+        assert out.count(stamp) == 1
         assert out.count("- ⬜ [orbit:") == 2
         assert "### 🔥 paper-neutrinos" in out
         assert "- 🔥 Push: [[paper-neutrinos]]" in out
@@ -1176,3 +1178,103 @@ class TestBalance:
         out = _action_focus_balance(None)
         assert out["ok"] is True
         assert out["msg"].startswith("1 ")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# F3: hook done/drop → símbolo con fecha en la hoja
+# ══════════════════════════════════════════════════════════════════════════════
+
+class _Today(date):
+    @classmethod
+    def today(cls):
+        return date(2026, 10, 1)            # jueves de 2026-W40
+
+
+@pytest.fixture()
+def w40_today(monkeypatch):
+    monkeypatch.setattr("core.focus.hook.date", _Today)
+
+
+class TestFocusHook:
+    def test_done_marks_block_with_date(self, workspace, mission, w40_today, capsys):
+        from core import api
+        _mission_task("aaaaaaaa")
+        _mission_task("bbbbbbbb")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa"), ("p", "bbbbbbbb")])
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        text = wf.read_text()
+        assert "- ✅ 10-01 [orbit:aaaaaaaa]" in text
+        assert "- ⬜ [orbit:bbbbbbbb]" in text
+        assert "- ⚓ anchor: 1/2" in text
+        assert "🎯 Focus 2026-W40: ✅ 10-01" in capsys.readouterr().out
+
+    def test_api_drop_marks_block(self, workspace, mission, w40_today):
+        from core import api
+        _mission_task("aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        api.drop_task(project="mission", orbit_id="aaaaaaaa")
+        assert "- ❌ 10-01 [orbit:aaaaaaaa]" in wf.read_text()
+
+    def test_cli_drop_marks_block(self, workspace, mission, w40_today):
+        from core.agenda.runners import run_task_drop
+        _mission_task("aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        assert run_task_drop("mission", "bloque aaaaaaaa", force=True) == 0
+        assert "- ❌ 10-01 [orbit:aaaaaaaa]" in wf.read_text()
+
+    def test_previous_unbalanced_week_marked(self, workspace, mission, monkeypatch):
+        """Lunes W41 antes del save: el bloque de W40 se marca con fecha real."""
+        from core import api
+        class _Mon(date):
+            @classmethod
+            def today(cls):
+                return date(2026, 10, 5)
+        monkeypatch.setattr("core.focus.hook.date", _Mon)
+        _mission_task("aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        assert "- ✅ 10-05 [orbit:aaaaaaaa]" in wf.read_text()
+
+    def test_balanced_sheet_untouched(self, workspace, mission, w40_today):
+        from core import api
+        _mission_task("aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        wf.write_text(wf.read_text().replace("Balance: pendiente",
+                                             "Balance: hecho 2026-10-05"))
+        before = wf.read_text()
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        assert wf.read_text() == before
+
+    def test_task_outside_focus_untouched(self, workspace, mission, w40_today, capsys):
+        from core import api
+        _mission_task("aaaaaaaa")
+        _mission_task("dddddddd")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        before = wf.read_text()
+        api.complete_task(project="mission", orbit_id="dddddddd")
+        assert wf.read_text() == before
+        assert "Focus" not in capsys.readouterr().out
+
+    def test_hook_never_raises(self, workspace, mission, w40_today, monkeypatch, capsys):
+        from core import api
+        def _boom(*a, **k):
+            raise RuntimeError("roto")
+        monkeypatch.setattr("core.focus.hook._mark_in_sheet", _boom)
+        _mission_task("aaaaaaaa")
+        _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        assert _mission_status("aaaaaaaa") == "done"
+        assert "no se pudo marcar" in capsys.readouterr().out
+
+    def test_balance_keeps_hook_dates(self, workspace, mission, w40_today):
+        from core import api
+        from core.focus import run_focus_balance
+        _mission_task("aaaaaaaa")
+        _mission_task("bbbbbbbb")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa"), ("p", "bbbbbbbb")])
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        run_focus_balance(today=date(2026, 10, 5), silent=True)
+        text = wf.read_text()
+        assert "- ✅ 10-01 [orbit:aaaaaaaa]" in text
+        # El drop del balance no pasa por el hook: ❌ sin fecha.
+        assert "- ❌ [orbit:bbbbbbbb]" in text

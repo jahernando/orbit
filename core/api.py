@@ -299,6 +299,15 @@ def _find_matching(items: list, *, orbit_id: Optional[str],
     return matches[0]
 
 
+def _focus_mark_closed(item: dict, status: str) -> None:
+    """Refleja el cierre en la hoja focus si el item está en ella (F3).
+
+    Best-effort y silencioso salvo si marca algo (ver core.focus.hook).
+    """
+    from core.focus.hook import mark_closed
+    mark_closed(item, status)
+
+
 # ── Complete (task / milestone) ────────────────────────────────────────
 
 def _complete_kind(kind: str, project: str, *,
@@ -330,6 +339,7 @@ def _complete_kind(kind: str, project: str, *,
             items.append(next_item)
 
     _write_agenda(agenda_path, data)
+    _focus_mark_closed(item, "done")
     return item, next_item
 
 
@@ -422,6 +432,8 @@ def _drop_kind(kind: str, project: str, *,
             items.append(next_item)
 
     _write_agenda(agenda_path, data)
+    if cfg["drop_action"] == "cancel":       # task / milestone
+        _focus_mark_closed(item, "cancelled")
     return item, next_item
 
 
