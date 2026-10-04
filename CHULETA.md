@@ -1024,18 +1024,18 @@ Eliges un número y una acción (mismo menú que `organize`):
 
 | Tecla | Acción |
 |---|---|
-| `h` | hora (`HH:MM` o `HH:MM-HH:MM`); si la cita no es de hoy, pide fecha (Enter = hoy) |
-| `f` | fecha (`mañana`, `viernes`, `+3`, `YYYY-MM-DD`) |
-| `u` | followup: `fecha [descripción]`, Enter = mañana, `none` = sin fecha. Si la cita tenía `⏩` vencidos, los **mueve** a esa fecha (conservando su descripción); si no, añade uno. En tareas e hitos no recurrentes, además **quita la fecha y la hora**: el `⏩` es cuándo volver a decidir (salvo si tienen crono: su fecha es el plazo y se conserva). `none` la deja sin fecha y sin `⏩` (rechazado con crono) |
-| `c` | borra un `⏩` (si hay varios, pregunta cuál) |
-| `n` | done (tareas e hitos) |
-| `d` | drop, con confirmación (defecto No) |
-| `s` / Enter | vuelve a la lista sin tocar nada |
+| ⏰ `h` | hora (`HH:MM` o `HH:MM-HH:MM`); si la cita no es de hoy, pide fecha (Enter = hoy) |
+| 🗓️ `f` | fecha (`mañana`, `viernes`, `+3`, `YYYY-MM-DD`) |
+| ⏩ `u` | followup: `fecha [descripción]`, Enter = mañana, `none` = sin fecha. Si la cita tenía `⏩` vencidos, los **mueve** a esa fecha (conservando su descripción); si no, añade uno. **No toca la fecha de la cita** (ADR-058): una cita o un hito con día sigue en su día; para moverlo, `f`. `none` deja la tarea / hito sin fecha y sin `⏩` (rechazado en eventos, recurrentes y con crono) |
+| 🧹 `c` | borra un `⏩` (si hay varios, pregunta cuál) |
+| ✅ `n` | done (tareas e hitos) |
+| ❌ `d` | drop, con confirmación (defecto No) |
+| ⏭️ `s` / Enter | vuelve a la lista sin tocar nada |
 
 - Dar fecha u hora (`f`/`h`) **resuelve** los `⏩` vencidos de la cita: se borran.
 - Tras cada acción, encima del prompt, una línea **relee la agenda** y dice cómo
   quedó la cita: `✓ ✏️ «X» · 💻foo → cancelada` (o `completada`, `eliminado de
-  la agenda`, `sin fecha · ⏩ 10-02`, `2026-10-01 10:00`…). Si un drop o un done
+  la agenda`, `2026-10-05 · ⏩ 10-07`, `sin fecha`, `2026-10-01 10:00`…). Si un drop o un done
   no surtió efecto, lo dice con `⚠️ … NO se ha cancelado`.
 - `day fup`: la misma lista, sin menú, con un **calendario de carga** (semana
   en curso + 4) encima del prompt. El fondo gris de cada día indica cuántas

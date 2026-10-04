@@ -125,12 +125,29 @@ class TestTriageFup:
         assert not T._act_fup(_row_for(ws, "events", "ev"), TODAY)
         assert _read(ws)["events"][-1]["date"] == ISO
 
-    def test_date_on_dated_task_undates_and_keeps_fup(self, ws, monkeypatch):
+    def test_date_on_dated_task_keeps_date_and_adds_fup(self, ws, monkeypatch):
+        # ADR-058: el ⏩ no mueve la cita; para eso está [f]echa.
         _seed(ws, tasks=[_task(date=ISO, time="09:00")])
         _feed(monkeypatch, _d(3))
         assert T._act_fup(_row_for(ws, "tasks", "task"), TODAY)
         it = _read(ws)["tasks"][-1]
-        assert not it.get("date") and not it.get("time")
+        assert it["date"] == ISO and it["time"] == "09:00"
+        assert [f["date"] for f in item_followups(it)] == [_d(3)]
+
+    def test_date_on_dated_milestone_keeps_date(self, ws, monkeypatch):
+        _seed(ws, milestones=[_task(date=_d(5))])
+        _feed(monkeypatch, _d(2))
+        assert T._act_fup(_row_for(ws, "milestones", "ms"), TODAY)
+        it = _read(ws)["milestones"][-1]
+        assert it["date"] == _d(5)
+        assert [f["date"] for f in item_followups(it)] == [_d(2)]
+
+    def test_undated_task_due_fup_is_replaced(self, ws, monkeypatch):
+        _seed(ws, tasks=[_task(notes=[f"⏩ {_d(-1)}"])])
+        _feed(monkeypatch, _d(3))
+        assert T._act_fup(_row_for(ws, "tasks", "task"), TODAY)
+        it = _read(ws)["tasks"][-1]
+        assert not it.get("date")
         assert [f["date"] for f in item_followups(it)] == [_d(3)]
 
     def test_date_on_event_keeps_date(self, ws, monkeypatch):
@@ -201,11 +218,11 @@ class TestDayFup:
         T.run_loop("t", [ws], full=False, show_project=False,
                    today_fn=lambda: TODAY, fup_only=True)
         it = _read(ws)["tasks"][-1]
-        assert not it.get("date")
+        assert it["date"] == ISO                        # ADR-058: no la mueve
         assert [f["date"] for f in item_followups(it)] == [_d(2)]
         out = capsys.readouterr().out
         assert "[h]ora" not in out                      # sin menú
-        assert f"→ sin fecha · ⏩ {_d(2)}" in out        # verificación
+        assert f"→ {ISO} · ⏩ {_d(2)}" in out             # verificación
 
     def _args(self, mode=None, project=None):
         return SimpleNamespace(mode=mode, project=project)

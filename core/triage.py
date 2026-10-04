@@ -376,12 +376,12 @@ def format_cronos(cronos: list, today: date, show_project: bool,
 # ── Acciones ──────────────────────────────────────────────────────────────
 
 def menu_for(row: Row) -> str:
-    opts = ["[h]ora", "[f]echa", "[u] ⏩fup"]
+    opts = ["⏰ [h]ora", "🗓️ [f]echa", "⏩ [u]fup"]
     if item_followups(row.item):
-        opts.append("[c]lear-⏩")
+        opts.append("🧹 [c]lear-⏩")
     if row.kind in ("task", "ms"):
-        opts.append("do[n]e")
-    opts += ["[d]rop", "[s]kip"]
+        opts.append("✅ do[n]e")
+    opts += ["❌ [d]rop", "⏭️ [s]kip"]
     return "  " + "  ".join(opts)
 
 
@@ -479,20 +479,18 @@ def _undatable(row: Row) -> bool:
             and not row.item.get("crono"))
 
 
-def _edit_kind_undate(row: Row, *, drop_followups: bool) -> None:
-    """Quita fecha, hora y ring (y los ⏩ si *drop_followups*) vía runner."""
+def _edit_kind_undate(row: Row) -> None:
+    """``none``: deja la tarea / hito sin fecha, hora, ring ni ⏩ (vía runner)."""
     from core.agenda_cmds import run_task_edit, run_ms_edit
     edit = run_task_edit if row.kind == "task" else run_ms_edit
-    if drop_followups:
-        edit(row.project_dir.name, row.item["desc"], fup="none", force=True)
-    else:
-        edit(row.project_dir.name, row.item["desc"], new_date="none",
-             new_time="none", new_ring="none", force=True)
+    edit(row.project_dir.name, row.item["desc"], fup="none", force=True)
 
 
 def _act_fup(row: Row, today: date, raw: Optional[str] = None) -> bool:
-    """⏩ sobre la cita. En tareas e hitos no recurrentes, además la deja
-    **sin fecha**: el ⏩ es cuándo volver a decidir, no una fecha más.
+    """⏩ sobre la cita. **No toca su fecha** (ADR-058): si la cita tiene
+    día, el ⏩ se añade y la cita sigue en su día (para moverla, [f]echa).
+    Si la cita salía por un ⏩ vencido, ese ⏩ se *mueve* a la nueva fecha.
+    Solo ``none`` deja una tarea / hito sin fecha (y sin ⏩).
 
     *raw* (``day fup`` por lotes): la respuesta ya dada; si es None, se pide.
     """
@@ -510,7 +508,7 @@ def _act_fup(row: Row, today: date, raw: Optional[str] = None) -> bool:
                    else f"un {KIND_LABEL[row.kind]} necesita fecha")
             print(f"  ⚠️  No se puede dejar sin fecha: {why}. Usa [d]rop o [c]lear-⏩.")
             return False
-        _edit_kind_undate(row, drop_followups=True)
+        _edit_kind_undate(row)
         return True
     if new_date < today.isoformat():
         print(f"  ⚠️  {new_date} ya ha pasado; un ⏩ mira hacia delante.")
@@ -528,9 +526,6 @@ def _act_fup(row: Row, today: date, raw: Optional[str] = None) -> bool:
         desc = desc or f.get("desc")
     add_followup(target, new_date, desc)
     _write_agenda(agenda, data)
-    if _undatable(row) and target.get("date"):
-        _edit_kind_undate(row, drop_followups=False)    # imprime el item final
-        return True
     if moved:
         olds = ", ".join(m.split(None, 2)[1] for m in moved)
         banner = f"⏩ movido {olds} → {new_date}"

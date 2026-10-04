@@ -964,6 +964,26 @@ Tres fricciones reales:
 
 ---
 
+## ADR-058 — El `⏩` del triaje no mueve la cita
+
+**Estado**: aceptada (2026-10-04). **Enmienda ADR-052 §1** (y la nota de ADR-056 §4 que lo repetía).
+
+**Contexto**: ADR-052 hizo que `u` (⏩) en el triaje quitara la fecha y la hora a tareas e hitos no recurrentes, para que la tarea saliera del día. En uso, el usuario lo vive como pérdida: pone un ⏩ a una cita o un hito con día y el día desaparece. El ⏩ y la fecha son cosas distintas: el día es cuándo ocurre o vence; el ⏩, cuándo volver a mirarlo.
+
+**Decisión**:
+1. **`u` nunca toca la fecha ni la hora de la cita.** Si tiene día, se añade el ⏩ y la cita sigue en su día; para moverla está `f` (fecha).
+2. **Si la cita salía por un ⏩ vencido**, ese ⏩ se mueve a la nueva fecha (como ya hacía): el ⏩ nuevo reemplaza al vencido.
+3. **`none` sigue siendo "sin fecha"**: deja la tarea / hito sin fecha, hora, ring ni ⏩ (rechazado en eventos, recurrentes y con crono). Es la única vía del triaje que quita la fecha, y es explícita.
+4. El menú lleva iconos delante de cada tecla: ⏰ [h]ora · 🗓️ [f]echa · ⏩ [u]fup · 🧹 [c]lear-⏩ · ✅ do[n]e · ❌ [d]rop · ⏭️ [s]kip.
+
+**Consecuencias**:
+- Pros: `u` hace lo que dice; la fecha de una cita solo cambia cuando se pide (`f`, `none`).
+- Contras: vuelve el problema que motivó ADR-052: una tarea de hoy con ⏩ que no se hace mañana sale en ⚠️ Vencidas, y el ⏩ no la saca del día. El remedio es explícito: `f` para moverla o `none` para dejarla sin fecha.
+
+**Verificación**: `tests/test_fup_none_dupes.py` (`TestTriageFup`), `tests/test_loadcal.py` (lote).
+
+---
+
 ## ADR-057 — Focus week + focus day: hoja semanal como registro, balance en el save
 
 **Estado**: aceptada (2026-10-04). Extiende ADR-038 (focus week) y ADR-042 (vista anual). Sustituye el pendiente "prioridad del día" (`day top`) de ADR-056.
@@ -1007,7 +1027,7 @@ Tres fricciones reales:
 1. **Calendario de carga en `day fup`**, encima del prompt: semana en curso + 4, de lunes a domingo, sin días pasados. Cinco niveles por número de citas: nula 0 · baja 1–4 · media 5–9 · alta 10–14 · muy alta ≥15. Se cuentan **citas**, no minutos: más fácil de leer y de explicar ("¿por qué este día sale oscuro?"); minutos queda como evolución si engaña.
 2. **Qué cuenta**: hoy, lo que lista `day` (hoy + vencidas + ⏩ ≤ hoy), porque es donde se acumula; un día futuro, las citas que caen ese día más las que tienen un ⏩ en esa fecha. Sin recordatorios, como `day`. Mismo alcance que `day` (workspace o proyecto, sin federados).
 3. **Intensidad = fondo gris** (ANSI-256, más oscuro = más carga; texto negro o blanco según el fondo). Elegido por el usuario frente a una tabla con bordes y glifos, tras verlo con datos reales. Es luminosidad, no tono: vale con daltonismo. Fuera de un terminal (tests, tubería) degrada a glifos `· ░ ▒ ▓ █`. El **número** de citas es opcional, entre paréntesis, apagado por defecto: `orbit.json` → `"load_calendar": {"counts": true}`.
-4. **Lote**: un entero solo es **siempre** un índice; cualquier otra cosa es fecha (`+3`, `viernes`, `YYYY-MM-DD`, `none`). `3 5 7 viernes [desc]` (una fecha para varios), `3:viernes 5:+7` (parejas, fecha de una palabra), `3` o `3 5` (pide la fecha). Con más de una cita se **muestra lo entendido y se confirma** (`[S/n]`) antes de aplicar; un lote con un índice o una fecha inválidos no aplica nada. Cada ⏩ va por la misma acción del triaje (ADR-052: en tareas e hitos no recurrentes quita la fecha). Las salidas de los runners se silencian y se resume una línea de verificación por cita; si una falla, se dice cuál y por qué.
+4. **Lote**: un entero solo es **siempre** un índice; cualquier otra cosa es fecha (`+3`, `viernes`, `YYYY-MM-DD`, `none`). `3 5 7 viernes [desc]` (una fecha para varios), `3:viernes 5:+7` (parejas, fecha de una palabra), `3` o `3 5` (pide la fecha). Con más de una cita se **muestra lo entendido y se confirma** (`[S/n]`) antes de aplicar; un lote con un índice o una fecha inválidos no aplica nada. Cada ⏩ va por la misma acción del triaje (ADR-052: en tareas e hitos no recurrentes quita la fecha; **ya no**, ver ADR-058). Las salidas de los runners se silencian y se resume una línea de verificación por cita; si una falla, se dice cuál y por qué.
 5. **Motor aparte** (`core/loadcal.py`), para reutilizarlo en el calendario del secretario y en `cal` sin pasar por el triaje.
 
 **Consecuencias**:
@@ -1100,7 +1120,7 @@ Tres fricciones reales:
 
 ## ADR-052 — El `⏩` de una tarea la deja sin fecha; títulos únicos por agenda
 
-**Estado**: aceptada (2026-09-28). Enmienda el punto 3 de ADR-051.
+**Estado**: aceptada (2026-09-28). Enmienda el punto 3 de ADR-051. **§1 enmendado por ADR-058** (el ⏩ ya no quita la fecha).
 
 **Contexto**: en `day`, poner un `⏩` a una tarea de hoy le dejaba la fecha. Mañana salía en ⚠️ Vencidas —que tiene prioridad sobre ⏩ Decidir— y el `⏩` no servía de nada: la tarea no se iba del día. El usuario quiere además un modo `day fup` para aplazar varias citas seguidas, y poder decir "no sé cuándo": dejar la tarea sin fecha. Por otro lado, todos los verbos (y el triaje, que delega en ellos) localizan la cita por su título; con dos abiertas iguales la acción puede caer sobre la que no es.
 

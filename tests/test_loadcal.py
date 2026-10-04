@@ -174,11 +174,11 @@ class TestBatchLoop:
                          _task("c", date=ISO)])
         tasks = self._run(ws, monkeypatch, f"1 3 {_d(2)}", "", "q")
         for k in ("a", "c"):
-            assert not tasks[k].get("date")
+            assert tasks[k]["date"] == ISO              # ADR-058: no la mueve
             assert [f["date"] for f in item_followups(tasks[k])] == [_d(2)]
-        assert tasks["b"]["date"] == ISO
+        assert not item_followups(tasks["b"])
         out = capsys.readouterr().out
-        assert out.count(f"→ sin fecha · ⏩ {_d(2)}") == 2
+        assert out.count(f"→ {ISO} · ⏩ {_d(2)}") == 2
         assert "carga" in out                      # el calendario se pinta
 
     def test_batch_declined_changes_nothing(self, ws, monkeypatch):
