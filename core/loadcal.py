@@ -233,11 +233,12 @@ def md_legend() -> str:
 def render_md(loads: dict, today: date, weeks: list,
               ms_days: set = frozenset(), *, week_numbers: bool = True,
               month: Optional[int] = None,
+              first: Optional[date] = None,
               last: Optional[date] = None) -> list:
     """Tabla markdown de *weeks* (listas lunes→domingo).
 
     *month*: si se da, los días de otro mes quedan en blanco (vista mensual).
-    *last*: los días posteriores quedan en blanco (ventana de la agenda).
+    *first*/*last*: los días fuera de [first, last] quedan en blanco.
     """
     head = (["Wk"] if week_numbers else []) + list(_MD_WEEKDAYS)
     lines = ["| " + " | ".join(head) + " |",
@@ -250,6 +251,7 @@ def render_md(loads: dict, today: date, weeks: list,
             cells.append(f"**W{ref.isocalendar()[1]:02d}**")
         for d in week:
             if ((month is not None and d.month != month)
+                    or (first is not None and d < first)
                     or (last is not None and d > last)):
                 cells.append("")
             else:

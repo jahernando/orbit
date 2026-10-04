@@ -919,6 +919,10 @@ def cmd_agenda(args):
             date_str = _AGENDA_PERIODS[first]
             projects = projects[1:] or None
 
+    if getattr(args, "sec", False):
+        return _agenda_sec(projects, date_str, date_from, date_to,
+                           getattr(args, "open", None))
+
     fn = lambda: run_agenda(
         projects=projects,
         date_str=_d(date_str),
@@ -934,6 +938,43 @@ def cmd_agenda(args):
     # `--open` escribe a un fichero transitorio (cmd.md). El dashboard fijo
     # pineable es `📊panel/secretary/agenda.md`, regenerado por `orbit dash`.
     return _handle_output(args, fn, "agenda")
+
+
+def _agenda_sec(projects, date_str, date_from, date_to, editor) -> int:
+    """``agenda --sec``: agenda de un día o rango en formato secretario,
+    escrita en ``📊panel/secretary/agenda-rango.md`` y abierta."""
+    from core.agenda_view import _parse_period
+    from core import config
+    from core.config import SECRETARY_RELPATH
+    from core.open import open_file
+    from views.secretary.agenda import RANGE_MAX_DAYS, generate_range
+    # --sec es de todo el workspace: lo posicional es la fecha
+    # (`agenda viernes --sec`, `agenda next week --sec`).
+    if projects:
+        if date_str or date_from or date_to:
+            print("⚠️  --sec es de todo el workspace: no admite proyectos "
+                  f"({' '.join(projects)}).")
+            return 1
+        date_str = " ".join(projects)
+    try:
+        start, end = _parse_period(_d(date_str), _d(date_from), _d(date_to))
+    except ValueError as exc:
+        print(f"⚠️  Fecha no válida: {exc}")
+        return 1
+    if end < start:
+        print(f"⚠️  El periodo acaba ({end}) antes de empezar ({start}).")
+        return 1
+    if (end - start).days + 1 > RANGE_MAX_DAYS:
+        print(f"⚠️  Máximo {RANGE_MAX_DAYS} días ({start} → {end}).")
+        return 1
+    config.SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
+    out = config.SECRETARY_DIR / "agenda-rango.md"
+    generate_range(out, start, end)
+    span = start.isoformat() if start == end else f"{start} → {end}"
+    print(f"✓ Agenda {span} (formato secretario) → "
+          f"{SECRETARY_RELPATH}/agenda-rango.md")
+    open_file(out, editor if isinstance(editor, str) else "")
+    return 0
 
 
 _MONTH_MAP = {
@@ -2085,6 +2126,9 @@ def _build_parser():
                       help="Only show tasks/milestones with a date")
     ag_p.add_argument("--order", choices=["project", "date", "type"], default="date",
                       help="Order by date (default), project, or type (events/milestones/tasks)")
+    ag_p.add_argument("--sec", action="store_true",
+                      help="Formato secretario (tablas por día + carga) en "
+                           "📊panel/secretary/agenda-rango.md, y lo abre")
     ag_p.add_argument("--summary", action="store_true",
                       help="Per-project summary table (counts and date range)")
     ag_p.add_argument("--open", nargs="?", const=True, default=None, metavar="EDITOR",

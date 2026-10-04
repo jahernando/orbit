@@ -624,3 +624,54 @@ class TestSpanRecurDedupe:
         by_day = collect_items_by_day(start, end)
         for d in (start, date(2026, 9, 15), end):
             assert self._count(by_day, d, "Xenon workshop") == 1
+
+
+# ── agenda --sec: un día o un rango en formato secretario ──────────────────────
+
+class TestRange:
+
+    def test_range_tables_per_day_and_calendar(self, agenda_env):
+        today = date.today()
+        d2 = today + timedelta(days=2)
+        _make_project(
+            agenda_env["type_dir"],
+            agenda_extra=("## 📅 Eventos\n"
+                          f"{d2.isoformat()} — Tribunal ⏰10:00-12:00\n"),
+        )
+        start, end = today + timedelta(days=1), today + timedelta(days=4)
+        lines = sec_agenda.range_lines(start, end, today=today)
+        text = "\n".join(lines)
+        from core import config
+        assert text.startswith(
+            f"# {config.ORBIT_EMOJI} Agenda — {config.ORBIT_SPACE} · "
+            f"{start.isoformat()} → {end.isoformat()}")
+        assert "| Lu | Ma |" in text                     # mini-calendario
+        assert f"### {d2.isoformat()} ·" in text and "Tribunal" in text
+        assert f"### {start.isoformat()}" not in text   # días vacíos fuera
+        assert "## 📅 Hoy" not in text
+
+    def test_range_including_today_uses_today_block(self, agenda_env):
+        today = date.today()
+        past = (today - timedelta(days=3)).isoformat()
+        _make_project(agenda_env["type_dir"],
+                      agenda_extra=f"## ✅ Tareas\n- [ ] Old task ({past})\n")
+        text = "\n".join(sec_agenda.range_lines(today, today, today=today))
+        assert "## 📅 Hoy" in text and "| ⚠️ |" in text
+
+    def test_empty_period(self, agenda_env):
+        d = date.today() + timedelta(days=10)
+        text = "\n".join(sec_agenda.range_lines(d, d, today=date.today()))
+        assert "*Sin citas en este periodo.*" in text
+
+    def test_cli_writes_file(self, agenda_env, monkeypatch, capsys):
+        import orbit
+        out_dir = agenda_env["tmp"] / "sec"
+        monkeypatch.setattr("core.config.SECRETARY_DIR", out_dir)
+        monkeypatch.setattr("core.open.open_file", lambda *a, **k: 0)
+        d = (date.today() + timedelta(days=3)).isoformat()
+        assert orbit._agenda_sec([d], None, None, None, None) == 0
+        assert (out_dir / "agenda-rango.md").exists()
+        assert orbit._agenda_sec(["foo"], d, None, None, None) == 1
+        assert orbit._agenda_sec(None, None, "2026-01-01", "2026-12-31",
+                                 None) == 1
+        assert "Máximo 62 días" in capsys.readouterr().out

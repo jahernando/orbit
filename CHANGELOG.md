@@ -12,6 +12,9 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ### Unreleased — calendario de carga en el secretario · ADR-056
 
+- **`agenda … --sec`**: agenda de un día o un rango en formato secretario
+  (tablas por día + mini-calendario de carga) en
+  `📊panel/secretary/agenda-rango.md`, y la abre. Máx. 62 días.
 - **`📊panel/secretary/calendar.md`** (3 meses) pinta la carga de cada día
   con el gris de `day fup` (5 niveles, `<span style="background:…">`); el nº
   de citas va en el `title` (al pasar el ratón). Días con hito abierto

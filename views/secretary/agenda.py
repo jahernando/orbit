@@ -464,6 +464,18 @@ def _today_block(today_items, overdue, followups_today=(), crono=None,
     return rows
 
 
+def _day_block(d, items, followups, today) -> list:
+    """``### fecha · día`` + tabla de citas y ⏩ de ese día."""
+    lines = [f"### {d.isoformat()} · {_WEEKDAYS_ES[d.weekday()]}", "",
+             TABLE_HEADER]
+    lines.extend(_render_items_table(items, today=today))
+    for project_dir, kind, item, fup in followups:
+        lines.append(_render_followup_row(project_dir, kind, item, fup,
+                                          today=today))
+    lines.append("")
+    return lines
+
+
 def _next_days_block(today, items_by_day, followups_by_day=None) -> list:
     """Una tabla por día en [today+1, today+7]. Días vacíos se omiten.
 
@@ -474,43 +486,92 @@ def _next_days_block(today, items_by_day, followups_by_day=None) -> list:
     blocks = []
     for offset in range(1, NEXT_DAYS_WINDOW + 1):
         d = today + timedelta(days=offset)
-        day_iso = d.isoformat()
-        items = items_by_day.get(day_iso, [])
-        followups = followups_by_day.get(day_iso, [])
-        if not items and not followups:
-            continue
-        blocks.append(f"### {day_iso} · {_WEEKDAYS_ES[d.weekday()]}")
-        blocks.append("")
-        rows = [TABLE_HEADER]
-        rows.extend(_render_items_table(items, today=today))
-        for project_dir, kind, item, fup in followups:
-            rows.append(_render_followup_row(project_dir, kind, item, fup,
-                                             today=today))
-        blocks.extend(rows)
-        blocks.append("")
+        items = items_by_day.get(d.isoformat(), [])
+        followups = followups_by_day.get(d.isoformat(), [])
+        if items or followups:
+            blocks.extend(_day_block(d, items, followups, today))
     return blocks
 
 
-def _mini_calendar(today, end) -> list:
-    """Mini-calendario de hoy a *end* con la carga de cada día (ADR-056).
+def _mini_calendar(today, end, start=None) -> list:
+    """Mini-calendario de *start* (hoy por defecto) a *end* con la carga de
+    cada día (ADR-056).
 
     Cuenta como ``day fup``: proyectos propios, sin recordatorios. Las
-    citas federadas salen en las tablas pero no suman carga.
+    citas federadas salen en las tablas pero no suman carga. Los días
+    pasados salen tenues, sin carga.
     """
     from core import loadcal
     from core.triage import resolve_dirs
+    start = start or today
     dirs = resolve_dirs(None)
-    monday = today - timedelta(days=today.weekday())
+    monday = start - timedelta(days=start.weekday())
     weeks = []
     while monday <= end:
         weeks.append([monday + timedelta(days=i) for i in range(7)])
         monday += timedelta(days=7)
-    days = [d for w in weeks for d in w if today <= d <= end]
+    days = [d for w in weeks for d in w if start <= d <= end]
     loads = loadcal.day_loads(dirs, today, days)
     ms_days = loadcal.milestone_days(dirs, today, days)
+    first = start if start > today else None
     return (loadcal.render_md(loads, today, weeks, ms_days,
-                              week_numbers=False, last=end)
+                              week_numbers=False, first=first, last=end)
             + ["", loadcal.md_legend(), ""])
+
+
+RANGE_MAX_DAYS = 62
+
+
+def range_lines(start, end, today=None) -> list:
+    """Agenda en formato secretario para [start, end] (``agenda --sec``).
+
+    Una tabla por día con citas; hoy, si cae dentro, como en ``agenda.md``
+    (vencidas, ⏩ por triar, pasos de crono). Los días pasados solo
+    muestran lo que sigue abierto (lo hecho no está en la agenda).
+    """
+    from core import config
+    today = today or _date.today()
+    by_day = collect_items_by_day(start, end, include_federated=True)
+    followups_by_day: dict = {}
+    for proj_dir, kind, item, fup in _collect_followups_in_range(
+            start.isoformat(), end.isoformat()):
+        followups_by_day.setdefault(fup["date"], []).append(
+            (proj_dir, kind, item, fup))
+
+    span = (start.isoformat() if start == end
+            else f"{start.isoformat()} → {end.isoformat()}")
+    lines = [f"# {config.ORBIT_EMOJI} Agenda — {config.ORBIT_SPACE} · {span}", ""]
+    lines.extend(_mini_calendar(today, end, start=start))
+
+    n = 0
+    d = start
+    while d <= end:
+        iso = d.isoformat()
+        items = by_day.get(iso, [])
+        if d == today:
+            n += 1
+            lines.append(f"## 📅 Hoy — {_short_date_es(today)}")
+            lines.append("")
+            lines.extend(_today_block(
+                items, _collect_overdue(today),
+                _collect_followups_in_range(_date.min.isoformat(), iso),
+                crono=_collect_crono_steps(today), today=today))
+            lines.append("")
+        else:
+            fups = followups_by_day.get(iso, [])
+            if items or fups:
+                n += 1
+                lines.extend(_day_block(d, items, fups, today))
+        d += timedelta(days=1)
+    if n == 0:
+        lines.append("*Sin citas en este periodo.*")
+    return lines
+
+
+def generate_range(out_path: Path, start, end) -> None:
+    """Escribe la agenda de [start, end] en formato secretario en out_path."""
+    out_path.write_text(autogen_banner("secretary.agenda --sec")
+                        + "\n".join(range_lines(start, end)) + "\n")
 
 
 def generate(out_path: Path) -> None:

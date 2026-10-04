@@ -888,6 +888,7 @@ Indicadores git en `files` y `notes`: `✓` tracked · `M` modified · `+` untra
 ```bash
 orbit agenda [project...] [--date D] [--from D] [--to D] [--no-cal] [--summary] [--dated] [--order project|date] [--no-fed] [--open [EDITOR]]
 orbit agenda week                     # esta semana
+orbit agenda <fecha|periodo> --sec      # formato secretario → 📊panel/secretary/agenda-rango.md
 orbit agenda month                    # este mes
 orbit agenda future [project...]      # vista previa del formato nuevo de citas
 orbit agenda migrate [project...]     # reescribe agenda.md al formato nuevo (in situ)
@@ -900,6 +901,13 @@ orbit agenda clean [project...] [--dry-run]   # borra lo cerrado y lo pasado has
   `[s/N]`** (Enter = no borrar); no hace falta un paso previo. `--dry-run` solo
   lista, sin preguntar. Sin proyecto: el del panel fijado o, en el general, todos.
 
+- **`--sec`**: la agenda de un día o un rango en **formato secretario** (tabla por
+  día + mini-calendario de carga), en `📊panel/secretary/agenda-rango.md` (se
+  reescribe cada vez) y la abre (`--open EDITOR` para otro editor). Todo el
+  workspace: lo posicional es la fecha (`agenda viernes --sec`, `agenda next
+  week --sec`, `agenda 2026-10 --sec`) o `--from/--to`. Máx. 62 días. Si el
+  rango incluye hoy, hoy sale como en `agenda.md` (vencidas, ⏩, crono); los
+  días pasados solo muestran lo que sigue abierto.
 - Sin fecha: muestra el día de hoy (tareas pendientes, vencidas, eventos, hitos)
 - Atajos de periodo: `today`/`hoy`, `week`/`semana`, `month`/`mes`
 - `--date 2026-03`: todo el mes
