@@ -243,3 +243,44 @@ class TestDayFup:
     def test_cli_rejects_unknown_mode_with_project(self, capsys):
         import orbit
         assert orbit.cmd_day(self._args("otra", "foo")) == 1
+
+
+# ── Triaje: [t]ítulo ────────────────────────────────────────────────────────
+
+class TestTriageTitle:
+
+    def test_rename_task_keeps_date_and_crono(self, ws, monkeypatch):
+        _seed(ws, tasks=[_task(desc="Viejo", date=ISO, crono="cronos/crono-a.md")])
+        row = _row_for(ws, "tasks", "task")
+        pos = T.locate_index(row)
+        _feed(monkeypatch, "Nuevo")
+        assert T._act_title(row, TODAY)
+        it = _read(ws)["tasks"][-1]
+        assert it["desc"] == "Nuevo" and it["date"] == ISO
+        assert it["crono"] == "cronos/crono-a.md"
+        assert "«Nuevo»" in T.describe_after(row, pos, "t")
+        assert "eliminad" not in T.describe_after(row, pos, "t")
+
+    def test_rename_event(self, ws, monkeypatch):
+        _seed(ws, events=[{"desc": "E", "date": ISO}])
+        _feed(monkeypatch, "Tribunal")
+        assert T._act_title(_row_for(ws, "events", "ev"), TODAY)
+        assert _read(ws)["events"][-1]["desc"] == "Tribunal"
+
+    def test_empty_keeps_title(self, ws, monkeypatch):
+        _seed(ws, tasks=[_task(desc="X", date=ISO)])
+        _feed(monkeypatch, "")
+        assert not T._act_title(_row_for(ws, "tasks", "task"), TODAY)
+        assert _read(ws)["tasks"][-1]["desc"] == "X"
+
+    def test_duplicate_title_refused(self, ws, monkeypatch):
+        _seed(ws, tasks=[_task(desc="A", date=ISO), _task(desc="B", date=ISO)])
+        row = T.Row("task", ws, _read(ws)["tasks"][1], T.HOY)
+        _feed(monkeypatch, "A")
+        assert not T._act_title(row, TODAY)
+        assert [t["desc"] for t in _read(ws)["tasks"]] == ["A", "B"]
+
+    def test_menu_has_icons_and_title(self, ws):
+        _seed(ws, tasks=[_task(desc="X", date=ISO)])
+        menu = T.menu_for(_row_for(ws, "tasks", "task"))
+        assert "🏷️ [t]ítulo" in menu and "⏩ [u]fup" in menu

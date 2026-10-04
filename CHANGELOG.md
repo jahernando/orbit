@@ -14,7 +14,8 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 - **ADR-058: el ⏩ del triaje no mueve la cita.** `u` (y `day fup` por lotes)
   añade el ⏩ y deja la fecha; si la cita salía por un ⏩ vencido, lo mueve.
-  Solo `none` deja sin fecha. Menú con iconos: ⏰ 🗓️ ⏩ 🧹 ✅ ❌ ⏭️.
+  Solo `none` deja sin fecha. Menú con iconos: ⏰ 🗓️ ⏩ 🧹 🏷️ ✅ ❌ ⏭️.
+- **Triaje: 🏷️ `[t]ítulo`** cambia el título de la cita (título único, crono conservado).
 - **`agenda … --sec`**: agenda de un día o un rango en formato secretario
   (tablas por día + mini-calendario de carga) en
   `📊panel/secretary/agenda-rango.md`, y la abre. Máx. 62 días.

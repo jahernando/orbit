@@ -974,7 +974,8 @@ Tres fricciones reales:
 1. **`u` nunca toca la fecha ni la hora de la cita.** Si tiene día, se añade el ⏩ y la cita sigue en su día; para moverla está `f` (fecha).
 2. **Si la cita salía por un ⏩ vencido**, ese ⏩ se mueve a la nueva fecha (como ya hacía): el ⏩ nuevo reemplaza al vencido.
 3. **`none` sigue siendo "sin fecha"**: deja la tarea / hito sin fecha, hora, ring ni ⏩ (rechazado en eventos, recurrentes y con crono). Es la única vía del triaje que quita la fecha, y es explícita.
-4. El menú lleva iconos delante de cada tecla: ⏰ [h]ora · 🗓️ [f]echa · ⏩ [u]fup · 🧹 [c]lear-⏩ · ✅ do[n]e · ❌ [d]rop · ⏭️ [s]kip.
+4. El menú lleva iconos delante de cada tecla: ⏰ [h]ora · 🗓️ [f]echa · ⏩ [u]fup · 🧹 [c]lear-⏩ · 🏷️ [t]ítulo · ✅ do[n]e · ❌ [d]rop · ⏭️ [s]kip.
+5. **`t` cambia el título** desde el triaje, vía `<tipo> edit --text` (títulos únicos de ADR-052 §4; el crono se conserva, ADR-055).
 
 **Consecuencias**:
 - Pros: `u` hace lo que dice; la fecha de una cita solo cambia cuando se pide (`f`, `none`).

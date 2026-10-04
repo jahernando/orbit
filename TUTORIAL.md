@@ -767,7 +767,7 @@ En la ventana de un proyecto (`wks santiago`) basta con `day` u `organize`.
 
 El bucle: eliges número y una tecla — `h` hora (si la tarea no es de hoy, la
 trae a hoy), `f` fecha, `u` followup (`mañana`, `+3 hablar con Pablo`…; mueve
-los `⏩` vencidos; no mueve la cita: para eso `f`), `c` borra un `⏩`, `n` done, `d` drop (con confirmación),
+los `⏩` vencidos; no mueve la cita: para eso `f`), `c` borra un `⏩`, `t` cambia el título, `n` done, `d` drop (con confirmación),
 Enter vuelve a la lista. Sale con `q` y refresca calendario y avisos.
 
 Para editar título o notas → sal y usa `task edit "X" --desc "..."` directo.

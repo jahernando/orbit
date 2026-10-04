@@ -1028,6 +1028,7 @@ Eliges un número y una acción (mismo menú que `organize`):
 | 🗓️ `f` | fecha (`mañana`, `viernes`, `+3`, `YYYY-MM-DD`) |
 | ⏩ `u` | followup: `fecha [descripción]`, Enter = mañana, `none` = sin fecha. Si la cita tenía `⏩` vencidos, los **mueve** a esa fecha (conservando su descripción); si no, añade uno. **No toca la fecha de la cita** (ADR-058): una cita o un hito con día sigue en su día; para moverlo, `f`. `none` deja la tarea / hito sin fecha y sin `⏩` (rechazado en eventos, recurrentes y con crono) |
 | 🧹 `c` | borra un `⏩` (si hay varios, pregunta cuál) |
+| 🏷️ `t` | título nuevo (Enter = dejarlo). Rechaza un título que ya tenga otra cita abierta del mismo tipo; el crono enlazado se conserva |
 | ✅ `n` | done (tareas e hitos) |
 | ❌ `d` | drop, con confirmación (defecto No) |
 | ⏭️ `s` / Enter | vuelve a la lista sin tocar nada |

@@ -379,6 +379,7 @@ def menu_for(row: Row) -> str:
     opts = ["⏰ [h]ora", "🗓️ [f]echa", "⏩ [u]fup"]
     if item_followups(row.item):
         opts.append("🧹 [c]lear-⏩")
+    opts.append("🏷️ [t]ítulo")
     if row.kind in ("task", "ms"):
         opts.append("✅ do[n]e")
     opts += ["❌ [d]rop", "⏭️ [s]kip"]
@@ -591,9 +592,26 @@ def _act_drop(row: Row, today: date) -> bool:
     return True
 
 
+def _act_title(row: Row, today: date) -> bool:
+    """Cambia el título (vía ``<kind> edit --text``: comprueba que no choque
+    con otra cita abierta del mismo tipo). El crono enlazado se conserva."""
+    from core.agenda_cmds import (run_ev_edit, run_ms_edit, run_reminder_edit,
+                                  run_task_edit)
+    old = row.item["desc"]
+    new = _prompt(f"    nuevo título (enter = dejar «{old}»): ").strip()
+    if not new or new == old:
+        return False
+    edit = {"task": run_task_edit, "ms": run_ms_edit, "ev": run_ev_edit,
+            "reminder": run_reminder_edit}[row.kind]
+    if edit(row.project_dir.name, old, new_text=new, force=True) != 0:
+        return False
+    row.item["desc"] = new          # la verificación busca ya el título nuevo
+    return True
+
+
 ACTIONS: dict = {
     "h": _act_time, "f": _act_date, "u": _act_fup, "c": _act_clear,
-    "n": _act_done, "d": _act_drop,
+    "t": _act_title, "n": _act_done, "d": _act_drop,
 }
 
 
