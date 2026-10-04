@@ -9,6 +9,9 @@ Layout:
     > 🗓 Hoy: 📅N eventos · ✅N tareas · ⚠️N vencidas · ⏩N por triar
     > 🏁 Próximos 30 días: N hitos   ← solo si N>0
 
+    ## 🎯 Focus                       ← solo si hay hoja focus esta semana
+    (views/secretary/focus.py)
+
     ## 📅 Hoy — martes 19/05
     | tabla mezclando citas + vencidas (⚠️) + por-triar (⏩) |
 
@@ -508,6 +511,8 @@ def generate(out_path: Path) -> None:
                                 n_overdue_ms=n_overdue_ms,
                                 ring_counts=ring_counts))
     lines.append("")
+    from views.secretary.focus import focus_lines
+    lines.extend(focus_lines(today))          # [] si focus está apagado
     lines.append(f"## 📅 Hoy — {_short_date_es(today)}")
     lines.append("")
     lines.extend(_today_block(today_items, overdue, followups_today,

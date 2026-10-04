@@ -154,11 +154,12 @@ def _write_day(text: str, d: date, new_lines: list[str],
               if (m := _DAY_HEADER_RE.match(lines[i].strip()))
               and m.group(1) == d.isoformat()), None)
     if h is None:
+        # Sustituye los blancos finales de la sección por el bloque nuevo,
+        # que lleva su propio blanco antes y después.
         at = end
         while at > start + 1 and not lines[at - 1].strip():
             at -= 1
-        block = [header, *new_lines, ""]
-        lines[at:at] = ([""] + block) if at > start + 1 else block
+        lines[at:end] = ["", header, *new_lines, ""]
     else:
         last = h + 1
         while last < end and lines[last].strip().startswith("- "):

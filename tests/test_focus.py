@@ -1433,3 +1433,76 @@ class TestFocusDay:
         assert "## Bloques" in text and "## Días" in text
         assert "· Revisar" in text and "Retro a mano." in text
         assert text.index("## Días") < text.index("## Contador")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# F5: sección 🎯 Focus en la agenda del secretario
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestSecretaryFocus:
+    def test_no_sheet_no_section(self, workspace, mission):
+        from views.secretary.focus import focus_lines
+        assert focus_lines(_D) == []
+
+    def test_week_blocks_live_status(self, workspace, mission, other_project):
+        from core import api
+        from core.focus import suppressed
+        from views.secretary.focus import focus_lines
+        _mission_task("aaaaaaaa")
+        _mission_task("bbbbbbbb")
+        _new_week(mission, _W40_MON, [("paper-neutrinos", "aaaaaaaa"),
+                                      ("paper-neutrinos", "bbbbbbbb")])
+        with suppressed():                       # como si fuera a mano
+            api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        out = "\n".join(focus_lines(_D))
+        assert out.startswith("## 🎯 Focus")
+        assert "**Semana** [2026-W40](../../" in out
+        assert "· ✅ 1/2 bloques" in out
+        assert "- ⚓ Anchor: [🌀paper-neutrinos](../../" in out
+        assert ") ✅⬜" in out
+        assert "**Hoy**" not in out
+
+    def test_day_items_read_truth(self, workspace, mission, other_project,
+                                  monkeypatch):
+        from core import api
+        from core.focus import run_focus_day, suppressed
+        from views.secretary.focus import focus_lines
+        _proj_task("🌀paper-neutrinos", "Revisar")
+        _proj_task("🌀paper-neutrinos", "Enviar")
+        _feed_inputs(monkeypatch, ["1 2"])
+        run_focus_day(today=_D)
+        with suppressed():                       # cierre fuera de la CLI
+            api.complete_task(project="🌀paper-neutrinos", desc="Revisar")
+        out = focus_lines(_D)
+        assert "**Semana**" not in "\n".join(out)
+        assert any(l.startswith("**Hoy** [2026-W40](") and l.endswith("✅ 1/2")
+                   for l in out)
+        assert any(l.startswith("- ✅ [🌀paper-neutrinos](") and
+                   l.endswith("· Revisar") for l in out)
+        assert any(l.startswith("- ⬜ ") and l.endswith("· Enviar") for l in out)
+        assert focus_lines(date(2026, 10, 2)) == []     # otro día sin focus
+
+    def test_status_off_hides(self, workspace, mission):
+        from views.secretary.focus import focus_lines
+        _mission_task("aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        wf.write_text(wf.read_text().replace("Status: normal", "Status: off"))
+        assert focus_lines(_D) == []
+
+    def test_agenda_places_section_before_today(self, workspace, mission,
+                                                monkeypatch, tmp_path):
+        import views.secretary.agenda as agenda
+        _mission_task("aaaaaaaa", day=date.today().isoformat())
+        _new_week(mission, date.today(), [("p", "aaaaaaaa")])
+        out = tmp_path / "agenda.md"
+        agenda.generate(out)
+        text = out.read_text()
+        assert text.index("## 🎯 Focus") < text.index("## 📅 Hoy")
+        assert text.index("> ") < text.index("## 🎯 Focus")
+
+    def test_never_raises(self, workspace, mission, monkeypatch):
+        from views.secretary import focus
+        def _boom(*a, **k):
+            raise RuntimeError("x")
+        monkeypatch.setattr(focus, "_focus_lines", _boom)
+        assert focus.focus_lines(_D) == []

@@ -1148,6 +1148,8 @@ Se apuntan en la sección `## Días` de la hoja semanal (`### 2026-10-05 · lune
 
 Repetido el mismo día: menú `1) añadir` (hasta completar 5) · `2) rehacer` · `3) abortar`.
 
+**En la agenda del secretario** (`📊panel/secretary/agenda.md`): sección `## 🎯 Focus` entre los contadores y `📅 Hoy`, con la semana (bloques por carril ✅⬜ y `✅ n/m`) y las tareas de hoy. Lee el estado **en vivo** de la verdad (también lo cerrado a mano en Obsidian). Aparece solo si hay hoja para esta semana; `- Status: off` en la hoja la oculta.
+
 `task done` / `task drop` marcan la línea `✅ MM-DD` / `❌ MM-DD`. **Balance del día**: el primer `save` (con cambios) de un día posterior congela los símbolos (abierta → ❌, desaparecida → ❔) y la cabecera pasa a `### … · balance n/m`; desde ahí no se toca.
 
 ### Vista anual
