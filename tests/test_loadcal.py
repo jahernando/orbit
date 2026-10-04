@@ -112,7 +112,7 @@ class TestMarkdown:
         assert 'title="21 citas"' in today
         assert L.md_cell(d1, loads, TODAY) == '<span title="0 citas">17</span>'
         ms = L.md_cell(d3, loads, TODAY, {d3})
-        assert "19</u>" in ms and "<u " in ms and "background:#a8a8a8" in ms and "hito" in ms
+        assert "border-bottom:2px solid currentColor" in ms and ">19<" in ms and "background:#a8a8a8" in ms and "hito" in ms
         past = L.md_cell(TODAY - timedelta(days=1), loads, TODAY)
         assert "opacity" in past and "background" not in past
 

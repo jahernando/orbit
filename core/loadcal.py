@@ -188,19 +188,23 @@ _HEX = {232: "#080808", 238: "#444444", 243: "#767676", 248: "#a8a8a8",
 _MD_WEEKDAYS = ("Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do")
 
 
-_MD_UNDERLINE = '<u style="text-decoration-thickness:2px;text-underline-offset:2px">'
+# Subrayado como borde del propio <span>: Obsidian no pinta <u> en las
+# tablas, pero sí respeta el style del span (el gris se ve).
+_MD_UNDERLINE = "border-bottom:2px solid currentColor"
 
 
 def _md_span(text: str, lv: int, title: str = "",
              underline: bool = False) -> str:
-    if underline:
-        text = f"{_MD_UNDERLINE}{text}</u>"
     tip = f' title="{title}"' if title else ""
-    if _BG[lv] is None:
+    styles = []
+    if _BG[lv] is not None:
+        styles.append(f"background:{_HEX[_BG[lv]]};color:{_HEX[_FG[lv]]};"
+                      "padding:0 4px;border-radius:3px")
+    if underline:
+        styles.append(_MD_UNDERLINE)
+    if not styles:
         return f"<span{tip}>{text}</span>" if tip else text
-    style = (f"background:{_HEX[_BG[lv]]};color:{_HEX[_FG[lv]]};"
-             "padding:0 4px;border-radius:3px")
-    return f'<span style="{style}"{tip}>{text}</span>'
+    return f'<span style="{";".join(styles)}"{tip}>{text}</span>'
 
 
 def md_cell(d: date, loads: dict, today: date, ms_days: set = frozenset()) -> str:
@@ -223,7 +227,7 @@ def md_cell(d: date, loads: dict, today: date, ms_days: set = frozenset()) -> st
 def md_legend() -> str:
     parts = [_md_span(f"{name}", lv) for lv, name in enumerate(LEVEL_NAMES)]
     return ("Carga (citas/día): " + " ".join(parts)
-            + f" · {_MD_UNDERLINE}dd</u> = hito · [ ] = hoy")
+            + f" · <span style=\"{_MD_UNDERLINE}\">dd</span> = hito · [ ] = hoy")
 
 
 def render_md(loads: dict, today: date, weeks: list,
