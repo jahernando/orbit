@@ -19,6 +19,15 @@
         "label": "Cronograma"
       }
     },
+    "focus_balance": {
+      "module": "core.focus.balance",
+      "fn": "_action_focus_balance",
+      "critical": false,
+      "display": {
+        "emoji": "🎯",
+        "label": "Focus balance"
+      }
+    },
     "doctor_check_save": {
       "module": "views.doctor.doctor",
       "fn": "_action_doctor_check_save",
@@ -143,6 +152,7 @@
       "pre": [
         "cloud_imgs_process",
         "cronograma_log_completed",
+        "focus_balance",
         "doctor_check_save"
       ],
       "display": {

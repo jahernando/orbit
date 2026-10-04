@@ -91,11 +91,11 @@ class TestDateHelpers:
         # 2026-01-05 is a Monday in W02.
         assert _iso_week_label(date(2026, 1, 5)) == "2026-W02"
 
-    def test_week_bounds_monday_to_friday(self):
+    def test_week_bounds_monday_to_sunday(self):
         from core.focus import _week_bounds
-        mon, fri = _week_bounds(date(2026, 5, 21))  # Thursday
+        mon, sun = _week_bounds(date(2026, 5, 21))  # Thursday
         assert mon == date(2026, 5, 18)
-        assert fri == date(2026, 5, 22)
+        assert sun == date(2026, 5, 24)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -855,7 +855,7 @@ class TestFormatYearFile:
         # Cabecera nueva.
         assert "| Semana | Fechas | Status | Anchor | Push | Joy |" in out
         # W21/2026 = lun 2026-05-18 → vie 2026-05-22.
-        assert "| 05-18/05-22 |" in out
+        assert "| 05-18/05-24 |" in out
 
     def test_dates_column_crosses_year_boundary(self):
         """W01 puede empezar en diciembre del año anterior."""
@@ -863,7 +863,7 @@ class TestFormatYearFile:
         rows = self._blank_rows(2026, 53)
         out = _format_year_file(rows, 2026)
         # ISO 2026-W01: Mon 2025-12-29 → Fri 2026-01-02.
-        assert "| W01 | 12-29/01-02 |" in out
+        assert "| W01 | 12-29/01-04 |" in out
 
 
 class TestRunFocusYear:
@@ -965,3 +965,163 @@ class TestYearRefreshOnWeekClose:
         focus._refresh_year_silent(mission, 2026)
         captured = capsys.readouterr()
         assert "No se pudo refrescar" in captured.out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# F2 (focus week/day): símbolos por bloque + balance en el primer save
+# ══════════════════════════════════════════════════════════════════════════════
+
+_W40_MON = date(2026, 9, 28)      # lunes de 2026-W40; domingo = 2026-10-04
+
+
+def _new_week(mission_dir: Path, monday: date,
+              blocks: list[tuple[str, str]]) -> Path:
+    """Hoja nueva (formato F2) con bloques anchor ``(proj, oid)``."""
+    from core.focus import _write_week_file, _week_file_path
+    wf = _week_file_path(mission_dir, monday)
+    projs = list(dict.fromkeys(p for p, _ in blocks))
+    _write_week_file(wf, monday, "normal", {"anchor": projs},
+                     {"anchor": list(blocks)})
+    return wf
+
+
+def _mission_task(oid: str, day: str = "2026-09-29") -> None:
+    from core import api
+    api.add_task(project="mission", text=f"bloque {oid}", date=day,
+                 time="09:00-10:30", orbit_id=oid)
+
+
+def _mission_status(oid: str) -> str:
+    from core.focus import _build_id_status_index, _resolve_mission_dir
+    return _build_id_status_index(_resolve_mission_dir()).get(oid)
+
+
+class TestWeekSheetF2:
+    def test_new_sheet_has_open_symbols_and_pending_balance(self, workspace, mission):
+        wf = _new_week(mission, _W40_MON, [("paper-neutrinos", "aaaaaaaa")])
+        text = wf.read_text()
+        assert "- Fechas: 2026-09-28 → 2026-10-04" in text
+        assert "- Balance: pendiente" in text
+        assert "- ⬜ [orbit:aaaaaaaa]" in text
+
+    def test_counter_refreshes_symbols_live(self, workspace, mission):
+        from core import api
+        from core.focus import _regenerate_counter
+        _mission_task("aaaaaaaa")
+        _mission_task("bbbbbbbb")
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa"), ("p", "bbbbbbbb")])
+        assert _regenerate_counter(wf, mission) == (1, 2)
+        text = wf.read_text()
+        assert "- ✅ [orbit:aaaaaaaa]" in text
+        assert "- ⬜ [orbit:bbbbbbbb]" in text
+
+    def test_sync_keeps_date_while_symbol_unchanged(self):
+        from core.focus import _sync_block_symbols
+        text = "## Bloques\n### ⚓ p\n- ✅ 10-01 [orbit:aaaaaaaa]\n"
+        assert "- ✅ 10-01 [orbit:aaaaaaaa]" in _sync_block_symbols(
+            text, {"aaaaaaaa": "done"})
+        assert "- ⬜ [orbit:aaaaaaaa]" in _sync_block_symbols(
+            text, {"aaaaaaaa": "pending"})
+
+    def test_legacy_lines_without_symbol_parse(self):
+        from core.focus import _parse_block_states, _parse_week_file
+        text = "- Status: normal\n## Bloques\n### ⚓ p\n- [orbit:aaaaaaaa]\n"
+        assert _parse_block_states(text) == {"aaaaaaaa": "pending"}
+        assert _parse_week_file(text)["blocks_by_rail"]["anchor"] == ["aaaaaaaa"]
+
+    def test_set_balance_line_replaces_or_inserts(self):
+        from core.focus import _set_balance_line
+        legacy = "# Focus\n\n- Fechas: x\n- Status: normal\n\n## Bloques\n"
+        out = _set_balance_line(legacy, "hecho 2026-10-05")
+        assert "- Status: normal\n- Balance: hecho 2026-10-05\n" in out
+        again = _set_balance_line(out, "hecho 2026-10-06")
+        assert again.count("- Balance:") == 1
+        assert "- Balance: hecho 2026-10-06" in again
+
+
+class TestBalance:
+    def test_closed_week_balanced_and_open_blocks_dropped(self, workspace, mission):
+        from core import api
+        from core.focus import run_focus_balance
+        _mission_task("aaaaaaaa")
+        _mission_task("bbbbbbbb")
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa"), ("p", "bbbbbbbb")])
+
+        res = run_focus_balance(today=date(2026, 10, 5), silent=True)
+
+        assert res == [{"week": "2026-W40", "done": 1, "total": 2,
+                        "dropped": 1, "legacy": False}]
+        assert _mission_status("bbbbbbbb") == "cancelled"
+        assert _mission_status("aaaaaaaa") == "done"
+        text = wf.read_text()
+        assert "- Balance: hecho 2026-10-05" in text
+        assert "- ✅ [orbit:aaaaaaaa]" in text
+        assert "- ❌ [orbit:bbbbbbbb]" in text
+        assert "- ⚓ anchor: 1/2" in text
+
+    def test_balance_is_idempotent(self, workspace, mission):
+        from core.focus import run_focus_balance
+        _mission_task("aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        run_focus_balance(today=date(2026, 10, 5), silent=True)
+        before = wf.read_text()
+        assert run_focus_balance(today=date(2026, 10, 6), silent=True) == []
+        assert wf.read_text() == before
+
+    def test_current_week_not_balanced(self, workspace, mission):
+        from core.focus import run_focus_balance
+        _mission_task("aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        # Domingo de la propia semana: aún vigente.
+        assert run_focus_balance(today=date(2026, 10, 4), silent=True) == []
+        assert "- Balance: pendiente" in wf.read_text()
+        assert _mission_status("aaaaaaaa") == "pending"
+
+    def test_legacy_sheet_balanced_without_drop(self, workspace, mission):
+        from core.focus import run_focus_balance
+        _mission_task("aaaaaaaa", day="2026-05-19")
+        wf = _write_week_file_raw(mission, "2026-W21",
+                                  [("anchor", "p", "aaaaaaaa")])
+        res = run_focus_balance(today=date(2026, 10, 5), silent=True)
+        assert res[0]["legacy"] is True and res[0]["dropped"] == 0
+        assert _mission_status("aaaaaaaa") == "pending"
+        text = wf.read_text()
+        assert "- Status: normal\n- Balance: hecho 2026-10-05" in text
+        assert "- ❌ [orbit:aaaaaaaa]" in text
+
+    def test_missing_block_marked_unknown(self, workspace, mission):
+        from core.focus import run_focus_balance
+        wf = _new_week(mission, _W40_MON, [("p", "cccccccc")])
+        run_focus_balance(today=date(2026, 10, 5), silent=True)
+        assert "- ❔ [orbit:cccccccc]" in wf.read_text()
+
+    def test_year_reads_sheet_after_blocks_vanish(self, workspace, mission):
+        """Tras el balance la hoja manda: archivar el bloque no borra el ✅."""
+        from core import api
+        from core.focus import run_focus_balance, _collect_year, _regenerate_counter
+        _mission_task("aaaaaaaa")
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        run_focus_balance(today=date(2026, 10, 5), silent=True)
+        _agenda_path(mission).write_text("# Agenda\n\n")   # "archivado"
+        assert _mission_status("aaaaaaaa") is None
+        row = _collect_year(mission, 2026)[39]
+        assert row["rails"]["anchor"] == [("p", [True])]
+        assert _regenerate_counter(wf, mission) == (1, 1)
+        assert "- ✅ [orbit:aaaaaaaa]" in wf.read_text()
+
+    def test_no_mission_is_silent(self, workspace, capsys):
+        from core.focus import run_focus_balance
+        assert run_focus_balance(today=date(2026, 10, 5)) == []
+        assert capsys.readouterr().out == ""
+
+    def test_hook_action_reports_count(self, workspace, mission, monkeypatch):
+        from core.focus import _action_focus_balance
+        monkeypatch.setattr("core.commit._git_add_all_tracked", lambda: True)
+        _mission_task("aaaaaaaa")
+        _new_week(mission, date(2026, 1, 5), [("p", "aaaaaaaa")])
+        out = _action_focus_balance(None)
+        assert out["ok"] is True
+        assert out["msg"].startswith("1 ")

@@ -36,6 +36,7 @@ def test_commit_pre_chain_registered():
     assert chain.pre == [
         "cloud_imgs_process",
         "cronograma_log_completed",
+        "focus_balance",
         "doctor_check_save",
     ]
     assert chain.core is None
@@ -138,6 +139,7 @@ def test_render_to_cloud_failure():
 def test_commit_pre_continues_when_clean(reset_journal):
     with patch("core.cloud_imgs.check_pending_imgs", return_value=0), \
          patch("core.cronograma.log_crono_completions", return_value=0), \
+         patch("core.focus.balance.run_focus_balance", return_value=[]), \
          patch("views.doctor.doctor.check_all_projects", return_value=[]):
         results = hooks.fire("commit_pre", verbosity="quiet")
 
@@ -145,6 +147,7 @@ def test_commit_pre_continues_when_clean(reset_journal):
     assert actions_run == [
         "cloud_imgs_process",
         "cronograma_log_completed",
+        "focus_balance",
         "doctor_check_save",
     ]
     assert all(r.ok for r in results)

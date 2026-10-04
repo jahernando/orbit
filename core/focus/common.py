@@ -27,9 +27,13 @@ def _iso_week_label(d: date) -> str:
 
 
 def _week_bounds(d: date) -> tuple[date, date]:
-    """Return (monday, friday) of the ISO week containing *d*."""
+    """Return (monday, sunday) of the ISO week containing *d*.
+
+    La hoja semanal vale lunes–domingo: el balance de la semana se hace
+    en el primer save posterior al domingo.
+    """
     monday = d - timedelta(days=d.weekday())
-    return monday, monday + timedelta(days=4)
+    return monday, monday + timedelta(days=6)
 
 
 def _resolve_mission_dir() -> Optional[Path]:

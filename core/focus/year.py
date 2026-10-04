@@ -12,6 +12,7 @@ from core.focus.common import (
 )
 from core.focus.weekfile import (
     _build_id_status_index,
+    _effective_status_index,
     _parse_week_blocks_detailed,
     _parse_week_file,
 )
@@ -47,8 +48,9 @@ def _collect_year(mission_dir: Path, year: int) -> list[dict]:
                          "joy":    [...]},
         }
 
-    A block is "done" iff its orbit_id maps to ``status == "done"`` in
-    ``mission/agenda.md``. Order of projects within a rail is preserved
+    A block is "done" iff its status is ``done``: from the sheet's symbols
+    once the week is balanced (historical truth), from ``mission/agenda.md``
+    otherwise. Order of projects within a rail is preserved
     from the week file.
     """
     n_weeks = _weeks_in_iso_year(year)
@@ -69,10 +71,11 @@ def _collect_year(mission_dir: Path, year: int) -> list[dict]:
         text = week_file.read_text()
         parsed = _parse_week_file(text)
         detailed = _parse_week_blocks_detailed(text)
+        status_of = _effective_status_index(text, id_status)
         rails: dict[str, list[tuple[str, list[bool]]]] = {r: [] for r in _RAILS}
         idx_in_rail: dict[tuple[str, str], int] = {}
         for rail, proj, oid in detailed:
-            done = id_status.get(oid) == "done"
+            done = status_of.get(oid) == "done"
             key = (rail, proj)
             if key in idx_in_rail:
                 rails[rail][idx_in_rail[key]][1].append(done)
@@ -126,10 +129,10 @@ def _year_totals(rows: list[dict]) -> dict[str, tuple[int, int]]:
 
 
 def _week_dates_short(year: int, week_num: int) -> str:
-    """Return ``MM-DD/MM-DD`` for Mon/Fri of the given ISO week."""
+    """Return ``MM-DD/MM-DD`` for Mon/Sun of the given ISO week."""
     mon = date.fromisocalendar(year, week_num, 1)
-    fri = date.fromisocalendar(year, week_num, 5)
-    return f"{mon.strftime('%m-%d')}/{fri.strftime('%m-%d')}"
+    sun = date.fromisocalendar(year, week_num, 7)
+    return f"{mon.strftime('%m-%d')}/{sun.strftime('%m-%d')}"
 
 
 def _format_year_file(rows: list[dict], year: int) -> str:

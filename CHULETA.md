@@ -1114,9 +1114,13 @@ Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` 
 2. **Plantilla** — usa el template para cantidades y W-1 (si existe) como default de proyectos. Pregunta sólo qué proyectos llenan cada carril.
 3. **Libre** — prompt proyecto a proyecto. Para cada bloque: día (`lun`/`mar`/`mie`/`jue`/`vie`) y hora (`HH:MM` o `HH:MM-HH:MM`; si das sólo start, añade duration del template).
 
-**Archivo semanal**: `mission/notes/2026-WNN-focus.md` con frontmatter (fechas, status: `normal` o `especial`), proyectos por carril, IDs de bloques agrupados, contador autogenerado y retrospectiva (texto libre para el viernes).
+**Archivo semanal**: `mission/notes/2026-WNN-focus.md`, válido **lunes–domingo**, con cabecera (fechas, status: `normal` o `especial`, balance), proyectos por carril, bloques agrupados con su símbolo de estado, contador autogenerado y retrospectiva (texto libre).
 
-**Contador**: regenera al ejecutar `orbit focus week` sobre semana existente. Cuenta tasks `done` en mission por carril (lookup por orbit-id, robusto a renombrados del título).
+**Símbolos por bloque** (los escribe orbit, no son casillas): `⬜` abierto · `✅` hecho · `❌` no hecho / drop · `❔` no encontrado.
+
+**Contador**: regenera al ejecutar `orbit focus week` sobre semana existente. Cuenta tasks `done` en mission por carril (lookup por orbit-id, robusto a renombrados del título) y refresca los símbolos.
+
+**Balance**: el primer `save` (con cambios) tras el domingo cierra la semana: drop de los bloques abiertos en mission, símbolos congelados y `- Balance: hecho YYYY-MM-DD`. Desde ahí la hoja es la verdad histórica (contador y `focus year` leen los símbolos, no la agenda). Aproximado: una task cerrada entre el domingo y el save cuenta como hecha. Hojas anteriores a esta versión (sin línea `Balance`) se balancean una vez **sin** drop.
 
 **Status: especial** (vacaciones, congreso) → contador muestra `—` en lugar de `done/total`. Edita a mano en el frontmatter.
 

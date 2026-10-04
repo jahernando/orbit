@@ -60,10 +60,11 @@ def _format_week_file(target: date, status: str,
                       blocks_by_rail: dict[str, list[tuple[str, str]]]) -> str:
     """Compose the week file text. Counter is rendered as placeholder; F4 fills it."""
     week_label = _iso_week_label(target)
-    monday, friday = _week_bounds(target)
+    monday, sunday = _week_bounds(target)
     out = [f"# Focus {week_label}", "",
-           f"- Fechas: {monday.isoformat()} → {friday.isoformat()}",
+           f"- Fechas: {monday.isoformat()} → {sunday.isoformat()}",
            f"- Status: {status}",
+           f"- Balance: {_BALANCE_PENDING}",
            "", "## Carriles", ""]
     for rail in _RAILS:
         projs = rails_projects.get(rail) or []
@@ -81,7 +82,7 @@ def _format_week_file(target: date, status: str,
                 continue
             out.append(f"### {_RAIL_EMOJI[rail]} {proj}")
             for oid in ids:
-                out.append(f"- [orbit:{oid}]")
+                out.append(f"- {_SYM_OPEN} [orbit:{oid}]")
             out.append("")
     out += ["## Contador (autogenerado)", ""]
     for rail in _RAILS:
@@ -111,6 +112,123 @@ def _write_week_file(week_file: Path, target: date, status: str,
 
 _ORBIT_LINE_RE = re.compile(r"\[orbit:([0-9a-f]{8})\]")
 _RAIL_FROM_EMOJI = {v: k for k, v in _RAIL_EMOJI.items()}
+
+
+# ── Estado por bloque (símbolos) + balance ───────────────────────────────
+#
+# Cada bloque lleva un símbolo escrito por orbit (no casillas clicables):
+#   ⬜ abierto · ✅ hecho · ❌ no hecho / drop · ❔ no encontrado
+# opcionalmente seguido de la fecha de cierre ``MM-DD`` (la pone el hook de
+# done/drop; el balance no la conoce). Hojas viejas: ``- [orbit:id]`` sin
+# símbolo → se leen como abiertas.
+#
+# ``- Balance: pendiente`` / ``- Balance: hecho YYYY-MM-DD``. Sin la línea =
+# hoja legacy (anterior a F2): se balancea una vez sin hacer drop.
+
+_SYM_OPEN, _SYM_DONE, _SYM_DROP, _SYM_MISSING = "⬜", "✅", "❌", "❔"
+_SYM_TO_STATUS = {_SYM_OPEN: "pending", _SYM_DONE: "done",
+                  _SYM_DROP: "cancelled", _SYM_MISSING: "missing"}
+_BALANCE_PENDING = "pendiente"
+_BALANCE_DONE = "hecho"
+
+_BLOCK_LINE_RE = re.compile(
+    r"^(\s*)-\s+(?:([⬜✅❌❔])\s+(?:(\d{2}-\d{2})\s+)?)?"
+    r"\[orbit:([0-9a-f]{8})\](.*)$")
+_BALANCE_RE = re.compile(r"^-\s+Balance\s*:\s*(\S+)(?:\s+(\d{4}-\d{2}-\d{2}))?\s*$",
+                         re.IGNORECASE)
+_STATUS_LINE_RE = re.compile(r"^-\s+Status\s*:", re.IGNORECASE)
+
+
+def _parse_balance(text: str) -> Optional[str]:
+    """Return ``"pendiente"`` / ``"hecho"`` or None for a legacy sheet."""
+    for line in text.splitlines():
+        m = _BALANCE_RE.match(line.strip())
+        if m:
+            return m.group(1).lower()
+    return None
+
+
+def _is_balanced(text: str) -> bool:
+    return _parse_balance(text) == _BALANCE_DONE
+
+
+def _set_balance_line(text: str, value: str) -> str:
+    """Write ``- Balance: <value>``; insert after ``- Status:`` if absent."""
+    lines = text.splitlines()
+    for i, ln in enumerate(lines):
+        if _BALANCE_RE.match(ln.strip()):
+            lines[i] = f"- Balance: {value}"
+            break
+    else:
+        at = next((i + 1 for i, ln in enumerate(lines)
+                   if _STATUS_LINE_RE.match(ln.strip())), None)
+        if at is None:  # sin Status: tras el título
+            at = 1 if lines and lines[0].startswith("# ") else 0
+        lines.insert(at, f"- Balance: {value}")
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
+def _parse_block_states(text: str) -> dict[str, str]:
+    """Map orbit_id → status leído de los símbolos de ``## Bloques``."""
+    out: dict[str, str] = {}
+    in_blocks = False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("## "):
+            in_blocks = s == "## Bloques"
+            continue
+        if not in_blocks:
+            continue
+        m = _BLOCK_LINE_RE.match(line)
+        if m:
+            out[m.group(4)] = _SYM_TO_STATUS[m.group(2) or _SYM_OPEN]
+    return out
+
+
+def _effective_status_index(text: str,
+                            id_status: dict[str, str]) -> dict[str, str]:
+    """Status de cada bloque según la fuente que manda.
+
+    Hoja balanceada → los símbolos de la hoja (verdad histórica: los
+    bloques pueden estar ya archivados o con drop). Sin balancear → la
+    agenda de mission (``id_status``).
+    """
+    if _is_balanced(text):
+        return _parse_block_states(text)
+    return id_status
+
+
+def _sync_block_symbols(text: str, id_status: dict[str, str],
+                        final: bool = False) -> str:
+    """Reescribe el símbolo de cada bloque desde ``id_status``.
+
+    *final* (balance): abierto → ❌, ausente en la agenda → ❔. Sin
+    *final* (vivo): abierto → ⬜, ausente → conserva lo que hubiera.
+    La fecha ``MM-DD`` se conserva mientras el símbolo no cambie.
+    """
+    out = []
+    in_blocks = False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("## "):
+            in_blocks = s == "## Bloques"
+        m = _BLOCK_LINE_RE.match(line) if in_blocks else None
+        if not m:
+            out.append(line)
+            continue
+        indent, old_sym, old_date, oid, rest = m.groups()
+        st = id_status.get(oid)
+        if st == "done":
+            sym = _SYM_DONE
+        elif st == "cancelled":
+            sym = _SYM_DROP
+        elif st is None:
+            sym = _SYM_MISSING if final else (old_sym or _SYM_OPEN)
+        else:
+            sym = _SYM_DROP if final else _SYM_OPEN
+        stamp = f" {old_date}" if old_date and sym == old_sym else ""
+        out.append(f"{indent}- {sym}{stamp} [orbit:{oid}]{rest}")
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def _parse_week_file(text: str) -> dict:
@@ -218,10 +336,17 @@ def _regenerate_counter(week_file: Path, mission_dir: Path) -> tuple[int, int]:
 
     Returns (done_total, total). Idempotent: if the week file has no
     counter section, one is appended before '## Retrospectiva'.
+
+    Hoja sin balancear: refresca también los símbolos desde la agenda.
+    Hoja balanceada: no toca los símbolos y cuenta desde ellos.
     """
     text = week_file.read_text()
     parsed = _parse_week_file(text)
-    id_status = _build_id_status_index(mission_dir)
+    if _is_balanced(text):
+        id_status = _parse_block_states(text)
+    else:
+        id_status = _build_id_status_index(mission_dir)
+        text = _sync_block_symbols(text, id_status)
     new_section = _format_counter_section(parsed["status"],
                                            parsed["blocks_by_rail"], id_status)
 

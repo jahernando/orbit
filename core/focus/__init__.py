@@ -4,7 +4,7 @@ Paquete (antes ``core/focus.py`` mono-fichero, ADR-038). El ``__init__``
 re-exporta la API histórica para que ``from core.focus import …`` siga
 funcionando. Submódulos, de base a cima (sin ciclos)::
 
-    common → template, prompts → weekfile → year → modes → week
+    common → template, prompts → weekfile → year → balance → modes → week
 
 
 Mission-specific por construcción en v1. Cada workspace declara su propia
@@ -76,6 +76,18 @@ from core.focus.prompts import (  # noqa: F401
     _resolve_project_name,
 )
 from core.focus.weekfile import (  # noqa: F401
+    _BALANCE_DONE,
+    _BALANCE_PENDING,
+    _SYM_OPEN,
+    _SYM_DONE,
+    _SYM_DROP,
+    _SYM_MISSING,
+    _effective_status_index,
+    _is_balanced,
+    _parse_balance,
+    _parse_block_states,
+    _set_balance_line,
+    _sync_block_symbols,
     _ORBIT_LINE_RE,
     _RAIL_FROM_EMOJI,
     _build_id_status_index,
@@ -98,6 +110,13 @@ from core.focus.year import (  # noqa: F401
     _year_file_path,
     _year_totals,
     run_focus_year,
+)
+from core.focus.balance import (  # noqa: F401
+    _action_focus_balance,
+    _balance_week,
+    _pending_balances,
+    _week_sunday,
+    run_focus_balance,
 )
 from core.focus.modes import (  # noqa: F401
     _extract_w_minus_1_projects,
