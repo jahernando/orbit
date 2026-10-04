@@ -2,7 +2,7 @@
 
 Mes actual + 2 meses por delante, con la **carga** de cada día (nº de
 citas) en gris, como el calendario de ``day fup`` (ADR-056), y los días
-con hito en negrita. Viewer puro: lee citas del workspace, escribe el .md,
+con hito subrayados. Viewer puro: lee citas del workspace, escribe el .md,
 return.
 """
 

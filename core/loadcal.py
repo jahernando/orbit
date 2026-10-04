@@ -23,7 +23,7 @@ paréntesis solo si ``orbit.json`` lo pide: ``"load_calendar": {"counts": true}`
 En markdown (``render_md``, para el calendario y la agenda del secretario)
 la intensidad es el mismo gris, como ``<span style="background:…">``; el
 número de citas va en el ``title`` (al pasar el ratón). Los días con un
-hito abierto van en **negrita**.
+hito abierto van **subrayados** (la negrita no se distingue sobre gris).
 """
 
 from __future__ import annotations
@@ -188,9 +188,13 @@ _HEX = {232: "#080808", 238: "#444444", 243: "#767676", 248: "#a8a8a8",
 _MD_WEEKDAYS = ("Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do")
 
 
-def _md_span(text: str, lv: int, title: str = "", bold: bool = False) -> str:
-    if bold:
-        text = f"<b>{text}</b>"
+_MD_UNDERLINE = '<u style="text-decoration-thickness:2px;text-underline-offset:2px">'
+
+
+def _md_span(text: str, lv: int, title: str = "",
+             underline: bool = False) -> str:
+    if underline:
+        text = f"{_MD_UNDERLINE}{text}</u>"
     tip = f' title="{title}"' if title else ""
     if _BG[lv] is None:
         return f"<span{tip}>{text}</span>" if tip else text
@@ -200,7 +204,7 @@ def _md_span(text: str, lv: int, title: str = "", bold: bool = False) -> str:
 
 
 def md_cell(d: date, loads: dict, today: date, ms_days: set = frozenset()) -> str:
-    """Celda markdown: gris de carga, **negrita** si hay hito, ``[dd]`` hoy.
+    """Celda markdown: gris de carga, subrayado si hay hito, ``[dd]`` hoy.
 
     Días pasados (o sin carga calculada) salen tenues, sin intensidad.
     """
@@ -213,13 +217,13 @@ def md_cell(d: date, loads: dict, today: date, ms_days: set = frozenset()) -> st
     tip = f"{n} cita" + ("s" if n != 1 else "")
     if d in ms_days:
         tip += " · 🏁 hito"
-    return _md_span(label, level(n), tip, bold=d in ms_days)
+    return _md_span(label, level(n), tip, underline=d in ms_days)
 
 
 def md_legend() -> str:
     parts = [_md_span(f"{name}", lv) for lv, name in enumerate(LEVEL_NAMES)]
     return ("Carga (citas/día): " + " ".join(parts)
-            + " · **negrita** = hito · [ ] = hoy")
+            + f" · {_MD_UNDERLINE}dd</u> = hito · [ ] = hoy")
 
 
 def render_md(loads: dict, today: date, weeks: list,
