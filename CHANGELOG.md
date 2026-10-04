@@ -20,6 +20,10 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
   misma carga, entre los contadores y `## 🎯 Focus`.
 - **Título** `# <emoji> Agenda — <space>` en la agenda del secretario
   (distingue dos workspaces abiertos a la vez en Obsidian).
+- **Siguiente paso del crono** (ADR-055): en la agenda del secretario, una
+  tarea / hito con crono sin pasos activos ni vencidos lleva debajo
+  `↳ <siguiente paso>` (el de fecha más temprana; sin fechas, el primero
+  abierto del fichero). También en Próximos días y en las filas ⏩.
 - `core/loadcal.py`: `milestone_days`, `md_cell`, `md_legend`, `render_md`.
   Cuenta igual que `day fup`: proyectos propios, sin recordatorios (las
   citas federadas salen en las tablas pero no suman carga).

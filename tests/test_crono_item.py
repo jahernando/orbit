@@ -329,6 +329,50 @@ class TestSteps:
         assert len(rows) == 2          # cabecera + fila vencida, sin fila extra
 
 
+class TestNextStep:
+    """El item con crono sin pasos activos lleva ``↳`` con el siguiente paso."""
+
+    def test_next_by_date(self, ws):
+        from core.cronograma import next_step, next_step_label
+        _write_dated_crono(ws, "cronos/crono-a.md", [
+            (True, "Hecho", _d(-5), "1d"),
+            (False, "Final", _d(20), "3d"),
+            (False, "Antes", _d(10), "2d")])
+        it = _task(desc="Informe", crono="cronos/crono-a.md")
+        st = next_step(ws, it, TODAY)
+        assert st["title"] == "Antes"
+        assert next_step_label(st, TODAY) == (
+            f"3 Antes · empieza {_d(10)[5:]}")
+
+    def test_undated_falls_back_to_first_open(self, ws):
+        from core.cronograma import next_step, next_step_label
+        _write_crono(ws, "cronos/crono-a.md", 1, 3)
+        st = next_step(ws, _task(crono="cronos/crono-a.md"), TODAY)
+        assert next_step_label(st, TODAY) == "2 paso 2"
+
+    def test_all_done_or_missing_is_none(self, ws):
+        from core.cronograma import next_step
+        _write_crono(ws, "cronos/crono-a.md", 2, 2)
+        assert next_step(ws, _task(crono="cronos/crono-a.md"), TODAY) is None
+        assert next_step(ws, _task(crono="cronos/nada.md"), TODAY) is None
+
+    def test_secretary_row_shows_next_step(self, ws):
+        from views.secretary import agenda as A
+        _write_crono(ws, "cronos/crono-a.md", 0, 2)
+        _seed(ws, tasks=[_task(desc="Informe", date=_d(2),
+                               crono="cronos/crono-a.md")])
+        t = _read(ws)["tasks"][0]
+        rows = A._next_days_block(TODAY, {_d(2): [("tasks", t, ws, "[foo]")]})
+        assert any("Informe" in r and "<br>↳ 1 paso 1" in r for r in rows)
+
+    def test_followup_row_shows_next_step(self, ws):
+        from views.secretary import agenda as A
+        _write_crono(ws, "cronos/crono-a.md", 0, 2)
+        t = _task(desc="Informe", crono="cronos/crono-a.md")
+        row = A._render_followup_row(ws, "tasks", t, {"date": ISO}, today=TODAY)
+        assert row.endswith(" |") and "<br>↳ 1 paso 1" in row
+
+
 # ── F3 (parte): la fecha de un item con crono es su plazo ──────────────────
 
 class TestKeepsDate:

@@ -328,14 +328,27 @@ def _steps_br(steps, today) -> str:
 
 
 def _add_steps(desc, project_dir, kind, item, crono, shown, today) -> str:
-    """Cuelga los pasos del crono de la celda (una vez por item)."""
-    if not crono:
+    """Cuelga los pasos del crono de la celda (una vez por item).
+
+    Pasos activos o vencidos si los hay; si no, el siguiente paso sin hacer
+    (por fecha, o el primero del fichero), para que el item nunca salga
+    sin decir por dónde va su crono.
+    """
+    if (not item.get("crono") or today is None
+            or item.get("status") in ("done", "cancelled")):
         return desc
     key = _crono_key(project_dir, kind, item)
-    if key not in crono or key in shown:
+    if shown is not None:
+        if key in shown:
+            return desc
+        shown.add(key)
+    if crono and key in crono:
+        return desc + _steps_br(crono[key][3], today)
+    from core.cronograma import next_step, next_step_label
+    step = next_step(project_dir, item, today)
+    if step is None:
         return desc
-    shown.add(key)
-    return desc + _steps_br(crono[key][3], today)
+    return desc + f"<br>↳ {next_step_label(step, today)}".replace("|", "\\|")
 
 
 def _render_crono_row(project_dir, kind, item, steps, today) -> str:
@@ -469,9 +482,10 @@ def _next_days_block(today, items_by_day, followups_by_day=None) -> list:
         blocks.append(f"### {day_iso} · {_WEEKDAYS_ES[d.weekday()]}")
         blocks.append("")
         rows = [TABLE_HEADER]
-        rows.extend(_render_items_table(items))
+        rows.extend(_render_items_table(items, today=today))
         for project_dir, kind, item, fup in followups:
-            rows.append(_render_followup_row(project_dir, kind, item, fup))
+            rows.append(_render_followup_row(project_dir, kind, item, fup,
+                                             today=today))
         blocks.extend(rows)
         blocks.append("")
     return blocks

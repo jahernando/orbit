@@ -1959,6 +1959,53 @@ def item_steps(project_dir: Path, item: dict, today: date) -> list:
         return []
 
 
+def next_step(project_dir: Path, item: dict, today: date) -> Optional[dict]:
+    """Siguiente paso sin hacer del crono de *item*, o None.
+
+    El de fecha más temprana entre las hojas abiertas con fecha propia; si
+    ninguna la tiene (crono sin fechas, o fechas que flotan), la primera
+    hoja abierta del fichero. ``end``/``start`` son None si no tiene fecha.
+    """
+    import copy
+    rel = item.get("crono")
+    if not rel or not (project_dir / rel).is_file():
+        return None
+    try:
+        data = _parse_crono_file(project_dir / rel)
+        tasks = data["tasks"]
+        probe = copy.deepcopy(tasks)
+        _compute_dates(tasks, data["metadata"], today)
+        _compute_dates(probe, data["metadata"], today + _PROBE_SHIFT)
+    except Exception:
+        return None
+    floating = {p["index"] for t, p in zip(tasks, probe)
+                if _leaf_deadline(t) != _leaf_deadline(p)}
+    parents = _parent_indices(tasks)
+    open_leaves = [t for t in tasks if _is_leaf(t, parents) and not t["done"]]
+    if not open_leaves:
+        return None
+    dated = [t for t in open_leaves
+             if t["index"] not in floating and _leaf_deadline(t)]
+    if dated:
+        t = min(dated, key=lambda t: (_leaf_deadline(t), open_leaves.index(t)))
+        return {"index": t["index"], "title": t["title"],
+                "start": t.get("start_date"), "end": _leaf_deadline(t)}
+    t = open_leaves[0]
+    return {"index": t["index"], "title": t["title"], "start": None, "end": None}
+
+
+def next_step_label(step: dict, today: date) -> str:
+    """``2.1 Revisar · empieza 10-12`` / ``· hasta 10-20`` / sin fecha: solo título."""
+    def short(d):
+        return d.strftime("%m-%d") if d.year == today.year else d.isoformat()
+    base = f"{step['index']} {step['title']}"
+    if step["end"] is None:
+        return base
+    if step["start"] and step["start"] > today:
+        return f"{base} · empieza {short(step['start'])}"
+    return step_label(step, today)
+
+
 def step_label(step: dict, today: date) -> str:
     """``1.2 Redactar intro · ⚠️ vencido 09-28`` / ``… · hasta 10-03``."""
     end = step["end"]
