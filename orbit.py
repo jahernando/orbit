@@ -1493,6 +1493,9 @@ def cmd_focus(args):
             next_week=getattr(args, "next", False),
             review=getattr(args, "review", False),
         )
+    if action == "day":
+        from core.focus import run_focus_day
+        return run_focus_day()
     if action == "year":
         from core.focus import run_focus_year
         return run_focus_year(year=getattr(args, "year", None))
@@ -2516,13 +2519,15 @@ def _build_parser():
 
     # --- focus ---
     foc_p = subparsers.add_parser("focus",
-        help="Planificación semanal por carriles (anchor/push/joy) en mission")
+        help="Focus: semana por carriles (anchor/push/joy) y día (≤5 tareas) en mission")
     foc_sub = foc_p.add_subparsers(dest="action")
     foc_week_p = foc_sub.add_parser("week", help="Planifica la semana actual (idempotente)")
     foc_week_p.add_argument("--next", action="store_true", dest="next",
                             help="Planifica la semana siguiente en lugar de la actual")
     foc_week_p.add_argument("--review", action="store_true", dest="review",
                             help="Abre el archivo semanal en $EDITOR")
+    foc_sub.add_parser("day",
+                       help="Elige hasta 5 tareas focus de hoy (hoja semanal de mission)")
     foc_year_p = foc_sub.add_parser("year",
                             help="Regenera la vista anual mission/notes/YYYY-focus.md")
     foc_year_p.add_argument("--year", type=int, default=None,

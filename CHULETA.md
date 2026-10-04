@@ -1090,12 +1090,13 @@ Cualquiera de esas opciones activa el flujo anterior (`[d]rop [n]done [f]echa
 
 ---
 
-## focus — planificación semanal por carriles
+## focus — semana por carriles y día
 
 ```bash
 orbit focus week              # planifica la semana actual (ISO)
 orbit focus week --next       # planifica la semana siguiente
 orbit focus week --review     # abre el archivo semanal en $EDITOR
+orbit focus day               # hasta 5 tareas focus de hoy (ver «Focus del día»)
 ```
 
 Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` agrupados por carril:
@@ -1134,6 +1135,20 @@ Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` 
 **Retrospectiva guiada**: cada fichero semanal recién creado lleva tres preguntas en un comentario HTML (invisible en render, visible al editar): "¿Qué sostuvo la semana?", "¿Qué cedió y por qué?", "¿Qué pruebo distinto la W siguiente?". Texto libre debajo, sin formulario.
 
 Los bloques aparecen automáticamente en Calendar.app (vía `.ics`) por ser tasks normales de mission.
+
+### Focus del día
+
+```bash
+orbit focus day               # elige hasta 5 tareas focus de hoy
+```
+
+Lista las tasks e hitos abiertos de proyectos locales con fecha **hoy** (por hora) y los **vencidos** (⚠️), incluidos los bloques de focus week de hoy. Selección por números (`1 3 4`); `+proyecto` añade todas las abiertas de ese proyecto a la lista. Máximo 5.
+
+Se apuntan en la sección `## Días` de la hoja semanal (`### 2026-10-05 · lunes`, una línea `- ⬜ [orbit:id] [[proyecto]] · título` por tarea). Si la semana no tiene focus week se crea una hoja mínima solo con días; un `focus week` posterior la planifica conservando días y retrospectiva. Las tareas son las reales: focus solo les asigna `orbit_id` si no lo tenían; nunca las crea ni hace drop.
+
+Repetido el mismo día: menú `1) añadir` (hasta completar 5) · `2) rehacer` · `3) abortar`.
+
+`task done` / `task drop` marcan la línea `✅ MM-DD` / `❌ MM-DD`. **Balance del día**: el primer `save` (con cambios) de un día posterior congela los símbolos (abierta → ❌, desaparecida → ❔) y la cabecera pasa a `### … · balance n/m`; desde ahí no se toca.
 
 ### Vista anual
 

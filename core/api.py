@@ -299,6 +299,34 @@ def _find_matching(items: list, *, orbit_id: Optional[str],
     return matches[0]
 
 
+def ensure_orbit_id(kind: str, project: str, *, desc: str,
+                    date_val: Optional[str] = None) -> str:
+    """Return the ``orbit_id`` of a pending task/milestone, assigning one
+    (and writing the agenda) if it has none.
+
+    Lo usa ``focus day``: la identidad de una tarea focus es
+    ``(proyecto, orbit_id)`` y no todas las tasks nacen con id. Escritura
+    mínima en la verdad, mismo precedente que el backfill del ring (ADR-041).
+    """
+    import secrets
+    cfg = _TYPE_CONFIG[kind]
+    project_dir = _resolve_project_or_raise(project)
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    items = data[cfg["key"]]
+    matches = [it for it in items
+               if it.get("desc") == desc and it.get("status") == "pending"
+               and (date_val is None or it.get("date") == date_val)]
+    if len(matches) != 1:
+        raise ValueError(f"{kind} {desc!r} en {project}: "
+                         f"{len(matches)} coincidencias abiertas")
+    item = matches[0]
+    if not item.get("orbit_id"):
+        item["orbit_id"] = secrets.token_hex(4)
+        _write_agenda(agenda_path, data)
+    return item["orbit_id"]
+
+
 def _focus_mark_closed(item: dict, status: str) -> None:
     """Refleja el cierre en la hoja focus si el item está en ella (F3).
 

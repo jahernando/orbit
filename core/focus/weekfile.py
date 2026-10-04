@@ -403,6 +403,8 @@ def _regenerate_counter(week_file: Path, mission_dir: Path) -> tuple[int, int]:
     Hoja balanceada: no toca los símbolos y cuenta desde ellos.
     """
     text = week_file.read_text()
+    if not any(ln.strip() == "## Bloques" for ln in text.splitlines()):
+        return 0, 0          # hoja solo de focus day: sin contador semanal
     parsed = _parse_week_file(text)
     if _is_balanced(text):
         id_status = _parse_block_states(text)

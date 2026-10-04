@@ -31,6 +31,7 @@ from core.focus.weekfile import (
     _set_balance_line,
     _sync_block_symbols,
 )
+from core.focus.days import _balance_days, _parse_days, _project_status_lookup
 from core.focus.hook import suppressed
 from core.focus.year import _refresh_year_silent
 
@@ -101,26 +102,59 @@ def _balance_week(week_file: Path, mission_dir: Path, today: date) -> dict:
             "total": total, "dropped": dropped, "legacy": legacy}
 
 
+def _unbalanced_sheets(mission_dir: Path) -> list[Path]:
+    notes = mission_dir / "notes"
+    if not notes.is_dir():
+        return []
+    return [f for f in sorted(notes.iterdir())
+            if _week_sunday(f) is not None
+            and _parse_balance(f.read_text()) != _BALANCE_DONE]
+
+
+def _balance_all_days(mission_dir: Path, today: date) -> list[dict]:
+    """Balancea los días (< today) de las hojas aún abiertas."""
+    lookup = None
+    out: list[dict] = []
+    for f in _unbalanced_sheets(mission_dir):
+        text = f.read_text()
+        if not any(not d["balanced"] and d["date"] < today
+                   for d in _parse_days(text)):
+            continue
+        lookup = lookup or _project_status_lookup()
+        new, results = _balance_days(text, today, lookup)
+        f.write_text(new)
+        out.extend(results)
+    return out
+
+
 def run_focus_balance(today: Optional[date] = None,
                       silent: bool = False) -> list[dict]:
-    """Balancea todas las semanas cerradas pendientes. Devuelve resultados."""
+    """Balancea días y semanas cerrados pendientes.
+
+    Devuelve los resultados de semana (``{week, done, total, dropped,
+    legacy}``) seguidos de los de día (``{date, done, total}``).
+    """
     # Silencioso: corre en cada save, también en workspaces sin mission.
     with contextlib.redirect_stdout(io.StringIO()):
         mission_dir = _resolve_mission_dir()
     if mission_dir is None:
         return []
     today = today or date.today()
-    results = [_balance_week(f, mission_dir, today)
-               for f in _pending_balances(mission_dir, today)]
-    for year in sorted({int(r["week"][:4]) for r in results}):
+    days = _balance_all_days(mission_dir, today)   # antes que la semana
+    weeks = [_balance_week(f, mission_dir, today)
+             for f in _pending_balances(mission_dir, today)]
+    for year in sorted({int(r["week"][:4]) for r in weeks}):
         _refresh_year_silent(mission_dir, year)
     if not silent:
-        for r in results:
+        for r in days:
+            print(f"  🎯 Focus día {r['date'].isoformat()}: "
+                  f"✅ {r['done']}/{r['total']}")
+        for r in weeks:
             tail = " (legacy, sin drop)" if r["legacy"] else \
                 f" · {r['dropped']} drop" if r["dropped"] else ""
             print(f"  🎯 Focus {r['week']}: ✅ {r['done']}/{r['total']} "
                   f"bloques{tail}")
-    return results
+    return weeks + days
 
 
 def _action_focus_balance(ctx):
@@ -132,4 +166,7 @@ def _action_focus_balance(ctx):
     if results:
         from core.commit import _git_add_all_tracked
         _git_add_all_tracked()
-    return {"ok": True, "msg": f"{len(results)} semana(s) balanceada(s)"}
+    n_weeks = sum(1 for r in results if "week" in r)
+    n_days = len(results) - n_weeks
+    return {"ok": True,
+            "msg": f"{n_weeks} semana(s) · {n_days} día(s) balanceados"}

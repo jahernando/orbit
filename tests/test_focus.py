@@ -1278,3 +1278,158 @@ class TestFocusHook:
         assert "- ✅ 10-01 [orbit:aaaaaaaa]" in text
         # El drop del balance no pasa por el hook: ❌ sin fecha.
         assert "- ❌ [orbit:bbbbbbbb]" in text
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# F4: focus day — sección ## Días de la hoja semanal
+# ══════════════════════════════════════════════════════════════════════════════
+
+_D = date(2026, 10, 1)                     # jueves de 2026-W40
+
+
+def _proj_task(name: str, text: str, day: str = "2026-10-01", **kw) -> None:
+    from core import api
+    api.add_task(project=name, text=text, date=day, **kw)
+
+
+def _status_in(project: str, desc: str) -> dict:
+    from core.focus.day import _read_agenda, _local_projects
+    p = next(p for p in _local_projects() if p.name == project)
+    return next(t for t in _read_agenda(p)["tasks"] if t["desc"] == desc)
+
+
+class TestFocusDay:
+    def test_candidates_today_then_overdue(self, workspace, mission, other_project):
+        from core.focus import _collect_candidates
+        _proj_task("🌀paper-neutrinos", "vencida", day="2026-09-29")
+        _proj_task("🌀paper-neutrinos", "hoy tarde", time="17:00")
+        _proj_task("🌀paper-neutrinos", "hoy pronto", time="09:00")
+        _proj_task("🌀paper-neutrinos", "mañana", day="2026-10-02")
+        descs = [c["desc"] for c in _collect_candidates(_D)]
+        assert descs == ["hoy pronto", "hoy tarde", "vencida"]
+
+    def test_creates_minimal_sheet_and_assigns_ids(self, workspace, mission,
+                                                   other_project, monkeypatch):
+        from core.focus import run_focus_day, _week_file_path, _parse_days
+        _proj_task("🌀paper-neutrinos", "Revisar borrador")
+        _proj_task("🌀paper-neutrinos", "Enviar informe")
+        _feed_inputs(monkeypatch, ["2 1"])
+        assert run_focus_day(today=_D) == 0
+        wf = _week_file_path(mission, _D)
+        text = wf.read_text()
+        assert "- Balance: pendiente" in text
+        assert "## Bloques" not in text and "## Contador" not in text
+        (day,) = _parse_days(text)
+        assert day["date"] == _D and not day["balanced"]
+        # Respeta el orden en que se eligen.
+        assert [i["title"] for i in day["items"]] == ["Enviar informe",
+                                                      "Revisar borrador"]
+        assert all(i["project"] == "🌀paper-neutrinos" for i in day["items"])
+        oid = _status_in("🌀paper-neutrinos", "Revisar borrador")["orbit_id"]
+        assert day["items"][1]["oid"] == oid
+
+    def test_max_five_and_plus_project(self, workspace, mission, other_project,
+                                       monkeypatch, capsys):
+        from core.focus import run_focus_day, _week_file_path, _parse_days
+        for i in range(6):
+            _proj_task("🌀paper-neutrinos", f"t{i}", day="2026-12-01")
+        _feed_inputs(monkeypatch, ["+paper-neutrinos", "1 2 3 4 5 6",
+                                   "1 2 3 4 5"])
+        assert run_focus_day(today=_D) == 0
+        assert "Máximo 5" in capsys.readouterr().out
+        (day,) = _parse_days(_week_file_path(mission, _D).read_text())
+        assert len(day["items"]) == 5
+
+    def test_add_then_redo(self, workspace, mission, other_project, monkeypatch):
+        from core.focus import run_focus_day, _week_file_path, _parse_days
+        for d in ("a", "b", "c"):
+            _proj_task("🌀paper-neutrinos", d)
+        _feed_inputs(monkeypatch, ["1"])
+        run_focus_day(today=_D)
+        _feed_inputs(monkeypatch, ["1", "1"])          # añadir: la siguiente
+        run_focus_day(today=_D)
+        wf = _week_file_path(mission, _D)
+        (day,) = _parse_days(wf.read_text())
+        assert [i["title"] for i in day["items"]] == ["a", "b"]
+        _feed_inputs(monkeypatch, ["2", "3"])          # rehacer: solo c
+        run_focus_day(today=_D)
+        (day,) = _parse_days(wf.read_text())
+        assert [i["title"] for i in day["items"]] == ["c"]
+
+    def test_day_goes_into_existing_week_sheet(self, workspace, mission,
+                                               other_project, monkeypatch):
+        from core.focus import run_focus_day, _parse_week_file
+        _mission_task("aaaaaaaa", day="2026-10-01")
+        wf = _new_week(mission, _W40_MON, [("p", "aaaaaaaa")])
+        _feed_inputs(monkeypatch, ["1"])               # el bloque de hoy
+        assert run_focus_day(today=_D) == 0
+        text = wf.read_text()
+        assert text.index("## Bloques") < text.index("## Días") \
+            < text.index("## Contador")
+        assert "[orbit:aaaaaaaa] [[☀️mission]] · bloque aaaaaaaa" in text
+        assert _parse_week_file(text)["blocks_by_rail"]["anchor"] == ["aaaaaaaa"]
+
+    def test_hook_marks_day_line(self, workspace, mission, other_project,
+                                 monkeypatch, w40_today):
+        from core import api
+        from core.focus import run_focus_day, _week_file_path
+        _proj_task("🌀paper-neutrinos", "Revisar")
+        _feed_inputs(monkeypatch, ["1"])
+        run_focus_day(today=_D)
+        api.complete_task(project="🌀paper-neutrinos", desc="Revisar")
+        assert "- ✅ 10-01 [orbit:" in _week_file_path(mission, _D).read_text()
+
+    def test_day_balance_next_day(self, workspace, mission, other_project,
+                                  monkeypatch, w40_today):
+        from core import api
+        from core.focus import run_focus_day, run_focus_balance, _week_file_path
+        _proj_task("🌀paper-neutrinos", "hecha")
+        _proj_task("🌀paper-neutrinos", "pendiente")
+        _feed_inputs(monkeypatch, ["1 2"])
+        run_focus_day(today=_D)
+        api.complete_task(project="🌀paper-neutrinos", desc="hecha")
+        assert run_focus_balance(today=_D, silent=True) == []   # mismo día
+        res = run_focus_balance(today=date(2026, 10, 2), silent=True)
+        assert res == [{"date": _D, "done": 1, "total": 2}]
+        text = _week_file_path(mission, _D).read_text()
+        assert "### 2026-10-01 · jueves · balance 1/2" in text
+        assert "- ✅ 10-01 [orbit:" in text and "- ❌ [orbit:" in text
+        # La tarea real sigue abierta: focus day no hace drop.
+        assert _status_in("🌀paper-neutrinos", "pendiente")["status"] == "pending"
+        assert "- Balance: pendiente" in text               # semana sigue viva
+        assert run_focus_balance(today=date(2026, 10, 3), silent=True) == []
+
+    def test_frozen_day_untouched_by_hook(self, workspace, mission, other_project,
+                                          monkeypatch):
+        from core import api
+        from core.focus import run_focus_day, run_focus_balance, _week_file_path
+        _proj_task("🌀paper-neutrinos", "tarde")
+        _feed_inputs(monkeypatch, ["1"])
+        run_focus_day(today=_D)
+        run_focus_balance(today=date(2026, 10, 2), silent=True)
+        wf = _week_file_path(mission, _D)
+        before = wf.read_text()
+        class _Fri(date):
+            @classmethod
+            def today(cls):
+                return date(2026, 10, 2)
+        monkeypatch.setattr("core.focus.hook.date", _Fri)
+        api.complete_task(project="🌀paper-neutrinos", desc="tarde")
+        assert wf.read_text() == before
+
+    def test_week_on_day_only_sheet_keeps_days(self, workspace, mission,
+                                               other_project, monkeypatch):
+        from core.focus import run_focus_day, run_focus_week, _week_file_path
+        _write_template_file(mission)
+        _proj_task("🌀paper-neutrinos", "Revisar", day=date.today().isoformat())
+        _feed_inputs(monkeypatch, ["1"])
+        run_focus_day()
+        wf = _week_file_path(mission, date.today())
+        wf.write_text(wf.read_text() + "Retro a mano.\n")
+        _feed_inputs(monkeypatch, ["2", "paper-neutrinos", "1", "lun", "09:00",
+                                   "", "", ""])          # plantilla→libre
+        assert run_focus_week() == 0
+        text = wf.read_text()
+        assert "## Bloques" in text and "## Días" in text
+        assert "· Revisar" in text and "Retro a mano." in text
+        assert text.index("## Días") < text.index("## Contador")

@@ -7,6 +7,7 @@ from core.focus.common import (
     _resolve_mission_dir,
     _week_file_path,
 )
+from core.focus.days import _is_day_only, _transplant_day_sheet
 from core.focus.modes import (
     _menu_existing_week,
     _run_mode_libre,
@@ -53,8 +54,14 @@ def run_focus_week(next_week: bool = False, review: bool = False) -> int:
     if template is None:
         template = _bootstrap_template_from_factory(mission_dir)
 
+    # Hoja creada solo por `focus day`: se planifica como semana nueva y
+    # luego se le devuelven sus días y su retrospectiva.
+    day_only_text = None
     if week_file.exists():
-        return _menu_existing_week(week_file, mission_dir, template, target)
+        text = week_file.read_text()
+        if not _is_day_only(text):
+            return _menu_existing_week(week_file, mission_dir, template, target)
+        day_only_text = text
 
     print(f"focus week — {_iso_week_label(target)}")
     mode = _select_mode(mission_dir, target)
@@ -69,6 +76,12 @@ def run_focus_week(next_week: bool = False, review: bool = False) -> int:
         rc = _run_mode_repetir(mission_dir, template, target, week_file)
     else:
         return 1
+    if day_only_text is not None:
+        if rc == 0 and week_file.read_text() != day_only_text:
+            week_file.write_text(_transplant_day_sheet(day_only_text,
+                                                       week_file.read_text()))
+        elif rc != 0:
+            week_file.write_text(day_only_text)
     if rc == 0 and week_file.exists():
         # Counter starts at 0/N by construction, but regenerate to keep the
         # single source of truth (avoids drift if the user did `task done`

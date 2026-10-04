@@ -1,6 +1,7 @@
 """core.focus.hook — done/drop de una task → símbolo con fecha en la hoja.
 
-Lo llaman los puntos por los que se cierra una task/ms
+Vale para bloques de focus week (``## Bloques``) y tareas de focus day
+(``## Días``). Lo llaman los puntos por los que se cierra una task/ms
 (``api._complete_kind``, ``api._drop_kind``, ``lifecycle._generic_drop``).
 Si el ``orbit_id`` del item está en una hoja focus sin balancear (la de
 esta semana o la anterior, que aún espera su balance), su línea pasa a
@@ -19,6 +20,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 from core.focus.common import _resolve_mission_dir, _week_file_path
+from core.focus.days import _frozen_line_indices
 from core.focus.weekfile import (
     _BLOCK_LINE_RE,
     _SYM_DONE,
@@ -43,19 +45,25 @@ def suppressed():
 
 
 def _mark_in_sheet(week_file: Path, oid: str, sym: str, when: date) -> bool:
-    """Reescribe la línea del bloque *oid*. True si la encontró."""
+    """Reescribe las líneas de *oid* (bloque y/o día). True si marcó alguna.
+
+    Los días ya balanceados están congelados y no se tocan.
+    """
     text = week_file.read_text()
     lines = text.splitlines()
+    frozen = _frozen_line_indices(text)
+    hit = False
     for i, line in enumerate(lines):
         m = _BLOCK_LINE_RE.match(line)
-        if m and m.group(4) == oid:
+        if m and m.group(4) == oid and i not in frozen:
             indent, rest = m.group(1), m.group(5)
             lines[i] = (f"{indent}- {sym} {when.strftime('%m-%d')} "
                         f"[orbit:{oid}]{rest}")
-            week_file.write_text("\n".join(lines)
-                                 + ("\n" if text.endswith("\n") else ""))
-            return True
-    return False
+            hit = True
+    if hit:
+        week_file.write_text("\n".join(lines)
+                             + ("\n" if text.endswith("\n") else ""))
+    return hit
 
 
 def mark_closed(item: dict, status: str,
