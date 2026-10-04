@@ -108,7 +108,9 @@ Una sola dirección: orbit es source-of-truth, los backends consumen.
 - `README.md` — visión general y referencia rápida
 - `SETUP.md` — instrucciones de instalación
 
-## Estado actual (v0.40.0, 2026-05-29)
+## Estado actual (v0.45.0, 2026-10-04)
+
+**Focus week + focus day** (v0.45.0, [ADR-057](DECISIONS.md#adr-057--focus-week--focus-day-hoja-semanal-como-registro-balance-en-el-save)): `orbit focus {week,day,summary,year}`. Hoja `mission/notes/YYYY-WNN-focus.md` lunes–domingo con bloques (focus week) y `## Días` (≤5 tareas reales por día); símbolos ⬜✅❌❔ escritos por orbit; hook en done/drop; balance perezoso en `commit_pre` (día: congela; semana: drop de bloques abiertos); la hoja balanceada es la verdad histórica. Sección `🎯 Focus` en la agenda del secretario (`views/secretary/focus.py`).
 
 **Feed de arXiv** ([ADR-050](DECISIONS.md#adr-050--feed-de-arxiv-bandeja-en-notes-config-aparte-triaje-a-highlights)): `orbit arxiv {init,fetch,triage}`. Barrido diario en la cadena `shell_start` (días laborables, una vez al día, marca de agua en `<workspace>/.arxiv-state.json`) sobre todo proyecto con `notes/arxiv-temas.md`. Los artículos caen en `notes/arxiv.md`; marcar con `#relevante` + `arxiv triage` los promociona a `highlights.md` como `📎`. Filtro determinista: categorías + términos (título ×2, acrónimo estricto entre comillas, temas `+acompaña`) + autores vigilados + exclusiones.
 

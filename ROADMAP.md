@@ -89,6 +89,8 @@ generador HTML, integración con `orbit` CLI y test).
 
 **Extensión 2026-05-22** ✅: vista anual `orbit focus year` — tabla con una fila por semana ISO, tomates 🍅 / cruces ❌ por bloque, status 🟢/🟡, totales por carril. Cierra el "Tracking longitudinal" del parking lot v2. Plan F1-F5 en 5 commits. Ver [ADR-042](DECISIONS.md#adr-042--vista-anual-missionnotesyyyy-focusmd-como-agregación-de-los-semanales).
 
+**Extensión 2026-10-04** ✅ (v0.45.0): `focus day` (≤5 tareas del día dentro de la hoja semanal; sustituye a `day top`), hoja lunes–domingo con símbolos, balance de día y semana en el primer save (drop de bloques no hechos), hook en done/drop, sección `🎯 Focus` en la agenda del secretario y `focus summary` (nivel 0–5). Ver [ADR-057](DECISIONS.md#adr-057--focus-week--focus-day-hoja-semanal-como-registro-balance-en-el-save). Abierto: bloques en sábado/domingo; periodo trimestral; ¿`focus year` sobra frente a `summary`?
+
 **Objetivo**: codificar el sistema de planificación semanal por carriles que el usuario ha validado manualmente durante meses. Un bloque = una task en `mission/agenda.md` con `[[wikilink-a-proyecto]]` + `time HH:MM-HH:MM` (≥90 min). El carril (anchor/push/joy) no es campo: se deriva del archivo semanal `mission/notes/2026-WNN-focus.md`.
 
 **Comando tentativo**:

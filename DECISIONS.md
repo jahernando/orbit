@@ -964,9 +964,41 @@ Tres fricciones reales:
 
 ---
 
+## ADR-057 — Focus week + focus day: hoja semanal como registro, balance en el save
+
+**Estado**: aceptada (2026-10-04). Extiende ADR-038 (focus week) y ADR-042 (vista anual). Sustituye el pendiente "prioridad del día" (`day top`) de ADR-056.
+
+**Contexto**: focus week creaba bloques (tasks en mission) y una hoja semanal con contador, pero nada cerraba la semana: los bloques no hechos quedaban abiertos en la agenda y el histórico dependía de que siguieran en `mission/agenda.md` (un `archive` lo borraba). Faltaba además el foco del día: el día se sobrecarga por arrastre (ADR-056) y no había forma de decir "hoy, estas cinco".
+
+**Decisión**:
+
+1. **Dos comandos, sin alias**: `orbit focus week` y `orbit focus day` (`day focus` / `week focus` no existen; `day top` no se implementa). Más `orbit focus summary`.
+2. **Una hoja por semana ISO, lunes–domingo** (`mission/notes/YYYY-WNN-focus.md`). El focus del día vive **dentro** de ella (`## Días` → `### YYYY-MM-DD · día`), no en ficheros diarios: un fichero por semana, una sola fuente para el resumen. Si la semana no tiene focus week, `focus day` crea una hoja mínima (solo días); un `focus week` posterior la planifica conservando días y retrospectiva.
+3. **Identidad = `(proyecto, orbit_id)`**; el título es copia legible. `focus day` asigna `orbit_id` a la task si no lo tiene (`api.ensure_orbit_id`): única escritura de focus fuera de mission, mismo precedente que ADR-041.
+4. **Símbolos escritos por orbit, no casillas**: `⬜` abierto · `✅` hecho · `❌` no hecho / drop · `❔` no encontrado, con fecha `MM-DD` opcional. Una casilla clicable sería una segunda superficie de edición y abriría el conflicto "¿manda la hoja o la tarea?".
+5. **Hook en done/drop** (`core/focus/hook.py`), llamado desde los tres sitios por los que se cierra una task/hito (`api._complete_kind`, `api._drop_kind`, `lifecycle._generic_drop`): marca `✅/❌ MM-DD` en la hoja de esta semana o de la anterior aún sin balancear. Best-effort, nunca aborta el done/drop. Lo cerrado a mano en Obsidian no pasa por aquí: lo recoge el balance, sin fecha.
+6. **Balance perezoso en el primer save** (acción `focus_balance` en `commit_pre`):
+   - *día*: el primer save de un día posterior congela sus símbolos (abierta → ❌, ausente → ❔) y añade `· balance n/m` a la cabecera. **Sin drop**: son tareas reales.
+   - *semana*: el primer save tras el domingo hace **drop de los bloques abiertos** en mission, congela los símbolos y escribe `- Balance: hecho YYYY-MM-DD`. Idempotente. Hojas anteriores (sin línea `Balance`) se balancean una vez sin drop.
+   - **Aproximado** (aceptado): las tasks no guardan fecha de cierre; lo cerrado entre el fin del periodo y el save cuenta como hecho. El hook reduce el margen a lo cerrado fuera de la CLI.
+7. **La hoja balanceada es la verdad histórica**: contador, `focus year` y `focus summary` leen sus símbolos; sin balancear leen la agenda en vivo.
+8. **Sin interruptor on/off**: focus está encendido ⇔ hay hoja para la semana actual. `- Status: off` en la hoja lo apaga a mitad de semana.
+9. **Secretario**: sección `## 🎯 Focus` entre los contadores y `📅 Hoy` (`views/secretary/focus.py`), viewer puro con estado **en vivo** de la verdad. Solo aparece con focus encendido.
+10. **`focus summary`**: fila por semana, siete celdas de día y la semana **aparte**; nivel 0–5 = `round(5 · hechas/total)` (proporción). Dígito + fondo gris (luminosidad, no tono).
+11. **`core/focus/` pasa a paquete** (common → template, prompts → weekfile → days → hook, year → balance → modes → week, day, summary); `__init__` re-exporta la API histórica.
+
+**Consecuencias**:
+- Pros: la semana y el día se cierran solos; el histórico sobrevive a `archive`; el foco se ve en la agenda diaria; aditivo — sin hoja, nada cambia.
+- Contras: el balance depende de que haya un save con cambios (un save vacío sale antes de `commit_pre`); balance aproximado para lo cerrado a mano; el primer save tras desplegar balancea de golpe todas las hojas antiguas (sin drop); `focus year` y `focus summary` se solapan en parte — decidir con el uso si `year` sobra.
+- Pendiente: los días de bloque solo admiten `lun`–`vie`; periodos más largos (trimestre) sobre la misma idea de hoja + balance.
+
+**Verificación**: `tests/test_focus.py` (F2–F6), `tests/test_commit_hooks.py`.
+
+---
+
 ## ADR-056 — `day fup`: calendario de carga y ⏩ por lotes
 
-**Estado**: aceptada (2026-10-03). Fase 1 (aplazar con vista de carga). Pendientes, en ADR aparte: la prioridad del día y la capacidad por día.
+**Estado**: aceptada (2026-10-03). Fase 1 (aplazar con vista de carga). Pendientes, en ADR aparte: la prioridad del día (→ resuelta por `focus day`, [ADR-057](#adr-057--focus-week--focus-day-hoja-semanal-como-registro-balance-en-el-save)) y la capacidad por día.
 
 **Contexto**: el día se sobrecarga por arrastre. Lo que no cabe se aplaza a "mañana" (Enter por defecto) y al día siguiente vuelve, con lo nuevo encima: el 2026-10-03 `day` listaba 21 citas mientras las cuatro semanas siguientes tenían casi todos los días entre 1 y 4. Aplazar era de una en una y a ciegas, sin ver dónde había hueco.
 

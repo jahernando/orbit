@@ -10,6 +10,32 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### v0.45.0 (2026-10-04) — focus week + focus day · ADR-057
+
+Primera versión numerada desde v0.44.0: incluye también las entradas
+*Unreleased* que siguen (ADR-052 → ADR-056).
+
+- **`orbit focus day`**: hasta 5 tareas focus de hoy (tasks e hitos abiertos
+  de hoy o vencidos; `+proyecto` amplía). Se apuntan en `## Días` de la hoja
+  semanal; sin focus week se crea hoja mínima. Menú añadir/rehacer/abortar.
+  Sustituye al pendiente `day top`.
+- **Hoja semanal lunes–domingo** con símbolos por bloque/tarea (⬜ ✅ ❌ ❔,
+  fecha `MM-DD` opcional) y línea `- Balance:`.
+- **Balance en el primer save**: días (congela, sin drop) y semanas (drop de
+  bloques abiertos en mission, `Balance: hecho`). Acción `focus_balance` en
+  `commit_pre`. Hojas antiguas: una vez, sin drop.
+- **Hook done/drop**: `task done`/`task drop` (y `organize`/triaje) marcan
+  `✅/❌ MM-DD` en la hoja.
+- **Secretario**: sección `## 🎯 Focus` entre los contadores y 📅 Hoy, con
+  estado en vivo.
+- **`orbit focus summary [--weeks N]`**: éxito 0–5 por día y, aparte, por
+  semana; dígito + fondo gris.
+- `focus year` y el contador leen la hoja balanceada (el histórico sobrevive
+  a `archive`); columna Fechas lun–dom.
+- Fix: "añadir bloques" (menú de semana existente) ya no reescribe la hoja
+  ni pierde la retrospectiva.
+- Interno: `core/focus.py` → paquete `core/focus/`; `api.ensure_orbit_id`.
+
 ### Unreleased — `day fup`: calendario de carga y ⏩ por lotes · ADR-056
 
 - `day fup` pinta encima del prompt un calendario (semana en curso + 4) con la
