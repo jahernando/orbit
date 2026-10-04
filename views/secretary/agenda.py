@@ -6,6 +6,8 @@ panel.md / today.md / agenda-today.md / agenda-next.md / decisions-next.md.
 
 Layout:
 
+    # 🚀 Agenda — <space>               ← icono y nombre del workspace
+
     > 🗓 Hoy: 📅N eventos · ✅N tareas · ⚠️N vencidas · ⏩N por triar
     > 🏁 Próximos 30 días: N hitos   ← solo si N>0
 
@@ -524,7 +526,10 @@ def generate(out_path: Path) -> None:
     n_log_today = _count_log_entries_today(today)
     ring_counts = _count_rings(today_items, by_day, today, end)
 
-    lines = [autogen_banner("secretary.agenda").rstrip(), ""]
+    from core import config
+    # Icono del workspace en el título: distingue dos workspaces abiertos a la vez.
+    lines = [autogen_banner("secretary.agenda").rstrip(), "",
+             f"# {config.ORBIT_EMOJI} Agenda — {config.ORBIT_SPACE}", ""]
     lines.extend(_counter_lines(today_items, overdue,
                                 n_milestones,
                                 cronos_counts=cronos_counts,

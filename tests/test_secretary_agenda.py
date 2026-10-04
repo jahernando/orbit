@@ -362,6 +362,8 @@ class TestGenerate:
         sec_agenda.generate(out)
         text = out.read_text()
         assert "secretary.agenda" in text  # banner
+        from core import config
+        assert f"# {config.ORBIT_EMOJI} Agenda — {config.ORBIT_SPACE}" in text
         assert "🗓 Hoy: sin compromisos" in text
         assert "## 📅 Hoy" in text
         assert "*Sin citas para hoy.*" in text

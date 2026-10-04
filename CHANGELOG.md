@@ -18,6 +18,8 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
   subrayados (la negrita no se ve sobre gris), hoy `[dd]`, días pasados tenues. Leyenda arriba.
 - **`agenda.md` del secretario**: mini-calendario de hoy a +7 días con la
   misma carga, entre los contadores y `## 🎯 Focus`.
+- **Título** `# <emoji> Agenda — <space>` en la agenda del secretario
+  (distingue dos workspaces abiertos a la vez en Obsidian).
 - `core/loadcal.py`: `milestone_days`, `md_cell`, `md_legend`, `render_md`.
   Cuenta igual que `day fup`: proyectos propios, sin recordatorios (las
   citas federadas salen en las tablas pero no suman carga).
