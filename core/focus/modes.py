@@ -22,9 +22,9 @@ from core.focus.prompts import (
 )
 from core.focus.weekfile import (
     _append_blocks_to_week_file,
-    _RAIL_FROM_EMOJI,
     _build_id_task_index,
     _parse_week_blocks_detailed,
+    _parse_rails,
     _parse_week_file,
     _regenerate_counter,
     _write_week_file,
@@ -146,25 +146,7 @@ def _extract_w_minus_1_projects(mission_dir: Path,
     prev = _prev_week_file(mission_dir, target)
     if not prev:
         return out
-    text = prev.read_text()
-    # Look at the '## Carriles' section: '- ⚓ Anchor: [[proj-a]], [[proj-b]]'
-    in_section = False
-    for line in text.splitlines():
-        s = line.strip()
-        if s == "## Carriles":
-            in_section = True
-            continue
-        if in_section and s.startswith("## "):
-            break
-        if not in_section or not s.startswith("- "):
-            continue
-        for emoji, rail in _RAIL_FROM_EMOJI.items():
-            if s.startswith(f"- {emoji}"):
-                projs = re.findall(r"\[\[([^\]]+)\]\]", s)
-                if projs:
-                    out[rail] = projs
-                break
-    return out
+    return _parse_rails(prev.read_text())
 
 
 def _prompt_project_with_default(label: str, idx: int, default: Optional[str],

@@ -1007,6 +1007,7 @@ Tres fricciones reales:
 9. **Secretario**: sección `## 🎯 Focus` entre los contadores y `📅 Hoy` (`views/secretary/focus.py`), viewer puro con estado **en vivo** de la verdad. Solo aparece con focus encendido.
 10. **`focus summary`**: fila por semana, siete celdas de día y la semana **aparte**; nivel 0–5 = `round(5 · hechas/total)` (proporción). Dígito + fondo gris (luminosidad, no tono).
 11. **`core/focus/` pasa a paquete** (common → template, prompts → weekfile → days → hook, year → balance → modes → week, day, summary); `__init__` re-exporta la API histórica.
+12. **Candidatas de `focus day`** (añadido 2026-10-05): además de lo de hoy y lo vencido, las tasks/hitos con un ⏩ ≤ hoy y todas las tasks abiertas de los proyectos del carril ⚓ de la hoja semanal, en grupos. Elegir no toca la verdad (ni fecha ni ⏩): el focus del día es una selección, no un triaje; el ⏩ sigue vivo para `day fup`. Los ⏩ de eventos y recordatorios no entran.
 
 **Consecuencias**:
 - Pros: la semana y el día se cierran solos; el histórico sobrevive a `archive`; el foco se ve en la agenda diaria; aditivo — sin hoja, nada cambia.

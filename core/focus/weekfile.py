@@ -176,6 +176,24 @@ _ORBIT_LINE_RE = re.compile(r"\[orbit:([0-9a-f]{8})\]")
 _RAIL_FROM_EMOJI = {v: k for k, v in _RAIL_EMOJI.items()}
 
 
+def _parse_rails(text: str) -> dict[str, list[str]]:
+    """Carril → proyectos de ``## Carriles`` (``- ⚓ Anchor: [[a]], [[b]]``)."""
+    out: dict[str, list[str]] = {r: [] for r in _RAILS}
+    in_section = False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("## "):
+            in_section = s == "## Carriles"
+            continue
+        if not in_section or not s.startswith("- "):
+            continue
+        for emoji, rail in _RAIL_FROM_EMOJI.items():
+            if s.startswith(f"- {emoji}"):
+                out[rail] = re.findall(r"\[\[([^\]|]+)", s)
+                break
+    return out
+
+
 # ── Estado por bloque (símbolos) + balance ───────────────────────────────
 #
 # Cada bloque lleva un símbolo escrito por orbit (no casillas clicables):

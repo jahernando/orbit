@@ -12,6 +12,9 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ### Unreleased — calendario de carga en el secretario · ADR-056
 
+- **`focus day`: más candidatas** (ADR-057 §12). Grupos 📅 hoy/vencidas ·
+  ⏩ followups ≤ hoy (tasks e hitos) · ⚓ tasks abiertas de los proyectos
+  ancla de la focus week. Elegirlas no toca su fecha ni su ⏩.
 - **ADR-058: el ⏩ del triaje no mueve la cita.** `u` (y `day fup` por lotes)
   añade el ⏩ y deja la fecha; si la cita salía por un ⏩ vencido, lo mueve.
   Solo `none` deja sin fecha. Menú con iconos: ⏰ 🗓️ ⏩ 🧹 🏷️ ✅ ❌ ⏭️.

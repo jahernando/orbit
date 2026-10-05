@@ -1417,6 +1417,53 @@ class TestFocusDay:
         api.complete_task(project="🌀paper-neutrinos", desc="tarde")
         assert wf.read_text() == before
 
+    def test_candidates_followups_group(self, workspace, mission, other_project):
+        from core.focus import _collect_candidates
+        _proj_task("🌀paper-neutrinos", "captura", day=None,
+                   notes=["⏩ 2026-09-30 revisar"])
+        _proj_task("🌀paper-neutrinos", "con plazo", day="2026-10-08",
+                   notes=["⏩ 2026-10-01"])
+        _proj_task("🌀paper-neutrinos", "fup futuro", day=None,
+                   notes=["⏩ 2026-10-03"])
+        _proj_task("🌀paper-neutrinos", "hoy y fup", notes=["⏩ 2026-09-30"])
+        cands = _collect_candidates(_D)
+        assert [(c["desc"], c["group"]) for c in cands] == [
+            ("hoy y fup", "due"), ("captura", "fup"), ("con plazo", "fup")]
+
+    def test_candidates_anchor_projects(self, workspace, mission, other_project):
+        from core.focus import _collect_candidates
+        from core.focus.day import _anchor_projects
+        _proj_task("🌀paper-neutrinos", "sin fecha", day=None)
+        _proj_task("🌀paper-neutrinos", "futura", day="2026-12-01")
+        _proj_task("🌀paper-neutrinos", "hoy")
+        assert [c["desc"] for c in _collect_candidates(_D)] == ["hoy"]
+        # El carril ⚓ nombra el proyecto sin emoji (como lo escribe focus week).
+        wf = _new_week(mission, _W40_MON, [("paper-neutrinos", "aaaaaaaa")])
+        anchors = _anchor_projects(wf.read_text())
+        assert anchors == ("paper-neutrinos",)
+        cands = _collect_candidates(_D, anchors)
+        assert [(c["desc"], c["group"]) for c in cands] == [
+            ("hoy", "due"), ("sin fecha", "anchor"), ("futura", "anchor")]
+
+    def test_pick_fup_and_anchor_leaves_truth_untouched(
+            self, workspace, mission, other_project, monkeypatch):
+        from core.focus import run_focus_day, _parse_days
+        from core.focus.day import _read_agenda, _local_projects
+        _proj_task("🌀paper-neutrinos", "captura", day=None,
+                   notes=["⏩ 2026-09-30"])
+        _proj_task("🌀paper-neutrinos", "ancla", day=None)
+        wf = _new_week(mission, _W40_MON, [("paper-neutrinos", "aaaaaaaa")])
+        p = next(p for p in _local_projects() if p.name == "🌀paper-neutrinos")
+        before = {t["desc"]: (t.get("date"), t.get("notes"))
+                  for t in _read_agenda(p)["tasks"]}
+        _feed_inputs(monkeypatch, ["1 2"])
+        assert run_focus_day(today=_D) == 0
+        (day,) = _parse_days(wf.read_text())
+        assert [i["title"] for i in day["items"]] == ["captura", "ancla"]
+        after = {t["desc"]: (t.get("date"), t.get("notes"))
+                 for t in _read_agenda(p)["tasks"]}
+        assert after == before            # ni fecha ni ⏩ cambian
+
     def test_week_on_day_only_sheet_keeps_days(self, workspace, mission,
                                                other_project, monkeypatch):
         from core.focus import run_focus_day, run_focus_week, _week_file_path

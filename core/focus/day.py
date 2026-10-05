@@ -1,11 +1,13 @@
 """core.focus.day — ``orbit focus day``: hasta 5 tareas focus del día.
 
-Candidatas: tasks e hitos abiertos de proyectos locales con fecha hoy o
-vencidos (incluye los bloques de focus week de hoy, que son tasks de
-mission). ``+proyecto`` añade todas las abiertas de ese proyecto. Las
+Candidatas, en tres grupos: (1) tasks e hitos abiertos de proyectos
+locales con fecha hoy o vencidos (incluye los bloques de focus week de hoy,
+que son tasks de mission); (2) tasks e hitos con un followup ``⏩ <= hoy``;
+(3) las tasks abiertas (con o sin fecha) de los proyectos del carril ⚓ de
+la focus week. ``+proyecto`` añade todas las abiertas de ese proyecto. Las
 elegidas se apuntan en ``## Días`` de la hoja semanal (se crea mínima si
-la semana no tiene focus week). No toca las tareas salvo para darles
-``orbit_id`` si no lo tienen.
+la semana no tiene focus week). **No toca la verdad** (ni fecha ni ⏩)
+salvo para dar ``orbit_id`` a la tarea que no lo tenga.
 """
 from __future__ import annotations
 
@@ -25,6 +27,10 @@ from core.focus.days import (
 
 _KIND_EMOJI = {"task": "✏️", "milestone": "🏁"}
 _KEY_KIND = (("tasks", "task"), ("milestones", "milestone"))
+# Grupos de candidatas, en orden de presentación.
+_DUE, _FUP, _ANCHOR, _EXTRA = "due", "fup", "anchor", "extra"
+_GROUP_TITLE = {_DUE: "📅 Hoy y vencidas", _FUP: "⏩ Followups",
+                _ANCHOR: "⚓ Proyectos ancla", _EXTRA: "➕ Añadidas"}
 
 
 def _local_projects() -> list[Path]:
@@ -41,28 +47,62 @@ def _read_agenda(project_dir: Path) -> Optional[dict]:
     return _ra(path) if path is not None and path.exists() else None
 
 
-def _candidate(project_dir: Path, kind: str, it: dict) -> dict:
+def _candidate(project_dir: Path, kind: str, it: dict,
+               group: str = _DUE) -> dict:
+    from core.agenda.display import item_followups
+    fups = sorted(f["date"] for f in item_followups(it) if f["date"])
     return {"project": project_dir.name, "kind": kind, "desc": it["desc"],
             "date": it.get("date"), "time": it.get("time"),
-            "orbit_id": it.get("orbit_id")}
+            "orbit_id": it.get("orbit_id"), "fup": fups[0] if fups else None,
+            "group": group}
 
 
-def _collect_candidates(today: date) -> list[dict]:
-    """Abiertas con fecha ≤ hoy: hoy primero (por hora), luego vencidas."""
+def _same_project(a: str, b: str) -> bool:
+    from core.project import _strip_type_emoji
+    return _strip_type_emoji(a).lower() == _strip_type_emoji(b).lower()
+
+
+def _collect_candidates(today: date,
+                        anchors: tuple = ()) -> list[dict]:
+    """Abiertas para hoy, por grupos (sin repetir una tarea):
+
+    1. fecha ≤ hoy — hoy primero (por hora), luego vencidas;
+    2. ⏩ ≤ hoy — por fecha del ⏩;
+    3. tasks abiertas de los proyectos *anchors* (carril ⚓).
+    """
     iso = today.isoformat()
-    out = []
+    due, fup, anchor = [], [], []
     for p in _local_projects():
         data = _read_agenda(p)
         if data is None:
             continue
+        is_anchor = any(_same_project(p.name, a) for a in anchors)
         for key, kind in _KEY_KIND:
             for it in data.get(key) or []:
-                d = it.get("date")
-                if it.get("status") == "pending" and d and d <= iso:
-                    out.append(_candidate(p, kind, it))
-    out.sort(key=lambda c: (c["date"] != iso, c["date"] if c["date"] != iso
+                if it.get("status") != "pending":
+                    continue
+                c = _candidate(p, kind, it)
+                d = c["date"]
+                if d and d <= iso:
+                    due.append(c)
+                elif c["fup"] and c["fup"] <= iso:
+                    c["group"] = _FUP
+                    fup.append(c)
+                elif is_anchor and kind == "task":
+                    c["group"] = _ANCHOR
+                    anchor.append(c)
+    due.sort(key=lambda c: (c["date"] != iso, c["date"] if c["date"] != iso
                             else "", c.get("time") or "99"))
-    return out
+    fup.sort(key=lambda c: (c["fup"], c["project"]))
+    return due + fup + anchor
+
+
+def _anchor_projects(text: Optional[str]) -> tuple:
+    """Proyectos del carril ⚓ de la hoja semanal (vacío si no hay)."""
+    if not text:
+        return ()
+    from core.focus.weekfile import _parse_rails
+    return tuple(_parse_rails(text)["anchor"])
 
 
 def _project_candidates(raw: str) -> Optional[list[dict]]:
@@ -75,14 +115,18 @@ def _project_candidates(raw: str) -> Optional[list[dict]]:
         print(f"  ⚠️  Proyecto no encontrado: {raw!r}")
         return None
     data = _read_agenda(matches[0]) or {}
-    return [_candidate(matches[0], kind, it)
+    return [_candidate(matches[0], kind, it, _EXTRA)
             for key, kind in _KEY_KIND for it in data.get(key) or []
             if it.get("status") == "pending"]
 
 
 def _fmt_candidate(c: dict, today: date) -> str:
     when = ""
-    if c["date"] and c["date"] < today.isoformat():
+    if c["group"] == _FUP:
+        when = f" · ⏩ {c['fup'][5:]}"
+        if c["date"]:
+            when += f" · 🗓️ {c['date'][5:]}"
+    elif c["date"] and c["date"] < today.isoformat():
         when = f" · ⚠️ {c['date'][5:]}"
     elif c.get("time"):
         when = f" · {c['time']}"
@@ -98,11 +142,14 @@ def _key(c: dict) -> tuple:
 def _pick(cands: list[dict], room: int, today: date) -> Optional[list[dict]]:
     """Bucle de selección. None = cancelado."""
     while True:
-        print()
+        group = None
         for i, c in enumerate(cands, 1):
+            if c["group"] != group:
+                group = c["group"]
+                print(f"\n  {_GROUP_TITLE[group]}")
             print(f"  {i:>2}  {_fmt_candidate(c, today)}")
         if not cands:
-            print("  (sin tareas para hoy ni vencidas)")
+            print("\n  (sin tareas para hoy, vencidas, ⏩ ni ancla)")
         try:
             raw = input(f"  hasta {room} (p. ej. 1 3 4) · +proyecto añade "
                         "sus tareas · Enter cancela: ").strip()
@@ -168,7 +215,7 @@ def run_focus_day(today: Optional[date] = None) -> int:
         return 0
 
     taken = {(it["project"], it["oid"]) for it in kept}
-    cands = [c for c in _collect_candidates(today)
+    cands = [c for c in _collect_candidates(today, _anchor_projects(text))
              if (c["project"], c["orbit_id"]) not in taken]
     chosen = _pick(cands, room, today)
     if not chosen:

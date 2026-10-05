@@ -1155,7 +1155,13 @@ Los bloques aparecen automáticamente en Calendar.app (vía `.ics`) por ser task
 orbit focus day               # elige hasta 5 tareas focus de hoy
 ```
 
-Lista las tasks e hitos abiertos de proyectos locales con fecha **hoy** (por hora) y los **vencidos** (⚠️), incluidos los bloques de focus week de hoy. Selección por números (`1 3 4`); `+proyecto` añade todas las abiertas de ese proyecto a la lista. Máximo 5.
+Lista, en tres grupos numerados de seguido, las tasks e hitos abiertos de proyectos locales:
+
+- **📅 Hoy y vencidas** — fecha **hoy** (por hora) y **vencidos** (⚠️), incluidos los bloques de focus week de hoy;
+- **⏩ Followups** — con un ⏩ de hoy o pasado (`⏩ MM-DD`, y `🗓️ MM-DD` si además tienen fecha);
+- **⚓ Proyectos ancla** — todas las tasks abiertas (con o sin fecha) de los proyectos del carril ⚓ de la focus week.
+
+Elegir una no cambia nada en su `agenda.md`: ni fecha ni ⏩ (el ⏩ se resuelve con `day fup`). Selección por números (`1 3 4`); `+proyecto` añade todas las abiertas de ese proyecto a la lista. Máximo 5.
 
 Se apuntan en la sección `## Días` de la hoja semanal (`### 2026-10-05 · lunes`, una línea `- ⬜ [orbit:id] [[proyecto]] · título` por tarea). Si la semana no tiene focus week se crea una hoja mínima solo con días; un `focus week` posterior la planifica conservando días y retrospectiva. Las tareas son las reales: focus solo les asigna `orbit_id` si no lo tenían; nunca las crea ni hace drop.
 
