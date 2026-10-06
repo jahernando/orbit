@@ -322,17 +322,21 @@ def _marks(row: Row, today: date) -> str:
     return ("  " + " ".join(parts)) if parts else ""
 
 
-def format_row(n: int, row: Row, today: date, show_project: bool) -> str:
+def format_row(n: int, row: Row, today: date, show_project: bool,
+               focus: frozenset = frozenset()) -> str:
+    """*focus*: ``orbit_id`` en focus hoy → 🎯 delante del título."""
     from core.cronograma import crono_mark
     proj = f"  [{row.project_dir.name}]" if show_project else ""
     crono = crono_mark(row.project_dir, row.item)
     crono = f"  {crono}" if crono else ""
+    target = "🎯 " if row.item.get("orbit_id") in focus else ""
     return (f"  {n:>3}. {KIND_EMOJI[row.kind]} {_when(row, today):<11}  "
-            f"{row.item.get('desc', '')}{crono}{_marks(row, today)}{proj}")
+            f"{target}{row.item.get('desc', '')}{crono}"
+            f"{_marks(row, today)}{proj}")
 
 
 def format_listing(title: str, sections: dict, today: date,
-                   show_project: bool) -> list:
+                   show_project: bool, focus: frozenset = frozenset()) -> list:
     lines = [title, "─" * 70]
     n = 0
     for s in SECTION_ORDER:
@@ -342,7 +346,7 @@ def format_listing(title: str, sections: dict, today: date,
         lines.append(f"── {SECTION_TITLE[s]} ({len(rows)})")
         for row in rows:
             n += 1
-            lines.append(format_row(n, row, today, show_project))
+            lines.append(format_row(n, row, today, show_project, focus))
             for st in row.steps:
                 lines.append(f"          ↳ {step_label(st, today)}")
     if n == 0:
@@ -815,6 +819,15 @@ def _refresh(applied: int) -> None:
         pass    # refrescar derivados es best-effort
 
 
+def _focus_ids(today: date) -> frozenset:
+    """Ids en focus hoy (🎯); best-effort: un fallo no rompe el triaje."""
+    try:
+        from core.focus.show import focus_ids_today
+        return focus_ids_today(today)
+    except Exception:
+        return frozenset()
+
+
 def run_loop(title: str, dirs: list, full: bool, show_project: bool,
              today_fn: Callable[[], date] = date.today,
              fup_only: bool = False) -> int:
@@ -826,8 +839,10 @@ def run_loop(title: str, dirs: list, full: bool, show_project: bool,
         today = today_fn()
         sections = collect(dirs, today, full)
         rows = number_rows(sections)
+        focus = _focus_ids(today)
         print()
-        for line in format_listing(title, sections, today, show_project):
+        for line in format_listing(title, sections, today, show_project,
+                                   focus):
             print(line)
         for line in format_cronos(collect_cronos(dirs, today, full), today,
                                   show_project, show_progress=full):
@@ -865,7 +880,7 @@ def run_loop(title: str, dirs: list, full: bool, show_project: bool,
 
         row = rows[idx - 1]
         print()
-        print(format_row(idx, row, today, show_project).strip())
+        print(format_row(idx, row, today, show_project, focus).strip())
         print(menu_for(row))
         action = _prompt("  ?> ").lower()
         if action == "q":

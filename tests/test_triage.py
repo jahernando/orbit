@@ -175,6 +175,13 @@ class TestFormat:
         assert "⏩09-16" in line and "❗" not in line
         assert "[" not in line
 
+    def test_focus_row_gets_target(self):
+        row = self._row({"desc": "X", "date": ISO, "status": "pending",
+                         "orbit_id": "abcd1234"})
+        line = T.format_row(1, row, TODAY, False, frozenset({"abcd1234"}))
+        assert "🎯 X" in line
+        assert "🎯" not in T.format_row(1, row, TODAY, False)
+
     def test_multiday_event_shows_end(self):
         row = self._row({"desc": "W", "date": _d(-1), "end": _d(2)}, kind="ev")
         assert "→09-18" in T.format_row(1, row, TODAY, show_project=False)

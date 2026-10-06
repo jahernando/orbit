@@ -19,6 +19,8 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
   en vivo: tareas del día; bloques por proyecto con día/hora y resumen de
   días) antes del menú. Enter sale sin tocar nada (antes: añadir / regenerar
   contador).
+- **`day` / `organize` marcan 🎯 lo que está en focus hoy** (tareas del
+  focus day y bloques de la focus week), delante del título.
 - **Agenda del secretario sin H1: icono del workspace como marca de agua**
   en Obsidian. `agenda.md` lleva frontmatter `cssclasses: [orbit-secretary]`
   y el snippet `orbit.css` de cada vault pinta el 🚀/🌿 de fondo. El render

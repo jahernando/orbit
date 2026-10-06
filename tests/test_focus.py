@@ -596,6 +596,15 @@ class TestF7Menu:
         ag = _agenda_path(mission).read_text()
         assert done_id in ag and open_id not in ag
 
+    def test_focus_ids_today(self, workspace, mission, other_project,
+                             monkeypatch):
+        from core.focus import _parse_week_blocks_detailed
+        from core.focus.show import focus_ids_today
+        assert focus_ids_today(date.today()) == frozenset()
+        wf = self._two_anchor_blocks(mission, monkeypatch)
+        ids = {b[2] for b in _parse_week_blocks_detailed(wf.read_text())}
+        assert focus_ids_today(date.today()) == ids
+
     def test_append_blocks_unit(self, tmp_path):
         from core.focus import _append_blocks_to_week_file
         wf = tmp_path / "w.md"
@@ -1323,6 +1332,17 @@ def _status_in(project: str, desc: str) -> dict:
 
 
 class TestFocusDay:
+    def test_focus_ids_include_day_items(self, workspace, mission,
+                                         other_project, monkeypatch):
+        from core.focus import run_focus_day
+        from core.focus.show import focus_ids_today
+        _write_template_file(mission)
+        _proj_task("🌀paper-neutrinos", "Revisar", day=date.today().isoformat())
+        _feed_inputs(monkeypatch, ["1"])
+        run_focus_day()
+        oid = _status_in("🌀paper-neutrinos", "Revisar")["orbit_id"]
+        assert oid in focus_ids_today(date.today())
+
     def test_candidates_today_then_overdue(self, workspace, mission, other_project):
         from core.focus import _collect_candidates
         _proj_task("🌀paper-neutrinos", "vencida", day="2026-09-29")

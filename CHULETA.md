@@ -1006,6 +1006,10 @@ Lista numerada de lo que pide atención **hoy**, por bloques:
 - **⚠️ Vencidas** — tareas e hitos pendientes con fecha pasada.
 - **⏩ Decidir** — citas con un followup `⏩ <= hoy` (❗ si es de un día anterior).
 
+**🎯** delante del título = está en focus hoy (tarea del `focus day` o bloque
+de la `focus week`). Lo del focus que no pide atención hoy (p. ej. tareas
+ancla sin fecha) no sale aquí: está en el secretario y en `focus day`.
+
 Cada cita sale una sola vez, en el primer bloque que le toca; sus `⏩` se ven
 como marca en la fila (`❗⏩09-01`, `(+N)` si tiene más). **No salen** los
 recordatorios, ni las tareas sin fecha y sin `⏩` vencido, ni los proyectos

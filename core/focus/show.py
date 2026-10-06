@@ -92,3 +92,22 @@ def week_view_lines(text: str, mission_dir: Path, target: date) -> list[str]:
                          f"{mark} {n}/{len(syms)}")
         out.append("  Días: " + " · ".join(parts))
     return out
+
+
+def focus_ids_today(today: date) -> frozenset:
+    """``orbit_id`` de lo que está en focus hoy: tareas del focus day y
+    bloques de la focus week. Vacío si no hay mission u hoja (lo usa
+    ``day`` para marcar 🎯 sus filas)."""
+    from core.focus.common import _resolve_mission_dir, _week_file_path
+    mission_dir = _resolve_mission_dir()
+    if mission_dir is None:
+        return frozenset()
+    wf = _week_file_path(mission_dir, today)
+    if not wf.exists():
+        return frozenset()
+    text = wf.read_text()
+    ids = {oid for _, _, oid in _parse_week_blocks_detailed(text)}
+    day = _find_day(text, today)
+    if day:
+        ids |= {it["oid"] for it in day["items"]}
+    return frozenset(ids)
