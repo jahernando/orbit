@@ -19,6 +19,10 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
   en vivo: tareas del día; bloques por proyecto con día/hora y resumen de
   días) antes del menú. Enter sale sin tocar nada (antes: añadir / regenerar
   contador).
+- **Agenda del secretario sin H1: icono del workspace como marca de agua**
+  en Obsidian. `agenda.md` lleva frontmatter `cssclasses: [orbit-secretary]`
+  y el snippet `orbit.css` de cada vault pinta el 🚀/🌿 de fondo. El render
+  a HTML quita el frontmatter.
 - **`focus week` con hoja hecha: menú nuevo** `1) cambiar proyectos /
   fechas · 2) contar · 3) $EDITOR · Enter sale`. *Cambiar* = bucle
   `[a]ñadir proyecto · [q]uitar proyecto · [m]over bloque`. Quitar **borra**

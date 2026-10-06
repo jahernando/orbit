@@ -574,6 +574,9 @@ def generate_range(out_path: Path, start, end) -> None:
                         + "\n".join(range_lines(start, end)) + "\n")
 
 
+WATERMARK_CSSCLASS = "orbit-secretary"
+
+
 def generate(out_path: Path) -> None:
     """Escribe `agenda.md` (hot único del workspace) en out_path."""
     today = _date.today()
@@ -601,10 +604,11 @@ def generate(out_path: Path) -> None:
     n_log_today = _count_log_entries_today(today)
     ring_counts = _count_rings(today_items, by_day, today, end)
 
-    from core import config
-    # Icono del workspace en el título: distingue dos workspaces abiertos a la vez.
-    lines = [autogen_banner("secretary.agenda").rstrip(), "",
-             f"# {config.ORBIT_EMOJI} Agenda — {config.ORBIT_SPACE}", ""]
+    # Sin H1: en Obsidian el icono del workspace va de marca de agua
+    # (cssclass ``orbit-secretary`` → snippet orbit.css del vault); es lo
+    # que distingue dos workspaces abiertos a la vez.
+    lines = ["---", f"cssclasses: [{WATERMARK_CSSCLASS}]", "---",
+             autogen_banner("secretary.agenda").rstrip(), ""]
     lines.extend(_counter_lines(today_items, overdue,
                                 n_milestones,
                                 cronos_counts=cronos_counts,

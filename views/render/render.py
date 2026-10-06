@@ -62,8 +62,17 @@ _MD_EXTENSIONS = ["tables", "fenced_code", "nl2br", "sane_lists"]
 
 
 def _md_to_html(text: str) -> str:
-    """Convert markdown text to HTML body."""
-    return markdown.markdown(text, extensions=_MD_EXTENSIONS)
+    """Convert markdown text to HTML body (sin frontmatter YAML)."""
+    return markdown.markdown(_strip_frontmatter(text), extensions=_MD_EXTENSIONS)
+
+
+def _strip_frontmatter(text: str) -> str:
+    """Quita un bloque ``---``…``---`` inicial (p. ej. ``cssclasses`` de
+    Obsidian); si no cierra, deja el texto tal cual."""
+    if not text.startswith("---\n"):
+        return text
+    end = text.find("\n---\n", 3)
+    return text if end < 0 else text[end + 5:]
 
 
 def _rewrite_md_links(html: str) -> str:

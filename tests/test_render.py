@@ -69,6 +69,14 @@ def _make_project(type_dir, name, emoji="💻"):
 # ── Unit tests ────────────────────────────────────────────────────────────────
 
 class TestMdToHtml:
+    def test_frontmatter_stripped(self):
+        html = _md_to_html("---\ncssclasses: [x]\n---\n# Hi")
+        assert "cssclasses" not in html and "<h1>Hi</h1>" in html
+
+    def test_hr_not_frontmatter(self):
+        html = _md_to_html("texto\n\n---\n\nmás")
+        assert "<hr" in html and "texto" in html
+
     def test_basic_heading(self):
         html = _md_to_html("# Hello")
         assert "<h1>Hello</h1>" in html
