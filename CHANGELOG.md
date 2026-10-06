@@ -15,6 +15,10 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 - **`focus day`: más candidatas** (ADR-057 §12). Grupos 📅 hoy/vencidas ·
   ⏩ followups ≤ hoy (tasks e hitos) · ⚓ tasks abiertas de los proyectos
   ancla de la focus week. Elegirlas no toca su fecha ni su ⏩.
+- **`focus day` / `focus week` con hoja ya hecha muestran el focus** (estado
+  en vivo: tareas del día; bloques por proyecto con día/hora y resumen de
+  días) antes del menú. Enter sale sin tocar nada (antes: añadir / regenerar
+  contador).
 - **ADR-058: el ⏩ del triaje no mueve la cita.** `u` (y `day fup` por lotes)
   añade el ⏩ y deja la fecha; si la cita salía por un ⏩ vencido, lo mueve.
   Solo `none` deja sin fecha. Menú con iconos: ⏰ 🗓️ ⏩ 🧹 🏷️ ✅ ❌ ⏭️.

@@ -176,17 +176,17 @@ def _pick(cands: list[dict], room: int, today: date) -> Optional[list[dict]]:
         return [cands[i - 1] for i in idx]
 
 
-def _menu_existing_day(day: dict) -> Optional[str]:
-    print(f"  Ya hay focus hoy ({len(day['items'])}/{MAX_DAY_ITEMS}):")
-    for it in day["items"]:
-        print(f"    {it['sym']} [{it['project']}] {it['title']}")
-    print("  1) añadir (default)  2) rehacer  3) abortar")
+def _menu_existing_day(text: str, today: date) -> Optional[str]:
+    """Muestra el focus de hoy (estado en vivo) y pregunta. Enter = salir."""
+    from core.focus.show import day_view_lines
+    print("\n".join(day_view_lines(text, today)))
+    print(f"  1) añadir (hasta {MAX_DAY_ITEMS})  2) rehacer  · Enter sale")
     try:
-        raw = input("  selección [1]: ").strip() or "1"
+        raw = input("  selección: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return None
-    return {"1": "add", "2": "redo", "3": None}.get(raw, None)
+    return {"1": "add", "2": "redo"}.get(raw)
 
 
 def run_focus_day(today: Optional[date] = None) -> int:
@@ -200,14 +200,14 @@ def run_focus_day(today: Optional[date] = None) -> int:
     week_file = _week_file_path(mission_dir, today)
     text = week_file.read_text() if week_file.exists() else None
 
-    print(f"focus day — {_day_header(today)[4:]}")
     existing = _find_day(text, today) if text else None
     mode = "add"
     if existing and existing["items"]:
-        mode = _menu_existing_day(existing)
+        mode = _menu_existing_day(text, today)
         if mode is None:
-            print("Cancelado.")
             return 0
+    else:
+        print(f"focus day — {_day_header(today)[4:]}")
     kept = existing["items"] if existing and mode == "add" else []
     room = MAX_DAY_ITEMS - len(kept)
     if room <= 0:

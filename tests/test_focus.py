@@ -1464,6 +1464,44 @@ class TestFocusDay:
                  for t in _read_agenda(p)["tasks"]}
         assert after == before            # ni fecha ni ⏩ cambian
 
+    def test_existing_day_shows_live_and_enter_exits(
+            self, workspace, mission, other_project, monkeypatch, capsys):
+        from core import api
+        from core.focus import run_focus_day, _week_file_path
+        _proj_task("🌀paper-neutrinos", "a")
+        _proj_task("🌀paper-neutrinos", "b")
+        _feed_inputs(monkeypatch, ["1 2"])
+        run_focus_day(today=_D)
+        api.complete_task(project="🌀paper-neutrinos", desc="a")
+        wf = _week_file_path(mission, _D)
+        before = wf.read_text()
+        capsys.readouterr()
+        _feed_inputs(monkeypatch, [""])
+        assert run_focus_day(today=_D) == 0
+        out = capsys.readouterr().out
+        assert "focus day — 2026-10-01 · jueves · ✅ 1/2" in out
+        assert "✅ [🌀paper-neutrinos] a" in out
+        assert "⬜ [🌀paper-neutrinos] b" in out
+        assert wf.read_text() == before
+
+    def test_existing_week_shows_blocks_and_enter_exits(
+            self, workspace, mission, other_project, monkeypatch, capsys):
+        from core import api
+        from core.focus import run_focus_week
+        _mission_task("aaaaaaaa", day="2026-09-29")
+        _mission_task("bbbbbbbb", day="2026-10-01")
+        api.complete_task(project="mission", orbit_id="aaaaaaaa")
+        wf = _new_week(mission, _W40_MON, [("paper-neutrinos", "aaaaaaaa"),
+                                           ("paper-neutrinos", "bbbbbbbb")])
+        before = wf.read_text()
+        monkeypatch.setattr("core.focus.week.date", _Today)
+        _feed_inputs(monkeypatch, [""])
+        assert run_focus_week() == 0
+        out = capsys.readouterr().out
+        assert "focus week — 2026-W40 · ✅ 1/2 bloques" in out
+        assert "⚓ paper-neutrinos  ✅ mar 09:00 · ⬜ jue 09:00" in out
+        assert wf.read_text() == before
+
     def test_week_on_day_only_sheet_keeps_days(self, workspace, mission,
                                                other_project, monkeypatch):
         from core.focus import run_focus_day, run_focus_week, _week_file_path

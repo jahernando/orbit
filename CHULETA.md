@@ -1138,11 +1138,10 @@ Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` 
 
 **Status: especial** (vacaciones, congreso) → contador muestra `—` en lugar de `done/total`. Edita a mano en el frontmatter.
 
-**Sobre una semana ya creada**, el comando muestra menú:
-1. regenerar contador (default)
+**Sobre una semana ya creada**, el comando **muestra la semana** (estado en vivo: `focus week — 2026-W41 · ✅ 2/7 bloques`, una línea por proyecto con sus bloques `✅ lun 09:00 · ⬜ mié 09:00`, y `Días: lun ✅ 3/3 · mar ⬜ 1/2`) y luego el menú; **Enter sale** sin tocar nada:
+1. regenerar contador
 2. abrir en $EDITOR (== `--review`)
 3. añadir bloques (extiende el flujo libre con el estado existente)
-4. abortar
 5. escribir retrospectiva — abre `$EDITOR` saltando a la sección `## Retrospectiva` (vim/nvim usan `+/regex`; otros editores abren con un hint)
 
 **Retrospectiva guiada**: cada fichero semanal recién creado lleva tres preguntas en un comentario HTML (invisible en render, visible al editar): "¿Qué sostuvo la semana?", "¿Qué cedió y por qué?", "¿Qué pruebo distinto la W siguiente?". Texto libre debajo, sin formulario.
@@ -1165,7 +1164,7 @@ Elegir una no cambia nada en su `agenda.md`: ni fecha ni ⏩ (el ⏩ se resuelve
 
 Se apuntan en la sección `## Días` de la hoja semanal (`### 2026-10-05 · lunes`, una línea `- ⬜ [orbit:id] [[proyecto]] · título` por tarea). Si la semana no tiene focus week se crea una hoja mínima solo con días; un `focus week` posterior la planifica conservando días y retrospectiva. Las tareas son las reales: focus solo les asigna `orbit_id` si no lo tenían; nunca las crea ni hace drop.
 
-Repetido el mismo día: menú `1) añadir` (hasta completar 5) · `2) rehacer` · `3) abortar`.
+Repetido el mismo día: **muestra el focus de hoy** con el estado en vivo (`focus day — 2026-10-05 · lunes · ✅ 1/3` y una línea por tarea) y luego `1) añadir` (hasta completar 5) · `2) rehacer`; **Enter sale** sin tocar nada.
 
 **En la agenda del secretario** (`📊panel/secretary/agenda.md`): sección `## 🎯 Focus` entre los contadores y `📅 Hoy`, con la semana (bloques por carril ✅⬜ y `✅ n/m`) y las tareas de hoy. Lee el estado **en vivo** de la verdad (también lo cerrado a mano en Obsidian). Aparece solo si hay hoja para esta semana; `- Status: off` en la hoja la oculta.
 

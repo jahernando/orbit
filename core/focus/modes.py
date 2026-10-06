@@ -342,19 +342,19 @@ def _load_existing_state(week_file: Path) -> tuple[
 
 def _menu_existing_week(week_file: Path, mission_dir: Path,
                         template: dict, target: date) -> int:
-    """Show options when 2026-WNN-focus.md already exists."""
-    print(f"⚠️  {week_file.name} ya existe. Opciones:")
-    print("  1) regenerar contador (default)")
-    print("  2) abrir en $EDITOR")
-    print("  3) añadir bloques")
-    print("  4) abortar")
-    print("  5) escribir retrospectiva")
+    """Hoja ya hecha: muestra la semana (estado en vivo) y ofrece el menú.
+    Enter sale sin tocar nada."""
+    from core.focus.show import week_view_lines
+    print("\n".join(week_view_lines(week_file.read_text(), mission_dir,
+                                     target)))
+    print("  1) regenerar contador  2) abrir en $EDITOR  3) añadir bloques"
+          "  5) escribir retrospectiva  · Enter sale")
     try:
-        raw = input("  selección [1]: ").strip()
+        raw = input("  selección: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return 1
-    choice = raw or "1"
+    choice = raw or "4"
 
     if choice == "1":
         done, total = _regenerate_counter(week_file, mission_dir)
