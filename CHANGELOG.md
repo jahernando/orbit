@@ -19,6 +19,12 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
   en vivo: tareas del día; bloques por proyecto con día/hora y resumen de
   días) antes del menú. Enter sale sin tocar nada (antes: añadir / regenerar
   contador).
+- **`focus week` con hoja hecha: menú nuevo** `1) cambiar proyectos /
+  fechas · 2) contar · 3) $EDITOR · Enter sale`. *Cambiar* = bucle
+  `[a]ñadir proyecto · [q]uitar proyecto · [m]over bloque`. Quitar **borra**
+  los bloques abiertos (no ❌; los cerrados quedan); mover cambia día/hora
+  conservando el id. API: `reschedule_task` / `delete_task`. Retirada la
+  opción «escribir retrospectiva» (va por el editor).
 - **ADR-058: el ⏩ del triaje no mueve la cita.** `u` (y `day fup` por lotes)
   añade el ⏩ y deja la fecha; si la cita salía por un ⏩ vencido, lo mueve.
   Solo `none` deja sin fecha. Menú con iconos: ⏰ 🗓️ ⏩ 🧹 🏷️ ✅ ❌ ⏭️.

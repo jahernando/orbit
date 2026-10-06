@@ -452,7 +452,7 @@ class TestModeRepetir:
 class TestF7Menu:
     def test_regenerate_counter_option(self, workspace, mission,
                                        other_project, monkeypatch):
-        """F7 menu option 1 regenerates counter and exits."""
+        """Menú opción 2 (contar) regenera el contador y sale."""
         from core.focus import run_focus_week
         _write_template_file(mission)
         # First create a week file via libre.
@@ -461,55 +461,13 @@ class TestF7Menu:
             "", "", "",
         ])
         assert run_focus_week() == 0
-        # Now relaunch → menu appears. Select option 1.
-        _feed_inputs(monkeypatch, ["1"])
+        # Now relaunch → menu appears. Select option 2 (contar).
+        _feed_inputs(monkeypatch, ["2"])
         assert run_focus_week() == 0
-
-    def test_retrospectiva_option_invokes_editor_with_vim_jump(
-            self, workspace, mission, other_project, monkeypatch):
-        """F7 menu option 5 abre $EDITOR; con vim añade `+/regex` para saltar."""
-        from core.focus import run_focus_week
-        _write_template_file(mission)
-        _feed_inputs(monkeypatch, [
-            "2", "paper-neutrinos", "", "lun", "09:00", "mar", "09:00",
-            "", "", "",
-        ])
-        assert run_focus_week() == 0
-        # Captura el comando que se le pasa a os.system.
-        captured = {}
-        def _fake_system(cmd):
-            captured["cmd"] = cmd
-            return 0
-        monkeypatch.setattr("os.system", _fake_system)
-        monkeypatch.setenv("EDITOR", "vim")
-        _feed_inputs(monkeypatch, ["5"])
-        assert run_focus_week() == 0
-        assert "vim" in captured["cmd"]
-        assert "+/^## Retrospectiva" in captured["cmd"]
-        assert "2026-W" in captured["cmd"]  # path del fichero semanal
-
-    def test_retrospectiva_option_other_editor_no_jump(
-            self, workspace, mission, other_project, monkeypatch, capsys):
-        """Editor distinto de vi/vim/nvim: abre sin flag de salto + hint."""
-        from core.focus import run_focus_week
-        _write_template_file(mission)
-        _feed_inputs(monkeypatch, [
-            "2", "paper-neutrinos", "", "lun", "09:00", "mar", "09:00",
-            "", "", "",
-        ])
-        assert run_focus_week() == 0
-        captured = {}
-        monkeypatch.setattr("os.system", lambda cmd: captured.setdefault("cmd", cmd) or 0)
-        monkeypatch.setenv("EDITOR", "nano")
-        _feed_inputs(monkeypatch, ["5"])
-        assert run_focus_week() == 0
-        assert "nano" in captured["cmd"]
-        assert "+/" not in captured["cmd"]
-        assert "## Retrospectiva" in capsys.readouterr().out
 
     def test_add_blocks_option_preserves_existing(self, workspace, mission,
                                                   other_project, monkeypatch):
-        """F7 menu option 3 extends an existing week file without duplicating."""
+        """Cambiar → añadir extiende an existing week file without duplicating."""
         from core.focus import run_focus_week
         _write_template_file(mission)
         # First W21 via libre.
@@ -522,13 +480,14 @@ class TestF7Menu:
         ids_before = agenda_before.count("<!-- orbit:")
         # Now option 3 (add): add one more anchor block on wednesday.
         _feed_inputs(monkeypatch, [
-            "3",  # menu option add
+            "1", "a",           # cambiar → añadir proyecto
             "paper-neutrinos",  # rail anchor: add another block
             "1",                # 1 block
             "mie", "09:00",
             "",                 # no more anchor
             "",                 # no push
             "",                 # no joy
+            "",                 # termina cambios
         ])
         assert run_focus_week() == 0
         agenda_after = _agenda_path(mission).read_text()
@@ -538,7 +497,7 @@ class TestF7Menu:
 
     def test_add_blocks_option_keeps_retro_and_symbols(self, workspace, mission,
                                                        other_project, monkeypatch):
-        """Opción 3 no reescribe la hoja: retrospectiva y fechas intactas."""
+        """Añadir no reescribe la hoja: retrospectiva y fechas intactas."""
         from core.focus import run_focus_week, _week_file_path
         _write_template_file(mission)
         _feed_inputs(monkeypatch, [
@@ -556,10 +515,10 @@ class TestF7Menu:
         text += "Mi retrospectiva a mano.\n"
         wf.write_text(text)
         _feed_inputs(monkeypatch, [
-            "3",
+            "1", "a",
             "paper-neutrinos", "1", "mie", "09:00", "",   # anchor: +1
             "paper-neutrinos", "1", "jue", "09:00", "",   # push: sección nueva
-            "",
+            "", "",
         ])
         assert run_focus_week() == 0
         out = wf.read_text()
@@ -571,6 +530,71 @@ class TestF7Menu:
         from core.focus import _parse_week_file
         rails = _parse_week_file(out)["blocks_by_rail"]
         assert (len(rails["anchor"]), len(rails["push"])) == (2, 1)
+
+    def _two_anchor_blocks(self, mission, monkeypatch):
+        from core.focus import run_focus_week, _week_file_path
+        _write_template_file(mission)
+        _feed_inputs(monkeypatch, [
+            "2", "paper-neutrinos", "", "lun", "09:00", "mar", "09:00",
+            "", "", "",
+        ])
+        assert run_focus_week() == 0
+        return _week_file_path(mission, date.today())
+
+    def test_enter_exits_untouched(self, workspace, mission, other_project,
+                                   monkeypatch):
+        from core.focus import run_focus_week
+        wf = self._two_anchor_blocks(mission, monkeypatch)
+        before = wf.read_text(), _agenda_path(mission).read_text()
+        _feed_inputs(monkeypatch, [""])
+        assert run_focus_week() == 0
+        assert (wf.read_text(), _agenda_path(mission).read_text()) == before
+
+    def test_move_block_keeps_id(self, workspace, mission, other_project,
+                                 monkeypatch):
+        from core.focus import run_focus_week, _parse_week_blocks_detailed
+        from core.focus.common import _week_bounds
+        from core.focus.weekfile import _build_id_task_index
+        wf = self._two_anchor_blocks(mission, monkeypatch)
+        oid = _parse_week_blocks_detailed(wf.read_text())[0][2]
+        _feed_inputs(monkeypatch, ["1", "m", "1", "jue", "11:00", ""])
+        assert run_focus_week() == 0
+        task = _build_id_task_index(mission)[oid]
+        thu = _week_bounds(date.today())[0] + timedelta(days=3)
+        assert task["date"] == thu.isoformat()
+        assert task["time"].startswith("11:00-")
+        assert _agenda_path(mission).read_text().count("<!-- orbit:") == 2
+
+    def test_remove_project_deletes_open_blocks(self, workspace, mission,
+                                                other_project, monkeypatch):
+        from core.focus import run_focus_week
+        wf = self._two_anchor_blocks(mission, monkeypatch)
+        wf.write_text(wf.read_text() + "Retro.\n")
+        _feed_inputs(monkeypatch, ["1", "q", "1", "", ""])  # Enter = sí
+        assert run_focus_week() == 0
+        out = wf.read_text()
+        assert "### ⚓ paper-neutrinos" not in out
+        assert "- ⚓ Anchor: —" in out
+        assert "[orbit:" not in out and "Retro." in out
+        ag = _agenda_path(mission).read_text()
+        assert "<!-- orbit:" not in ag
+        assert "cancel" not in ag.lower()
+
+    def test_remove_project_keeps_closed_blocks(self, workspace, mission,
+                                                other_project, monkeypatch):
+        from core import api
+        from core.focus import run_focus_week, _parse_week_blocks_detailed
+        wf = self._two_anchor_blocks(mission, monkeypatch)
+        done_id, open_id = (b[2] for b in
+                            _parse_week_blocks_detailed(wf.read_text()))
+        api.complete_task(project="mission", orbit_id=done_id)
+        _feed_inputs(monkeypatch, ["1", "q", "1", "y", ""])
+        assert run_focus_week() == 0
+        out = wf.read_text()
+        assert f"[orbit:{done_id}]" in out and f"[orbit:{open_id}]" not in out
+        assert "- ⚓ Anchor: [[paper-neutrinos]]" in out
+        ag = _agenda_path(mission).read_text()
+        assert done_id in ag and open_id not in ag
 
     def test_append_blocks_unit(self, tmp_path):
         from core.focus import _append_blocks_to_week_file
@@ -981,7 +1005,7 @@ class TestRunFocusYear:
 class TestYearRefreshOnWeekClose:
     def test_menu_regenerate_counter_refreshes_year(self, workspace, mission,
                                                      monkeypatch):
-        """Menu option 1 (regenerar contador) on existing week file → year file
+        """Menu option 2 (contar) on existing week file → year file
         regenerated as side-effect.
         """
         from core import api, focus
@@ -1000,7 +1024,7 @@ class TestYearRefreshOnWeekClose:
         _write_week_file_raw(mission, "2026-W21", [
             ("anchor", "paper-neutrinos", "aaaaaaaa"),
         ])
-        _feed_inputs(monkeypatch, ["1"])  # regenerar contador
+        _feed_inputs(monkeypatch, ["2"])  # contar
         rc = focus.run_focus_week()
         assert rc == 0
         year_file = mission / "notes" / "2026-focus.md"

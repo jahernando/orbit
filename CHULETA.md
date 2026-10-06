@@ -1139,10 +1139,12 @@ Crea **bloques** (tasks con `date` + `time HH:MM-HH:MM`) en `mission/agenda.md` 
 **Status: especial** (vacaciones, congreso) → contador muestra `—` en lugar de `done/total`. Edita a mano en el frontmatter.
 
 **Sobre una semana ya creada**, el comando **muestra la semana** (estado en vivo: `focus week — 2026-W41 · ✅ 2/7 bloques`, una línea por proyecto con sus bloques `✅ lun 09:00 · ⬜ mié 09:00`, y `Días: lun ✅ 3/3 · mar ⬜ 1/2`) y luego el menú; **Enter sale** sin tocar nada:
-1. regenerar contador
-2. abrir en $EDITOR (== `--review`)
-3. añadir bloques (extiende el flujo libre con el estado existente)
-5. escribir retrospectiva — abre `$EDITOR` saltando a la sección `## Retrospectiva` (vim/nvim usan `+/regex`; otros editores abren con un hint)
+1. **cambiar proyectos / fechas** — muestra los bloques numerados con fecha y hora, y en bucle (Enter termina):
+   - `a` añadir proyecto (+ bloques; flujo libre con el estado existente, no reescribe la hoja)
+   - `q` quitar proyecto — **borra** sus bloques abiertos de `mission/agenda.md` y de la hoja (replanificar no es fallar: no cuentan como ❌); los ya cerrados se quedan como registro. Sin bloques, sale de `## Carriles`
+   - `m` mover bloque — nuevo día y hora del bloque abierto `#n` (misma task, mismo `orbit_id`)
+2. contar — regenera contador y símbolos (útil tras editar a mano; done/drop ya lo hacen solos)
+3. abrir en $EDITOR (== `--review`; la retrospectiva está al final)
 
 **Retrospectiva guiada**: cada fichero semanal recién creado lleva tres preguntas en un comentario HTML (invisible en render, visible al editar): "¿Qué sostuvo la semana?", "¿Qué cedió y por qué?", "¿Qué pruebo distinto la W siguiente?". Texto libre debajo, sin formulario.
 

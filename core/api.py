@@ -336,6 +336,50 @@ def _focus_mark_closed(item: dict, status: str) -> None:
     mark_closed(item, status)
 
 
+# ── Reschedule / delete by orbit_id (task) ─────────────────────────────
+
+def reschedule_task(project: str, *, orbit_id: str, date: str,
+                    time: Optional[str] = None) -> dict:
+    """Move a task to ``date`` (+ ``time`` HH:MM[-HH:MM]). Keeps its id.
+
+    Lo usa ``focus week`` → cambiar: mover un bloque de día u hora.
+    """
+    if not _valid_date(date):
+        raise ValueError(f"invalid date: {date!r}")
+    if time and not _valid_time(time):
+        raise ValueError(f"invalid time: {time!r}")
+    project_dir = _resolve_project_or_raise(project)
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    idx = _find_matching(data["tasks"], orbit_id=orbit_id,
+                         desc=None, date_val=None)
+    if idx is None:
+        raise ValueError(f"task not found in {project}: {orbit_id}")
+    item = data["tasks"][idx]
+    item["date"] = date
+    item["time"] = time
+    _write_agenda(agenda_path, data)
+    return item
+
+
+def delete_task(project: str, *, orbit_id: str) -> dict:
+    """Remove a task from the agenda (no ❌, no rastro). Returns it.
+
+    Distinto de :func:`drop_task` (que la cancela): lo usa ``focus week``
+    → cambiar → quitar proyecto, donde replanificar no es fallar.
+    """
+    project_dir = _resolve_project_or_raise(project)
+    agenda_path = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda_path)
+    idx = _find_matching(data["tasks"], orbit_id=orbit_id,
+                         desc=None, date_val=None)
+    if idx is None:
+        raise ValueError(f"task not found in {project}: {orbit_id}")
+    item = data["tasks"].pop(idx)
+    _write_agenda(agenda_path, data)
+    return item
+
+
 # ── Complete (task / milestone) ────────────────────────────────────────
 
 def _complete_kind(kind: str, project: str, *,

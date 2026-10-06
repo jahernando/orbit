@@ -42,7 +42,7 @@ def _run_mode_libre(mission_dir: Path, template: dict,
     creates the tasks in mission/agenda.md, writes the week file.
 
     Si se pasan ``initial_projects`` / ``initial_blocks``, se extienden
-    (modo "añadir bloques" desde F7) preservando el contenido existente.
+    (cambiar → añadir proyecto) preservando el contenido existente.
     """
     available = _list_available_projects(mission_dir)
     if not available:
@@ -112,7 +112,7 @@ def _run_mode_libre(mission_dir: Path, template: dict,
         return 1
 
     if initial_blocks is not None and week_file.exists():
-        # "añadir bloques": no reescribir la hoja (perdería retrospectiva,
+        # añadir a semana existente: no reescribir la hoja (perdería retrospectiva,
         # símbolos con fecha y balance) — solo se insertan los nuevos.
         initial_ids = {oid for blocks in initial_blocks.values()
                        for _, oid in blocks}
@@ -347,49 +347,173 @@ def _menu_existing_week(week_file: Path, mission_dir: Path,
     from core.focus.show import week_view_lines
     print("\n".join(week_view_lines(week_file.read_text(), mission_dir,
                                      target)))
-    print("  1) regenerar contador  2) abrir en $EDITOR  3) añadir bloques"
-          "  5) escribir retrospectiva  · Enter sale")
+    print("  1) cambiar proyectos / fechas  2) contar  3) abrir en $EDITOR"
+          "  · Enter sale")
     try:
-        raw = input("  selección: ").strip()
+        choice = input("  selección: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return 1
-    choice = raw or "4"
 
+    if not choice:
+        return 0
     if choice == "1":
+        return _change_week(week_file, mission_dir, template, target)
+    if choice == "2":
         done, total = _regenerate_counter(week_file, mission_dir)
         print(f"✓ Contador regenerado: {done}/{total} bloques completados.")
         _refresh_year_silent(mission_dir, target.year)
         return 0
-    if choice == "2":
+    if choice == "3":
         import os
         os.system(f"$EDITOR '{week_file}'")
         return 0
-    if choice == "3":
-        status, rails_projects, blocks_by_rail = _load_existing_state(week_file)
-        rc = _run_mode_libre(mission_dir, template, target, week_file,
-                              initial_projects=rails_projects,
-                              initial_blocks=blocks_by_rail,
-                              initial_status=status)
-        if rc == 0:
-            _regenerate_counter(week_file, mission_dir)
-            _refresh_year_silent(mission_dir, target.year)
-        return rc
-    if choice == "4":
-        return 0
-    if choice == "5":
-        import os
-        editor = os.environ.get("EDITOR", "vi")
-        base = os.path.basename(editor.split()[0])
-        if base in ("vi", "vim", "nvim"):
-            # Posiciona el cursor en la sección Retrospectiva al abrir.
-            os.system(f"{editor} '+/^## Retrospectiva' '{week_file}'")
-        else:
-            print("→ Sección '## Retrospectiva' al final del fichero")
-            os.system(f"{editor} '{week_file}'")
-        return 0
     print(f"  ⚠️  Selección no válida: {choice!r}")
     return 1
+
+
+# ── Cambiar la semana: añadir / quitar proyecto, mover bloque ─────────────
+
+def _week_block_rows(week_file: Path, mission_dir: Path
+                     ) -> list[tuple[str, str, str, dict]]:
+    """``[(rail, proj, oid, task)]`` de la hoja; task = {} si no está."""
+    tasks = _build_id_task_index(mission_dir)
+    return [(r, p, oid, tasks.get(oid) or {})
+            for r, p, oid in _parse_week_blocks_detailed(week_file.read_text())]
+
+
+def _print_block_rows(rows: list[tuple[str, str, str, dict]]) -> None:
+    from core.focus.days import _WEEKDAYS_ES
+    from core.focus.show import _sym
+    width = max((len(p) for _, p, _, _ in rows), default=0)
+    for i, (rail, proj, _, t) in enumerate(rows, 1):
+        day = t.get("date")
+        wd = _WEEKDAYS_ES[date.fromisoformat(day).weekday()][:3] if day else ""
+        when = " ".join(x for x in (wd, day, t.get("time")) if x)
+        sym = _sym(t.get("status", "pending") if t else None)
+        print(f"  {i:>2}. {_RAIL_EMOJI[rail]} {proj:<{width}}  {sym} {when}")
+
+
+def _pick_number(prompt: str, n: int) -> Optional[int]:
+    try:
+        raw = input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+    if not raw:
+        return None
+    if not raw.isdigit() or not 1 <= int(raw) <= n:
+        print(f"    ⚠️  Selección no válida: {raw!r}")
+        return None
+    return int(raw)
+
+
+def _remove_project(week_file: Path, mission_dir: Path,
+                    rows: list[tuple[str, str, str, dict]]) -> bool:
+    """Quita un proyecto de la semana: borra sus bloques abiertos de la
+    agenda de mission (no es ❌: replanificar no es fallar) y de la hoja.
+    Los bloques ya cerrados se quedan como registro."""
+    from core import api
+    from core.focus.common import _MISSION_NAME
+    from core.focus.weekfile import _remove_project_from_week_file
+    projs: list[tuple[str, str]] = []
+    for r, p, _, _ in rows:
+        if (r, p) not in projs:
+            projs.append((r, p))
+    for i, (r, p) in enumerate(projs, 1):
+        print(f"  {i:>2}. {_RAIL_EMOJI[r]} {p}")
+    k = _pick_number("  proyecto a quitar #: ", len(projs))
+    if k is None:
+        return False
+    rail, proj = projs[k - 1]
+    open_ids = {oid for r, p, oid, t in rows
+                if (r, p) == (rail, proj) and t
+                and t.get("status", "pending") == "pending"}
+    closed = sum(1 for r, p, _, _ in rows if (r, p) == (rail, proj)) \
+        - len(open_ids)
+    if not open_ids:
+        print("    (sin bloques abiertos que quitar)")
+        return False
+    if not _ask_yn(f"    ¿Borrar {len(open_ids)} bloque(s) abiertos de "
+                   f"{_RAIL_EMOJI[rail]} {proj}?", default=True):
+        return False
+    for oid in open_ids:
+        try:
+            api.delete_task(project=_MISSION_NAME, orbit_id=oid)
+        except ValueError as exc:
+            print(f"    ⚠️  {exc}")
+    gone = _remove_project_from_week_file(week_file, rail, proj, open_ids)
+    msg = f"✓ {len(open_ids)} bloque(s) borrados"
+    msg += (f" · {proj} fuera de la semana" if gone
+            else f" · quedan {closed} cerrado(s) como registro")
+    print(msg)
+    return True
+
+
+def _move_block(mission_dir: Path, template: dict, target: date,
+                rows: list[tuple[str, str, str, dict]]) -> bool:
+    """Cambia día y hora de un bloque abierto (misma task, mismo id)."""
+    from core import api
+    from core.focus.common import _MISSION_NAME
+    from core.focus.prompts import _prompt_day, _prompt_time_range
+    k = _pick_number("  bloque a mover #: ", len(rows))
+    if k is None:
+        return False
+    _, proj, oid, t = rows[k - 1]
+    if not t or t.get("status", "pending") != "pending":
+        print("    ⚠️  Solo se mueven bloques abiertos")
+        return False
+    monday, _ = _week_bounds(target)
+    d = _prompt_day(monday)
+    if d is None:
+        return False
+    tm = _prompt_time_range(template["block_duration"])
+    if tm is None:
+        return False
+    try:
+        api.reschedule_task(project=_MISSION_NAME, orbit_id=oid,
+                            date=d.isoformat(), time=tm)
+    except ValueError as exc:
+        print(f"    ⚠️  {exc}")
+        return False
+    print(f"✓ [{proj}] → {d.isoformat()} ⏰{tm}")
+    return True
+
+
+def _change_week(week_file: Path, mission_dir: Path,
+                 template: dict, target: date) -> int:
+    """Bucle de cambios sobre la semana; Enter termina."""
+    changed = False
+    while True:
+        rows = _week_block_rows(week_file, mission_dir)
+        print()
+        _print_block_rows(rows)
+        try:
+            op = input("  [a]ñadir proyecto · [q]uitar proyecto · "
+                       "[m]over bloque · Enter termina: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            op = ""
+        if not op:
+            break
+        if op == "a":
+            status, rails_projects, blocks_by_rail = \
+                _load_existing_state(week_file)
+            if _run_mode_libre(mission_dir, template, target, week_file,
+                               initial_projects=rails_projects,
+                               initial_blocks=blocks_by_rail,
+                               initial_status=status) == 0:
+                changed = True
+        elif op == "q":
+            changed |= _remove_project(week_file, mission_dir, rows)
+        elif op == "m":
+            changed |= _move_block(mission_dir, template, target, rows)
+        else:
+            print(f"  ⚠️  Opción no válida: {op!r}")
+    if changed:
+        _regenerate_counter(week_file, mission_dir)
+        _refresh_year_silent(mission_dir, target.year)
+    return 0
 
 
 # ── Selector de modo (F5) ─────────────────────────────────────────────────

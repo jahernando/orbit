@@ -161,6 +161,56 @@ def _append_blocks_to_week_file(week_file: Path,
     week_file.write_text("\n".join(lines) + "\n")
 
 
+def _remove_project_from_week_file(week_file: Path, rail: str, proj: str,
+                                   ids: set[str]) -> bool:
+    """Quita de la hoja los bloques *ids* de ``### <emoji> <proj>``.
+
+    Si la sección se queda sin bloques, se borra y el proyecto sale de
+    ``## Carriles``. Devuelve True si el proyecto salió de la semana.
+    Lo demás de la hoja (días, retrospectiva, balance) no se toca.
+    """
+    lines = week_file.read_text().splitlines()
+    header = f"### {_RAIL_EMOJI[rail]} {proj}"
+    in_blocks = False
+    h = None
+    keep: list[str] = []
+    for ln in lines:
+        s = ln.strip()
+        if s.startswith("## "):
+            in_blocks = s == "## Bloques"
+            h = None
+        elif in_blocks and s.startswith("### "):
+            h = len(keep) if s == header else None
+        elif h is not None:
+            m = _ORBIT_LINE_RE.search(s)
+            if m and m.group(1) in ids:
+                continue
+        keep.append(ln)
+    left = [r for r, p, _ in _parse_week_blocks_detailed("\n".join(keep))
+            if r == rail and p == proj]
+    if left:
+        week_file.write_text("\n".join(keep) + "\n")
+        return False
+    # Sección vacía: fuera el header (y el blanco que lo separa).
+    at = next(i for i, ln in enumerate(keep) if ln.strip() == header)
+    end = at + 1
+    while end < len(keep) and not keep[end].strip():
+        end += 1
+    del keep[at:end]
+    rails = _parse_rails("\n".join(keep))
+    rails[rail] = [p for p in rails[rail] if p != proj]
+    in_rails = False
+    for i, ln in enumerate(keep):
+        if ln.strip().startswith("## "):
+            in_rails = ln.strip() == "## Carriles"
+        elif in_rails and ln.strip().startswith(f"- {_RAIL_EMOJI[rail]} "):
+            body = ", ".join(f"[[{p}]]" for p in rails[rail]) or "—"
+            keep[i] = f"- {_RAIL_EMOJI[rail]} {_RAIL_LABEL[rail]}: {body}"
+            break
+    week_file.write_text("\n".join(keep) + "\n")
+    return True
+
+
 def _write_week_file(week_file: Path, target: date, status: str,
                      rails_projects: dict[str, list[str]],
                      blocks_by_rail: dict[str, list[tuple[str, str]]]) -> None:
