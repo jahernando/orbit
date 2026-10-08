@@ -143,11 +143,35 @@ class TestCollect:
         rows = T.number_rows(T.collect([ws], TODAY, full=False))
         assert [r.item["desc"] for r in rows] == ["late"]
 
-    def test_untimed_first_in_hoy(self, ws):
-        _seed(ws, events=[{"desc": "timed", "date": ISO, "time": "08:00"},
-                          {"desc": "allday", "date": _d(-1), "end": _d(1)}])
+    def test_timed_first_in_hoy(self, ws):
+        # Mismo orden que la tabla Hoy del secretario.
+        _seed(ws, events=[{"desc": "allday", "date": _d(-1), "end": _d(1)},
+                          {"desc": "timed", "date": ISO, "time": "08:00"}])
         rows = T.number_rows(T.collect([ws], TODAY, full=False))
-        assert [r.item["desc"] for r in rows] == ["allday", "timed"]
+        assert [r.item["desc"] for r in rows] == ["timed", "allday"]
+
+    def test_focus_block_first_in_sheet_order(self, ws):
+        _seed(ws, tasks=[
+            {"desc": "hoy", "date": ISO, "time": "09:00",
+             "status": "pending", "orbit_id": "aaaa0001"},
+            {"desc": "sin fecha", "status": "pending", "orbit_id": "aaaa0002"},
+            {"desc": "hecha", "date": ISO, "status": "done",
+             "orbit_id": "aaaa0003"},
+            {"desc": "otra", "date": ISO, "status": "pending"}])
+        refs = ((ws.name, "aaaa0002"), (ws.name, "aaaa0003"),
+                (ws.name, "aaaa0001"), (ws.name, "gone0000"))
+        sections = T.collect([ws], TODAY, full=False, focus=refs)
+        rows = T.number_rows(sections)
+        assert [(r.section, r.item["desc"]) for r in rows] == [
+            (T.FOCUS, "sin fecha"), (T.FOCUS, "hoy"), (T.HOY, "otra")]
+        assert [r.item["desc"] for r in sections[T.FOCUS_CLOSED]] == ["hecha"]
+
+    def test_focus_of_other_project_ignored(self, ws):
+        _seed(ws, tasks=[{"desc": "x", "status": "pending",
+                          "orbit_id": "aaaa0001"}])
+        sections = T.collect([ws], TODAY, full=False,
+                             focus=(("💻otro", "aaaa0001"),))
+        assert T.number_rows(sections) == []
 
 
 # ── Presentación ─────────────────────────────────────────────────────────────
@@ -181,6 +205,29 @@ class TestFormat:
         line = T.format_row(1, row, TODAY, False, frozenset({"abcd1234"}))
         assert "🎯 X" in line
         assert "🎯" not in T.format_row(1, row, TODAY, False)
+
+    def test_focus_block_header_closed_rows_and_no_target(self):
+        open_ = self._row({"desc": "A", "status": "pending",
+                           "orbit_id": "abcd1234"}, section=T.FOCUS)
+        done = self._row({"desc": "B", "status": "done"}, section=T.FOCUS)
+        lines = T.format_listing(
+            "Día", {T.FOCUS: [open_], T.FOCUS_CLOSED: [done]}, TODAY,
+            show_project=False, focus=frozenset({"abcd1234"}),
+            focus_head="Semana 2026-W38 · ✅ 1/2 bloques")
+        assert "── 🎯 Focus (✅ 1/2)" in lines
+        assert "       Semana 2026-W38 · ✅ 1/2 bloques" in lines
+        assert any(l.startswith("    1. ✏️") and "A" in l and "🎯" not in l
+                   for l in lines)
+        assert "       ✅ ✏️ B" in lines
+        assert "(nada que triar)" not in "\n".join(lines)
+
+    def test_focus_row_today_shows_only_time(self):
+        row = self._row({"desc": "X", "date": ISO, "time": "10:00",
+                         "status": "pending"}, section=T.FOCUS)
+        assert "✏️ 10:00 " in T.format_row(1, row, TODAY, False)
+        late = self._row({"desc": "Y", "date": _d(-1), "status": "pending"},
+                         section=T.FOCUS)
+        assert "✏️ 09-15 " in T.format_row(1, late, TODAY, False)
 
     def test_multiday_event_shows_end(self):
         row = self._row({"desc": "W", "date": _d(-1), "end": _d(2)}, kind="ev")

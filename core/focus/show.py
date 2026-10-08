@@ -111,3 +111,35 @@ def focus_ids_today(today: date) -> frozenset:
     if day:
         ids |= {it["oid"] for it in day["items"]}
     return frozenset(ids)
+
+
+def focus_day_refs(today: date) -> tuple[str, list[tuple[str, str]]]:
+    """Focus de hoy para el bloque 🎯 de ``day``.
+
+    ``(línea de la semana, [(proyecto, orbit_id)])`` con las tareas de
+    ``## Días`` en el orden de la hoja; la línea dice los bloques de la
+    semana hechos (``""`` si no hay bloques). ``("", [])`` sin hoja.
+    """
+    from core.focus.common import _resolve_mission_dir, _week_file_path
+    mission_dir = _resolve_mission_dir()
+    if mission_dir is None:
+        return "", []
+    wf = _week_file_path(mission_dir, today)
+    if not wf.exists():
+        return "", []
+    text = wf.read_text()
+    from core.focus.weekfile import _parse_week_file
+    if _parse_week_file(text)["status"] == "off":
+        return "", []           # como la sección 🎯 del secretario
+    day = _find_day(text, today)
+    refs = [(it["project"], it["oid"]) for it in (day or {}).get("items", [])
+            if it["project"]]
+    head = ""
+    blocks = _parse_week_blocks_detailed(text)
+    if blocks:
+        tasks = _build_id_task_index(mission_dir)
+        done = sum(1 for _, _, oid in blocks
+                   if (tasks.get(oid) or {}).get("status") == "done")
+        head = (f"Semana {_iso_week_label(today)} · "
+                f"✅ {done}/{len(blocks)} bloques")
+    return head, refs

@@ -12,6 +12,10 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ### Unreleased — calendario de carga en el secretario · ADR-056
 
+- **`day` empieza por el bloque 🎯 Focus**: las tareas del focus day de hoy,
+  en orden de la hoja y numeradas primero, aunque no tocaran hoy; las hechas
+  se ven sin número. Línea con los bloques de la semana. **Hoy** pasa a
+  ordenarse como en el secretario: por hora y lo sin hora debajo.
 - **`focus day`: más candidatas** (ADR-057 §12). Grupos 📅 hoy/vencidas ·
   ⏩ followups ≤ hoy (tasks e hitos) · ⚓ tasks abiertas de los proyectos
   ancla de la focus week. Elegirlas no toca su fecha ni su ⏩.

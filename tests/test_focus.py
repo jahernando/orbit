@@ -1343,6 +1343,19 @@ class TestFocusDay:
         oid = _status_in("🌀paper-neutrinos", "Revisar")["orbit_id"]
         assert oid in focus_ids_today(date.today())
 
+    def test_focus_day_refs_sheet_order(self, workspace, mission,
+                                        other_project, monkeypatch):
+        from core.focus import run_focus_day
+        from core.focus.show import focus_day_refs
+        assert focus_day_refs(date.today()) == ("", [])
+        _write_template_file(mission)
+        _proj_task("🌀paper-neutrinos", "Revisar", day=date.today().isoformat())
+        _feed_inputs(monkeypatch, ["1"])
+        run_focus_day()
+        oid = _status_in("🌀paper-neutrinos", "Revisar")["orbit_id"]
+        head, refs = focus_day_refs(date.today())
+        assert refs == [("🌀paper-neutrinos", oid)]
+
     def test_candidates_today_then_overdue(self, workspace, mission, other_project):
         from core.focus import _collect_candidates
         _proj_task("🌀paper-neutrinos", "vencida", day="2026-09-29")

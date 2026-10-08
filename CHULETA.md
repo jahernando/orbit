@@ -998,17 +998,22 @@ day fup              # aplazar: calendario de carga + ⏩ por lotes (3 5 viernes
 day fup next-kr      # ídem en un proyecto (en su panel fijado: `day fup`)
 ```
 
-Lista numerada de lo que pide atención **hoy**, por bloques:
+Lista numerada de lo que pide atención **hoy**, por bloques (la misma
+agenda de hoy del secretario, con números):
 
+- **🎯 Focus** — si hay hoja de focus esta semana: las tareas del `focus day`
+  de hoy, en el orden de la hoja, numeradas primero (`✅ hechas/total` en la
+  cabecera, debajo la línea de bloques de la semana). Salen aunque no tocaran
+  hoy (p. ej. una tarea ancla sin fecha). Las ya hechas o cerradas se ven
+  (`✅` / `❌`) pero **sin número**.
 - **Hoy** — citas que caen hoy: eventos (también los de varios días ya
   empezados y las ocurrencias de los recurrentes), tareas e hitos con fecha de
-  hoy. Primero lo que no tiene hora, luego por hora.
+  hoy. Por hora, y debajo lo que no tiene hora (como el secretario).
 - **⚠️ Vencidas** — tareas e hitos pendientes con fecha pasada.
 - **⏩ Decidir** — citas con un followup `⏩ <= hoy` (❗ si es de un día anterior).
 
-**🎯** delante del título = está en focus hoy (tarea del `focus day` o bloque
-de la `focus week`). Lo del focus que no pide atención hoy (p. ej. tareas
-ancla sin fecha) no sale aquí: está en el secretario y en `focus day`.
+**🎯** delante del título (fuera del bloque Focus) = bloque de la `focus week`
+que no está en el `focus day`.
 
 Cada cita sale una sola vez, en el primer bloque que le toca; sus `⏩` se ven
 como marca en la fila (`❗⏩09-01`, `(+N)` si tiene más). **No salen** los

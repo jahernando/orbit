@@ -2,8 +2,10 @@
 
 Dos comandos, un motor (ADR-051):
 
-* ``day [proyecto]`` — lo de **hoy**: citas que ocurren hoy, tareas/hitos
-  vencidos y citas con un followup ``⏩ <= hoy``. Sin recordatorios.
+* ``day [proyecto]`` — lo de **hoy**: primero el focus del día (las tareas
+  de ``## Días`` de la hoja semanal, como la sección 🎯 del secretario),
+  luego citas que ocurren hoy, tareas/hitos vencidos y citas con un
+  followup ``⏩ <= hoy``. Sin recordatorios.
 * ``organize <proyecto>`` — **todo** lo pendiente de un proyecto: además de
   lo anterior, las próximas citas (recordatorios incluidos) y las tareas e
   hitos sin fecha.
@@ -15,7 +17,7 @@ en ``day`` solo los pasos activos hoy o vencidos; en ``organize`` además la
 barra de progreso de cada cronograma abierto.
 
 Cada cita aparece una sola vez, en el primer bloque que le toca por este
-orden: Hoy > Vencidas > Decidir ⏩ > Próximas > Sin fecha. Sus followups se
+orden: Focus > Hoy > Vencidas > Decidir ⏩ > Próximas > Sin fecha. Sus followups se
 muestran como marca en la fila.
 
 Las mutaciones delegan en los runners (``run_task_edit`` …), así que el
@@ -54,15 +56,17 @@ KIND_EMOJI = {"task": "✏️", "ms": "🏁", "ev": "📅", "reminder": "💬"}
 KIND_LABEL = {"task": "tarea", "ms": "hito", "ev": "evento",
               "reminder": "recordatorio"}
 _KIND_ENDING = {"task": "a", "ms": "o", "ev": "o", "reminder": "o"}   # cancelad-a/o
-_KIND_ENDING = {"task": "a", "ms": "o", "ev": "o", "reminder": "o"}   # cancelad-a/o
 _SECTION_OF = {"task": "tasks", "ms": "milestones", "ev": "events",
                "reminder": "reminders"}
 
 # Orden de bloques (y de prioridad al asignar cada cita a uno).
-HOY, VENCIDAS, DECIDIR, PROXIMAS, SIN_FECHA = (
-    "hoy", "vencidas", "decidir", "proximas", "sin_fecha")
-SECTION_ORDER = (HOY, VENCIDAS, DECIDIR, PROXIMAS, SIN_FECHA)
+FOCUS, HOY, VENCIDAS, DECIDIR, PROXIMAS, SIN_FECHA = (
+    "focus", "hoy", "vencidas", "decidir", "proximas", "sin_fecha")
+SECTION_ORDER = (FOCUS, HOY, VENCIDAS, DECIDIR, PROXIMAS, SIN_FECHA)
+# Tareas del focus ya cerradas: se enseñan (progreso del día) sin número.
+FOCUS_CLOSED = "focus_cerradas"
 SECTION_TITLE = {
+    FOCUS: "🎯 Focus",
     HOY: "Hoy", VENCIDAS: "⚠️ Vencidas", DECIDIR: "⏩ Decidir",
     PROXIMAS: "Próximas", SIN_FECHA: "Sin fecha",
 }
@@ -207,8 +211,8 @@ def _time_start(item: dict) -> str:
 def _sort_key(row: Row, today: date):
     it = row.item
     if row.section == HOY:
-        # Sin hora (todo el día) arriba, luego por hora.
-        return (1 if it.get("time") else 0, _time_start(it), it.get("desc", ""))
+        # Como la tabla del secretario: por hora, y lo sin hora debajo.
+        return (0 if it.get("time") else 1, _time_start(it), it.get("desc", ""))
     if row.section in (VENCIDAS, PROXIMAS):
         return (it.get("date") or "", _time_start(it), it.get("desc", ""))
     if row.section == DECIDIR:
@@ -218,9 +222,16 @@ def _sort_key(row: Row, today: date):
     return (0 if row.kind == "ms" else 1,)
 
 
-def collect(dirs: list, today: date, full: bool) -> dict:
-    """``{bloque: [Row]}`` con los bloques en orden y filas ordenadas."""
+def collect(dirs: list, today: date, full: bool,
+            focus: tuple = ()) -> dict:
+    """``{bloque: [Row]}`` con los bloques en orden y filas ordenadas.
+
+    *focus*: ``[(dir de proyecto, orbit_id)]`` del focus de hoy, en el orden
+    de la hoja. Esas citas suben al bloque Focus aunque no tocaran hoy; las
+    ya cerradas van a ``FOCUS_CLOSED`` (se ven, no se numeran).
+    """
     out = {s: [] for s in SECTION_ORDER}
+    by_id: dict = {}            # (dir, orbit_id) → (kind, project_dir, item)
     for project_dir in dirs:
         agenda = resolve_file(project_dir, "agenda")
         if not agenda.exists():
@@ -228,6 +239,9 @@ def collect(dirs: list, today: date, full: bool) -> dict:
         data = _read_agenda(agenda)
         for kind, key in _SECTION_OF.items():
             for item in data.get(key) or []:
+                if item.get("orbit_id"):
+                    by_id[(project_dir.name, item["orbit_id"])] = (
+                        kind, project_dir, item)
                 section = classify(item, kind, today, full)
                 steps = []
                 if item.get("crono") and _is_open(item, kind):
@@ -241,7 +255,31 @@ def collect(dirs: list, today: date, full: bool) -> dict:
                                             steps))
     for section, rows in out.items():
         rows.sort(key=lambda r: _sort_key(r, today))
+    if focus:
+        _lift_focus(out, by_id, focus, today)
     return out
+
+
+def _lift_focus(out: dict, by_id: dict, focus: tuple, today: date) -> None:
+    """Mueve al bloque Focus las citas del focus de hoy (orden de la hoja)."""
+    listed = {(r.project_dir.name, r.item.get("orbit_id")): r
+              for s in SECTION_ORDER for r in out[s]}
+    out[FOCUS_CLOSED] = []
+    for ref in focus:
+        if ref not in by_id:
+            continue                # ❔ ya no existe: lo avisa el secretario
+        row = listed.get(ref)
+        if row is not None:
+            out[row.section].remove(row)
+            row.section = FOCUS
+            out[FOCUS].append(row)
+            continue
+        kind, project_dir, item = by_id[ref]
+        if not _is_open(item, kind):
+            out[FOCUS_CLOSED].append(Row(kind, project_dir, item, FOCUS))
+            continue
+        steps = item_steps(project_dir, item, today) if item.get("crono") else []
+        out[FOCUS].append(Row(kind, project_dir, item, FOCUS, steps))
 
 
 def number_rows(sections: dict) -> list:
@@ -297,7 +335,8 @@ def _when(row: Row, today: date) -> str:
     """Columna de fecha/hora: solo ASCII, para que alinee."""
     it = row.item
     time = it.get("time") or ""
-    if row.section == HOY:
+    if row.section == HOY or (row.section == FOCUS
+                              and occurs_on(it, row.kind, today)):
         return time
     d = _short(_to_date(it.get("date")), today)
     return f"{d} {time}".strip()
@@ -329,26 +368,47 @@ def format_row(n: int, row: Row, today: date, show_project: bool,
     proj = f"  [{row.project_dir.name}]" if show_project else ""
     crono = crono_mark(row.project_dir, row.item)
     crono = f"  {crono}" if crono else ""
-    target = "🎯 " if row.item.get("orbit_id") in focus else ""
+    # En el bloque Focus el 🎯 sobra: ya lo dice el bloque.
+    target = ("🎯 " if row.section != FOCUS
+              and row.item.get("orbit_id") in focus else "")
     return (f"  {n:>3}. {KIND_EMOJI[row.kind]} {_when(row, today):<11}  "
             f"{target}{row.item.get('desc', '')}{crono}"
             f"{_marks(row, today)}{proj}")
 
 
+def _closed_row(row: Row, show_project: bool) -> str:
+    sym = "✅" if row.item.get("status") == "done" else "❌"
+    proj = f"  [{row.project_dir.name}]" if show_project else ""
+    return (f"       {sym} {KIND_EMOJI[row.kind]} "
+            f"{row.item.get('desc', '')}{proj}")
+
+
 def format_listing(title: str, sections: dict, today: date,
-                   show_project: bool, focus: frozenset = frozenset()) -> list:
+                   show_project: bool, focus: frozenset = frozenset(),
+                   focus_head: str = "") -> list:
+    """*focus_head*: línea de la semana bajo la cabecera del bloque Focus."""
     lines = [title, "─" * 70]
     n = 0
+    closed = sections.get(FOCUS_CLOSED) or []
     for s in SECTION_ORDER:
         rows = sections.get(s) or []
-        if not rows:
+        if not rows and not (s == FOCUS and closed):
             continue
-        lines.append(f"── {SECTION_TITLE[s]} ({len(rows)})")
+        if s == FOCUS:
+            done = sum(1 for r in closed if r.item.get("status") == "done")
+            lines.append(f"── {SECTION_TITLE[s]} (✅ {done}/"
+                         f"{len(rows) + len(closed)})")
+            if focus_head:
+                lines.append(f"       {focus_head}")
+        else:
+            lines.append(f"── {SECTION_TITLE[s]} ({len(rows)})")
         for row in rows:
             n += 1
             lines.append(format_row(n, row, today, show_project, focus))
             for st in row.steps:
                 lines.append(f"          ↳ {step_label(st, today)}")
+        if s == FOCUS:
+            lines.extend(_closed_row(r, show_project) for r in closed)
     if n == 0:
         lines.append("  (nada que triar)")
     return lines
@@ -828,21 +888,33 @@ def _focus_ids(today: date) -> frozenset:
         return frozenset()
 
 
+def _focus_day(today: date) -> tuple:
+    """``(línea de la semana, [(proyecto, orbit_id)])`` del focus de hoy;
+    best-effort como :func:`_focus_ids`."""
+    try:
+        from core.focus.show import focus_day_refs
+        return focus_day_refs(today)
+    except Exception:
+        return "", []
+
+
 def run_loop(title: str, dirs: list, full: bool, show_project: bool,
              today_fn: Callable[[], date] = date.today,
              fup_only: bool = False) -> int:
     """*fup_only* (``day fup``): sin menú; calendario de carga y ⏩ por
-    lotes (``3 5 viernes``, ``3:+2``…)."""
+    lotes (``3 5 viernes``, ``3:+2``…). En modo día (no *full*) el focus
+    de hoy va arriba y se numera primero."""
     applied = 0
     last = None             # verificación de la última acción
     while True:
         today = today_fn()
-        sections = collect(dirs, today, full)
+        focus_head, refs = ("", []) if full else _focus_day(today)
+        sections = collect(dirs, today, full, focus=tuple(refs))
         rows = number_rows(sections)
         focus = _focus_ids(today)
         print()
         for line in format_listing(title, sections, today, show_project,
-                                   focus):
+                                   focus, focus_head):
             print(line)
         for line in format_cronos(collect_cronos(dirs, today, full), today,
                                   show_project, show_progress=full):
