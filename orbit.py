@@ -1495,7 +1495,16 @@ def cmd_ring(args):
 
 
 def cmd_day(args):
-    """`day [fup] [proyecto]` · `day [fup] @familia… | @all` (ADR-051/060)."""
+    """`day [fup] [proyecto]` · `day [fup] @familia… | @all` (ADR-051/060).
+
+    En terminal, el ``[proyecto]`` de cada fila es un enlace a su
+    `project.md` (core.termlink, modo ``day``)."""
+    from core.termlink import linkified
+    with linkified("day"):
+        return _cmd_day(args)
+
+
+def _cmd_day(args):
     from core import context
     from core.triage import run_day, run_day_families
     toks = [getattr(args, "mode", None)]

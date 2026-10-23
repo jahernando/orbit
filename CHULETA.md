@@ -1026,6 +1026,11 @@ agenda de hoy del secretario, con números):
 **🎯** delante del título (fuera del bloque Focus) = bloque de la `focus week`
 que no está en el `focus day`.
 
+En la terminal, el `[⚙️proyecto]` de cada fila es un **enlace** (⌘-clic) a su
+`project.md`, para editar la cita a mano; los enlaces relativos del título
+(`[info](./notes/…)`) se resuelven contra ese proyecto. Fuera de una terminal
+o con `ORBIT_NO_LINKS=1`, la salida no cambia.
+
 Cada cita sale una sola vez, en el primer bloque que le toca; sus `⏩` se ven
 como marca en la fila (`❗⏩09-01`, `(+N)` si tiene más). **No salen** los
 recordatorios, ni las tareas sin fecha y sin `⏩` vencido, ni los proyectos

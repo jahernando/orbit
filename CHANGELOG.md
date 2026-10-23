@@ -10,6 +10,12 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `day`: proyecto clicable
+
+- En `day` (y `day fup`, `day @…`), el `[⚙️proyecto]` de cada fila es un
+  enlace OSC 8 a su `project.md`; los relativos del título se resuelven
+  contra ese proyecto. `core/termlink.py` gana el modo `day`.
+
 ### Unreleased — ledger: marcas, `edit --dry-run`, justificante repetido
 
 - **Línea compacta** de `ledger <p>` / `ls ledger` / selector de `edit`: marcas

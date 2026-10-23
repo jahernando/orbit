@@ -79,3 +79,37 @@ def test_desactivado_fuera_de_terminal(monkeypatch):
     assert enabled(Tty())
     monkeypatch.setenv("ORBIT_NO_LINKS", "1")
     assert not enabled(Tty())
+
+
+def test_day_enlaza_el_proyecto_en_mitad_de_la_linea(tmp_path):
+    p = _proj(tmp_path)
+    lk = Linkifier("day", {p.name: p})
+    row = f"   14. ✏️              CPAN inscripcion  ❗⏩10-05  [{p.name}]"
+    out = lk.line(row)
+    assert out.startswith("   14. ✏️              CPAN inscripcion")
+    assert f"[\033]8;;{(p / 'project.md').resolve().as_uri()}\033\\{p.name} {ARROW}" in out
+
+
+def test_day_relativos_del_titulo_contra_su_proyecto(tmp_path):
+    p = _proj(tmp_path)
+    lk = Linkifier("day", {p.name: p})
+    out = lk.line(f"    3. 🏁 [Nota](./notes/a%20b.md)  ⏩10-13  [{p.name}]")
+    assert (p / "notes" / "a b.md").resolve().as_uri() in out and "](" not in out
+
+
+def test_day_proyecto_inexistente_sin_enlace(tmp_path):
+    p = _proj(tmp_path)
+    lk = Linkifier("day", {p.name: p})
+    row = "    2. ✏️  algo  [⚙️otro]"
+    assert lk.line(row) == row
+    assert lk.line("  ── ⏩ Decidir (25)") == "  ── ⏩ Decidir (25)"
+
+
+def test_day_prompt_pendiente_sale_al_flush(tmp_path):
+    p = _proj(tmp_path)
+    out = io.StringIO()
+    w = _LinkWriter(out, Linkifier("day", {p.name: p}))
+    w.write(f"    1. ✏️ x  [{p.name}]\n")
+    w.write("#? (número, q=salir) > ")
+    w.flush()
+    assert ARROW in out.getvalue() and out.getvalue().endswith("#? (número, q=salir) > ")

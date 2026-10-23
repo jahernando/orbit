@@ -5,7 +5,8 @@ terminal que entiende OSC 8 (iTerm2, WezTerm, kitty, Ghostty, VS Code…) eso se
 convierte en el **texto clicable** seguido de `↗`: ⌘-clic abre el fichero o la
 web. Las rutas relativas se resuelven contra el proyecto de la sección, que se
 deduce de las cabeceras que ya imprime cada `ls` (`[⚙️proyecto]`,
-`[⚙️proyecto/notes]`, `💶 Ledger — ⚙️proyecto`).
+`[⚙️proyecto/notes]`, `💶 Ledger — ⚙️proyecto`). En `day` (modo ``"day"``)
+el ``[⚙️proyecto]`` de cada fila enlaza su `project.md`.
 
 Solo se aplica cuando la salida va a una terminal: con `--open`, `--log`,
 `--append`, una tubería o `ORBIT_NO_LINKS=1`, sale el markdown de siempre.
@@ -27,6 +28,7 @@ _HEADER_RE  = re.compile(r"^(?P<lead>\s*)\[(?P<name>[^\]/]+)(?P<sub>/[^\]]*)?\]"
 _LEDGER_RE  = re.compile(r"^💶 (?:Ledger|Resumen) — (?P<name>\S+)")
 _FILE_RE    = re.compile(r"^(?P<lead>\s+\S{1,2}\s+)(?P<name>\S.*?)\s*$")
 _ROW_RE     = re.compile(r"^\|\s(?P<name>\S+?)(?P<pad>\s+)\|")
+_BRACKET_RE = re.compile(r"\[(?P<name>[^\[\]]+)\](?!\()")
 
 
 def osc8(text: str, url: str) -> str:
@@ -83,6 +85,8 @@ class Linkifier:
     def line(self, line: str) -> str:
         if "\033]8;" in line:                    # ya enlazada
             return line
+        if self.mode == "day":
+            return self._day_line(line)
         m = _HEADER_RE.match(line)
         if m and m.group("name") in self.projects:
             project = self.projects[m.group("name")]
@@ -117,6 +121,26 @@ class Linkifier:
                     cell = osc8(m.group("name"), url) + pad[2:]
                     return f"| {cell}|" + line[m.end():]
         return self._links(line)
+
+
+    def _day_line(self, line: str) -> str:
+        """`day`: cada fila acaba en ``[⚙️proyecto]`` (en cualquier sitio de
+        la línea). Ese nombre enlaza su `project.md` y los enlaces relativos
+        del título se resuelven contra ese proyecto."""
+        names = [m.group("name") for m in _BRACKET_RE.finditer(line)
+                 if m.group("name") in self.projects]
+        saved = self.base
+        self.base = self.projects[names[-1]] if names else None
+        try:
+            line = self._links(line)
+        finally:
+            self.base = saved
+
+        def repl(m):
+            project = self.projects.get(m.group("name"))
+            url = _file_url(project / "project.md") if project else None
+            return f"[{osc8(m.group('name'), url)}]" if url else m.group(0)
+        return _BRACKET_RE.sub(repl, line)
 
 
 class _LinkWriter:
