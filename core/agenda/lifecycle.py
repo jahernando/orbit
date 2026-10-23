@@ -972,6 +972,10 @@ def _generic_drop(type_name: str, project_dir: Path, data: dict,
                                 state=cfg["drop_verb"]))
         if next_info:
             print(f"  ↻{next_info}")
+    # Tarea / hito con crono: ¿borrar también el fichero? (defecto No)
+    if cfg["drop_action"] == "cancel" and item.get("crono"):
+        from core.cronograma import offer_delete_crono
+        offer_delete_crono(project_dir, agenda_path, data, item)
     # Ring cleanup
     if cfg["has_ring"]:
         _delete_ring_if_today(item_desc, project_dir, item.get("date"),

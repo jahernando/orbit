@@ -10,6 +10,13 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — crono: borrado al hacer drop y huérfanos en el doctor
+
+- `task/ms drop` de un item con crono pregunta si borrar el fichero del crono
+  (defecto No); al borrarlo, el item pierde el enlace. Sin terminal no se toca.
+- `doctor` avisa de los cronos huérfanos (ningún item los enlaza) y
+  `doctor --fix` propone borrarlos. `core.cronograma.orphan_cronos`.
+
 ### Unreleased — `day`: proyecto clicable
 
 - En `day` (y `day fup`, `day @…`), el `[⚙️proyecto]` de cada fila es un

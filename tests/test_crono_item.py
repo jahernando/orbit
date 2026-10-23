@@ -423,3 +423,66 @@ class TestKeepsDate:
         _seed(ws, milestones=[_task(desc="E", date=ISO, crono="cronos/crono-a.md")])
         assert run_ms_edit(ws.name, "E", fup="none") == 1
         assert _read(ws)["milestones"][-1]["date"] == ISO
+
+
+# ── Drop con crono y cronos huérfanos ───────────────────────────────────────
+
+def _drop(ws, monkeypatch, answer=None, tty=True):
+    import sys
+    from core.agenda_cmds import run_task_drop
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: tty, raising=False)
+    monkeypatch.setattr("builtins.input", lambda *a: answer if answer is not None else "")
+    return run_task_drop("foo", "Informe", force=True)
+
+
+class TestDropCrono:
+
+    def _seed(self, ws, **extra):
+        _write_crono(ws, "cronos/crono-informe.md", 1, 3)
+        _seed(ws, tasks=[_task(desc="Informe", crono="cronos/crono-informe.md"),
+                         *extra.get("more", [])])
+
+    def test_yes_deletes_file_and_link(self, ws, monkeypatch, capsys):
+        self._seed(ws)
+        _drop(ws, monkeypatch, "s")
+        assert not (ws / "cronos/crono-informe.md").exists()
+        t = _read(ws)["tasks"][0]
+        assert t["status"] == "cancelled" and not t.get("crono")
+        assert "crono borrado: cronos/crono-informe.md" in capsys.readouterr().out
+
+    def test_default_keeps_it(self, ws, monkeypatch, capsys):
+        self._seed(ws)
+        _drop(ws, monkeypatch, "")
+        assert (ws / "cronos/crono-informe.md").exists()
+        assert _read(ws)["tasks"][0]["crono"] == "cronos/crono-informe.md"
+        assert "crono conservado" in capsys.readouterr().out
+
+    def test_without_terminal_never_deletes(self, ws, monkeypatch, capsys):
+        self._seed(ws)
+        _drop(ws, monkeypatch, "s", tty=False)
+        assert (ws / "cronos/crono-informe.md").exists()
+        assert "doctor --fix" in capsys.readouterr().out
+
+
+class TestOrphans:
+
+    def test_orphan_cronos(self, ws):
+        from core.cronograma import orphan_cronos
+        _write_crono(ws, "cronos/crono-informe.md", 0, 2)
+        _write_crono(ws, "cronos/crono-cerrado.md", 0, 2)
+        _write_crono(ws, "cronos/crono-suelto.md", 0, 2)
+        _seed(ws, tasks=[_task(desc="Informe", crono="cronos/crono-informe.md"),
+                         _task(desc="Hecha", status="done",
+                               crono="cronos/crono-cerrado.md")])
+        assert [f.name for f in orphan_cronos(ws)] == ["crono-suelto.md"]
+
+    def test_doctor_warns_and_fix_deletes(self, ws, monkeypatch, capsys):
+        from views.doctor.doctor import _check_orphan_cronos
+        _write_crono(ws, "cronos/crono-suelto.md", 0, 2)
+        _check_orphan_cronos()
+        out = capsys.readouterr().out
+        assert "1 crono huérfano" in out and "cronos/crono-suelto.md" in out
+        assert "doctor --fix" in out
+        monkeypatch.setattr("builtins.input", lambda *a: "s")
+        _check_orphan_cronos(fix=True)
+        assert not (ws / "cronos/crono-suelto.md").exists()

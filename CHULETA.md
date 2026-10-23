@@ -135,6 +135,12 @@ orbit task edit <p> "Informe final" --crono none                      # desasoci
 - La fecha del item es el plazo del crono: el `⏩` del triaje no la quita y
   `--fup none` se rechaza.
 - Al calendario (`.ics`) va solo el item; los pasos del crono enlazado no.
+- **`drop` de una tarea / hito con crono** pregunta si borrar también el
+  fichero del crono (defecto **No**); si se borra, el item cancelado pierde el
+  enlace. Sin terminal, o si otro item abierto lo enlaza, no pregunta y lo
+  conserva. `done` no lo toca.
+- **Cronos huérfanos** (ningún item los enlaza, ni abierto ni cerrado):
+  `doctor` los lista y `doctor --fix` propone borrarlos uno a uno (defecto No).
 
 ### Títulos únicos por agenda
 

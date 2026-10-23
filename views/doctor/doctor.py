@@ -132,6 +132,41 @@ def _check_federation() -> None:
         print()
 
 
+def _check_orphan_cronos(project: Optional[str] = None, fix: bool = False) -> None:
+    """Avisa de los cronos sin tarea / hito que los enlace; con *fix*, pregunta
+    si borrar cada uno (defecto No)."""
+    from core.config import iter_project_dirs
+    from core.cronograma import orphan_cronos
+    from core.project import _is_new_project
+
+    if project:
+        dirs = [_find_new_project(project)]
+    else:
+        dirs = [d for d in iter_project_dirs() if _is_new_project(d)]
+    found = [(d, f) for d in dirs if d for f in orphan_cronos(d)]
+    if not found:
+        return
+    print(f"  📊 {len(found)} crono{'s' if len(found) != 1 else ''} huérfano"
+          f"{'s' if len(found) != 1 else ''} (ninguna tarea / hito los enlaza):")
+    for d, f in found:
+        print(f"      ⚠️  [{d.name}] cronos/{f.name}")
+    if not fix:
+        print("  → `orbit doctor --fix` propone borrarlos; o enlázalos con "
+              "`task edit <p> \"<título>\" --crono <nombre>`.")
+        print()
+        return
+    for d, f in found:
+        try:
+            ans = input(f"  🗑️  ¿Borrar [{d.name}] cronos/{f.name}? [s/N]: ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if ans.strip().lower() in ("s", "si", "sí", "y", "yes"):
+            f.unlink()
+            print(f"      borrado: [{d.name}] cronos/{f.name}")
+    print()
+
+
 def _check_families() -> None:
     """Avisos del bloque ``families`` de orbit.json (ADR-059), si existe."""
     from core.config import ORBIT_HOME
@@ -850,6 +885,13 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
                 print("  → Ejecuta `orbit ics --workspace` o cualquier op de cita "
                       "para forzar regen.")
                 print()
+    except Exception:
+        pass
+
+    # Cronos huérfanos: ficheros cronos/crono-*.md que ninguna tarea / hito
+    # enlaza (ADR-055). Con --fix y terminal, propone borrarlos uno a uno.
+    try:
+        _check_orphan_cronos(project, fix and sys.stdin.isatty())
     except Exception:
         pass
 

@@ -2102,3 +2102,57 @@ def run_ls_cronos(project: Optional[str] = None,
     if n == 0:
         print("No hay cronogramas" + (f" en {dirs[0].name}" if project else ""))
     return 0
+
+
+# ── Cronos huérfanos y borrado al hacer drop ─────────────────────────────────
+
+def orphan_cronos(project_dir: Path) -> list:
+    """Ficheros ``cronos/crono-*.md`` que ninguna tarea / hito de la agenda
+    enlaza (ni abierto ni cerrado)."""
+    from core.agenda_cmds import _read_agenda
+    cronos_dir = project_dir / "cronos"
+    if not cronos_dir.is_dir():
+        return []
+    agenda = resolve_file(project_dir, "agenda")
+    data = _read_agenda(agenda) if agenda.exists() else {}
+    linked = {it.get("crono") for key in ("tasks", "milestones")
+              for it in data.get(key) or [] if it.get("crono")}
+    return [f for f in sorted(cronos_dir.glob("crono-*.md"))
+            if f"cronos/{f.name}" not in linked]
+
+
+def offer_delete_crono(project_dir: Path, agenda_path: Path, data: dict,
+                       item: dict) -> Optional[bool]:
+    """Tras cancelar una tarea / hito con crono, pregunta si borrar el fichero
+    del crono (defecto No). Si se borra, el item pierde el enlace. Sin
+    terminal, o si otro item abierto lo enlaza, no se toca. Devuelve True si
+    lo borró, False si se conservó y None si no aplicaba."""
+    import sys
+    from core.agenda_cmds import _write_agenda
+    rel = item.get("crono")
+    if not rel:
+        return None
+    path = project_dir / rel
+    if not path.is_file():
+        return None
+    shared = [it for key in ("tasks", "milestones") for it in data.get(key) or []
+              if it is not item and it.get("crono") == rel
+              and it.get("status") not in ("done", "cancelled")]
+    if shared:
+        return None
+    if not sys.stdin.isatty():
+        print(f"  📊 crono conservado: {rel} (`doctor --fix` ofrece borrarlo)")
+        return False
+    try:
+        ans = input(f"  📊 ¿Borrar también su crono {rel}? [s/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        ans = ""
+    if ans not in ("s", "si", "sí", "y", "yes"):
+        print(f"  📊 crono conservado: {rel}")
+        return False
+    path.unlink()
+    item.pop("crono", None)
+    _write_agenda(agenda_path, data)
+    print(f"  🗑️ crono borrado: {rel}")
+    return True
