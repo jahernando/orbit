@@ -132,6 +132,22 @@ def _check_federation() -> None:
         print()
 
 
+def _check_families() -> None:
+    """Avisos del bloque ``families`` de orbit.json (ADR-059), si existe."""
+    from core.config import ORBIT_HOME
+    from core.families import problems
+
+    found = problems()
+    if not found:
+        return
+    print(f"  👥 orbit.json · families: {len(found)} aviso"
+          f"{'s' if len(found) != 1 else ''}:")
+    for msg in found:
+        print(f"      ⚠️  {msg}")
+    print(f"      → ajusta `families` en {ORBIT_HOME / 'orbit.json'}.")
+    print()
+
+
 # ── Ring health check ─────────────────────────────────────────────────────────
 
 def _check_ring_health() -> None:
@@ -839,7 +855,8 @@ def run_doctor(project: Optional[str] = None, fix: bool = False) -> int:
 
     # Environment-level checks (workspace itself, not per-project).
     # Useful after cloning to another Mac when paths may not resolve.
-    for fn in (_check_orbit_json, _check_cloud_root, _check_federation):
+    for fn in (_check_orbit_json, _check_cloud_root, _check_federation,
+               _check_families):
         try:
             fn()
         except Exception:

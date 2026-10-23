@@ -10,6 +10,19 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — familias de proyectos (fase A) · ADR-059
+
+- **`families` en `orbit.json`**: grupos de proyectos (por nombre y/o por
+  tipo) con sus días de la semana; un proyecto, una familia. `core/families.py`.
+- **Hoja por familia** `📊panel/secretary/families/<familia>.md` (⏩ ·
+  ⚠️ · 📅 30 días · 🗂️ sin fecha · 📊 cronos) en callouts plegables, abiertos
+  el día de la familia. Carril hot, con `agenda.md`.
+- **`agenda.md`**: línea `👥 Familias`, «Hoy es día de …» y ⏩ por triar
+  agrupados por familia en callouts.
+- **`day` / `day fup`**: ⏩ Decidir agrupado por familia, la del día primero.
+- **Render**: callouts → `<details>`; las hojas de familia también van a la nube.
+- **`doctor`**: avisa de miembros inexistentes y de duplicados.
+
 ### Unreleased — `ledger` en una línea por entrada
 
 - **`ledger <p>` y `ls ledger`** imprimen el libro con la línea compacta del

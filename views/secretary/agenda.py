@@ -430,7 +430,7 @@ def _render_items_table(items, crono=None, shown=None, today=None) -> list:
 
 
 def _today_block(today_items, overdue, followups_today=(), crono=None,
-                 today=None) -> list:
+                 today=None, fup_groups=None) -> list:
     """Tabla única de Hoy: citas + ⚠️ vencidas (cap) + ⏩ por triar + items
     que afloran por su crono.
 
@@ -438,6 +438,9 @@ def _today_block(today_items, overdue, followups_today=(), crono=None,
     cuelgan en la celda de su item (``<br>↳``), una sola vez; los items que
     no salían por otra vía se añaden al final. Si todo está vacío, devuelve
     un texto placeholder.
+
+    *fup_groups* (``_fup_groups``, con familias en ``orbit.json``): los ⏩
+    salen de la tabla y van debajo, en un callout por familia (ADR-059).
     """
     crono = crono or {}
     if not today_items and not overdue and not followups_today and not crono:
@@ -453,15 +456,77 @@ def _today_block(today_items, overdue, followups_today=(), crono=None,
     if overflow:
         rows.append(f"|  | ⚠️ |  |  |  | *…y {overflow} más vencidas* |  |")
 
-    for project_dir, kind, item, fup in followups_today:
-        rows.append(_render_followup_row(project_dir, kind, item, fup,
-                                         crono, shown, today))
+    grouped = []
+    if fup_groups is None:
+        for project_dir, kind, item, fup in followups_today:
+            rows.append(_render_followup_row(project_dir, kind, item, fup,
+                                             crono, shown, today))
+    else:
+        from views.secretary.families import callout
+        for title, open_, fups in fup_groups:
+            body = [TABLE_HEADER] + [
+                _render_followup_row(project_dir, kind, item, fup,
+                                     crono, shown, today)
+                for project_dir, kind, item, fup in fups]
+            grouped.extend(callout(title, body, open_))
+            grouped.append("")
 
     for key, (project_dir, kind, item, steps) in crono.items():
         if key not in shown:
             rows.append(_render_crono_row(project_dir, kind, item, steps, today))
 
-    return rows
+    if len(rows) == 1:
+        rows = []
+    if grouped:
+        if rows:
+            rows.append("")
+        rows.append(f"### ⏩ Por triar ({len(followups_today)})")
+        rows.append("")
+        rows.extend(grouped[:-1])
+    return rows or ["*Sin citas para hoy.*"]
+
+
+def _fup_groups(followups_today, allf, today) -> list:
+    """``[(título, abierto, fups)]``: los ⏩ de hoy por familia; primero las
+    familias de hoy (abiertas), luego las demás y «sin familia» (plegadas)."""
+    from core.families import group_order
+    from views.secretary.families import family_link
+    member = {str(p): f.name for f, dirs, _ in allf for p in dirs}
+    groups = []
+    for fam in group_order(today, [f for f, _, _ in allf]):
+        name = fam.name if fam else None
+        fups = [r for r in followups_today if member.get(str(r[0])) == name]
+        if not fups:
+            continue
+        title = f"{family_link(fam)} · {len(fups)}" if fam else f"Sin familia · {len(fups)}"
+        groups.append((title, bool(fam and fam.is_day(today)), fups))
+    return groups
+
+
+def _family_counter_line(allf) -> list:
+    """``> 👥 Familias: 🔵 [next](families/next.md) ⏩5 ⚠️1 · …``"""
+    from views.secretary.families import counts, family_link
+    parts = []
+    for fam, _dirs, data in allf:
+        c = counts(data)
+        marks = [m for m in (f"⏩{c['fups']}" if c["fups"] else "",
+                             f"⚠️{c['overdue']}" if c["overdue"] else "") if m]
+        parts.append(family_link(fam) + ("".join(f" {m}" for m in marks)))
+    return ["> 👥 Familias: " + " · ".join(parts)] if parts else []
+
+
+def _family_today_lines(allf, today) -> list:
+    """Encima de la tabla de Hoy: de qué familia es el día y qué tiene."""
+    from views.secretary.families import counts, family_link, summary_parts
+    todays = [(f, d) for f, _, d in allf if f.is_day(today)]
+    if not todays:
+        return ["> Hoy no es día de ninguna familia", ""]
+    out = []
+    for fam, data in todays:
+        parts = summary_parts(counts(data))
+        out.append(f"> Hoy es día de {family_link(fam)}: "
+                   + (" · ".join(parts) if parts else "nada pendiente"))
+    return out + [""]
 
 
 def _day_block(d, items, followups, today) -> list:
@@ -577,9 +642,14 @@ def generate_range(out_path: Path, start, end) -> None:
 WATERMARK_CSSCLASS = "orbit-secretary"
 
 
-def generate(out_path: Path) -> None:
-    """Escribe `agenda.md` (hot único del workspace) en out_path."""
+def generate(out_path: Path, allf=None) -> None:
+    """Escribe `agenda.md` (hot único del workspace) en out_path.
+
+    *allf*: ``families.collect_all`` ya hecho (vacío sin familias)."""
     today = _date.today()
+    if allf is None:
+        from views.secretary.families import collect_all
+        allf = collect_all(today)
     end = today + timedelta(days=NEXT_DAYS_WINDOW)
 
     by_day = collect_items_by_day(today, end, include_federated=True)
@@ -616,14 +686,19 @@ def generate(out_path: Path) -> None:
                                 followups_today=followups_today,
                                 n_overdue_ms=n_overdue_ms,
                                 ring_counts=ring_counts))
+    lines.extend(_family_counter_line(allf))
     lines.append("")
     lines.extend(_mini_calendar(today, end))
     from views.secretary.focus import focus_lines
     lines.extend(focus_lines(today))          # [] si focus está apagado
     lines.append(f"## 📅 Hoy — {_short_date_es(today)}")
     lines.append("")
-    lines.extend(_today_block(today_items, overdue, followups_today,
-                              crono=_collect_crono_steps(today), today=today))
+    if allf:
+        lines.extend(_family_today_lines(allf, today))
+    lines.extend(_today_block(
+        today_items, overdue, followups_today,
+        crono=_collect_crono_steps(today), today=today,
+        fup_groups=_fup_groups(followups_today, allf, today) if allf else None))
     lines.append("")
 
     next_blocks = _next_days_block(today, by_day, followups_by_day)

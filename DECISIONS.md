@@ -964,6 +964,31 @@ Tres fricciones reales:
 
 ---
 
+## ADR-059 — Familias de proyectos: agrupar lo que se ve por días de la semana
+
+**Estado**: aceptada (2026-10-23), fase A. Diseño en `claude/notes/2026-10-23_familias-diseno.md` del workspace de desarrollo.
+
+**Contexto**: los ⏩ se acumulan (46 vencidos repartidos en 25 proyectos, 36 de más de una semana) y cada uno obliga a cambiar de contexto. El usuario ya reparte la semana por grupos de proyectos (lunes gestión, martes docencia, miércoles NEXT, jueves HK), pero orbit no lo sabía: el agrupado mental no tenía soporte. Se descartaron los subproyectos (concepto nuevo que toca casi todo) y la fusión de proyectos (migración cara, reduce poco).
+
+**Decisión**:
+1. **Familia = configuración** en `orbit.json` (`families: {nombre: {emoji, days, projects, types}}`). No toca ningún fichero-verdad; se quita borrando el bloque. Una familia por workspace; los federados no entran.
+2. **Pertenencia única**: un proyecto va a una sola familia; nombrarlo en `projects` manda sobre `types`. Si dos familias lo nombran, gana la primera y `doctor` avisa. Se admiten proyectos sin familia, varias familias por día y varios días por familia.
+3. **Solo lectura**: las familias agrupan lo que se ve; crear o editar citas sigue siendo de un proyecto.
+4. **Hoja por familia** `📊panel/secretary/families/<familia>.md` (⏩ · ⚠️ · 📅 30 días · 🗂️ sin fecha · 📊 cronos) en **callouts de Obsidian**: el estado plegado va escrito en el md (`-`/`+`), así sobrevive a la regeneración (el plegado propio de Obsidian no). Carril **hot**, con `agenda.md`: es la vista desde la que se tría. Los datos se leen una vez para todas las familias y `agenda.md`.
+5. **`agenda.md`**: línea `👥 Familias`, «Hoy es día de …» y los ⏩ de hoy fuera de la tabla, en un callout por familia (las del día abiertas). Sin familias, `agenda.md` no cambia.
+6. **`day` / `day fup`**: ⏩ Decidir ordenado y con subcabecera por familia (las del día primero). Cambia el orden de la numeración, no la entrada.
+7. **Render**: callout → `<details>` antes de python-markdown (marcador + sustitución tras convertir).
+
+**Fase B (pendiente)**: triaje por familia — `@familia` y la fecha `fam` (próximo día de la familia) en `day fup`, propuesta de `none` para ⏩ que se saltan 2 días de su familia, bloques 🧊/🗂️ en `day` el día de la familia, `@familia` en `ls`/`organize`.
+
+**Consecuencias**:
+- Pros: el reparto semanal del usuario se ve en el secretario y en `day` sin mover ni un fichero; reversible.
+- Contras: los ⏩ de hoy salen de la tabla de Hoy (con familias), así que la tabla y los ⏩ se leen en dos sitios; los callouts no pliegan en Typora (se ven abiertos).
+
+**Verificación**: `tests/test_families.py`.
+
+---
+
 ## ADR-058 — El `⏩` del triaje no mueve la cita
 
 **Estado**: aceptada (2026-10-04). **Enmienda ADR-052 §1** (y la nota de ADR-056 §4 que lo repetía).

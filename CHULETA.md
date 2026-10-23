@@ -1050,6 +1050,8 @@ Eliges un número y una acción (mismo menú que `organize`):
   quedó la cita: `✓ ✏️ «X» · 💻foo → cancelada` (o `completada`, `eliminado de
   la agenda`, `2026-10-05 · ⏩ 10-07`, `sin fecha`, `2026-10-01 10:00`…). Si un drop o un done
   no surtió efecto, lo dice con `⚠️ … NO se ha cancelado`.
+- Con familias en `orbit.json`, **⏩ Decidir** sale agrupado por familia: las
+  del día primero, luego el resto y «sin familia» (ver Familias de proyectos).
 - `day fup`: la misma lista, sin menú, con un **calendario de carga** (semana
   en curso + 4) encima del prompt. El fondo gris de cada día indica cuántas
   citas tiene: sin fondo = 0, y de claro a oscuro 1–4 · 5–9 · 10–14 · ≥15
@@ -1678,6 +1680,39 @@ Comandos que lo admiten: los mismos que `--open`.
 ## Tipos de proyecto
 
 Configurables en `orbit.json`. Ver: `orbit project type`
+
+## Familias de proyectos
+
+Grupos de proyectos que se tratan juntos, con sus días de la semana
+([ADR-059](DECISIONS.md#adr-059--familias-de-proyectos-agrupar-lo-que-se-ve-por-días-de-la-semana)).
+Solo configuración en `orbit.json`, sin comandos propios:
+
+```json
+"families": {
+  "ges":  {"emoji": "⚙️", "days": ["mon"], "types": ["gestion"]},
+  "next": {"emoji": "🔷", "days": ["wed"], "projects": ["next-general", "next-pn24", "…"]},
+  "hk":   {"emoji": "💧", "days": ["thu"], "projects": ["hk-general", "wcte-ana", "…"]}
+}
+```
+
+- **Miembros**: `projects` (nombres sin emoji de tipo) y/o `types` (tipos
+  enteros). Un proyecto va a **una sola familia**; nombrarlo manda sobre su
+  tipo (`next-pn24` es ⚙️ gestión pero va a `next`). Puede haber proyectos sin
+  familia, varias familias el mismo día y varios días por familia
+  (`mon tue wed thu fri sat sun`).
+- **Hoja por familia** `📊panel/secretary/families/<familia>.md`: ⏩ por
+  triar, ⚠️ vencidas, 📅 próximas (30 días: tareas, hitos, eventos y ⏩), 🗂️
+  sin fecha y 📊 cronogramas, en callouts plegables. El día de la familia, ⏩ y
+  ⚠️ salen abiertos. Se regenera con `agenda.md` (tras cada cambio).
+- **`agenda.md`**: línea `👥 Familias` en la cabecera (⏩ y ⚠️ de cada una),
+  `Hoy es día de …` encima de la tabla de Hoy, y los ⏩ por triar debajo,
+  en un callout por familia (las de hoy abiertas, las demás y «sin familia»
+  plegadas).
+- **`day` / `day fup`**: el bloque ⏩ Decidir sale agrupado por familia (las
+  de hoy primero, `· 💧 hk · hoy (4)`), con la numeración de siempre.
+- En la nube los callouts se ven como `<details>` desplegables.
+- `doctor` avisa de proyectos o tipos que no existen y de proyectos o tipos en
+  dos familias.
 
 ## Estados
 

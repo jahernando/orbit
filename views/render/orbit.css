@@ -187,3 +187,13 @@ img { max-width: 100%; height: auto; }
   table { font-size: 0.82rem; }
   nav.orbit-nav { margin: -1rem -0.75rem 1rem -0.75rem; }
 }
+
+/* Callouts de Obsidian → <details> (ADR-059) */
+details.callout {
+  border-left: 3px solid #999;
+  padding: 0.3rem 0.8rem;
+  margin: 0.8rem 0;
+  background: rgba(127, 127, 127, 0.06);
+}
+details.callout > summary { cursor: pointer; font-weight: 600; }
+details.callout-warning { border-left-color: #c58a00; }

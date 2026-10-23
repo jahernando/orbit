@@ -1081,17 +1081,21 @@ def cmd_panel(args):
 
 
 def run_dash_hot(silent: bool = False):
-    """Refresca SOLO `agenda.md` (carril hot).
+    """Refresca `agenda.md` y las hojas de familia (carril hot, ADR-059).
 
-    Es el único viewer que se regenera tras cualquier mutación de cita /
+    Son los únicos viewers que se regeneran tras cualquier mutación de cita /
     log / hl / project en background. Resto de viewers (cold) se queda
     estable hasta el siguiente `commit_post` / `day_open` / `orbit dash`.
 
     Ver ADR-036 + [[project-orbit-dashboard-refactor]] (F2).
     """
     from views.secretary import agenda as sec_agenda
+    from views.secretary import families as sec_families
     SECRETARY_DIR.mkdir(parents=True, exist_ok=True)
-    sec_agenda.generate(SECRETARY_DIR / "agenda.md")
+    from datetime import date as _date
+    allf = sec_families.collect_all(_date.today())
+    sec_agenda.generate(SECRETARY_DIR / "agenda.md", allf=allf)
+    sec_families.generate(SECRETARY_DIR / sec_families.DIRNAME, allf=allf)
     (ORBIT_DIR / ".dash-stamp").touch()
     if not silent:
         print("  ✓ agenda actualizada (📊panel/secretary/agenda.md)")

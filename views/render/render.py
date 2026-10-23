@@ -61,9 +61,46 @@ _HTML_TEMPLATE = """\
 _MD_EXTENSIONS = ["tables", "fenced_code", "nl2br", "sane_lists"]
 
 
+_CALLOUT_RE = re.compile(r"^>\s*\[!(?P<kind>[\w-]+)\](?P<fold>[+-]?)\s*(?P<title>.*)$")
+
+
+def _callouts_to_details(text: str) -> tuple:
+    """Callouts de Obsidian (``> [!note]- título`` + líneas ``>``) →
+    ``<details>`` (``open`` con ``+`` o sin plegado). Devuelve el texto con
+    un marcador por callout y ``{marcador: html}``: el HTML se pone tras
+    convertir, para que python-markdown no lo toque (ADR-059)."""
+    lines = text.split("\n")
+    out, blocks = [], {}
+    i = 0
+    while i < len(lines):
+        m = _CALLOUT_RE.match(lines[i])
+        if not m:
+            out.append(lines[i])
+            i += 1
+            continue
+        body = []
+        i += 1
+        while i < len(lines) and lines[i].startswith(">"):
+            body.append(re.sub(r"^> ?", "", lines[i]))
+            i += 1
+        title = markdown.markdown(m.group("title") or m.group("kind").capitalize())
+        title = re.sub(r"^<p>(.*)</p>$", r"\1", title.strip(), flags=re.S)
+        inner = _md_to_html("\n".join(body))
+        key = f"ORBITCALLOUT{len(blocks)}"
+        attr = "" if m.group("fold") == "-" else " open"
+        blocks[key] = (f'<details class="callout callout-{m.group("kind")}"{attr}>'
+                       f"<summary>{title}</summary>\n{inner}\n</details>")
+        out.extend(["", key, ""])
+    return "\n".join(out), blocks
+
+
 def _md_to_html(text: str) -> str:
     """Convert markdown text to HTML body (sin frontmatter YAML)."""
-    return markdown.markdown(_strip_frontmatter(text), extensions=_MD_EXTENSIONS)
+    text, blocks = _callouts_to_details(_strip_frontmatter(text))
+    html = markdown.markdown(text, extensions=_MD_EXTENSIONS)
+    for key, block in blocks.items():
+        html = html.replace(f"<p>{key}</p>", block)
+    return html
 
 
 def _strip_frontmatter(text: str) -> str:
@@ -413,6 +450,7 @@ def render_workspace_dashboard(cloud_root: Optional[Path] = None) -> int:
                                                                lo abre el browser
                                                                al entrar al cloud)
     - 📊panel/secretary/*.md          → cloud_root/📊panel/secretary/*.html
+    - 📊panel/secretary/families/*.md → …/secretary/families/*.html (ADR-059)
 
     Returns el número de ficheros renderizados (workspace.html cuenta
     como 1; index.html no cuenta porque es un stub estático).
@@ -445,6 +483,17 @@ def render_workspace_dashboard(cloud_root: Optional[Path] = None) -> int:
             dest = sec_cloud_dir / md.with_suffix(".html").name
             _render_file(md, dest, css_rel=css_rel, nav_html=nav)
             rendered += 1
+        # Hojas de familia (ADR-059): un nivel más abajo.
+        fam_src = sec_src_dir / "families"
+        if fam_src.is_dir():
+            fam_cloud = sec_cloud_dir / "families"
+            fam_cloud.mkdir(parents=True, exist_ok=True)
+            up2 = "../" + up
+            nav2 = f'<a href="{up2}workspace.html">🏠 Inicio</a>'
+            for md in sorted(fam_src.glob("*.md")):
+                _render_file(md, fam_cloud / md.with_suffix(".html").name,
+                             css_rel=up2 + _CSS_FILENAME, nav_html=nav2)
+                rendered += 1
 
     return rendered
 

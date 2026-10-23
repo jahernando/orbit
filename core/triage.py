@@ -82,6 +82,7 @@ class Row:
     item: dict
     section: str
     steps: list = field(default_factory=list)   # pasos del crono (ADR-055)
+    group: Optional[str] = None   # familia en ⏩ Decidir (ADR-059)
 
 
 @dataclass
@@ -257,7 +258,27 @@ def collect(dirs: list, today: date, full: bool,
         rows.sort(key=lambda r: _sort_key(r, today))
     if focus:
         _lift_focus(out, by_id, focus, today)
+    _group_by_family(out[DECIDIR], today)
     return out
+
+
+def _group_by_family(rows: list, today: date) -> None:
+    """Ordena ⏩ Decidir por familia (ADR-059): las de hoy primero, luego el
+    resto en el orden de ``orbit.json`` y al final «sin familia». Dentro de
+    cada grupo se conserva el orden. Sin familias, no toca nada."""
+    from core.families import family_of, group_order, load_families
+    fams = load_families()
+    if not fams or not rows:
+        return
+    order = group_order(today, fams)
+    rank = {(f.name if f else None): i for i, f in enumerate(order)}
+    ranks = {}
+    for r in rows:
+        f = family_of(r.project_dir, fams)
+        r.group = (f"{f.label}{' · hoy' if f.is_day(today) else ''}"
+                   if f else "sin familia")
+        ranks[id(r)] = rank[f.name if f else None]
+    rows.sort(key=lambda r: ranks[id(r)])
 
 
 def _lift_focus(out: dict, by_id: dict, focus: tuple, today: date) -> None:
@@ -402,7 +423,12 @@ def format_listing(title: str, sections: dict, today: date,
                 lines.append(f"       {focus_head}")
         else:
             lines.append(f"── {SECTION_TITLE[s]} ({len(rows)})")
+        group = None
         for row in rows:
+            if row.group and row.group != group:
+                group = row.group
+                n_group = sum(1 for r in rows if r.group == group)
+                lines.append(f"     · {group} ({n_group})")
             n += 1
             lines.append(format_row(n, row, today, show_project, focus))
             for st in row.steps:
