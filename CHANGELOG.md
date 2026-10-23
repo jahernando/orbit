@@ -10,6 +10,17 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — ledger: marcas, `edit --dry-run`, justificante repetido
+
+- **Línea compacta** de `ledger <p>` / `ls ledger` / selector de `edit`: marcas
+  `🔗 N` (compromiso que consume) y `🔒` (cierra / compromiso cerrado).
+- **Fix**: `ledger <p> edit N … --dry-run` aplicaba los cambios y copiaba el
+  justificante; ahora solo los enseña.
+- **`edit --doc`** con un nombre ya importado en `ledger-logs/`: se reutiliza si
+  es idéntico (hash) y si no se copia con sufijo `_2`; un justificante que
+  falla ya no aborta el resto de campos. `link_import.apply_mode` gana
+  `dedupe` y `dry_run`.
+
 ### Unreleased — triaje por familia (fase B) · ADR-060
 
 - **`day @hk` / `day @hk @next` / `day @all`**: propuesta sobre ⚠️ y ⏩

@@ -99,7 +99,9 @@ def _strip_diacritics(name: str) -> str:
 
 def apply_mode(project_dir: Path, src: Path, mode: str, *,
                non_md_subdir: str,
-               date_prefix: bool = False) -> Tuple[str, Path]:
+               date_prefix: bool = False,
+               dedupe: bool = False,
+               dry_run: bool = False) -> Tuple[str, Path]:
     """Apply link or import for ``src`` in ``project_dir``.
 
     Returns ``(relative_link, dest_path)``:
@@ -116,6 +118,10 @@ def apply_mode(project_dir: Path, src: Path, mode: str, *,
             (e.g. ``"logs"`` for log, ``"hls"`` for hl).
         date_prefix: prepend ``YYYY-MM-DD_`` to the destination filename.
             Applied to .md files in notes/ AND non-md in cloud/ uniformly.
+        dedupe: (import) si el destino ya existe, se **reutiliza** cuando es
+            idéntico (mismo hash) y, si no, se copia con sufijo ``_2``, ``_3``…
+            en vez de fallar.
+        dry_run: calcula el enlace sin copiar ni crear nada.
 
     Raises:
         FileNotFoundError: source missing.
@@ -137,21 +143,54 @@ def apply_mode(project_dir: Path, src: Path, mode: str, *,
     base = _strip_diacritics(src.name) if is_md else src.name
     filename = f"{_date.today().isoformat()}_{base}" if date_prefix else base
 
+    dedupe = dedupe and mode == "import"
     if is_md:
-        return _apply_md(project_dir, src, mode, filename)
-    return _apply_non_md(project_dir, src, mode, filename, non_md_subdir)
+        return _apply_md(project_dir, src, mode, filename, dedupe, dry_run)
+    return _apply_non_md(project_dir, src, mode, filename, non_md_subdir,
+                         dedupe, dry_run)
+
+
+def _same_content(a: Path, b: Path) -> bool:
+    import hashlib
+
+    def digest(p: Path) -> str:
+        h = hashlib.sha256()
+        with open(p, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    return a.stat().st_size == b.stat().st_size and digest(a) == digest(b)
+
+
+def _free_dest(dest: Path, src: Path) -> Tuple[Path, bool]:
+    """``(destino, reutilizar)`` para un import con *dedupe*: el mismo fichero
+    si es idéntico a *src*; si no, el primer ``nombre_N.ext`` libre o idéntico."""
+    candidate, n = dest, 1
+    while candidate.exists() or candidate.is_symlink():
+        if candidate.is_file() and _same_content(candidate, src):
+            return candidate, True
+        n += 1
+        candidate = dest.with_name(f"{dest.stem}_{n}{dest.suffix}")
+    return candidate, False
 
 
 # ── Implementations ────────────────────────────────────────────────────────────
 
 def _apply_md(project_dir: Path, src: Path, mode: str,
-              filename: str) -> Tuple[str, Path]:
+              filename: str, dedupe: bool = False,
+              dry_run: bool = False) -> Tuple[str, Path]:
     """Place an .md file in ``notes/`` as symlink (link) or copy (import)."""
     notes_dir = project_dir / "notes"
-    notes_dir.mkdir(exist_ok=True)
     dest = notes_dir / filename
+    reuse = False
     if dest.exists() or dest.is_symlink():
-        raise FileExistsError(f"notes/{filename} ya existe en {project_dir.name}")
+        if not dedupe:
+            raise FileExistsError(f"notes/{filename} ya existe en {project_dir.name}")
+        dest, reuse = _free_dest(dest, src)
+        filename = dest.name
+    if dry_run or reuse:
+        return f"./notes/{filename}", dest
+    notes_dir.mkdir(exist_ok=True)
 
     if mode == "link":
         # Reuse the tracked registry — externa semantics already established.
@@ -169,7 +208,8 @@ def _apply_md(project_dir: Path, src: Path, mode: str,
 
 
 def _apply_non_md(project_dir: Path, src: Path, mode: str,
-                  filename: str, subdir: str) -> Tuple[str, Path]:
+                  filename: str, subdir: str, dedupe: bool = False,
+                  dry_run: bool = False) -> Tuple[str, Path]:
     """Place a non-md file in ``cloud/<subdir>/`` as symlink or copy.
 
     For *link* the symlink target is the source on the local filesystem.
@@ -189,11 +229,17 @@ def _apply_non_md(project_dir: Path, src: Path, mode: str,
             f"no se pudo determinar directorio cloud para {project_dir.name}")
 
     dest_dir = cloud_dir / CLOUD_SUBDIR / subdir
-    dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / filename
+    reuse = False
     if dest.exists() or dest.is_symlink():
-        raise FileExistsError(f"cloud/{subdir}/{filename} ya existe en "
-                              f"{project_dir.name}")
+        if not dedupe:
+            raise FileExistsError(f"cloud/{subdir}/{filename} ya existe en "
+                                  f"{project_dir.name}")
+        dest, reuse = _free_dest(dest, src)
+        filename = dest.name
+    if dry_run or reuse:
+        return encode_cloud_link(f"./{CLOUD_SUBDIR}/{subdir}/{filename}"), dest
+    dest_dir.mkdir(parents=True, exist_ok=True)
 
     if mode == "link":
         rel_target = os.path.relpath(src, start=dest.parent)

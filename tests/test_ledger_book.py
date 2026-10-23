@@ -627,3 +627,87 @@ class TestAddPositionals:
     def test_ruta_que_no_existe(self, book, capsys):
         assert self._run("add", "Dietas", "/no/existe.pdf", *self.FLAGS) == 1
         assert "no encuentro el fichero /no/existe.pdf" in capsys.readouterr().out
+
+
+# ── Línea compacta con 🔗/🔒, edit --dry-run y justificante repetido ─────────
+
+class TestLineMarks:
+
+    def test_commit_link_and_closed_marks(self, book, capsys):
+        from views.ledger import run_ls_ledger
+        _add(book, tag="ingreso", title="Dotación", payee="Agencia",
+             amount="1000", category=None)
+        _add(book, tag="compromiso", title="Folla DI2026", amount="219.23",
+             category="congresos", payee="Pablo")
+        _add(book, title="Factura DI2026", amount="219.23", category="congresos",
+             payee="Pablo", commit="2", closes=True)
+        _add(book, tag="compromiso", title="Abierto", amount="50",
+             category="viajes")
+        run_ls_ledger("testproj")
+        lines = {l.split()[0]: l for l in capsys.readouterr().out.splitlines()
+                 if l.startswith("  000")}
+        assert lines["0002"].endswith("Folla DI2026 · Pablo  🔒")
+        assert lines["0003"].endswith("Factura DI2026 · Pablo  🔗 0002 🔒")
+        assert lines["0004"].endswith("Abierto · Ana")            # abierto: sin marca
+        assert lines["0001"].endswith("Dotación · Agencia")
+
+
+class TestEditDryRun:
+
+    def _run(self, *argv):
+        import orbit
+        return orbit.cmd_ledger(orbit._build_parser().parse_args(["ledger", "testproj", *argv]))
+
+    def test_dry_run_changes_nothing(self, book, tmp_path, capsys):
+        _add(book)
+        before = (book / "ledger.md").read_text()
+        pdf = tmp_path / "nueva.pdf"
+        pdf.write_bytes(b"%PDF-nueva")
+        assert self._run("edit", "1", str(pdf), "--title", "Otra", "--dry-run") == 0
+        out = capsys.readouterr().out
+        assert "simulación" in out and "Otra" in out and "nueva.pdf" in out
+        assert (book / "ledger.md").read_text() == before
+        logs = tmp_path / "cloudroot"
+        assert not list(logs.rglob("*nueva.pdf"))                 # no se copia
+
+    def test_dry_run_core(self, book):
+        _add(book)
+        _b, e, shown = edit_movement(book, "1", amount="150", dry_run=True)
+        assert shown and read_book(book).get("1").amount == D("-100.00")
+
+
+class TestDocAlreadyImported:
+
+    def _logs(self, tmp_path):
+        return [p for p in (tmp_path / "cloudroot").rglob("*") if p.is_file()
+                and "ledger-logs" in str(p)]
+
+    def test_identical_file_is_reused(self, book, tmp_path):
+        pdf = tmp_path / "factura.pdf"
+        pdf.write_bytes(b"%PDF-1")
+        e1 = _add(book, doc=str(pdf))
+        _add(book, title="Otra")
+        _b, e2, _s = edit_movement(book, "2", doc=str(pdf))
+        assert e2.link == e1.link and len(self._logs(tmp_path)) == 1
+
+    def test_different_file_gets_suffix(self, book, tmp_path):
+        pdf = tmp_path / "factura.pdf"
+        pdf.write_bytes(b"%PDF-1")
+        e1 = _add(book, doc=str(pdf))
+        pdf.write_bytes(b"%PDF-2 distinto")
+        _add(book, title="Otra")
+        _b, e2, _s = edit_movement(book, "2", doc=str(pdf))
+        assert e2.link != e1.link and e2.link.endswith("_factura_2.pdf")
+        assert len(self._logs(tmp_path)) == 2
+
+    def test_failed_doc_does_not_abort_other_fields(self, book):
+        _add(book)
+        _b, e, shown = edit_movement(book, "1", title="Nuevo",
+                                     doc="/no/existe.pdf")
+        assert read_book(book).get("1").title == "Nuevo"
+        assert any("justificante sin cambiar" in s for s in shown)
+
+    def test_failed_doc_alone_still_errors(self, book):
+        _add(book)
+        with pytest.raises(BookError, match="no encuentro el justificante"):
+            edit_movement(book, "1", doc="/no/existe.pdf")

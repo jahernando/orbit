@@ -465,9 +465,14 @@ def _check_commit(book: Book, tag: str, commit: Optional[str]) -> Optional[str]:
     return commit
 
 
-def import_doc(project_dir: Path, doc: Optional[str]) -> Optional[str]:
+def import_doc(project_dir: Path, doc: Optional[str],
+               dry_run: bool = False) -> Optional[str]:
     """Justificante → enlace. Dentro del proyecto se enlaza tal cual; fuera, se
-    copia a `cloud/ledger-logs/` con fecha. URL: tal cual. Lanza `BookError`."""
+    copia a `cloud/ledger-logs/` con fecha. URL: tal cual. Lanza `BookError`.
+
+    Si ya hay en `ledger-logs/` un fichero con ese nombre, se reutiliza si es
+    idéntico y, si no, se copia con sufijo (`_2`…). *dry_run*: el enlace que
+    saldría, sin copiar nada."""
     if not doc:
         return None
     if "://" in doc:
@@ -484,7 +489,8 @@ def import_doc(project_dir: Path, doc: Optional[str]) -> Optional[str]:
     from core.link_import import apply_mode
     try:
         link, _ = apply_mode(project_dir, src, "import",
-                             non_md_subdir=LEDGER_LOGS, date_prefix=True)
+                             non_md_subdir=LEDGER_LOGS, date_prefix=True,
+                             dedupe=True, dry_run=dry_run)
     except (FileExistsError, RuntimeError, ValueError, FileNotFoundError) as exc:
         raise BookError(f"no he podido importar {doc}: {exc}")
     return link
@@ -594,9 +600,13 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
                   when: Optional[date] = None, op_id: Optional[str] = None,
                   note: Optional[str] = None, confirm: Optional[str] = None,
                   unconfirm: bool = False, force: bool = False,
-                  today: Optional[date] = None) -> Tuple[Entry, Entry, List[str]]:
+                  today: Optional[date] = None,
+                  dry_run: bool = False) -> Tuple[Entry, Entry, List[str]]:
     """Corrige, confirma o desconfirma una entrada. Devuelve `(antes, después,
     cambios)`. Deja una nota automática con los cambios. Lanza `BookError`.
+
+    *dry_run*: calcula y devuelve lo mismo sin escribir el libro, el rastro
+    ni copiar el justificante.
 
     - No cambia el tipo: se anula la entrada y se anota otra.
     - Una entrada confirmada (☑️) solo se corrige con `force`, y pierde el ☑️
@@ -653,8 +663,16 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
         raise BookError("nada que cambiar: --title --payee --cat --doc --amount "
                         "--date --id --nota --confirm --unconfirm")
 
+    doc_warning = None
     if doc is not None:
-        link = import_doc(project_dir, doc)
+        try:
+            link = import_doc(project_dir, doc, dry_run=dry_run)
+        except BookError as exc:
+            # Un justificante que falla no tumba el resto de la edición.
+            if len(changes) == 1 and not (confirm or unconfirm
+                                          or (note and note.strip())):
+                raise
+            link, doc_warning = e.link, f"⚠️ justificante sin cambiar: {exc}"
         changes[-1] = ("link", e.link, link)
         if link == e.link:
             changes.pop()
@@ -680,9 +698,12 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
     if note and note.strip():
         e.notes.append(" ".join(note.split()))
 
-    _replace_entry(book, e)
-    if any(n in ("title", "date") for n, _o, _n in changes):
-        update_trail(project_dir, e)
+    if not dry_run:
+        _replace_entry(book, e)
+        if any(n in ("title", "date") for n, _o, _n in changes):
+            update_trail(project_dir, e)
+    if doc_warning:
+        shown.append(doc_warning)
     return before, e, shown
 
 

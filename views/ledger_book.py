@@ -322,14 +322,27 @@ def match_entries(book: Book, text: str, entries=None):
             if any(needle in _fold(x) for x in (e.title, e.payee, e.op_id) if x)]
 
 
-def entry_line(e, link: bool = False) -> str:
+def closed_commitments(book: Book) -> set:
+    """Nº de los compromisos vivos ya cerrados (gastados del todo o 🔒)."""
+    from core.ledger_book import open_commitments
+    opens = {op.op_id for op in open_commitments(book)}
+    return {e.num for e in book.entries
+            if e.tag == ORDER_TAG and e.live and e.num not in opens}
+
+
+def entry_line(e, link: bool = False, closed: frozenset = frozenset()) -> str:
     """Una entrada en una línea: nº, fecha, tipo, importe, título ·
-    beneficiario (+ ☑️ / 🚫). Con *link*, el título enlaza el justificante."""
+    beneficiario y marcas (🔗 compromiso que consume, 🔒 cierra / cerrado,
+    ☑️, 🚫). Con *link*, el título enlaza el justificante. *closed*: nº de
+    los compromisos cerrados (``closed_commitments``)."""
     amount = format_amount(e.amount, plus=True) if e.amount is not None else "?"
     title = f"[{e.title}]({e.link})" if link and e.link else e.title
+    marks = [m for m in (f"🔗 {e.commit}" if e.commit else "",
+                         "🔒" if e.closes or e.num in closed else "",
+                         "☑️" if e.confirmed else "",
+                         "🚫" if not e.live else "") if m]
     return (f"  {e.num}  {e.date or '?'}  {e.tag:<10} {amount:>12}  "
-            f"{title} · {e.payee or '?'}" + ("  ☑️" if e.confirmed else "")
-            + ("  🚫" if not e.live else ""))
+            f"{title} · {e.payee or '?'}" + ("  " + " ".join(marks) if marks else ""))
 
 
 def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
@@ -362,6 +375,7 @@ def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
             raise BookError(f"la {num} no está entre las {what}")
         return match_entries(book, raw, pool)
 
+    closed = closed_commitments(book)
     tty = sys.stdin.isatty()
     candidates = _by_text(text) if text else pool
     if text and not candidates:
@@ -374,11 +388,11 @@ def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
         if not candidates:
             raise BookError(f"no hay {what}")
         if not tty:
-            listing = "\n".join(entry_line(e) for e in candidates)
+            listing = "\n".join(entry_line(e, closed=closed) for e in candidates)
             raise BookError(f"¿cuál? dame el nº o un trozo del título:\n{listing}")
         print(f"{what.capitalize()}{f' que coinciden con «{text}»' if text else ''}:")
         for e in candidates:
-            print(entry_line(e))
+            print(entry_line(e, closed=closed))
         try:
             raw = _ask_line("Nº o texto (Enter = cancelar)")
         except Cancelled:
@@ -509,7 +523,15 @@ def run_book_action(args) -> int:
                 project_dir, args.target, title=args.title, payee=args.payee,
                 category=args.cat, doc=args.doc, amount=args.amount,
                 when=_day(args.date, "--date"), op_id=args.op_id, note=args.nota,
-                confirm=args.confirm, unconfirm=args.unconfirm, force=args.force)
+                confirm=args.confirm, unconfirm=args.unconfirm, force=args.force,
+                dry_run=getattr(args, "dry_run", False))
+            if getattr(args, "dry_run", False):
+                print(f"🔎 [{project_dir.name}] ledger {e.num} · simulación, "
+                      f"no se ha tocado nada:")
+                for line in shown or ["(sin cambios de campos)"]:
+                    print(f"  {line}")
+                _echo(e)
+                return 0
             write_ledger(project_dir)
             what = []
             if shown:
@@ -656,8 +678,9 @@ def print_book(project_dir: Path, book: Book, label: Optional[str] = None,
     if not book.entries:
         print(f"  (sin movimientos) · anota con: orbit ledger {name} add")
     elif not long:
+        closed = closed_commitments(book)
         for e in sorted(book.entries, key=lambda x: (x.date or book.valid_from, x.num)):
-            print(entry_line(e, link=True))
+            print(entry_line(e, link=True, closed=closed))
     else:
         rows = {r.mov.num: r for r in running_rows(movs, ops)}
         print(f"  {'Nº':<4}  {'Fecha':<10}  {'Tipo':<10}  {'Categoría':<13} "

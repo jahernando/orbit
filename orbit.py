@@ -2145,7 +2145,7 @@ def _build_parser():
     ledger_p.add_argument("--cats", default=None, metavar="N=CAT,…",
                           help="migrate: categoría de cada entrada (p. ej. 2=congresos,3=viajes)")
     ledger_p.add_argument("--dry-run", dest="dry_run", action="store_true",
-                          help="migrate: enseña el plan sin tocar nada")
+                          help="migrate / edit: enseña el plan sin tocar nada")
     ledger_p.add_argument("--force", action="store_true",
                           help="fecha fuera de validez, o corregir/anular una entrada confirmada")
 

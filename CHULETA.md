@@ -596,7 +596,7 @@ orbit ledger <p> add ["Título"] [PDF]               # en terminal pregunta lo q
 orbit ledger <p> add [PDF] --type ingreso|compromiso|gasto --title … --payee … \
           --amount N --cat C [--date D] [--id REF] [--commit N [--closes]] \
           [--nota …] [--no-log] [--force]
-orbit ledger <p> edit E [PDF] [--title --payee --cat --doc --amount --date --id --nota] [--force]
+orbit ledger <p> edit E [PDF] [--title --payee --cat --doc --amount --date --id --nota] [--force] [--dry-run]
 orbit ledger <p> edit E --confirm ID [--amount …]   # ☑️ hoy · ID (herramienta externa)
 orbit ledger <p> edit E --unconfirm
 orbit ledger <p> close E                            # cierra un compromiso a mano (🔒)
@@ -604,6 +604,10 @@ orbit ledger <p> cancel E [--force]                 # anula (🚫): se queda y n
 # E = nº de entrada o un trozo del título / beneficiario / referencia; sin E
 #     (o si coinciden varias) te enseña la lista y eliges. --title es el título NUEVO.
 orbit ledger <p> edit ginebra factura.pdf           # cambia el justificante de «…Ginebra…»
+# edit --dry-run: enseña los cambios sin escribir ni copiar el justificante.
+# Justificante ya importado (mismo nombre en ledger-logs/): se reutiliza si es
+# idéntico; si no, se copia con sufijo _2. Si el justificante falla, el resto
+# de campos se aplica igual (y lo avisa).
 orbit ledger <p> check [--strict]
 orbit ledger <p> migrate --from D --to D [--partida X] [--cats 2=viajes,3=congresos…] \
           [--dry-run] [--force]                     # logbook → libro (una vez por proyecto)
@@ -640,7 +644,8 @@ Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
   categoría, compromisos abiertos, movimientos con acumulados) y `ledger.json`
   v2 (clave = nº). `ledger.md` no se regenera nunca.
 - **`ledger <p>` / `ls ledger [p]`** listan el libro con una línea por entrada
-  (nº, fecha, tipo, importe, título · beneficiario, ☑️/🚫; la misma que `edit`
+  (nº, fecha, tipo, importe, título · beneficiario y marcas: `🔗 N` compromiso
+  que consume, `🔒` cierra / compromiso cerrado, ☑️, 🚫; la misma que `edit`
   sin nº), con el **título enlazando el justificante** (⌘-clic en la terminal),
   y debajo el resumen validado frente a vivo con el total por categoría.
   `--long`: la tabla completa (categoría, disponible acumulado, estado,
