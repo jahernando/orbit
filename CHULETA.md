@@ -650,9 +650,11 @@ Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
   categoría, compromisos abiertos, movimientos con acumulados) y `ledger.json`
   v2 (clave = nº). `ledger.md` no se regenera nunca.
 - **`ledger <p>` / `ls ledger [p]`** listan el libro con una línea por entrada
-  (nº, fecha, tipo, importe, título · beneficiario y marcas: `🔗 N` compromiso
-  que consume, `🔒` cierra / compromiso cerrado, ☑️, 🚫; la misma que `edit`
-  sin nº), con el **título enlazando el justificante** (⌘-clic en la terminal),
+  (nº, fecha, tipo, importe, título · beneficiario y marcas: `🔒` cierra /
+  compromiso cerrado, `⏳ pendiente X` compromiso abierto, ☑️, 🚫; la misma que
+  `edit` sin nº). **Cada gasto que consume un compromiso sale debajo de él**
+  (`└ 0021 …`), y el compromiso lleva su importe entre paréntesis: es una
+  reserva, lo que cuenta es lo gastado. El **título enlaza el justificante** (⌘-clic en la terminal),
   y debajo el resumen validado frente a vivo con el total por categoría.
   `--long`: la tabla completa (categoría, disponible acumulado, estado,
   🔗 compromiso). `ls ledger` solo lee.

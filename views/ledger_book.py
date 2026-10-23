@@ -330,19 +330,57 @@ def closed_commitments(book: Book) -> set:
             if e.tag == ORDER_TAG and e.live and e.num not in opens}
 
 
-def entry_line(e, link: bool = False, closed: frozenset = frozenset()) -> str:
+def entry_line(e, link: bool = False, closed: frozenset = frozenset(),
+               pending: Optional[dict] = None, nested: bool = False) -> str:
     """Una entrada en una línea: nº, fecha, tipo, importe, título ·
     beneficiario y marcas (🔗 compromiso que consume, 🔒 cierra / cerrado,
-    ☑️, 🚫). Con *link*, el título enlaza el justificante. *closed*: nº de
-    los compromisos cerrados (``closed_commitments``)."""
+    ⏳ pendiente, ☑️, 🚫). Con *link*, el título enlaza el justificante.
+    *closed*: nº de los compromisos cerrados (``closed_commitments``);
+    *pending*: ``{nº: lo que sigue comprometido}`` de los abiertos.
+
+    Un compromiso lleva el importe entre paréntesis cuando se agrupa con sus
+    gastos (*pending* dado): es una reserva, lo que cuenta es lo gastado.
+    *nested*: gasto pintado bajo su compromiso (``└``, sin 🔗)."""
     amount = format_amount(e.amount, plus=True) if e.amount is not None else "?"
+    if pending is not None and e.tag == ORDER_TAG and e.amount is not None:
+        amount = f"({amount})"
     title = f"[{e.title}]({e.link})" if link and e.link else e.title
-    marks = [m for m in (f"🔗 {e.commit}" if e.commit else "",
+    left = (pending or {}).get(e.num)
+    marks = [m for m in (f"🔗 {e.commit}" if e.commit and not nested else "",
                          "🔒" if e.closes or e.num in closed else "",
+                         f"⏳ pendiente {format_amount(left)}" if left else "",
                          "☑️" if e.confirmed else "",
                          "🚫" if not e.live else "") if m]
-    return (f"  {e.num}  {e.date or '?'}  {e.tag:<10} {amount:>12}  "
+    when = str(e.date or "?")
+    head = (f"     └ {e.num}  {when[5:] if e.date else when}" if nested
+            else f"  {e.num}  {when}")
+    return (f"{head}  {e.tag:<10} {amount:>12}  "
             f"{title} · {e.payee or '?'}" + ("  " + " ".join(marks) if marks else ""))
+
+
+def grouped_lines(book: Book, entries=None, link: bool = False) -> list:
+    """Líneas de *entries* (todas por defecto) con cada gasto que consume un
+    compromiso **debajo de él**: el compromiso y sus facturas se leen como
+    una sola operación. El resto, por fecha."""
+    from core.ledger_book import open_commitments
+    entries = list(book.entries if entries is None else entries)
+    closed = closed_commitments(book)
+    pending = {op.op_id: op.pending for op in open_commitments(book)}
+    nums = {e.num for e in entries}
+    children: dict = {}
+    for e in entries:
+        if e.commit and e.commit in nums:
+            children.setdefault(e.commit, []).append(e)
+    key = lambda x: (x.date or book.valid_from, x.num)
+    lines = []
+    for e in sorted(entries, key=key):
+        if e.commit and e.commit in nums:
+            continue                       # sale bajo su compromiso
+        lines.append(entry_line(e, link=link, closed=closed, pending=pending))
+        for c in sorted(children.get(e.num, []), key=key):
+            lines.append(entry_line(c, link=link, closed=closed,
+                                    pending=pending, nested=True))
+    return lines
 
 
 def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
@@ -375,7 +413,6 @@ def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
             raise BookError(f"la {num} no está entre las {what}")
         return match_entries(book, raw, pool)
 
-    closed = closed_commitments(book)
     tty = sys.stdin.isatty()
     candidates = _by_text(text) if text else pool
     if text and not candidates:
@@ -388,11 +425,11 @@ def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
         if not candidates:
             raise BookError(f"no hay {what}")
         if not tty:
-            listing = "\n".join(entry_line(e, closed=closed) for e in candidates)
+            listing = "\n".join(grouped_lines(book, candidates))
             raise BookError(f"¿cuál? dame el nº o un trozo del título:\n{listing}")
         print(f"{what.capitalize()}{f' que coinciden con «{text}»' if text else ''}:")
-        for e in candidates:
-            print(entry_line(e, closed=closed))
+        for line in grouped_lines(book, candidates):
+            print(line)
         try:
             raw = _ask_line("Nº o texto (Enter = cancelar)")
         except Cancelled:
@@ -678,9 +715,8 @@ def print_book(project_dir: Path, book: Book, label: Optional[str] = None,
     if not book.entries:
         print(f"  (sin movimientos) · anota con: orbit ledger {name} add")
     elif not long:
-        closed = closed_commitments(book)
-        for e in sorted(book.entries, key=lambda x: (x.date or book.valid_from, x.num)):
-            print(entry_line(e, link=True, closed=closed))
+        for line in grouped_lines(book, link=True):
+            print(line)
     else:
         rows = {r.mov.num: r for r in running_rows(movs, ops)}
         print(f"  {'Nº':<4}  {'Fecha':<10}  {'Tipo':<10}  {'Categoría':<13} "

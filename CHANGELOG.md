@@ -10,6 +10,13 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — ledger: compromiso y facturas como una operación
+
+- `ledger <p>` / `ls ledger` / lista de `edit`: cada gasto que consume un
+  compromiso sale **debajo de él** (`└`); el compromiso lleva el importe entre
+  paréntesis y, si sigue abierto, `⏳ pendiente X`. El libro no cambia: dos
+  entradas, dos documentos (`--long` sigue siendo cronológico).
+
 ### Unreleased — crono: borrado al hacer drop y huérfanos en el doctor
 
 - `task/ms drop` de un item con crono pregunta si borrar el fichero del crono

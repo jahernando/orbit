@@ -644,12 +644,28 @@ class TestLineMarks:
         _add(book, tag="compromiso", title="Abierto", amount="50",
              category="viajes")
         run_ls_ledger("testproj")
-        lines = {l.split()[0]: l for l in capsys.readouterr().out.splitlines()
-                 if l.startswith("  000")}
-        assert lines["0002"].endswith("Folla DI2026 · Pablo  🔒")
-        assert lines["0003"].endswith("Factura DI2026 · Pablo  🔗 0002 🔒")
-        assert lines["0004"].endswith("Abierto · Ana")            # abierto: sin marca
-        assert lines["0001"].endswith("Dotación · Agencia")
+        rows = [l for l in capsys.readouterr().out.splitlines()
+                if l.startswith("  000") or l.startswith("     └ ")]
+        # El gasto sale debajo de su compromiso; el compromiso, entre
+        # paréntesis; el abierto dice lo pendiente.
+        assert rows[1].startswith("  0002  2026-09-01  compromiso    (-219,23)")
+        assert rows[1].endswith("Folla DI2026 · Pablo  🔒")
+        assert rows[2].startswith("     └ 0003  09-01  gasto")
+        assert rows[2].endswith("Factura DI2026 · Pablo  🔒")       # sin 🔗: ya va anidado
+        assert rows[3].endswith("Abierto · Ana  ⏳ pendiente 50,00")
+        assert rows[0].endswith("Dotación · Agencia")
+
+    def test_picker_groups_too(self, book):
+        from core.ledger_book import read_book
+        from views.ledger_book import grouped_lines
+        _add(book, tag="compromiso", title="Pedido", amount="100",
+             category="viajes")
+        _add(book, title="Suelto")
+        _add(book, title="Factura", amount="60", commit="1")
+        lines = grouped_lines(read_book(book))
+        assert [l.split()[0] if not l.strip().startswith("└") else "└" + l.split()[1]
+                for l in lines] == ["0001", "└0003", "0002"]
+        assert "⏳ pendiente 40,00" in lines[0]
 
 
 class TestEditDryRun:
