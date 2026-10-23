@@ -93,7 +93,6 @@ graph TB
         ls["ls · 135"]
         stats["stats · 468"]
         doctor["doctor · 758"]
-        reorganize["reorganize · 344"]
     end
 
     subgraph FOUND [F · Foundation]

@@ -5,7 +5,7 @@ into six focused modules under ``core/agenda/``. The shim keeps every
 public and private name accessible at its old import path so the ~20
 external callers (orbit.py, ring.py, ring_export.py, ics.py,
 ics_share.py, agenda_view.py, panel.py, doctor.py, email.py, archive.py,
-stats.py, inbox.py, reorganize.py, cronograma.py, project_view.py,
+stats.py, inbox.py, cronograma.py, project_view.py,
 shell.py and scripts/) don't break.
 
 New code should import from :mod:`core.agenda` (or one of its submodules)
