@@ -202,11 +202,23 @@ def _next_day(family, today):
     return None
 
 
-def summary_parts(c: dict) -> list:
-    """``⏩5 · ⚠️2 · 🗂️14 sin fecha`` (solo lo que no es 0)."""
+def oldest_fup_days(data: dict, today) -> int:
+    """Días del ⏩ vencido más antiguo (0 si no hay): que plegar no esconda
+    la deuda (ADR-060)."""
+    dates = [fup["date"] for _p, _k, _i, fup in data.get("fups", [])]
+    return (today - _date.fromisoformat(min(dates))).days if dates else 0
+
+
+def fups_mark(n: int, oldest: int) -> str:
+    """``⏩5 (23 d)``; sin la antigüedad si es de hoy."""
+    return f"⏩{n}" + (f" ({oldest} d)" if oldest else "")
+
+
+def summary_parts(c: dict, oldest: int = 0) -> list:
+    """``⏩5 (23 d) · ⚠️2 · 🗂️14 sin fecha`` (solo lo que no es 0)."""
     parts = []
     if c.get("fups"):
-        parts.append(f"⏩{c['fups']}")
+        parts.append(fups_mark(c["fups"], oldest))
     if c.get("overdue"):
         parts.append(f"⚠️{c['overdue']}")
     if c.get("undated"):
@@ -231,7 +243,7 @@ def page_lines(family, dirs, data, today) -> list:
              f"> 📆 {when}",
              "> Proyectos: " + (" · ".join(proj_link_md(p) for p in dirs)
                                 or "*ninguno*")]
-    parts = summary_parts(c)
+    parts = summary_parts(c, oldest_fup_days(data, today))
     if c["upcoming"]:
         parts.append(f"📅{c['upcoming']} próximas")
     if c["cronos"]:

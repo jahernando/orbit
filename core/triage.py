@@ -46,10 +46,52 @@ from core.cronograma import item_steps, step_label
 from core.dateparse import parse_date as _parse_date
 from core.log import resolve_file
 from core.project import _is_new_project, _find_new_project
-# Helpers de acción compartidos con el `organize` antiguo. Cuando se retiren
-# `--triage` / `-P` (fase destructiva), se mudan aquí.
-from core.organize import (_prompt, _looks_iso, _edit_kind_date, _drop_kind,
-                           _locate_in_data)
+
+
+# ── Helpers de acción (venían del `organize` antiguo, retirado en ADR-060) ─
+
+def _prompt(prompt_str: str, default: str = "") -> str:
+    try:
+        v = input(prompt_str).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return ""
+    return v or default
+
+
+def _looks_iso(s: str) -> bool:
+    """¿*s* es una fecha ``YYYY-MM-DD``?"""
+    return bool(re.match(r"^\d{4}-\d{2}-\d{2}$", s or ""))
+
+
+def _edit_kind_date(kind: str, proj: str, desc: str,
+                    new_date: Optional[str], new_time: Optional[str]) -> None:
+    """Fecha (y hora opcional) de una cita de cualquier tipo. force=True."""
+    from core.agenda_cmds import (run_ev_edit, run_ms_edit,
+                                  run_reminder_edit, run_task_edit)
+    edit = {"task": run_task_edit, "ms": run_ms_edit, "ev": run_ev_edit,
+            "reminder": run_reminder_edit}[kind]
+    edit(proj, desc, new_date=new_date, new_time=new_time, force=True)
+
+
+def _drop_kind(kind: str, proj: str, desc: str) -> None:
+    from core.agenda_cmds import (run_ev_drop, run_ms_drop,
+                                  run_reminder_drop, run_task_drop)
+    drop = {"task": run_task_drop, "ms": run_ms_drop, "ev": run_ev_drop,
+            "reminder": run_reminder_drop}[kind]
+    drop(proj, desc, force=True)
+
+
+def _locate_in_data(data: dict, item: dict) -> Optional[dict]:
+    """La cita *item* en una agenda recién leída: por orbit_id, si no por título."""
+    oid, desc = item.get("orbit_id"), item.get("desc")
+    for key in ("tasks", "milestones", "events", "reminders"):
+        for it in data.get(key) or []:
+            if oid and it.get("orbit_id") == oid:
+                return it
+            if not oid and it.get("desc") == desc:
+                return it
+    return None
 
 
 KIND_EMOJI = {"task": "✏️", "ms": "🏁", "ev": "📅", "reminder": "💬"}
@@ -758,20 +800,29 @@ def describe_after(row: Row, idx: Optional[int], action: str) -> str:
 
 # ── day fup por lotes ─────────────────────────────────────────────────────
 #
-# Gramática (ADR-056): un entero solo es SIEMPRE un índice; lo demás, fecha.
+# Gramática (ADR-056, ampliada en ADR-060): un entero solo es SIEMPRE un
+# índice; ``1-5`` es un rango (orbit no acepta ``MM-DD`` como fecha, así que
+# no choca); lo demás, la respuesta.
 #   3 5 7 viernes [desc]   → la misma fecha a varios
-#   3:viernes 5:+7         → parejas (fecha de una palabra)
-#   3   /   3 5            → pide la fecha (una para todos)
-#   3 5 none               → sin fecha
+#   1-5 fam                → el próximo día de la familia de cada cita
+#   3:viernes 5:+7         → parejas (respuesta de una palabra)
+#   3   /   3 5            → pide la respuesta (una para todos)
+#   3 5 none · 3 clean     → sin fecha · quitar los ⏩ vencidos
+#
+# La fecha mueve **lo que hace aflorar la cita** (ADR-060): una cita con
+# fecha vencida (⚠️) cambia de fecha (y sus ⏩ vencidos se borran); el resto
+# recibe el ⏩ (la cita conserva su día, ADR-058).
 
 _INDEX = re.compile(r"^\d+$")
+_RANGE = re.compile(r"^(\d+)-(\d+)$")
 _PAIR = re.compile(r"^(\d+):(\S+)$")
+_KEYWORDS = ("fam", "clean", "none")
 
 
 def parse_fup_batch(raw: str, n_rows: int, today: date):
     """``[(índices, respuesta | None)]`` o un ``str`` con el error.
 
-    *respuesta* es lo que se pasará a ``_act_fup``; None = hay que pedirla.
+    *respuesta* es lo que se pasará a ``_plan``; None = hay que pedirla.
     """
     groups, pending, rest = [], [], []
     for tok in raw.split():
@@ -779,6 +830,11 @@ def parse_fup_batch(raw: str, n_rows: int, today: date):
             rest.append(tok)
         elif _INDEX.match(tok):
             pending.append(int(tok))
+        elif _RANGE.match(tok):
+            a, b = map(int, _RANGE.match(tok).groups())
+            if a > b:
+                return f"rango al revés: {tok}"
+            pending.extend(range(a, b + 1))
         elif _PAIR.match(tok):
             m = _PAIR.match(tok)
             groups.append(([int(m.group(1))], m.group(2)))
@@ -806,6 +862,8 @@ def parse_fup_batch(raw: str, n_rows: int, today: date):
 
 
 def _check_fup_answer(answer: str, today: date) -> Optional[str]:
+    if answer.split()[0].lower() in _KEYWORDS:
+        return None
     parsed = parse_fup_input(answer, today)
     if parsed is None:
         return f"fecha no reconocida: {answer!r}"
@@ -814,60 +872,79 @@ def _check_fup_answer(answer: str, today: date) -> Optional[str]:
     return None
 
 
-def _fup_target(answer: str, today: date) -> str:
-    iso, desc = parse_fup_input(answer, today)
-    if iso == "none":
-        return "sin fecha"
+def _fam_iso(row: Row, today: date) -> str:
+    from core.families import fam_date
+    return fam_date(row.project_dir, today).isoformat()
+
+
+def _plan(row: Row, answer: str, today: date):
+    """``(op, iso, desc)`` para *row* — op: fup · date · none · clean — o un
+    ``str`` con el motivo por el que no vale."""
+    word, _, rest = answer.strip().partition(" ")
+    w = word.lower()
+    if w == "clean":
+        if not due_followups(row.item, today):
+            return "no tiene ⏩ vencidos que quitar"
+        return ("clean", None, None)
+    if w == "none":
+        if not _undatable(row):
+            why = ("es recurrente" if row.item.get("recur")
+                   else "su fecha es el plazo de su crono" if row.item.get("crono")
+                   else f"un {KIND_LABEL[row.kind]} necesita fecha")
+            return f"no se puede dejar sin fecha: {why}"
+        return ("none", None, None)
+    if w == "fam":
+        iso, desc = _fam_iso(row, today), (rest.strip() or None)
+    else:
+        parsed = parse_fup_input(answer, today)
+        if parsed is None:
+            return f"fecha no reconocida: {answer!r}"
+        iso, desc = parsed
+    if iso < today.isoformat():
+        return f"{iso} ya ha pasado"
+    if is_overdue(row.item, row.kind, today):
+        return ("date", iso, None)
+    return ("fup", iso, desc)
+
+
+def _op_label(op: str, iso: Optional[str], desc: Optional[str] = None) -> str:
+    if op == "none":
+        return "🗂️ sin fecha"
+    if op == "clean":
+        return "🧹 quitar ⏩"
+    if op == "hand":
+        return "✋ a mano"
     d = date.fromisoformat(iso)
-    out = f"⏩ {iso} ({_DAY_NAMES[d.weekday()][:3]})"
+    when = f"{_DAY_NAMES[d.weekday()][:3]} {iso}"
+    out = f"📅 fecha {when}" if op == "date" else f"⏩ {when}"
     return out + (f" «{desc}»" if desc else "")
 
 
-def _run_fup_batch(sel: str, rows: list, today: date,
-                   show_project: bool = False) -> list:
-    """Aplica un lote de ⏩; devuelve las líneas de verificación."""
-    groups = parse_fup_batch(sel, len(rows), today)
-    if isinstance(groups, str):
-        print(f"  ⚠️  {groups}.")
-        return []
-    if len(groups) == 1 and len(groups[0][0]) == 1 and groups[0][1] is None:
-        # Un solo número sin fecha: como siempre, la pide y aplica.
-        row = rows[groups[0][0][0] - 1]
-        print()
-        print(format_row(groups[0][0][0], row, today, show_project).strip())
-        pos = locate_index(row)
-        try:
-            return [describe_after(row, pos, "u")] if _act_fup(row, today) else []
-        except Exception as exc:
-            print(f"  ⚠️  Error: {exc}")
-            return []
-    resolved = []
-    for idxs, answer in groups:
-        if answer is None:
-            answer = _prompt(f"    ⏩ para {' '.join(map(str, idxs))} — fecha "
-                             "[descripción] (enter = mañana, none = sin fecha): ")
-            err = _check_fup_answer(answer, today)
-            if err:
-                print(f"  ⚠️  {err}.")
-                return []
-        resolved += [(i, answer) for i in idxs]
-    print()
-    for i, answer in resolved:
-        row = rows[i - 1]
-        print(f"  {i:>3}. {KIND_EMOJI[row.kind]} «{row.item.get('desc', '')}»"
-              f" → {_fup_target(answer, today)}")
-    ok = _prompt(f"  ¿aplicar {len(resolved)}? [S/n]: ").lower()
-    if ok not in ("", "s", "si", "sí", "y", "yes"):
-        print("  (no se aplica nada)")
-        return []
+def _apply_op(row: Row, op: str, iso: Optional[str], desc: Optional[str],
+              today: date) -> bool:
+    if op == "fup":
+        return _act_fup(row, today, f"{iso} {desc}" if desc else iso)
+    if op == "none":
+        return _act_fup(row, today, "none")
+    if op == "date":
+        _edit_kind_date(row.kind, row.project_dir.name, row.item["desc"],
+                        iso, None)
+        _clear_due_followups(row, today)
+        return True
+    if op == "clean":
+        return bool(_clear_due_followups(row, today))
+    return False
+
+
+def _apply_plan(plan: list, today: date) -> list:
+    """Aplica ``[(i, row, op, iso, desc)]``; devuelve las líneas de verificación."""
     out = []
-    for i, answer in resolved:
-        row = rows[i - 1]
+    for i, row, op, iso, desc in plan:
         pos = locate_index(row)
         buf = io.StringIO()
         try:
             with redirect_stdout(buf):
-                done = _act_fup(row, today, answer)
+                done = _apply_op(row, op, iso, desc, today)
         except Exception as exc:
             done = False
             buf.write(f"  ⚠️  Error: {exc}\n")
@@ -878,6 +955,131 @@ def _run_fup_batch(sel: str, rows: list, today: date,
             out.append(f"⚠️  {i}. «{row.item.get('desc', '')}»: "
                        + (buf.getvalue().strip().splitlines() or ["sin cambios"])[-1].strip())
     return out
+
+
+def _run_fup_batch(sel: str, rows: list, today: date,
+                   show_project: bool = False) -> list:
+    """Aplica un lote; devuelve las líneas de verificación."""
+    groups = parse_fup_batch(sel, len(rows), today)
+    if isinstance(groups, str):
+        print(f"  ⚠️  {groups}.")
+        return []
+    single = len(groups) == 1 and len(groups[0][0]) == 1
+    if single:
+        print()
+        print(format_row(groups[0][0][0], rows[groups[0][0][0] - 1], today,
+                         show_project).strip())
+    resolved = []
+    for idxs, answer in groups:
+        if answer is None:
+            answer = _prompt(f"    para {' '.join(map(str, idxs))} — fecha "
+                             "[descripción] · fam · none · clean (enter = mañana): ")
+            err = _check_fup_answer(answer, today) if answer else None
+            if err:
+                print(f"  ⚠️  {err}.")
+                return []
+        resolved += [(i, answer) for i in idxs]
+    plan, errors = [], []
+    for i, answer in resolved:
+        row = rows[i - 1]
+        got = _plan(row, answer, today)
+        if isinstance(got, str):
+            errors.append(f"  ⚠️  {i}. «{row.item.get('desc', '')}»: {got}.")
+        else:
+            plan.append((i, row) + got)
+    if errors:
+        print("\n".join(errors))
+        print("  (no se aplica nada)")
+        return []
+    if not single:
+        print()
+        for i, row, op, iso, desc in plan:
+            print(f"  {i:>3}. {KIND_EMOJI[row.kind]} «{row.item.get('desc', '')}»"
+                  f" → {_op_label(op, iso, desc)}")
+        ok = _prompt(f"  ¿aplicar {len(plan)}? [S/n]: ").lower()
+        if ok not in ("", "s", "si", "sí", "y", "yes"):
+            print("  (no se aplica nada)")
+            return []
+    return _apply_plan(plan, today)
+
+
+# ── Propuesta por familia (ADR-060) ────────────────────────────────────────
+
+def _age(iso: str, today: date) -> int:
+    return (today - date.fromisoformat(iso)).days
+
+
+def propose(rows: list, today: date, stale: Optional[int] = None) -> list:
+    """``[(i, row, op, iso, None)]`` para las filas ⚠️ y ⏩ de *rows*.
+
+    - ⏩ vencido < *stale* días → ⏩ al próximo día de la familia; ≥ *stale*:
+      tarea / hito → none, evento / recordatorio / recurrente → quitar ⏩,
+      con crono → a mano.
+    - Fecha vencida: tarea < *stale* → se mueve la fecha al día de la
+      familia; ≥ *stale* → none; hitos y citas con crono → a mano.
+    """
+    from core.families import stale_days
+    stale = stale_days() if stale is None else stale
+    out = []
+    for i, row in enumerate(rows, 1):
+        if row.section not in (VENCIDAS, DECIDIR):
+            continue
+        it = row.item
+        if is_overdue(it, row.kind, today):
+            if row.kind == "ms" or it.get("crono"):
+                out.append((i, row, "hand", None, None))
+            elif _age(it["date"], today) < stale:
+                out.append((i, row, "date", _fam_iso(row, today), None))
+            else:
+                out.append((i, row, "none", None, None))
+            continue
+        due = due_followups(it, today)
+        if not due:                   # aflora por un paso de crono vencido
+            out.append((i, row, "hand", None, None))
+            continue
+        if _age(min(f["date"] for f in due), today) < stale:
+            out.append((i, row, "fup", _fam_iso(row, today), None))
+        elif it.get("crono"):
+            out.append((i, row, "hand", None, None))
+        elif row.kind in ("ev", "reminder") or it.get("recur"):
+            out.append((i, row, "clean", None, None))
+        else:
+            out.append((i, row, "none", None, None))
+    return out
+
+
+def format_proposal(plan: list, stale: int) -> list:
+    """Líneas de la propuesta, agrupadas por acción y destino."""
+    groups: dict = {}
+    for i, _row, op, iso, _desc in plan:
+        groups.setdefault((op, iso), []).append(i)
+    order = {"fup": 0, "date": 1, "none": 2, "clean": 3, "hand": 4}
+    lines = [f"Propuesta ({stale} días o más → sin fecha · quitar ⏩ · a mano):"]
+    for (op, iso), idxs in sorted(groups.items(),
+                                  key=lambda kv: (order[kv[0][0]], kv[0][1] or "")):
+        lines.append(f"  → {_op_label(op, iso):<26} {' '.join(map(str, idxs))}")
+    return lines
+
+
+def _run_proposal(rows: list, today: date) -> Optional[list]:
+    """Enseña la propuesta y la aplica si se acepta. None = no había nada que
+    proponer o se rechazó; si no, las líneas de verificación."""
+    from core.families import stale_days
+    stale = stale_days()
+    plan = propose(rows, today, stale)
+    if not plan:
+        return None
+    for line in format_proposal(plan, stale):
+        print(line)
+    todo = [p for p in plan if p[2] != "hand"]
+    if not todo:
+        print("  (nada que aplicar: lo que queda es a mano)")
+        return None
+    ok = _prompt(f"¿Aceptar ({len(todo)})? [S/n]: ").lower()
+    if ok not in ("", "s", "si", "sí", "y", "yes"):
+        print("  (no se aplica nada; elige por lotes: 1-5 fam · 3 5 none · 7 clean)")
+        return None
+    return _apply_plan(todo, today)
 
 
 def _load_calendar(dirs: list, today: date, n_today: int) -> list:
@@ -926,10 +1128,11 @@ def _focus_day(today: date) -> tuple:
 
 def run_loop(title: str, dirs: list, full: bool, show_project: bool,
              today_fn: Callable[[], date] = date.today,
-             fup_only: bool = False) -> int:
+             fup_only: bool = False, propose_first: bool = False) -> int:
     """*fup_only* (``day fup``): sin menú; calendario de carga y ⏩ por
-    lotes (``3 5 viernes``, ``3:+2``…). En modo día (no *full*) el focus
-    de hoy va arriba y se numera primero."""
+    lotes (``3 5 viernes``, ``1-5 fam``…). En modo día (no *full*) el focus
+    de hoy va arriba y se numera primero. *propose_first* (``day @hk``):
+    antes del primer prompt, la propuesta por familia (ADR-060)."""
     applied = 0
     last = None             # verificación de la última acción
     while True:
@@ -955,8 +1158,15 @@ def run_loop(title: str, dirs: list, full: bool, show_project: bool,
         if not rows:
             _refresh(applied)
             return 0
+        if propose_first:
+            propose_first = False
+            done = _run_proposal(rows, today)
+            if done is not None:
+                applied += sum(1 for d in done if d.startswith("✓"))
+                last = "\n".join(done) or None
+                continue
 
-        hint = ("#? (3 5 viernes · 3:+2 · 3 · q=salir) > " if fup_only
+        hint = ("#? (3 5 viernes · 1-5 fam · 3 none · 3 clean · q=salir) > " if fup_only
                 else "#? (número, q=salir) > ")
         sel = _prompt(hint)
         if not sel or sel.lower() in ("q", "quit", "exit"):
@@ -1014,8 +1224,51 @@ def run_day(project: Optional[str] = None, fup_only: bool = False) -> int:
     today = date.today()
     scope = dirs[0].name if project else "workspace"
     head = "Día · ⏩ fup" if fup_only else "Día"
-    return run_loop(f"{head} — {_day_label(today)} · {scope}", dirs,
-                    full=False, show_project=not project, fup_only=fup_only)
+    title = f"{head} — {_day_label(today)} · {scope}"
+    if not project:
+        from core.families import families_on
+        fams = families_on(today)
+        if fams:
+            title += ("\n💡 Hoy es día de " + " · ".join(f.label for f in fams)
+                      + " → day " + " ".join("@" + f.name for f in fams))
+    return run_loop(title, dirs, full=False, show_project=not project,
+                    fup_only=fup_only)
+
+
+def _family_scope(tokens: list):
+    """``(dirs, etiqueta)`` o None (con el error impreso)."""
+    from core.families import scope_dirs
+    try:
+        return scope_dirs(tokens, resolve_dirs(None))
+    except ValueError as exc:
+        print(f"⚠️  {exc}")
+        return None
+
+
+def run_day_families(tokens: list, fup_only: bool = False) -> int:
+    """`day @hk [@next…]` / `day @all` — propuesta por familia y, después,
+    lotes (ADR-060). `day fup @hk`: los lotes, sin propuesta."""
+    scope = _family_scope(tokens)
+    if scope is None:
+        return 1
+    dirs, label = scope
+    today = date.today()
+    head = "Día · ⏩ fup" if fup_only else "Triaje"
+    return run_loop(f"{head} — {label} · {_day_label(today)}", dirs,
+                    full=False, show_project=True, fup_only=True,
+                    propose_first=not fup_only)
+
+
+def run_organize_families(tokens: list) -> int:
+    """`organize @hk [@next…]` — todo lo pendiente de la familia, incluido
+    lo sin fecha (la revisión semanal, ADR-060)."""
+    scope = _family_scope(tokens)
+    if scope is None:
+        return 1
+    dirs, label = scope
+    today = date.today()
+    return run_loop(f"Organizar — {label} · {_day_label(today)}", dirs,
+                    full=True, show_project=True)
 
 
 def run_organize_project(project: str) -> int:

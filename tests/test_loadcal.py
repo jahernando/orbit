@@ -198,10 +198,13 @@ class TestBatchLoop:
         assert tasks["a"]["date"] == ISO
         assert "no hay cita 7" in capsys.readouterr().out
 
-    def test_partial_failure_is_reported(self, ws, monkeypatch, capsys):
+    def test_invalid_answer_for_one_applies_nothing(self, ws, monkeypatch, capsys):
         _seed(ws, tasks=[_task("a", date=ISO)],
               events=[{"desc": "E", "date": ISO}])
-        self._run(ws, monkeypatch, "1 2 none", "", "q")
+        tasks = self._run(ws, monkeypatch, "1 2 none", "q")
         out = capsys.readouterr().out
-        assert "⚠️  1. «E»" in out                 # un evento no queda sin fecha
-        assert "«a»" in out and "→ sin fecha" in out
+        # ADR-060: se valida el lote entero antes de aplicar; un evento no
+        # queda sin fecha, así que no se aplica nada.
+        assert "⚠️  1. «E»: no se puede dejar sin fecha" in out
+        assert "no se aplica nada" in out
+        assert tasks["a"]["date"] == ISO

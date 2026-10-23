@@ -250,3 +250,234 @@ class TestRender:
     def test_plain_blockquote_untouched(self):
         from views.render.render import _md_to_html
         assert "<blockquote>" in _md_to_html("> hola")
+
+
+# ── Fase B: triaje por familia (ADR-060) ─────────────────────────────────────
+
+def _feed(monkeypatch, *answers):
+    from core import triage as T
+    it = iter(answers)
+    monkeypatch.setattr(T, "_prompt", lambda *a, **k: next(it, "q"))
+    monkeypatch.setattr(T, "_refresh", lambda n: None)
+
+
+def _read(proj):
+    from core.agenda_cmds import _read_agenda
+    return _read_agenda(proj / "agenda.md")
+
+
+def _by_desc(proj, key="tasks"):
+    return {t["desc"]: t for t in _read(proj)[key]}
+
+
+def _fups(item):
+    from core.agenda.display import item_followups
+    return [f["date"] for f in item_followups(item)]
+
+
+class TestFamDate:
+
+    def test_next_family_day_is_strictly_after_today(self, ws):
+        hk = [f for f in F.load_families() if f.name == "hk"][0]
+        assert F.next_family_day(hk, TODAY) == TODAY + timedelta(days=7)
+        assert F.fam_date(ws["next-a"], TODAY) == TODAY + timedelta(days=1)
+
+    def test_without_family_uses_default_shift(self, ws, tmp_path):
+        assert F.fam_date(ws["dis-dani"], TODAY) == TODAY + timedelta(days=7)
+        cfg = json.loads((tmp_path / "orbit.json").read_text())
+        cfg["families_default"] = "+3"
+        (tmp_path / "orbit.json").write_text(json.dumps(cfg))
+        assert F.fam_date(ws["dis-dani"], TODAY) == TODAY + timedelta(days=3)
+
+    def test_resolve_tokens(self, ws):
+        fams, with_none = F.resolve_tokens(["@hk", "@next"])
+        assert [f.name for f in fams] == ["hk", "next"] and not with_none
+        fams, with_none = F.resolve_tokens(["@all"])
+        assert len(fams) == 3 and with_none
+        with pytest.raises(ValueError, match="no hay familia «xx»"):
+            F.resolve_tokens(["@xx"])
+
+    def test_scope_dirs(self, ws):
+        from core.triage import resolve_dirs
+        dirs, label = F.scope_dirs(["@next"], resolve_dirs(None))
+        assert {d.name for d in dirs} == {"🌀next-a", "⚙️next-pn24"}
+        dirs, _ = F.scope_dirs(["@all"], resolve_dirs(None))
+        assert len(dirs) == 5                    # incluye «sin familia»
+
+
+class TestBatchGrammar:
+
+    def test_ranges(self):
+        from core import triage as T
+        assert T.parse_fup_batch("1-3 fam", 5, TODAY) == [([1, 2, 3], "fam")]
+        assert T.parse_fup_batch("2 4-5 clean", 5, TODAY) == [([2, 4, 5], "clean")]
+        assert "al revés" in T.parse_fup_batch("3-1 fam", 5, TODAY)
+        assert "no hay cita 6" in T.parse_fup_batch("4-6 fam", 5, TODAY)
+
+    def test_iso_date_is_not_a_range(self):
+        from core import triage as T
+        assert T.parse_fup_batch(f"1 {_d(3)}", 2, TODAY) == [([1], _d(3))]
+
+
+class TestPlan:
+
+    def _rows(self, ws, proj, **sections):
+        from core import triage as T
+        _seed(ws[proj], **sections)
+        return T.number_rows(T.collect([ws[proj]], TODAY, full=False))
+
+    def test_date_moves_what_surfaces_the_item(self, ws):
+        from core import triage as T
+        rows = self._rows(ws, "hk-a", tasks=[
+            {"desc": "vencida", "date": _d(-2), "status": "pending",
+             "notes": [f"⏩ {_d(-1)}"]},
+            _fup("con fup", -1)])
+        plan = {r.item["desc"]: T._plan(r, _d(3), TODAY) for r in rows}
+        assert plan["vencida"] == ("date", _d(3), None)
+        assert plan["con fup"] == ("fup", _d(3), None)
+
+    def test_fam_none_clean_errors(self, ws):
+        from core import triage as T
+        rows = self._rows(ws, "hk-a",
+                          tasks=[_fup("t", -1)],
+                          events=[{"desc": "ev", "date": _d(-5),
+                                   "notes": [f"⏩ {_d(-1)}"]}])
+        r = {x.item["desc"]: x for x in rows}
+        assert T._plan(r["t"], "fam", TODAY) == ("fup", _d(7), None)
+        assert T._plan(r["t"], "none", TODAY) == ("none", None, None)
+        assert "no se puede dejar sin fecha" in T._plan(r["ev"], "none", TODAY)
+        assert T._plan(r["ev"], "clean", TODAY) == ("clean", None, None)
+
+    def test_batch_moves_overdue_date_and_clears_due_fups(self, ws, monkeypatch, capsys):
+        from core import triage as T
+        _seed(ws["hk-a"], tasks=[
+            {"desc": "vencida", "date": _d(-2), "status": "pending",
+             "notes": [f"⏩ {_d(-1)}"]},
+            _fup("con fup", -1)])
+        _feed(monkeypatch, f"1-2 {_d(3)}", "s", "q")
+        T.run_loop("t", [ws["hk-a"]], full=False, show_project=False,
+                   today_fn=lambda: TODAY, fup_only=True)
+        out = capsys.readouterr().out
+        assert "→ 📅 fecha" in out and "→ ⏩" in out
+        t = _by_desc(ws["hk-a"])
+        assert t["vencida"]["date"] == _d(3) and _fups(t["vencida"]) == []
+        assert t["con fup"].get("date") in (None, "") and _fups(t["con fup"]) == [_d(3)]
+
+
+class TestProposal:
+
+    def test_rules(self, ws):
+        from core import triage as T
+        _seed(ws["hk-a"],
+              tasks=[_fup("fup reciente", -3),
+                     _fup("fup viejo", -20),
+                     _fup("con crono", -20, crono="cronos/crono-x.md"),
+                     {"desc": "vencida reciente", "date": _d(-3), "status": "pending"},
+                     {"desc": "vencida vieja", "date": _d(-20), "status": "pending"}],
+              milestones=[{"desc": "hito vencido", "date": _d(-3), "status": "pending"}],
+              events=[{"desc": "evento", "date": _d(-30),
+                       "notes": [f"⏩ {_d(-20)}"]}])
+        _seed(ws["dis-dani"], tasks=[_fup("sin familia", -2)])
+        _seed(ws["next-a"], tasks=[_fup("next", -2)])
+        dirs = [ws["hk-a"], ws["dis-dani"], ws["next-a"]]
+        rows = T.number_rows(T.collect(dirs, TODAY, full=False))
+        got = {row.item["desc"]: (op, iso)
+               for _i, row, op, iso, _d_ in T.propose(rows, TODAY, 14)}
+        assert got["fup reciente"] == ("fup", _d(7))
+        assert got["fup viejo"] == ("none", None)
+        assert got["con crono"] == ("hand", None)
+        assert got["vencida reciente"] == ("date", _d(7))
+        assert got["vencida vieja"] == ("none", None)
+        assert got["hito vencido"] == ("hand", None)
+        assert got["evento"] == ("clean", None)
+        assert got["sin familia"] == ("fup", _d(7))
+        assert got["next"] == ("fup", _d(1))
+
+    def test_day_family_accepts_proposal(self, ws, monkeypatch, capsys):
+        from core import triage as T
+        _seed(ws["hk-a"], tasks=[_fup("reciente", -3), _fup("viejo", -20)],
+              events=[{"desc": "evento", "date": _d(-30),
+                       "notes": [f"⏩ {_d(-20)}"]}])
+        _seed(ws["next-a"], tasks=[_fup("de next", -3)])
+        _feed(monkeypatch, "", "q")             # Enter = aceptar
+        assert T.run_day_families(["@hk"]) == 0
+        out = capsys.readouterr().out
+        assert "Propuesta (14 días" in out and "🗂️ sin fecha" in out
+        t = _by_desc(ws["hk-a"])
+        assert _fups(t["reciente"]) == [_d(7)]
+        assert _fups(t["viejo"]) == [] and not t["viejo"].get("date")
+        ev = _by_desc(ws["hk-a"], "events")["evento"]
+        assert _fups(ev) == [] and ev["date"] == _d(-30)   # el evento se queda
+        assert _fups(_by_desc(ws["next-a"])["de next"]) == [_d(-3)]  # otra familia
+
+    def test_declined_proposal_changes_nothing(self, ws, monkeypatch, capsys):
+        from core import triage as T
+        _seed(ws["hk-a"], tasks=[_fup("reciente", -3)])
+        _feed(monkeypatch, "n", "q")
+        T.run_day_families(["@hk"])
+        assert _fups(_by_desc(ws["hk-a"])["reciente"]) == [_d(-3)]
+        assert "no se aplica nada" in capsys.readouterr().out
+
+    def test_day_fup_family_skips_proposal(self, ws, monkeypatch, capsys):
+        from core import triage as T
+        _seed(ws["hk-a"], tasks=[_fup("reciente", -3)])
+        _feed(monkeypatch, "q")
+        T.run_day_families(["@hk"], fup_only=True)
+        assert "Propuesta" not in capsys.readouterr().out
+
+    def test_unknown_family(self, ws, capsys):
+        from core import triage as T
+        assert T.run_day_families(["@xx"]) == 1
+        assert "no hay familia «xx»" in capsys.readouterr().out
+
+
+class TestCliFamilies:
+
+    def test_day_routing(self, ws, monkeypatch):
+        import orbit
+        from types import SimpleNamespace
+        calls = []
+        monkeypatch.setattr("core.triage.run_day_families",
+                            lambda t, fup_only=False: calls.append((t, fup_only)) or 0)
+        args = lambda *toks: SimpleNamespace(mode=toks[0] if toks else None,
+                                             project=toks[1] if len(toks) > 1 else None,
+                                             more=list(toks[2:]))
+        orbit.cmd_day(args("@hk"))
+        orbit.cmd_day(args("fup", "@hk"))
+        orbit.cmd_day(args("@hk", "@next", "@ges"))
+        assert calls == [(["@hk"], False), (["@hk"], True),
+                         (["@hk", "@next", "@ges"], False)]
+        assert orbit.cmd_day(args("@hk", "foo")) == 1
+
+    def test_hint_on_family_day(self, ws, monkeypatch, capsys):
+        from core import triage as T
+        _feed(monkeypatch, "q")
+        _seed(ws["hk-a"], tasks=[_fup("x")])
+        T.run_day()
+        assert "💡 Hoy es día de 🟣 hk → day @hk" in capsys.readouterr().out
+
+    def test_ls_expands_family(self, ws, capsys):
+        import orbit
+        assert sorted(orbit._family_project_names(["@next"])) == ["next-a", "next-pn24"]
+        assert orbit._family_project_names(["@xx"]) is None
+
+    def test_pinned_panel_rejects_families_only_in_listing_commands(self, ws):
+        from core import context
+        context.pin("hk-a")
+        try:
+            assert "familias" in context.check_foreign(["day", "@hk"])
+            assert context.check_foreign(["log", "@JAH: revisar"]) is None
+        finally:
+            context.clear()
+
+
+class TestOldestAge:
+
+    def test_page_and_agenda_show_oldest_fup(self, ws, tmp_path):
+        from views.secretary import agenda as SA
+        from views.secretary import families as SF
+        _seed(ws["hk-a"], tasks=[_fup("a", -23), _fup("b", -2)])
+        SF.generate(tmp_path / "out")
+        assert "⏩2 (23 d)" in (tmp_path / "out" / "hk.md").read_text()
+        SA.generate(tmp_path / "agenda.md")
+        assert "🟣 [hk](families/hk.md) ⏩2 (23 d)" in (tmp_path / "agenda.md").read_text()

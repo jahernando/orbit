@@ -182,3 +182,95 @@ def problems(config: Optional[dict] = None, project_dirs=None) -> List[str]:
             else:
                 owner_t[nt] = name
     return out
+
+
+# ── Triaje por familia (ADR-060) ─────────────────────────────────────────────
+
+STALE_DAYS = 14          # ⏩ o fecha vencidos hace ≥ N días → none / a mano
+DEFAULT_SHIFT = "+7"     # destino de `fam` para lo que no tiene familia
+
+
+def stale_days(config: Optional[dict] = None) -> int:
+    try:
+        n = int(_config(config).get("families_stale_days", STALE_DAYS))
+    except (TypeError, ValueError):
+        return STALE_DAYS
+    return n if n > 0 else STALE_DAYS
+
+
+def default_shift(config: Optional[dict] = None) -> str:
+    raw = _config(config).get("families_default", DEFAULT_SHIFT)
+    return raw if isinstance(raw, str) and raw.strip() else DEFAULT_SHIFT
+
+
+def next_family_day(family: Family, today: date) -> Optional[date]:
+    """Siguiente día de la familia **estrictamente posterior** a *today*."""
+    from datetime import timedelta
+    for i in range(1, 8):
+        d = today + timedelta(days=i)
+        if family.is_day(d):
+            return d
+    return None
+
+
+def fam_date(project_dir: Path, today: date,
+             families: Optional[List[Family]] = None,
+             config: Optional[dict] = None) -> Optional[date]:
+    """Destino de `fam` para una cita de *project_dir*: el próximo día de su
+    familia; sin familia (o familia sin días), ``families_default`` (+7)."""
+    import re
+    from datetime import timedelta
+    f = family_of(project_dir, families)
+    d = next_family_day(f, today) if f is not None else None
+    if d is not None:
+        return d
+    shift = default_shift(config).strip()
+    m = re.match(r"^\+(\d+)$", shift)
+    if m:
+        return today + timedelta(days=int(m.group(1)))
+    from core.dateparse import parse_date
+    try:
+        return date.fromisoformat(parse_date(shift))
+    except (TypeError, ValueError):
+        return today + timedelta(days=7)
+
+
+ALL = "@all"
+
+
+def resolve_tokens(tokens: list,
+                   families: Optional[List[Family]] = None) -> tuple:
+    """``["@hk", "@next"]`` → ``(familias, con_sin_familia)``. ``@all`` =
+    todas más «sin familia». Lanza ``ValueError`` con un nombre desconocido."""
+    fams = load_families() if families is None else families
+    if not fams:
+        raise ValueError("no hay familias en orbit.json (`families`)")
+    chosen, with_none = [], False
+    for tok in tokens:
+        name = tok.lstrip("@")
+        if tok == ALL:
+            chosen = list(fams)
+            with_none = True
+            continue
+        match = [f for f in fams if f.name == name]
+        if not match:
+            raise ValueError(f"no hay familia «{name}» "
+                             f"(hay: {', '.join('@' + f.name for f in fams)}, @all)")
+        if match[0] not in chosen:
+            chosen.append(match[0])
+    return chosen, with_none
+
+
+def scope_dirs(tokens: list, project_dirs) -> tuple:
+    """``(dirs, etiqueta)`` de los proyectos de *tokens* entre *project_dirs*."""
+    fams = load_families()
+    chosen, with_none = resolve_tokens(tokens, fams)
+    names = {f.name for f in chosen}
+    dirs = []
+    for p in project_dirs:
+        f = family_of(p, fams)
+        if (f is not None and f.name in names) or (f is None and with_none):
+            dirs.append(p)
+    label = ("todas las familias" if with_none
+             else " · ".join(f.label for f in chosen))
+    return dirs, label

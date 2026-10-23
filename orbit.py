@@ -1495,40 +1495,50 @@ def cmd_ring(args):
 
 
 def cmd_day(args):
-    from core.triage import run_day
-    mode, project = getattr(args, "mode", None), getattr(args, "project", None)
-    if mode and mode != "fup":
-        if project:     # `day X` en el panel fijado, o `day X Y`
-            print(f"⚠️  No reconozco {mode!r}. Uso: day [fup] [proyecto]")
-            return 1
-        mode, project = None, mode      # `day next-kr`
-    return run_day(project=project, fup_only=mode == "fup")
+    """`day [fup] [proyecto]` · `day [fup] @familia… | @all` (ADR-051/060)."""
+    from core import context
+    from core.triage import run_day, run_day_families
+    toks = [getattr(args, "mode", None)]
+    if not context.pinned():
+        toks.append(getattr(args, "project", None))
+    toks += list(getattr(args, "more", None) or [])
+    toks = [t for t in toks if t]
+    fup = "fup" in toks
+    toks = [t for t in toks if t != "fup"]
+    fams = [t for t in toks if t.startswith("@")]
+    names = [t for t in toks if not t.startswith("@")]
+    if fams and names or len(names) > 1:
+        print(f"⚠️  No reconozco {' '.join(toks)!r}. "
+              f"Uso: day [fup] [proyecto] · day [fup] @familia… | @all")
+        return 1
+    if fams:
+        return run_day_families(fams, fup_only=fup)
+    project = names[0] if names else getattr(args, "project", None)
+    return run_day(project=project, fup_only=fup)
 
 
 def cmd_organize(args):
-    """`organize <proyecto>` → triaje de todo el proyecto (core.triage).
-
-    Las formas antiguas (`--triage`, `-P`, `--undated`, filtro de tipo)
-    siguen yendo a core.organize hasta que se retiren (ADR-051).
-    """
-    from core.organize import _TYPE_ALIASES, run_organize
-    target = getattr(args, "target", None)
-    type_filter = target if target in _TYPE_ALIASES or target == "all" else None
-    project = getattr(args, "project", None) or (None if type_filter else target)
-    period = getattr(args, "period", None)
-    triage = getattr(args, "triage", False)
-    undated = getattr(args, "undated", False)
-
-    if triage or undated or period or type_filter:
-        print("(modo antiguo de organize; lo de hoy está en `day`)")
-        return run_organize(type_filter=type_filter, project=project,
-                            period=period or "today",
-                            include_undated=undated, triage=triage)
+    """`organize <proyecto>` / `organize @familia…` → triaje de todo lo
+    pendiente (core.triage, ADR-051/060). Las formas antiguas (`--triage`,
+    `-P`, `--undated`, filtro de tipo) se retiraron en ADR-060."""
+    from core.triage import run_organize_families, run_organize_project
+    targets = list(getattr(args, "targets", None) or [])
+    fams = [t for t in targets if t.startswith("@")]
+    names = [t for t in targets if not t.startswith("@")]
+    if fams and names:
+        print("⚠️  organize: o un proyecto o familias (@hk), no las dos cosas.")
+        return 1
+    if fams:
+        return run_organize_families(fams)
+    if len(names) > 1:
+        print(f"⚠️  organize: un solo proyecto ({' '.join(names)}).")
+        return 1
+    project = getattr(args, "project", None) or (names[0] if names else None)
     if not project:
-        print("organize trabaja sobre un proyecto: `organize <proyecto>`.\n"
+        print("organize trabaja sobre un proyecto o una familia: "
+              "`organize <proyecto>` · `organize @hk`.\n"
               "Para lo de hoy en todo el workspace: `day`.")
         return 1
-    from core.triage import run_organize_project
     return run_organize_project(project)
 
 
@@ -1715,9 +1725,47 @@ def cmd_archive(args):
     )
 
 
+def _family_project_names(tokens: list) -> Optional[list]:
+    """``["@hk"]`` → nombres de sus proyectos (ADR-060); None si no vale."""
+    from core.families import project_key, scope_dirs
+    from core.triage import resolve_dirs
+    try:
+        dirs, _ = scope_dirs(tokens, resolve_dirs(None))
+    except ValueError as exc:
+        print(f"⚠️  {exc}")
+        return None
+    if not dirs:
+        print(f"(sin proyectos en {' '.join(tokens)})")
+    return [project_key(d) for d in dirs]
+
+
 def cmd_ls(args):
-    """Unified ls command: ls [what] [project...] [--open] [--editor E]."""
+    """Unified ls command: ls [what] [project...] [--open] [--editor E].
+
+    ``@familia`` vale donde va un proyecto (ADR-060): en `ls tasks/ms` se
+    expande a sus proyectos; en el resto, se lista proyecto a proyecto."""
     what = getattr(args, "what", None) or "projects"
+
+    projects = getattr(args, "projects", None)
+    if projects and any(p.startswith("@") for p in projects):
+        names = _family_project_names([p for p in projects if p.startswith("@")])
+        if names is None:
+            return 1
+        args.projects = names + [p for p in projects if not p.startswith("@")]
+        if not args.projects:
+            return 0
+    proj = _ga(args, "project")
+    if isinstance(proj, str) and proj.startswith("@"):
+        import copy
+        names = _family_project_names([proj])
+        if names is None:
+            return 1
+        rc = 0
+        for name in names:
+            one = copy.copy(args)
+            one.project = name
+            rc = cmd_ls(one) or rc
+        return rc
 
     if what == "projects":
         fn = lambda: run_project_list(
@@ -2171,20 +2219,16 @@ def _build_parser():
     day_p.add_argument("mode", nargs="?", default=None, metavar="fup",
                        help="fup: elegir un número pone ⏩ directamente (sin menú)")
     add_project_arg(day_p, required=False, help="Proyecto (omitir = todo el workspace)")
+    day_p.add_argument("more", nargs="*", default=None, metavar="@FAMILIA",
+                       help="Más familias: day @hk @next · day @all (ADR-060)")
 
-    # --- organize (alias: reorganize, legacy) ---
-    org_p = subparsers.add_parser("organize", aliases=["reorganize"],
-                                   help="Triaje de todo lo pendiente de un proyecto")
-    org_p.add_argument("target", nargs="?", default=None,
-                       help="Proyecto (o, modo antiguo, tipo: tasks|ms|ev|rem)")
+    # --- organize ---
+    org_p = subparsers.add_parser(
+        "organize", help="Triaje de todo lo pendiente de un proyecto o de familias (@hk)")
+    org_p.add_argument("targets", nargs="*", default=None, metavar="PROYECTO|@FAMILIA",
+                       help="Proyecto, o una o varias familias (@hk @next, @all)")
     org_p.add_argument("--project", "-p", default=None,
                        help="Proyecto (partial match)")
-    org_p.add_argument("--period", "-P", default=None,
-                       help="Modo antiguo: today | week | month | YYYY-MM-DD | YYYY-Wnn")
-    org_p.add_argument("--undated", action="store_true", dest="undated",
-                       help="Incluir tareas/hitos sin fecha (futuribles)")
-    org_p.add_argument("--triage", action="store_true", dest="triage",
-                       help="Modo triage: procesa followups ⏩ <= today (plan/snooze/clear/done/drop)")
 
     # --- gsync ---
     # `gsync` and `calsync` argparse parsers removed in v0.33; the
@@ -2664,7 +2708,7 @@ _COMMANDS = {
     "ls": cmd_ls, "agenda": cmd_agenda, "cal": cmd_cal, "ics": cmd_ics, "ics-share": cmd_ics_share, "ics-import": cmd_ics_import, "tracked": cmd_tracked, "track": cmd_track, "link": cmd_track, "untrack": cmd_untrack, "unlink": cmd_untrack, "import": cmd_deliver, "mail": cmd_mail, "email": cmd_email, "setup": cmd_setup,
     "crono": cmd_crono,
     "ring": cmd_ring,
-    "day": cmd_day, "organize": cmd_organize, "reorganize": cmd_organize,
+    "day": cmd_day, "organize": cmd_organize,
     "focus": cmd_focus,
     "doctor": cmd_doctor, "archive": cmd_archive, "undo": cmd_undo,
     "history": cmd_history, "claude": cmd_claude,

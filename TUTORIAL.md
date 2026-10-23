@@ -765,6 +765,20 @@ organize santiago         # todo lo pendiente de santiago (próximas y sin fecha
 
 En la ventana de un proyecto (`wks santiago`) basta con `day` u `organize`.
 
+Si agrupas los proyectos en **familias** con un día de la semana (`families`
+en `orbit.json`, ver la chuleta), el día de cada familia tienes un triaje
+propio:
+
+```bash
+day @hk                   # propone: ⏩ y vencidas recientes → al próximo día de hk;
+                          # lo de 14 días o más → sin fecha (o quitar el ⏩, o a mano)
+day @all                  # lo mismo para todas las familias (vuelta de vacaciones)
+organize @hk              # revisión semanal: todo lo pendiente de hk, sin fecha incluido
+```
+
+Aceptas la propuesta con Enter, o la rechazas y eliges por lotes:
+`1-5 fam` (al próximo día de la familia), `3 6 none`, `7 clean`.
+
 El bucle: eliges número y una tecla — `h` hora (si la tarea no es de hoy, la
 trae a hoy), `f` fecha, `u` followup (`mañana`, `+3 hablar con Pablo`…; mueve
 los `⏩` vencidos; no mueve la cita: para eso `f`), `c` borra un `⏩`, `t` cambia el título, `n` done, `d` drop (con confirmación),

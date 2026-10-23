@@ -964,6 +964,33 @@ Tres fricciones reales:
 
 ---
 
+## ADR-060 — Triaje por familia: propuesta, lotes y «la fecha mueve lo que aflora»
+
+**Estado**: aceptada (2026-10-23). Fase B de ADR-059. **Enmienda ADR-056 y ADR-058 en el modo por lotes**. Retira las formas antiguas de `organize` (ADR-051 las dejó «hasta que se retiren»).
+
+**Contexto**: con las familias ya visibles (ADR-059), falta poder tratarlas. Los ⏩ y las tareas vencidas se acumulan cuando no se trían a diario; la mayoría solo necesita «al próximo día de su familia», y lo muy viejo suele no ser ya un compromiso real. Además, `day fup` sobre una tarea vencida añadía un ⏩ sin mover la fecha (ADR-058), así que la tarea seguía en ⚠️ Vencidas: el atasco no se resolvía.
+
+**Decisión**:
+1. **`day @hk [@next…]` / `day @all`**: la lista de la familia y, antes del primer prompt, una **propuesta** sobre lo ⚠️ y ⏩, con umbral `families_stale_days` (14):
+   - ⏩ vencido < 14 días → ⏩ al próximo día de la familia; ≥ 14: tarea / hito → `none`; evento / recurrente → quitar el ⏩ (la cita **nunca** se borra ni se mueve); con crono → a mano (un ⏩ viejo en un crono es señal de replanificar).
+   - Fecha vencida: tarea < 14 → **la fecha** al próximo día de la familia; ≥ 14 → `none`; hito o con crono → a mano (un hito suele ser un plazo externo).
+   - `S` aplica y sigue por lotes; `n` no toca nada y pasa a lotes. `day fup @hk`: lotes sin propuesta. `day` normal solo recuerda `💡 Hoy es día de … → day @hk`: la propuesta se pide, no se impone.
+2. **Próximo día de la familia** (`fam`): el siguiente **estrictamente posterior** a hoy; sin familia, `families_default` (`+7`).
+3. **Lotes** (`day fup`, `day @…`): rangos `1-5` (no chocan: orbit no acepta `MM-DD` como fecha), `fam`, `clean` (quitar ⏩ vencidos) además de fecha y `none`. Se valida **el lote entero** antes de aplicar (un `none` sobre un evento aborta todo).
+4. **La fecha mueve lo que hace aflorar la cita**: en lotes, una cita con **fecha vencida** cambia de fecha (y se borran sus ⏩ vencidos); cualquier otra recibe el ⏩ y conserva su día (ADR-058 sigue valiendo para el menú `u`/`f` de `day`). La confirmación dice qué cambia: `📅 fecha …` frente a `⏩ …`.
+5. **`organize @hk`**: todo lo pendiente de la familia, sin fecha incluido — la revisión semanal que impide que `none` sea un cementerio. `organize` sin objetivo sigue siendo error (cientos de filas).
+6. **`@familia` en `ls`** (solo lectura): `ls tasks/ms` lo expanden a sus proyectos; el resto lista proyecto a proyecto. En verbos de escritura hace falta un proyecto. En el panel fijado a un proyecto, `@familia` en `day`/`organize`/`ls` es error.
+7. **Antigüedad visible**: el recuento de ⏩ lleva la del más viejo (`⏩4 (23 d)`) en la hoja de familia y en `agenda.md`, para que plegar no esconda la deuda.
+8. **Se retiran** `organize --triage | -P | --undated | tasks|ms|ev|rem|all` y el alias `reorganize`. Sus helpers de acción se mudan a `core/triage.py`; `core/organize.py` queda sin uso.
+
+**Consecuencias**:
+- Pros: tratar una familia es una tecla en el caso normal; lo viejo se decide en vez de arrastrarse; un solo triaje (`day`/`organize`) en lugar de dos motores.
+- Contras: en lotes, la misma entrada (`viernes`) hace cosas distintas según la fila (fecha o ⏩); lo mitiga la confirmación explícita. `none` saca tareas de la vista diaria: depende de hacer `organize @hk`.
+
+**Verificación**: `tests/test_families.py` (fase B), `tests/test_triage.py`, `tests/test_loadcal.py`.
+
+---
+
 ## ADR-059 — Familias de proyectos: agrupar lo que se ve por días de la semana
 
 **Estado**: aceptada (2026-10-23), fase A. Diseño en `claude/notes/2026-10-23_familias-diseno.md` del workspace de desarrollo.

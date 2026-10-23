@@ -999,6 +999,9 @@ day                  # hoy en todo el workspace
 day next-kr          # hoy en un proyecto (en su panel fijado: `day` a secas)
 day fup              # aplazar: calendario de carga + ⏩ por lotes (3 5 viernes)
 day fup next-kr      # ídem en un proyecto (en su panel fijado: `day fup`)
+day @hk              # triaje de una familia: propuesta y, después, lotes
+day @hk @next        # varias familias · day @all = todas + «sin familia»
+day fup @hk          # lotes de la familia, sin propuesta
 ```
 
 Lista numerada de lo que pide atención **hoy**, por bloques (la misma
@@ -1060,18 +1063,44 @@ Eliges un número y una acción (mismo menú que `organize`):
   Sin recordatorios. El número va entre paréntesis si lo pides en `orbit.json`:
   `"load_calendar": {"counts": true}`.
 
-  Entrada (un entero solo es siempre un número de cita; lo demás, fecha):
+  Entrada (un entero solo es siempre un número de cita; `1-5` es un rango; lo
+  demás, la respuesta):
 
   | Entrada | Efecto |
   |---|---|
   | `3 5 7 viernes [desc]` | la misma fecha a varias |
-  | `3:viernes 5:+7` | parejas (fecha de una palabra) |
-  | `3` · `3 5` | pide la fecha (Enter = mañana) |
-  | `3 5 none` | sin fecha |
+  | `1-5 fam` | el próximo día de la familia de cada cita (sin familia: `+7`) |
+  | `3:viernes 5:+7` | parejas (respuesta de una palabra) |
+  | `3` · `3 5` | pide la respuesta (Enter = mañana) |
+  | `3 5 none` | sin fecha ni ⏩ (tareas e hitos sin crono, no recurrentes) |
+  | `7 clean` | quita los ⏩ vencidos (la cita no se toca) |
+
+  **La fecha mueve lo que hace aflorar la cita** (ADR-060): si sale por
+  fecha vencida (⚠️), cambia **su fecha** y se borran sus ⏩ vencidos; si sale
+  por un ⏩ (o es de hoy), recibe el ⏩ y conserva su día (ADR-058). La
+  confirmación lo dice: `3 → 📅 fecha vie 2026-10-30` · `5 → ⏩ vie 2026-10-30`.
 
   Con más de una cita enseña lo entendido y pide confirmación (`[S/n]`); si
-  algún número o fecha no vale, no aplica nada. Ver
-  [ADR-056](DECISIONS.md#adr-056--day-fup-calendario-de-carga-y--por-lotes).
+  algún número o respuesta no vale (p. ej. `none` en un evento), no aplica
+  nada. Ver [ADR-056](DECISIONS.md#adr-056--day-fup-calendario-de-carga-y--por-lotes)
+  y [ADR-060](DECISIONS.md#adr-060--triaje-por-familia-propuesta-lotes-y-la-fecha-mueve-lo-que-aflora).
+- **`day @hk`** (familias, ADR-060): la lista de la familia y, antes del
+  primer prompt, una **propuesta** sobre lo ⚠️ y ⏩ (umbral
+  `families_stale_days`, 14 por defecto):
+
+  | | < 14 días | ≥ 14 días |
+  |---|---|---|
+  | ⏩ vencido · tarea / hito | ⏩ al próximo día de la familia | `none` |
+  | ⏩ vencido · evento / recurrente | ⏩ al próximo día de la familia | quitar el ⏩ (la cita se queda) |
+  | ⏩ vencido · con crono | ⏩ al próximo día de la familia | ✋ a mano |
+  | fecha vencida · tarea | la **fecha** al próximo día de la familia | `none` |
+  | fecha vencida · hito o con crono | ✋ a mano | ✋ a mano |
+
+  `S` (o Enter) aplica y sigue por lotes con lo que queda; `n` no toca nada y
+  pasa a lotes con la misma numeración. «Próximo día de la familia» es el
+  siguiente estrictamente posterior a hoy; sin familia, `families_default`
+  (`+7`). `day` a secas, el día de una familia, lo recuerda:
+  `💡 Hoy es día de 💧 hk → day @hk`.
 - Las mutaciones usan los mismos runners que `task edit`, `task done`…: imprimen
   el item resultante, dejan undo y, en recurrentes, preguntan ocurrencia o serie.
 - Al salir (`q`) con cambios, refresca derivados (dash + ring + .ics).
@@ -1085,6 +1114,7 @@ Ver [ADR-051](DECISIONS.md#adr-051--day-y-organize-proyecto-dos-triajes-un-motor
 
 ```bash
 organize next-kr     # todo lo pendiente del proyecto
+organize @hk         # todo lo pendiente de la familia (revisión semanal)
 organize             # en el panel fijado a un proyecto
 ```
 
@@ -1101,18 +1131,8 @@ fecha**. A diferencia de `day`:
   una tarea / hito salen bajo su fila, como en `day`.
 
 `organize` sin proyecto en el panel general no hace nada y remite a `day`.
-
-**Modo antiguo** (se mantiene hasta retirarlo; avisa al entrar):
-
-```bash
-organize --triage                # followups ⏩ <= hoy: [p]lan [s]nooze [c]lear do[n]e [d]rop s[k]ip
-organize tasks                   # filtro de tipo: tasks | ms | ev | rem
-organize -P week                 # periodo: today | week | month | YYYY-MM-DD | YYYY-Wnn
-organize --undated               # incluye tareas/hitos sin fecha
-```
-
-Cualquiera de esas opciones activa el flujo anterior (`[d]rop [n]done [f]echa
-[h]ora [s]kip`); con `-p <proyecto>` se acota. Alias legacy: `reorganize`.
+Las formas antiguas (`--triage`, `-P`, `--undated`, `organize tasks|ms|ev|rem`
+y el alias `reorganize`) se retiraron en ADR-060.
 
 ---
 
@@ -1710,6 +1730,14 @@ Solo configuración en `orbit.json`, sin comandos propios:
   plegadas).
 - **`day` / `day fup`**: el bloque ⏩ Decidir sale agrupado por familia (las
   de hoy primero, `· 💧 hk · hoy (4)`), con la numeración de siempre.
+- **Triaje por familia** (ADR-060): `day @hk` (propuesta + lotes), `day fup
+  @hk`, `day @all`, `organize @hk`. **`@familia` en `ls`**: `ls tasks @hk`,
+  `ls ev @hk`, `ls cronos @hk`… (solo lectura; en `task add` y demás verbos de
+  escritura sigue haciendo falta el proyecto). En el panel fijado a un
+  proyecto, las familias no valen.
+- Ajustes: `families_stale_days` (14) y `families_default` (`+7`, destino
+  de `fam` para lo sin familia).
+- La antigüedad del ⏩ más viejo sale junto al recuento: `💧 hk ⏩4 (23 d)`.
 - En la nube los callouts se ven como `<details>` desplegables.
 - `doctor` avisa de proyectos o tipos que no existen y de proyectos o tipos en
   dos familias.

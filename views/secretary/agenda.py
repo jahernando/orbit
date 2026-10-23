@@ -503,13 +503,15 @@ def _fup_groups(followups_today, allf, today) -> list:
     return groups
 
 
-def _family_counter_line(allf) -> list:
-    """``> 👥 Familias: 🔵 [next](families/next.md) ⏩5 ⚠️1 · …``"""
-    from views.secretary.families import counts, family_link
+def _family_counter_line(allf, today) -> list:
+    """``> 👥 Familias: 🔵 [next](families/next.md) ⏩5 (23 d) ⚠️1 · …``"""
+    from views.secretary.families import (counts, family_link, fups_mark,
+                                          oldest_fup_days)
     parts = []
     for fam, _dirs, data in allf:
         c = counts(data)
-        marks = [m for m in (f"⏩{c['fups']}" if c["fups"] else "",
+        marks = [m for m in (fups_mark(c["fups"], oldest_fup_days(data, today))
+                             if c["fups"] else "",
                              f"⚠️{c['overdue']}" if c["overdue"] else "") if m]
         parts.append(family_link(fam) + ("".join(f" {m}" for m in marks)))
     return ["> 👥 Familias: " + " · ".join(parts)] if parts else []
@@ -517,13 +519,14 @@ def _family_counter_line(allf) -> list:
 
 def _family_today_lines(allf, today) -> list:
     """Encima de la tabla de Hoy: de qué familia es el día y qué tiene."""
-    from views.secretary.families import counts, family_link, summary_parts
+    from views.secretary.families import (counts, family_link,
+                                          oldest_fup_days, summary_parts)
     todays = [(f, d) for f, _, d in allf if f.is_day(today)]
     if not todays:
         return ["> Hoy no es día de ninguna familia", ""]
     out = []
     for fam, data in todays:
-        parts = summary_parts(counts(data))
+        parts = summary_parts(counts(data), oldest_fup_days(data, today))
         out.append(f"> Hoy es día de {family_link(fam)}: "
                    + (" · ".join(parts) if parts else "nada pendiente"))
     return out + [""]
@@ -686,7 +689,7 @@ def generate(out_path: Path, allf=None) -> None:
                                 followups_today=followups_today,
                                 n_overdue_ms=n_overdue_ms,
                                 ring_counts=ring_counts))
-    lines.extend(_family_counter_line(allf))
+    lines.extend(_family_counter_line(allf, today))
     lines.append("")
     lines.extend(_mini_calendar(today, end))
     from views.secretary.focus import focus_lines

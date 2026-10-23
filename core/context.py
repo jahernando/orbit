@@ -26,6 +26,7 @@ para cambiar de proyecto. Si quieres otro, abres otra ventana.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -193,6 +194,12 @@ def check_foreign(tokens: list) -> Optional[str]:
     """
     if not _pinned_name or len(tokens) < 2:
         return None
+    # `@familia` (ADR-060) solo en day / organize / ls: un «@JAH: …» en un
+    # texto entrecomillado no es una familia.
+    fams = [t for t in tokens[1:] if re.match(r"^@[\w-]+$", t)]
+    if fams and tokens[0] in ("day", "organize", "ls"):
+        return (f"⚠️  Esta ventana está fijada en «{_pinned_name}»: las familias "
+                f"({' '.join(fams)}) se tratan en el panel general.")
     others = {n.lower() for n in project_names()} - {_pinned_name.lower()}
     if not others:
         return None

@@ -10,6 +10,21 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — triaje por familia (fase B) · ADR-060
+
+- **`day @hk` / `day @hk @next` / `day @all`**: propuesta sobre ⚠️ y ⏩
+  (al próximo día de la familia; ≥ 14 días → sin fecha, quitar ⏩ o a mano) y,
+  después, lotes. `day fup @hk`: lotes sin propuesta.
+- **Lotes**: rangos `1-5`, `fam`, `clean`; el lote se valida entero.
+  **La fecha mueve lo que aflora**: una tarea vencida cambia de fecha, el resto
+  recibe ⏩ (enmienda ADR-056/058 en lotes).
+- **`organize @hk`**: revisión de todo lo pendiente de la familia.
+- **`@familia` en `ls`** (`ls tasks @hk`, `ls cronos @hk`…).
+- Antigüedad del ⏩ más viejo junto al recuento (`⏩4 (23 d)`).
+- `day` el día de una familia: `💡 Hoy es día de … → day @hk`.
+- **Retiradas** las formas antiguas de `organize` (`--triage`, `-P`,
+  `--undated`, filtro de tipo) y el alias `reorganize`.
+
 ### Unreleased — familias de proyectos (fase A) · ADR-059
 
 - **`families` en `orbit.json`**: grupos de proyectos (por nombre y/o por

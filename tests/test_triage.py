@@ -391,8 +391,7 @@ class TestActions:
 class TestCli:
 
     def _args(self, **kw):
-        base = dict(target=None, project=None, period=None,
-                    triage=False, undated=False)
+        base = dict(targets=[], project=None)
         base.update(kw)
         return SimpleNamespace(**base)
 
@@ -406,20 +405,25 @@ class TestCli:
         seen = {}
         monkeypatch.setattr("core.triage.run_organize_project",
                             lambda p: seen.setdefault("p", p) and 0)
-        orbit.cmd_organize(self._args(target="foo"))
+        orbit.cmd_organize(self._args(targets=["foo"]))
         assert seen == {"p": "foo"}
 
-    def test_legacy_forms_still_route_to_old_organize(self, monkeypatch):
+    def test_organize_families(self, monkeypatch):
         import orbit
-        calls = []
-        monkeypatch.setattr("core.organize.run_organize",
-                            lambda **kw: calls.append(kw) or 0)
-        orbit.cmd_organize(self._args(triage=True))
-        orbit.cmd_organize(self._args(target="tasks"))
-        orbit.cmd_organize(self._args(period="week", project="foo"))
-        assert calls[0]["triage"] is True
-        assert calls[1]["type_filter"] == "tasks" and calls[1]["project"] is None
-        assert calls[2]["period"] == "week" and calls[2]["project"] == "foo"
+        seen = []
+        monkeypatch.setattr("core.triage.run_organize_families",
+                            lambda t: seen.append(t) or 0)
+        orbit.cmd_organize(self._args(targets=["@hk", "@next"]))
+        assert seen == [["@hk", "@next"]]
+        assert orbit.cmd_organize(self._args(targets=["@hk", "foo"])) == 1
+
+    def test_legacy_forms_are_gone(self):
+        import orbit
+        parser = orbit._build_parser()
+        for argv in (["organize", "--triage"], ["organize", "-P", "week"],
+                     ["organize", "--undated"], ["reorganize", "foo"]):
+            with pytest.raises(SystemExit):
+                parser.parse_args(argv)
 
     def test_day_and_organize_allowed_in_project_panel(self, ws):
         from core import context
