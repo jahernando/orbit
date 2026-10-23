@@ -639,9 +639,12 @@ Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
 - **Derivados**: `ledger-summary.md` (validado ☑️ frente a vivo, por
   categoría, compromisos abiertos, movimientos con acumulados) y `ledger.json`
   v2 (clave = nº). `ledger.md` no se regenera nunca.
-- **`ls ledger [p]`** lista el libro: nº, fecha, tipo, categoría, importe,
-  disponible acumulado, ☑️/🚫, y el resumen validado frente a vivo con el
-  total por categoría. Solo lee.
+- **`ledger <p>` / `ls ledger [p]`** listan el libro con una línea por entrada
+  (nº, fecha, tipo, importe, título · beneficiario, ☑️/🚫; la misma que `edit`
+  sin nº), con el **título enlazando el justificante** (⌘-clic en la terminal),
+  y debajo el resumen validado frente a vivo con el total por categoría.
+  `--long`: la tabla completa (categoría, disponible acumulado, estado,
+  🔗 compromiso). `ls ledger` solo lee.
 - **`project.md`** enlaza el libro en su pie (`[ledger] ([resumen])`): lo añade
   `init`/`migrate`, y `orbit ledger <p>` en proyectos ya migrados.
 - `--mark N ID` / `--unmark N` / `--close N` siguen valiendo sobre un libro
@@ -858,7 +861,7 @@ orbit ls ev         [project]    [--from D] [--to D]
 orbit ls reminders  [project]    # recordatorios activos (alias: ls rem)
 orbit ls hl        [project]    [--type T]
 orbit ls log       [project]    [--type T...] [--date D] [--from D] [--to D]
-orbit ls ledger    [project]    # movimientos y saldo (solo lectura)
+orbit ls ledger    [project]    [--long]   # movimientos y saldo (solo lectura)
 orbit ls cronos    [project]    # cronos: progreso, item que lo lleva, siguiente paso
 orbit ls files    [project]    # ficheros md del proyecto con estado git
 orbit ls notes    [project]    # notas con estado git

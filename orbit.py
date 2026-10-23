@@ -496,8 +496,10 @@ def cmd_ledger(args):
         from views.ledger_check import run_ledger_check
         return run_ledger_check(args.project, strict=args.strict,
                                 files=args.check)
+    from core.termlink import linkified
     from views.ledger import run_ledger
-    return run_ledger(args.project)
+    with linkified("ledger"):
+        return run_ledger(args.project, long=getattr(args, "long", False))
 
 
 def cmd_search(args):
@@ -1776,7 +1778,7 @@ def cmd_ls(args):
     if what == "ledger":
         from views.ledger import run_ls_ledger
         fn = lambda: run_ls_ledger(
-            project=_ga(args, "project"))
+            project=_ga(args, "project"), long=_ga(args, "long", False))
         return _handle_output(args, fn, "ls ledger")
 
     if what == "cronos":
@@ -1965,6 +1967,8 @@ def _build_parser():
     # ls ledger [project]
     ls_ledger = ls_sub.add_parser("ledger", help="List ledger movements and balance (read-only)")
     add_project_arg(ls_ledger, required=False, help="Project")
+    ls_ledger.add_argument("--long", action="store_true",
+                           help="Tabla completa (categoría, disponible, estado)")
     _add_output_args(ls_ledger)
     _add_log_args(ls_ledger)
 
@@ -2033,6 +2037,9 @@ def _build_parser():
                           help="Comprueba el ledger (errores, avisos, info). Con el PDF "
                                "de ejecución y/o el excel de obrigas de la USC, además "
                                "concilia y pone la columna USC en ledger.md")
+    ledger_p.add_argument("--long", action="store_true",
+                          help="Tabla completa (categoría, disponible, estado) en vez "
+                               "de una línea por entrada")
     ledger_p.add_argument("--strict", action="store_true",
                           help="Con --check: los avisos también dan código de error")
     ledger_p.add_argument("--close", default=None, metavar="REF",

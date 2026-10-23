@@ -322,6 +322,16 @@ def match_entries(book: Book, text: str, entries=None):
             if any(needle in _fold(x) for x in (e.title, e.payee, e.op_id) if x)]
 
 
+def entry_line(e, link: bool = False) -> str:
+    """Una entrada en una línea: nº, fecha, tipo, importe, título ·
+    beneficiario (+ ☑️ / 🚫). Con *link*, el título enlaza el justificante."""
+    amount = format_amount(e.amount, plus=True) if e.amount is not None else "?"
+    title = f"[{e.title}]({e.link})" if link and e.link else e.title
+    return (f"  {e.num}  {e.date or '?'}  {e.tag:<10} {amount:>12}  "
+            f"{title} · {e.payee or '?'}" + ("  ☑️" if e.confirmed else "")
+            + ("  🚫" if not e.live else ""))
+
+
 def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
     """Nº de la entrada sobre la que actuar. *text* es un nº o un trozo del
     título/beneficiario/referencia; sin él (o si hay varias), en terminal se
@@ -342,12 +352,6 @@ def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
         pool, what = [e for e in book.entries if e.live], "entradas vivas"
     else:
         pool, what = list(book.entries), "entradas"
-
-    def _line(e):
-        amount = format_amount(e.amount, plus=True) if e.amount is not None else "?"
-        return (f"  {e.num}  {e.date or '?'}  {e.tag:<10} {amount:>12}  "
-                f"{e.title} · {e.payee or '?'}" + ("  ☑️" if e.confirmed else "")
-                + ("  🚫" if not e.live else ""))
 
     def _by_text(raw):
         raw = raw.strip()
@@ -370,11 +374,11 @@ def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
         if not candidates:
             raise BookError(f"no hay {what}")
         if not tty:
-            listing = "\n".join(_line(e) for e in candidates)
+            listing = "\n".join(entry_line(e) for e in candidates)
             raise BookError(f"¿cuál? dame el nº o un trozo del título:\n{listing}")
         print(f"{what.capitalize()}{f' que coinciden con «{text}»' if text else ''}:")
         for e in candidates:
-            print(_line(e))
+            print(entry_line(e))
         try:
             raw = _ask_line("Nº o texto (Enter = cancelar)")
         except Cancelled:
@@ -636,10 +640,12 @@ def _run_migrate(project_dir: Path, args, _day) -> int:
     return 0
 
 
-def print_book(project_dir: Path, book: Book, label: Optional[str] = None) -> int:
-    """`ls ledger` / `ledger <p>` sobre un libro: los movimientos tal como
-    están en `ledger.md` (nº, categoría, estado, ☑️) y el resumen validado
-    frente a vivo. Solo imprime."""
+def print_book(project_dir: Path, book: Book, label: Optional[str] = None,
+               long: bool = False) -> int:
+    """`ls ledger` / `ledger <p>` sobre un libro: una línea por movimiento
+    (la de `edit`, con el título enlazando el justificante) y el resumen
+    validado frente a vivo. Con *long*, la tabla de `ledger.md` (categoría,
+    disponible, estado, ☑️). Solo imprime."""
     from views.ledger import running_rows
 
     name = label or project_dir.name
@@ -649,6 +655,9 @@ def print_book(project_dir: Path, book: Book, label: Optional[str] = None) -> in
     ops, op_problems = build_operations(movs)
     if not book.entries:
         print(f"  (sin movimientos) · anota con: orbit ledger {name} add")
+    elif not long:
+        for e in sorted(book.entries, key=lambda x: (x.date or book.valid_from, x.num)):
+            print(entry_line(e, link=True))
     else:
         rows = {r.mov.num: r for r in running_rows(movs, ops)}
         print(f"  {'Nº':<4}  {'Fecha':<10}  {'Tipo':<10}  {'Categoría':<13} "

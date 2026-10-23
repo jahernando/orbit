@@ -325,7 +325,8 @@ def _action_ledger_refresh(ctx):
     return {"ok": True, "msg": f"{n} ledger{'s' if n != 1 else ''}"}
 
 
-def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
+def print_ledger(project_dir: Path, label: Optional[str] = None,
+                 long: bool = False) -> int:
     """Imprime en terminal la tabla de movimientos y el saldo. No toca el disco.
 
     Es la mitad legible de `run_ledger`, separada para que `ls ledger` pueda
@@ -338,7 +339,7 @@ def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
     book = read_book(project_dir)
     if book is not None:
         from views.ledger_book import print_book
-        return print_book(project_dir, book, label=label)
+        return print_book(project_dir, book, label=label, long=long)
 
     movements, problems = read_movements(project_dir)
     if not movements:
@@ -381,7 +382,7 @@ def print_ledger(project_dir: Path, label: Optional[str] = None) -> int:
     return 0
 
 
-def run_ledger(project: str) -> int:
+def run_ledger(project: str, long: bool = False) -> int:
     """`orbit ledger <proyecto>` — regenera `ledger.md` e imprime tabla + saldo."""
     from core.log import find_project
 
@@ -397,7 +398,7 @@ def run_ledger(project: str) -> int:
         write_ledger(project_dir, force=True)
     elif read_movements(project_dir)[0]:
         write_ledger(project_dir, force=True)
-    return print_ledger(project_dir, label=project)
+    return print_ledger(project_dir, label=project, long=long)
 
 
 def run_ledger_close(project: str, ref: str) -> int:
@@ -448,7 +449,7 @@ def run_ledger_mark(project: str, key: str, usc_id) -> int:
     return 0
 
 
-def run_ls_ledger(project: Optional[str] = None) -> int:
+def run_ls_ledger(project: Optional[str] = None, long: bool = False) -> int:
     """`orbit ls ledger [P]` — lectura pura del libro de caja.
 
     Sin proyecto recorre el workspace, como el resto de la familia `ls`, y
@@ -460,7 +461,7 @@ def run_ls_ledger(project: Optional[str] = None) -> int:
         dirs = collect_project_dirs(project)
         if not dirs:
             return 1
-        return print_ledger(dirs[0], label=project)
+        return print_ledger(dirs[0], label=project, long=long)
 
     shown = 0
     for project_dir in collect_project_dirs():
@@ -468,7 +469,7 @@ def run_ls_ledger(project: Optional[str] = None) -> int:
             continue
         if shown:
             print()
-        print_ledger(project_dir)
+        print_ledger(project_dir, long=long)
         shown += 1
     if not shown:
         print("No hay movimientos.")

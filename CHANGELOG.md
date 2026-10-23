@@ -10,6 +10,14 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — `ledger` en una línea por entrada
+
+- **`ledger <p>` y `ls ledger`** imprimen el libro con la línea compacta del
+  selector de `edit` (nº · fecha · tipo · importe · título · beneficiario ·
+  ☑️/🚫), con el título enlazando el justificante (OSC 8 en terminal; también
+  en `ledger <p>`, que antes sacaba el markdown crudo). La tabla anterior
+  queda tras `--long`. Solo para proyectos con libro (ADR-054).
+
 ### Unreleased — calendario de carga en el secretario · ADR-056
 
 - **`day` empieza por el bloque 🎯 Focus**: las tareas del focus day de hoy,

@@ -511,11 +511,37 @@ class TestProjectLinkAndLs:
         edit_movement(book, "2", confirm="A1")
         _add(book, title="Error")
         cancel_movement(book, "3")
-        run_ls_ledger("testproj")
+        run_ls_ledger("testproj", long=True)
         out = capsys.readouterr().out
         assert "0002  2026-09-01  gasto       viajes" in out
         assert "☑️ A1" in out and "🚫 anulada" in out
         assert "Validado ☑️" in out and "Por categoría: viajes -100,00" in out
+
+
+    def test_ls_ledger_por_defecto_una_linea_por_entrada(self, book, capsys):
+        from views.ledger import run_ls_ledger
+        _add(book, tag="ingreso", title="Dotación", payee="Agencia", amount="1000",
+             category=None)
+        _add(book)
+        edit_movement(book, "2", confirm="A1")
+        _add(book, title="Error")
+        cancel_movement(book, "3")
+        run_ls_ledger("testproj")
+        out = capsys.readouterr().out
+        lines = [l for l in out.splitlines() if l.startswith("  000")]
+        assert len(lines) == 3
+        assert lines[0].startswith("  0001  2026-09-01  ingreso       +1.000,00  Dotación · Agencia")
+        assert lines[1].endswith("☑️") and lines[2].endswith("🚫")
+        assert "Categoría" not in out and "Disponible:" in out    # sin tabla, con resumen
+
+    def test_ls_ledger_enlaza_el_justificante(self, book, capsys):
+        from views.ledger_book import entry_line
+        from core.ledger_book import read_book
+        _add(book)
+        e = read_book(book).entries[0]
+        e.link = "./cloud/ledger-logs/x.pdf"
+        assert "[" + e.title + "](./cloud/ledger-logs/x.pdf) · " in entry_line(e, link=True)
+        assert "](" not in entry_line(e)
 
 
 # ── elegir la entrada sin saber el nº ────────────────────────────────────────
