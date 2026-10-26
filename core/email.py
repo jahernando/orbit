@@ -661,7 +661,14 @@ end tell
 
 
 def _raw_source(email: dict) -> Optional[bytes]:
-    """El correo original completo, según de dónde vino."""
+    """El correo original completo, según de dónde vino (una vez: se guarda
+    en ``email["raw"]`` para los demás proyectos de ``--p``)."""
+    if "raw" not in email:
+        email["raw"] = _fetch_raw_source(email)
+    return email["raw"]
+
+
+def _fetch_raw_source(email: dict) -> Optional[bytes]:
     if email.get("eml_path"):
         try:
             return Path(email["eml_path"]).read_bytes()
@@ -714,23 +721,43 @@ def _save_email_note(project_dir: Path, email: dict) -> Optional[Path]:
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def run_email(project: str, query: Optional[str] = None,
+def _resolve_projects(project: Optional[str], also: Optional[list]) -> Optional[list]:
+    """Proyecto principal + ``--p`` (sin repetir) → directorios; None si
+    alguno no existe."""
+    names = [n for n in ([project] if project else []) + list(also or []) if n]
+    if not names:
+        print("⚠️  email: falta el proyecto (email <proyecto> [--p otro…]).")
+        return None
+    dirs = []
+    for name in names:
+        d = find_project(name)
+        if not d:
+            return None
+        if d not in dirs:
+            dirs.append(d)
+    return dirs
+
+
+def run_email(project: Optional[str], query: Optional[str] = None,
               msg_id: Optional[str] = None,
               source: Optional[str] = None,
               with_note: bool = False,
               eml_path: Optional[str] = None,
               as_ev: bool = False,
-              keep: bool = False) -> int:
+              keep: bool = False,
+              also: Optional[list] = None) -> int:
     """Capture an email; always log a link to the original.
 
     Modifiers (combinable):
-      with_note=True  → also save the email body as notes/emails/<...>.md and
-                        add the markdown-note link as the primary link in the
-                        log entry (the original keeps the secondary slot)
+      with_note=True  → also save the email body as notes/emails/<...>.md
+                        (📝 in the entry body)
+      keep=True       → also store the original .eml in cloud/emails/ (📦)
       as_ev=True      → also propose creating an event from the email content
+      also=[…]        → ``--p``: register it in these projects too (one entry
+                        and one copy per project; the event goes to one)
     """
-    project_dir = find_project(project)
-    if not project_dir:
+    project_dirs = _resolve_projects(project, also)
+    if not project_dirs:
         return 1
 
     if eml_path:
@@ -738,7 +765,7 @@ def run_email(project: str, query: Optional[str] = None,
         if not email:
             return 1
         email["eml_path"] = str(Path(eml_path).expanduser())
-        return _process_email(project_dir, email, with_note=with_note,
+        return _process_email(project_dirs, email, with_note=with_note,
                               as_ev=as_ev, keep=keep)
 
     src = source or _default_source()
@@ -764,19 +791,41 @@ def run_email(project: str, query: Optional[str] = None,
 
     if not email:
         return 1
-    return _process_email(project_dir, email, with_note=with_note, as_ev=as_ev,
+    return _process_email(project_dirs, email, with_note=with_note, as_ev=as_ev,
                           keep=keep)
 
 
-def _process_email(project_dir: Path, email: dict,
+def _pick_project(project_dirs: list, what: str) -> Optional[Path]:
+    """Una cita vive en un proyecto: con varios, se pregunta (Enter = el
+    primero; sin terminal, el primero)."""
+    if len(project_dirs) == 1 or not sys.stdin.isatty():
+        return project_dirs[0]
+    for i, d in enumerate(project_dirs, 1):
+        print(f"  {i}. {d.name}")
+    raw = input(f"  ¿{what} en cuál? (número, enter = 1): ").strip()
+    if not raw:
+        return project_dirs[0]
+    if raw.isdigit() and 1 <= int(raw) <= len(project_dirs):
+        return project_dirs[int(raw) - 1]
+    print(f"  ⚠️  No reconozco {raw!r}: no se crea.")
+    return None
+
+
+def _process_email(project_dirs, email: dict,
                    with_note: bool = False, as_ev: bool = False,
                    keep: bool = False) -> int:
-    """Always log; optionally save md note / original .eml; optionally
-    propose event."""
-    rc = _emit_email(project_dir, email, with_note=with_note, keep=keep)
-    if rc != 0:
-        return rc
+    """Always log (in every project); optionally save md note / original
+    .eml; optionally propose event (in one project)."""
+    if isinstance(project_dirs, Path):
+        project_dirs = [project_dirs]
+    for project_dir in project_dirs:
+        rc = _emit_email(project_dir, email, with_note=with_note, keep=keep)
+        if rc != 0:
+            return rc
     if as_ev:
+        project_dir = _pick_project(project_dirs, "el evento")
+        if project_dir is None:
+            return 1
         ev_rc = _emit_event_from_email(project_dir, email)
         if ev_rc != 0:
             # Event creation failed/cancelled — log entry is already written
@@ -1202,6 +1251,85 @@ def already_logged(project_dir: Path, msg_id: str) -> bool:
     return f"`{msg_id}`" in text or f"%3C{msg_id}%3E" in text
 
 
+def _find_entry(lines: list, msg_id: str) -> Optional[tuple]:
+    """``(cabecera, fin)`` de la entrada del log de *msg_id*: índice de la
+    cabecera y el primero tras su cuerpo. None si no está."""
+    head = None
+    for i, line in enumerate(lines):
+        if line[:4].isdigit() and len(line) > 10 and line[4] == "-":
+            head = i
+            if f"%3C{msg_id}%3E" in line:
+                break
+        elif head is not None and line.strip() == f"🆔 `{msg_id}`":
+            break
+    else:
+        return None
+    end = head + 1
+    while end < len(lines) and lines[end].startswith("  ") and lines[end].strip():
+        end += 1
+    return head, end
+
+
+def _existing_links(project_dir: Path, msg_id: str) -> tuple:
+    """``(tiene 📝, tiene 📦)`` en la entrada ya registrada."""
+    from core.log import find_logbook_file
+    lines = find_logbook_file(project_dir).read_text().splitlines()
+    span = _find_entry(lines, msg_id)
+    if not span:
+        return False, False
+    text = "\n".join(lines[span[0]:span[1]])
+    return ".md)" in text, ".eml)" in text
+
+
+def complete_entry(project_dir: Path, email: dict,
+                   note_link: Optional[str] = None,
+                   keep_link: Optional[str] = None) -> list:
+    """Completa la entrada ya registrada de este correo con lo que le falte
+    (👤 📅, 📝, 📦, 🆔 — también en las entradas antiguas, de una línea).
+    Devuelve las líneas añadidas. Única edición de una entrada del log que
+    hace `email`."""
+    from core.log import find_logbook_file
+    from core.undo import save_snapshot
+    lb = find_logbook_file(project_dir)
+    lines = lb.read_text().split("\n")
+    span = _find_entry(lines, email["msg_id"])
+    if not span:
+        return []
+    head, end = span
+    body = [l.strip() for l in lines[head + 1:end]]
+    want = email_body_lines(email, note_link, keep_link)
+    has = {
+        "meta": any(b.startswith(("👤", "📅")) for b in body),
+        "note": ".md)" in lines[head] or any(b.startswith("📝") for b in body),
+        "keep": any(b.startswith("📦") for b in body),
+        "id":   any(b.startswith("🆔") for b in body),
+    }
+    new_body, added = list(body), []
+
+    def kind(line):
+        return {"👤": "meta", "📅": "meta", "📝": "note",
+                "📦": "keep", "🆔": "id"}.get(line[:1], "")
+
+    for w in want:
+        k = kind(w)
+        if not k or has[k]:
+            continue
+        added.append(w)
+        if k == "meta":
+            new_body.insert(0, w)
+        elif k == "id":
+            new_body.append(w)
+        else:                            # 📝 / 📦: antes del 🆔
+            ids = [i for i, b in enumerate(new_body) if b.startswith("🆔")]
+            new_body.insert(ids[0] if ids else len(new_body), w)
+    if not added:
+        return []
+    save_snapshot(lb)
+    lines[head + 1:end] = [f"  {b}" for b in new_body]
+    lb.write_text("\n".join(lines))
+    return added
+
+
 def _emit_email(project_dir: Path, email: dict, with_note: bool = False,
                 keep: bool = False) -> int:
     """Write the logbook entry (always) and the markdown note (only with_note).
@@ -1211,8 +1339,23 @@ def _emit_email(project_dir: Path, email: dict, with_note: bool = False,
     Un correo ya registrado en el proyecto no se registra dos veces.
     """
     if already_logged(project_dir, email.get("msg_id", "")):
-        print(f"⚠️  [{project_dir.name}] ya registrado: {email['subject']} "
-              "(no se repite)")
+        has_note, has_keep = _existing_links(project_dir, email["msg_id"])
+        note_link = keep_link = None
+        if with_note and not has_note:
+            note_path = _save_email_note(project_dir, email)
+            note_link = ("./" + str(note_path.relative_to(project_dir))
+                         if note_path else None)
+        if keep and not has_keep:
+            keep_link = _save_email_original(project_dir, email)
+        added = complete_entry(project_dir, email, note_link, keep_link)
+        if added:
+            print(f"✓ [{project_dir.name}] ya registrado, completado: "
+                  f"{email['subject']}")
+            for a in added:
+                print(f"  + {a}")
+        else:
+            print(f"⚠️  [{project_dir.name}] ya registrado: {email['subject']} "
+                  "(nada que añadir)")
         return 0
 
     note_link = None

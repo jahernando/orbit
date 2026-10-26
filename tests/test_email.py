@@ -1049,3 +1049,96 @@ class TestKeep:
         assert "no da el correo original" in capsys.readouterr().out
         log = (env["proj"] / "test-project-logbook.md").read_text()
         assert "#email" in log and "📦" not in log
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Fase 3: --p varios proyectos · completar una entrada ya registrada
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.fixture()
+def env2(env):
+    type_dir = env["home"] / "💻software"
+    proj = type_dir / "💻otro"
+    proj.mkdir()
+    (proj / "otro-project.md").write_text(
+        "# 💻otro\n- Tipo: 💻 Software\n- Estado: [auto]\n- Prioridad: media\n")
+    (proj / "otro-logbook.md").write_text("# Logbook — 💻otro\n\n")
+    return dict(env, other=proj)
+
+
+def _mail(**kw):
+    return dict({"subject": "Acta WP3", "from": "Ana <ana@x.org>",
+                 "date": "2026-10-20T09:00", "msg_id": "acta@x",
+                 "body": "Texto del acta.", "source": "mail"}, **kw)
+
+
+class TestMultiProject:
+
+    def test_logs_in_every_project_with_own_note(self, env2, monkeypatch):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        assert email_mod.run_email("test-project", also=["otro", "test-project"],
+                                   with_note=True, source="mail") == 0
+        for proj, base in ((env2["proj"], "test-project"), (env2["other"], "otro")):
+            log = (proj / f"{base}-logbook.md").read_text()
+            assert log.count("#email") == 1
+            assert (proj / "notes" / "emails" / "2026-10-20-acta-wp3.md").exists()
+
+    def test_only_also_without_positional(self, env2, monkeypatch):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        assert email_mod.run_email(None, also=["otro"], source="mail") == 0
+        assert "#email" in (env2["other"] / "otro-logbook.md").read_text()
+
+    def test_unknown_project_aborts_before_logging(self, env2, monkeypatch):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        assert email_mod.run_email("test-project", also=["ghost"], source="mail") == 1
+        assert "#email" not in (env2["proj"] / "test-project-logbook.md").read_text()
+
+    def test_raw_source_fetched_once(self, env2, cloud, monkeypatch):
+        from core import email as email_mod
+        calls = []
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        monkeypatch.setattr(email_mod, "_apple_mail_selected_source",
+                            lambda mid: calls.append(mid) or b"raw")
+        email_mod.run_email("test-project", also=["otro"], keep=True, source="mail")
+        assert calls == ["acta@x"]
+
+
+class TestCompleteEntry:
+
+    def test_note_and_keep_added_later(self, env, cloud, monkeypatch, capsys):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        monkeypatch.setattr(email_mod, "_apple_mail_selected_source",
+                            lambda mid: b"raw")
+        lb = env["proj"] / "test-project-logbook.md"
+        email_mod.run_email("test-project", source="mail")
+        lb.write_text(lb.read_text() + "\n2026-10-27 📝 Otra cosa #apunte\n")
+        email_mod.run_email("test-project", with_note=True, keep=True, source="mail")
+        out = capsys.readouterr().out
+        assert "completado" in out
+        log = lb.read_text()
+        assert log.count("#email") == 1
+        body = log.split("#email [O]\n", 1)[1].split("\n\n", 1)[0].splitlines()
+        assert [b.strip()[:1] for b in body] == ["👤", "📝", "📦", "🆔"]
+        assert "Otra cosa #apunte" in log                  # lo demás, intacto
+        # Una tercera vez: nada que añadir
+        email_mod.run_email("test-project", with_note=True, keep=True, source="mail")
+        assert "nada que añadir" in capsys.readouterr().out
+        assert len(list((env["proj"] / "notes" / "emails").glob("*.md"))) == 1
+
+    def test_legacy_one_line_entry_gets_body(self, env, monkeypatch):
+        from core import email as email_mod
+        lb = env["proj"] / "test-project-logbook.md"
+        lb.write_text(lb.read_text()
+                      + "2026-05-19 ✉️ [Email: Acta WP3](message://%3Cacta@x%3E)"
+                        " #email [O]\n\n2026-05-20 📝 Siguiente #apunte\n")
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        email_mod.run_email("test-project", with_note=True, source="mail")
+        log = lb.read_text()
+        assert ("[Email: Acta WP3](message://%3Cacta@x%3E) #email [O]\n"
+                "  👤 Ana <ana@x.org> · 📅 2026-10-20 09:00\n"
+                "  📝 [nota](./notes/emails/2026-10-20-acta-wp3.md)\n"
+                "  🆔 `acta@x`\n\n2026-05-20 📝 Siguiente #apunte") in log

@@ -1592,7 +1592,7 @@ def cmd_email(args):
     elif getattr(args, "gmail", False):
         source = "gmail"
     return run_email(
-        project=args.project,
+        project=getattr(args, "project", None),
         query=getattr(args, "query", None),
         msg_id=getattr(args, "id", None),
         source=source,
@@ -1600,6 +1600,7 @@ def cmd_email(args):
         eml_path=getattr(args, "eml", None),
         as_ev=getattr(args, "ev", False),
         keep=getattr(args, "keep", False),
+        also=getattr(args, "also", None),
     )
 
 
@@ -2371,7 +2372,10 @@ def _build_parser():
 
     email_p = subparsers.add_parser("email",
         help="Capture an email into a project note + logbook entry")
-    add_project_arg(email_p, help="Project name")
+    add_project_arg(email_p, required=False, help="Project name")
+    email_p.add_argument("--p", nargs="+", default=None, dest="also",
+                         metavar="PROJECT",
+                         help="Register it in these projects too")
     email_p.add_argument("query", nargs="?", default=None,
                          help="Subject substring (pending)")
     email_p.add_argument("--id", default=None, metavar="MSG_ID",

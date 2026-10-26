@@ -523,7 +523,7 @@ $ orbit link orbit /Users/hernando/orbit/DECISIONS.md
 ## email — capturar un email a un proyecto
 
 ```bash
-orbit email <project> [--note] [--keep] [--ev] [--mail|--outlook|--gmail|--eml PATH]
+orbit email <project> [--p otro…] [--note] [--keep] [--ev] [--mail|--outlook|--gmail|--eml PATH]
 ```
 
 - **Default**: registra el correo **seleccionado** en Mail como entrada del logbook. El título enlaza el correo (`message://<id>`, abre Mail en este Mac); el cuerpo guarda lo que sirve si el enlace falla:
@@ -535,7 +535,8 @@ orbit email <project> [--note] [--keep] [--ev] [--mail|--outlook|--gmail|--eml P
     📦 [original](./cloud/emails/2026-10-24-informe-intermedio.eml) ← solo con --keep
     🆔 `<message-id>`
   ```
-- Un correo ya registrado en el proyecto no se repite (aviso).
+- Un correo ya registrado en el proyecto no se repite. Si vuelves con `--note` y/o `--keep`, se **completa** la entrada que ya existe (también las antiguas, de una línea: ganan 👤 📅 🆔).
+- `--p otro [otro…]` — lo registra **también** en esos proyectos: una entrada y una copia (📝 📦) en cada uno. En el panel fijado, el proyecto fijado más los de `--p`. Con `--ev`, el evento va a uno solo: pregunta en cuál (Enter = el primero).
 - `email <texto>` no busca correos: registra el seleccionado.
 - `ls email [proyecto|@familia] [texto]` lista los registrados (fecha del correo, remitente, asunto clicable → Mail, 📝 → nota, 📦 → original), el más reciente arriba; `texto` filtra por asunto o remitente. Lee también las entradas antiguas (`[Email: …]`).
 - El enlace `message://` no abre en iPhone, Outlook ni web, ni si el correo se borra: para lo importante, `--note` y/o `--keep`.

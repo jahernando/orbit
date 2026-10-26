@@ -10,6 +10,14 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — email --p y completar entradas
+
+- `email <p> --p otro…` registra el correo en varios proyectos: una entrada y
+  una copia (📝 / 📦) por proyecto; el original se pide a Mail una sola vez.
+  Con `--ev`, pregunta en qué proyecto va el evento.
+- Un correo ya registrado + `--note` / `--keep` completa la entrada existente
+  (antes de su 🆔); las entradas antiguas de una línea ganan 👤 📅 🆔.
+
 ### Unreleased — email --keep: el original en cloud/emails/
 
 - `email --keep` guarda el correo original completo (adjuntos incluidos)
