@@ -983,3 +983,69 @@ class TestLsEmail:
         assert row.subject == "[IGFAE-all] 👂 Fellows"
         assert row.mail == "message://%3Cf@x%3E"
         assert "[(IGFAE-all) 👂 Fellows](message://%3Cf@x%3E)" in format_row(row)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# --keep: original .eml en cloud/emails/
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.fixture()
+def cloud(env, monkeypatch):
+    """cloud/ del proyecto → un directorio temporal (sin orbit.json real)."""
+    import core.deliver as dlv
+    root = env["home"] / "cloudroot"
+    root.mkdir()
+    monkeypatch.setattr(dlv, "_find_cloud_root", lambda: root)
+    monkeypatch.setattr(dlv, "_project_cloud_dir", lambda p, r: r / p.name)
+    monkeypatch.setattr(dlv, "ensure_project_cloud_symlink",
+                        lambda p: (p / "cloud").symlink_to(root / p.name / "cloud")
+                        if not (p / "cloud").exists() else True)
+    return root / env["proj"].name / "cloud" / "emails"
+
+
+class TestKeep:
+
+    def test_eml_keep_copies_original_and_logs_link(self, env, cloud, tmp_path):
+        from core.email import run_email
+        from views.emails import project_emails
+        eml = tmp_path / "msg.eml"
+        _write_eml(eml, subject="Re: Acta WP3", msg_id="<k1@x.com>")
+        assert run_email("test-project", eml_path=str(eml), keep=True) == 0
+        saved = cloud / "2026-05-07-acta-wp3.eml"
+        assert saved.read_bytes() == eml.read_bytes()
+        log = (env["proj"] / "test-project-logbook.md").read_text()
+        assert "  📦 [original](./cloud/emails/2026-05-07-acta-wp3.eml)\n" in log
+        (row,) = project_emails(env["proj"])
+        assert row.keep == "./cloud/emails/2026-05-07-acta-wp3.eml"
+        assert (env["proj"] / row.keep).exists()          # vía el symlink cloud/
+
+    def test_same_name_other_content_gets_suffix(self, env, cloud, tmp_path):
+        from core.email import run_email
+        a, b = tmp_path / "a.eml", tmp_path / "b.eml"
+        _write_eml(a, subject="Acta", msg_id="<a@x>", body="uno\n")
+        _write_eml(b, subject="Acta", msg_id="<b@x>", body="dos\n")
+        run_email("test-project", eml_path=str(a), keep=True)
+        run_email("test-project", eml_path=str(b), keep=True)
+        assert sorted(p.name for p in cloud.iterdir()) == [
+            "2026-05-07-acta.eml", "2026-05-07-acta_2.eml"]
+
+    def test_mail_keep_uses_selected_source(self, env, cloud, monkeypatch):
+        from core import email as email_mod
+        e = {"subject": "Presupuesto", "from": "luis@y.org",
+             "date": "2026-10-20T09:00", "msg_id": "m@x", "body": "",
+             "source": "mail"}
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", lambda: e)
+        monkeypatch.setattr(email_mod, "_apple_mail_selected_source",
+                            lambda mid: b"Message-ID: <m@x>\r\n\r\nraw\r\n")
+        email_mod.run_email("test-project", source="mail", keep=True)
+        assert (cloud / "2026-10-20-presupuesto.eml").read_bytes().endswith(b"raw\r\n")
+
+    def test_outlook_keep_warns_and_still_logs(self, env, cloud, monkeypatch, capsys):
+        from core import email as email_mod
+        e = {"subject": "X", "from": "a@b", "date": "2026-10-20T09:00",
+             "msg_id": "", "body": "", "source": "outlook"}
+        monkeypatch.setattr(email_mod, "_capture_outlook_selected", lambda: e)
+        assert email_mod.run_email("test-project", source="outlook", keep=True) == 0
+        assert "no da el correo original" in capsys.readouterr().out
+        log = (env["proj"] / "test-project-logbook.md").read_text()
+        assert "#email" in log and "📦" not in log

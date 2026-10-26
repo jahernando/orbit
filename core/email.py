@@ -12,9 +12,13 @@ links the email in Mail, and the body carries what survives a broken link:
     2026-10-26 ✉️ [<subject>](message://%3C<id>%3E) #email [O]
       👤 <sender> · 📅 2026-10-24 10:12
       📝 [nota](./notes/emails/2026-10-24-<slug>.md)      ← only with --note
+      📦 [original](./cloud/emails/2026-10-24-<slug>.eml) ← only with --keep
       🆔 `<id>`
 
-``--note`` also writes notes/emails/YYYY-MM-DD-<slug>.md (frontmatter + body).
+``--note`` also writes notes/emails/YYYY-MM-DD-<slug>.md (frontmatter + body);
+``--keep`` stores the full original (attachments included) as a .eml in the
+project's cloud/emails/ — it opens in any mail client, even if the email is
+gone from the server.
 Older entries (``[Email: …]``, one line) are still read by ``ls email``.
 """
 
@@ -597,21 +601,112 @@ def strip_reply_prefix(subject: str) -> str:
     return _REPLY_PREFIX_RE.sub("", subject).strip() or subject
 
 
+def email_basename(email: dict) -> str:
+    """``YYYY-MM-DD-<asunto>``: fecha del correo (o hoy) + asunto sin
+    ``Re:``/``Fw:``. Nombre común de la nota (.md) y del original (.eml)."""
+    date_prefix = (email.get("date") or "")[:10]
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_prefix):
+        date_prefix = _date.today().isoformat()
+    return f"{date_prefix}-{_slugify(strip_reply_prefix(email['subject']))}"
+
+
+# ── Original (.eml) en cloud/emails/ (--keep) ─────────────────────────────────
+
+_MAC_SOURCE_PATH = "/tmp/orbit-mail-source.eml"
+
+
+def _apple_mail_selected_source(msg_id: str) -> Optional[bytes]:
+    """Fuente RFC 822 del correo seleccionado en Mail (con adjuntos).
+
+    Se comprueba que el seleccionado sigue siendo *msg_id*: si cambió la
+    selección entre la captura y esta llamada, None.
+    """
+    Path(_MAC_SOURCE_PATH).unlink(missing_ok=True)
+    script = f'''
+tell application "Mail"
+    set msgs to {{}}
+    try
+        set msgs to selection
+    end try
+    if (count of msgs) is 0 then
+        try
+            set msgs to selected messages of message viewer 1
+        end try
+    end if
+    if (count of msgs) is 0 then return ""
+    set msg to item 1 of msgs
+    set mid to ""
+    try
+        set mid to message id of msg
+    end try
+    set src to source of msg
+    set f to open for access POSIX file "{_MAC_SOURCE_PATH}" with write permission
+    set eof of f to 0
+    write src to f as «class utf8»
+    close access f
+    return mid
+end tell
+'''
+    out = _osascript(script, timeout=60)
+    sp = Path(_MAC_SOURCE_PATH)
+    try:
+        if out is None or not sp.exists():
+            return None
+        if out.strip().strip("<>") != msg_id:
+            print("⚠️  La selección de Mail cambió: no se guarda el original.")
+            return None
+        return sp.read_bytes()
+    finally:
+        sp.unlink(missing_ok=True)
+
+
+def _raw_source(email: dict) -> Optional[bytes]:
+    """El correo original completo, según de dónde vino."""
+    if email.get("eml_path"):
+        try:
+            return Path(email["eml_path"]).read_bytes()
+        except OSError as exc:
+            print(f"⚠️  No se pudo leer {email['eml_path']}: {exc}")
+            return None
+    if email.get("source") == "mail" and email.get("msg_id"):
+        return _apple_mail_selected_source(email["msg_id"])
+    print("⚠️  --keep: este origen no da el correo original "
+          "(usa Mail o --eml).")
+    return None
+
+
+def _save_email_original(project_dir: Path, email: dict) -> Optional[str]:
+    """Guarda el original en ``cloud/emails/<base>.eml``; devuelve el enlace
+    relativo (``./cloud/emails/….eml``) o None. Mismo contenido ya guardado
+    → se reutiliza; si no, sufijo ``_2``."""
+    import tempfile
+    from core.link_import import _apply_non_md
+    raw = _raw_source(email)
+    if not raw:
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "original.eml"
+        src.write_bytes(raw)
+        try:
+            link, _dest = _apply_non_md(project_dir, src, "import",
+                                        f"{email_basename(email)}.eml",
+                                        "emails", dedupe=True)
+        except (RuntimeError, OSError) as exc:
+            print(f"⚠️  No se pudo guardar el original: {exc}")
+            return None
+    return link
+
+
 def _save_email_note(project_dir: Path, email: dict) -> Optional[Path]:
     """Write captured email to notes/emails/YYYY-MM-DD-<slug>.md. Returns path."""
     notes_dir = project_dir / "notes" / "emails"
     notes_dir.mkdir(parents=True, exist_ok=True)
-    # Use the email date prefix when available; otherwise today.
-    date_prefix = (email["date"] or "")[:10]
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_prefix):
-        date_prefix = _date.today().isoformat()
-    slug = _slugify(strip_reply_prefix(email["subject"]))
-    fname = f"{date_prefix}-{slug}.md"
-    path = notes_dir / fname
+    base = email_basename(email)
+    path = notes_dir / f"{base}.md"
     # Avoid clobbering: append -2, -3 if needed
     n = 2
     while path.exists():
-        path = notes_dir / f"{date_prefix}-{slug}-{n}.md"
+        path = notes_dir / f"{base}-{n}.md"
         n += 1
     path.write_text(_format_email_md(email))
     return path
@@ -624,7 +719,8 @@ def run_email(project: str, query: Optional[str] = None,
               source: Optional[str] = None,
               with_note: bool = False,
               eml_path: Optional[str] = None,
-              as_ev: bool = False) -> int:
+              as_ev: bool = False,
+              keep: bool = False) -> int:
     """Capture an email; always log a link to the original.
 
     Modifiers (combinable):
@@ -641,8 +737,9 @@ def run_email(project: str, query: Optional[str] = None,
         email = _capture_eml(Path(eml_path).expanduser())
         if not email:
             return 1
+        email["eml_path"] = str(Path(eml_path).expanduser())
         return _process_email(project_dir, email, with_note=with_note,
-                              as_ev=as_ev)
+                              as_ev=as_ev, keep=keep)
 
     src = source or _default_source()
 
@@ -667,13 +764,16 @@ def run_email(project: str, query: Optional[str] = None,
 
     if not email:
         return 1
-    return _process_email(project_dir, email, with_note=with_note, as_ev=as_ev)
+    return _process_email(project_dir, email, with_note=with_note, as_ev=as_ev,
+                          keep=keep)
 
 
 def _process_email(project_dir: Path, email: dict,
-                   with_note: bool = False, as_ev: bool = False) -> int:
-    """Always log; optionally save md note; optionally propose event."""
-    rc = _emit_email(project_dir, email, with_note=with_note)
+                   with_note: bool = False, as_ev: bool = False,
+                   keep: bool = False) -> int:
+    """Always log; optionally save md note / original .eml; optionally
+    propose event."""
+    rc = _emit_email(project_dir, email, with_note=with_note, keep=keep)
     if rc != 0:
         return rc
     if as_ev:
@@ -1070,8 +1170,10 @@ def _md_text(text: str) -> str:
     return text.replace("[", "(").replace("]", ")").strip()
 
 
-def email_body_lines(email: dict, note_link: Optional[str] = None) -> list:
-    """Cuerpo de la entrada del log: 👤 📅 · 📝 · 🆔 (lo que falte, se omite)."""
+def email_body_lines(email: dict, note_link: Optional[str] = None,
+                     keep_link: Optional[str] = None) -> list:
+    """Cuerpo de la entrada del log: 👤 📅 · 📝 · 📦 · 🆔 (lo que falte, se
+    omite)."""
     lines = []
     who = (email.get("from") or "").strip()
     when = (email.get("date") or "").replace("T", " ").strip()
@@ -1081,6 +1183,8 @@ def email_body_lines(email: dict, note_link: Optional[str] = None) -> list:
         lines.append(meta)
     if note_link:
         lines.append(f"📝 [nota]({note_link})")
+    if keep_link:
+        lines.append(f"📦 [original]({keep_link})")
     if email.get("msg_id"):
         lines.append(f"🆔 `{email['msg_id']}`")
     return lines
@@ -1098,7 +1202,8 @@ def already_logged(project_dir: Path, msg_id: str) -> bool:
     return f"`{msg_id}`" in text or f"%3C{msg_id}%3E" in text
 
 
-def _emit_email(project_dir: Path, email: dict, with_note: bool = False) -> int:
+def _emit_email(project_dir: Path, email: dict, with_note: bool = False,
+                keep: bool = False) -> int:
     """Write the logbook entry (always) and the markdown note (only with_note).
 
     The title links the email in Mail (``message://``); without a Message-ID
@@ -1116,14 +1221,16 @@ def _emit_email(project_dir: Path, email: dict, with_note: bool = False) -> int:
         if note_path:
             note_link = "./" + str(note_path.relative_to(project_dir))
 
+    keep_link = _save_email_original(project_dir, email) if keep else None
+
     mail_link = f"message://%3C{email['msg_id']}%3E" if email.get("msg_id") else None
 
     add_orbit_entry(
         project_dir,
         _md_text(email["subject"]) or "(sin asunto)",
         tipo="email",
-        path=mail_link or note_link,
-        continuations=email_body_lines(email, note_link),
+        path=mail_link or note_link or keep_link,
+        continuations=email_body_lines(email, note_link, keep_link),
     )
 
     print(f"✓ [{project_dir.name}] Email registrado: {email['subject']}")
@@ -1131,6 +1238,8 @@ def _emit_email(project_dir: Path, email: dict, with_note: bool = False) -> int:
         print(f"  👤 {email['from']}")
     if note_link:
         print(f"  📝 {note_link}")
+    if keep_link:
+        print(f"  📦 {keep_link}")
     if mail_link:
         print(f"  ✉️ {mail_link}")
     else:

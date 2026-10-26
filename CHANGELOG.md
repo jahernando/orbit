@@ -10,6 +10,14 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — email --keep: el original en cloud/emails/
+
+- `email --keep` guarda el correo original completo (adjuntos incluidos)
+  como `cloud/emails/YYYY-MM-DD-<asunto>.eml` (mismo nombre base que la nota
+  de `--note`) y lo enlaza en el cuerpo con `📦 [original](…)`. Fuente: Mail
+  (`source` del mensaje seleccionado, comprobando el message-id) o `--eml`;
+  Outlook avisa. Dedupe por contenido (`_2`). `ls email` muestra `📦`.
+
 ### Unreleased — email: entrada con cuerpo y `ls email`
 
 - `email` escribe el título enlazando **siempre** el correo en Mail (sin

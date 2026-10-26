@@ -523,7 +523,7 @@ $ orbit link orbit /Users/hernando/orbit/DECISIONS.md
 ## email — capturar un email a un proyecto
 
 ```bash
-orbit email <project> [--note] [--ev] [--mail|--outlook|--gmail|--eml PATH]
+orbit email <project> [--note] [--keep] [--ev] [--mail|--outlook|--gmail|--eml PATH]
 ```
 
 - **Default**: registra el correo **seleccionado** en Mail como entrada del logbook. El título enlaza el correo (`message://<id>`, abre Mail en este Mac); el cuerpo guarda lo que sirve si el enlace falla:
@@ -532,15 +532,17 @@ orbit email <project> [--note] [--ev] [--mail|--outlook|--gmail|--eml PATH]
   2026-10-26 ✉️ [Informe intermedio](message://%3C…%3E) #email [O]
     👤 Fulano de Tal <fulano@usc.es> · 📅 2026-10-24 10:12
     📝 [nota](./notes/emails/2026-10-24-informe-intermedio.md)   ← solo con --note
+    📦 [original](./cloud/emails/2026-10-24-informe-intermedio.eml) ← solo con --keep
     🆔 `<message-id>`
   ```
 - Un correo ya registrado en el proyecto no se repite (aviso).
 - `email <texto>` no busca correos: registra el seleccionado.
-- `ls email [proyecto|@familia] [texto]` lista los registrados (fecha del correo, remitente, asunto clicable → Mail, 📝 → nota), el más reciente arriba; `texto` filtra por asunto o remitente. Lee también las entradas antiguas (`[Email: …]`).
-- El enlace `message://` no abre en iPhone, Outlook ni web, ni si el correo se borra: para lo importante, `--note`.
+- `ls email [proyecto|@familia] [texto]` lista los registrados (fecha del correo, remitente, asunto clicable → Mail, 📝 → nota, 📦 → original), el más reciente arriba; `texto` filtra por asunto o remitente. Lee también las entradas antiguas (`[Email: …]`).
+- El enlace `message://` no abre en iPhone, Outlook ni web, ni si el correo se borra: para lo importante, `--note` y/o `--keep`.
 
 **Modificadores aditivos** (combinables):
 - `--note` — además guarda la nota `notes/emails/YYYY-MM-DD-<asunto>.md` (frontmatter + cuerpo; fecha del correo, asunto sin `Re:`/`Fw:`/`RV:`) y la enlaza con `📝` en el cuerpo de la entrada. La nota sobrevive aunque borres el correo
+- `--keep` — además guarda el **original completo** (con adjuntos) en `cloud/emails/YYYY-MM-DD-<asunto>.eml` y lo enlaza con `📦`. Se abre con cualquier cliente de correo aunque el correo ya no esté en el servidor. Con Mail o `--eml`; con Outlook avisa y no lo guarda. Mismo contenido ya guardado → se reutiliza; si no, sufijo `_2`. Recomendado para minutas, decisiones y contratos
 - `--ev` — además propone crear un evento con los datos detectados: título, fecha, hora, room/agenda. Confirmación interactiva `[S/n/e=editar]`. Si el .eml trae ICS adjunto se usa primero (más fiable); fallback a heurística sobre body (URLs Zoom/Meet/Teams/Webex/Jitsi como rooms; Indico como agendas). No detecta recurrencia (la editas con `ev edit --recur` después)
 
 **Sources** (mutuamente exclusivos; default según `email_source` en `orbit.json`):

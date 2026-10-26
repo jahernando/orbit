@@ -6,6 +6,7 @@ Solo lectura. La verdad son las entradas ``#email`` del logbook (las escribe
     2026-10-26 ✉️ [<asunto>](message://%3C<id>%3E) #email [O]
       👤 <remitente> · 📅 2026-10-24 10:12
       📝 [nota](./notes/emails/….md)
+      📦 [original](./cloud/emails/….eml)
       🆔 `<id>`
 
 Las entradas antiguas, de una línea (``[Email: asunto](…) ✉️ [original](…)``),
@@ -34,6 +35,7 @@ class EmailRow:
     sent: str = ""                  # fecha del correo («YYYY-MM-DD HH:MM»)
     mail: Optional[str] = None      # message://…
     note: Optional[str] = None      # ./notes/emails/….md
+    keep: Optional[str] = None      # ./cloud/emails/….eml
     msg_id: str = ""
 
     @property
@@ -46,6 +48,8 @@ def _classify(row: EmailRow, url: str) -> None:
         row.mail = row.mail or url
     elif url.endswith(".md"):
         row.note = row.note or url
+    elif url.endswith(".eml"):
+        row.keep = row.keep or url
 
 
 def parse_emails(text: str) -> list:
@@ -105,7 +109,8 @@ def format_row(row: EmailRow, with_sender: bool = True) -> str:
     ninguna entrada la tiene: las antiguas)."""
     text = row.subject.replace("[", "(").replace("]", ")")
     subject = f"[{text}]({row.mail})" if row.mail else text
-    marks = f"  [📝]({row.note})" if row.note else ""
+    marks = (f"  [📝]({row.note})" if row.note else "") + \
+            (f"  [📦]({row.keep})" if row.keep else "")
     who = f"{_short_sender(row.sender):<22}  " if with_sender else ""
     return f"  {row.date}  {who}{subject}{marks}"
 

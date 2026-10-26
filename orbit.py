@@ -1599,6 +1599,7 @@ def cmd_email(args):
         with_note=getattr(args, "note", False),
         eml_path=getattr(args, "eml", None),
         as_ev=getattr(args, "ev", False),
+        keep=getattr(args, "keep", False),
     )
 
 
@@ -2381,6 +2382,8 @@ def _build_parser():
                          help="Also save the email body as a .md note (default: log only)")
     email_p.add_argument("--ev", action="store_true",
                          help="Also propose creating an event from this email")
+    email_p.add_argument("--keep", action="store_true",
+                         help="Also store the full original (.eml, attachments included) in cloud/emails/")
     src = email_p.add_mutually_exclusive_group()
     src.add_argument("--outlook", action="store_true",
                      help="Microsoft Outlook for Mac (default if no cartero.gmail)")
