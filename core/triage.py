@@ -808,15 +808,18 @@ def describe_after(row: Row, idx: Optional[int], action: str) -> str:
 #   3:viernes 5:+7         → parejas (respuesta de una palabra)
 #   3   /   3 5            → pide la respuesta (una para todos)
 #   3 5 none · 3 clean     → sin fecha · quitar los ⏩ vencidos
+#   3 plan [fecha]         → planificar: la tarea / hito recibe esa fecha
+#                            (sin fecha = hoy) y sus ⏩ vencidos se borran
 #
 # La fecha mueve **lo que hace aflorar la cita** (ADR-060): una cita con
 # fecha vencida (⚠️) cambia de fecha (y sus ⏩ vencidos se borran); el resto
-# recibe el ⏩ (la cita conserva su día, ADR-058).
+# recibe el ⏩ (la cita conserva su día, ADR-058). ``plan`` fuerza la fecha
+# aunque la cita aflore por un ⏩: «lo hago hoy / mañana».
 
 _INDEX = re.compile(r"^\d+$")
 _RANGE = re.compile(r"^(\d+)-(\d+)$")
 _PAIR = re.compile(r"^(\d+):(\S+)$")
-_KEYWORDS = ("fam", "clean", "none")
+_KEYWORDS = ("fam", "clean", "none", "plan")
 
 
 def parse_fup_batch(raw: str, n_rows: int, today: date):
@@ -893,6 +896,22 @@ def _plan(row: Row, answer: str, today: date):
                    else f"un {KIND_LABEL[row.kind]} necesita fecha")
             return f"no se puede dejar sin fecha: {why}"
         return ("none", None, None)
+    if w == "plan":
+        if row.kind not in ("task", "ms"):
+            return (f"un {KIND_LABEL[row.kind]} no se planifica "
+                    "(es la fecha de la cita); usa una fecha para el ⏩")
+        if row.item.get("recur"):
+            return "es recurrente"
+        if row.item.get("crono"):
+            return "su fecha es el plazo de su crono"
+        iso = today.isoformat()
+        if rest.strip():
+            iso = _parse_date(rest.strip())
+            if not _looks_iso(iso):
+                return f"fecha no reconocida: {rest.strip()!r}"
+        if iso < today.isoformat():
+            return f"{iso} ya ha pasado"
+        return ("date", iso, None)
     if w == "fam":
         iso, desc = _fam_iso(row, today), (rest.strip() or None)
     else:
@@ -973,7 +992,7 @@ def _run_fup_batch(sel: str, rows: list, today: date,
     for idxs, answer in groups:
         if answer is None:
             answer = _prompt(f"    para {' '.join(map(str, idxs))} — fecha "
-                             "[descripción] · fam · none · clean (enter = mañana): ")
+                             "[descripción] · plan [fecha] · fam · none · clean (enter = mañana): ")
             err = _check_fup_answer(answer, today) if answer else None
             if err:
                 print(f"  ⚠️  {err}.")
@@ -1166,7 +1185,7 @@ def run_loop(title: str, dirs: list, full: bool, show_project: bool,
                 last = "\n".join(done) or None
                 continue
 
-        hint = ("#? (3 5 viernes · 1-5 fam · 3 none · 3 clean · q=salir) > " if fup_only
+        hint = ("#? (3 5 viernes · 3 plan [mañana] · 1-5 fam · 3 none · 3 clean · q=salir) > " if fup_only
                 else "#? (número, q=salir) > ")
         sel = _prompt(hint)
         if not sel or sel.lower() in ("q", "quit", "exit"):

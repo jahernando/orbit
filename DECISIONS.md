@@ -982,6 +982,7 @@ Tres fricciones reales:
 6. **`@familia` en `ls`** (solo lectura): `ls tasks/ms` lo expanden a sus proyectos; el resto lista proyecto a proyecto. En verbos de escritura hace falta un proyecto. En el panel fijado a un proyecto, `@familia` en `day`/`organize`/`ls` es error.
 7. **Antigüedad visible**: el recuento de ⏩ lleva la del más viejo (`⏩4 (23 d)`) en la hoja de familia y en `agenda.md`, para que plegar no esconda la deuda.
 8. **Se retiran** `organize --triage | -P | --undated | tasks|ms|ev|rem|all` y el alias `reorganize`. Sus helpers de acción se mudan a `core/triage.py`; `core/organize.py` queda sin uso.
+9. **`plan [fecha]` en lotes** (2026-10-26): «lo hago hoy / mañana». La tarea o hito recibe esa fecha (sin fecha = hoy) aunque aflore por un ⏩, y sus ⏩ vencidos se borran: queda planificada, no aplazada. Rechazado en eventos y recordatorios (su fecha es la cita), recurrentes y con crono. Equivale a `f` del menú.
 
 **Consecuencias**:
 - Pros: tratar una familia es una tecla en el caso normal; lo viejo se decide en vez de arrastrarse; un solo triaje (`day`/`organize`) en lugar de dos motores.

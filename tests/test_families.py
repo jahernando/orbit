@@ -364,6 +364,33 @@ class TestPlan:
         assert t["con fup"].get("date") in (None, "") and _fups(t["con fup"]) == [_d(3)]
 
 
+    def test_plan_dates_task_surfaced_by_fup(self, ws):
+        from core import triage as T
+        rows = self._rows(ws, "hk-a",
+                          tasks=[_fup("t", -1),
+                                 _fup("con crono", -1, crono="cronos/crono-x.md")],
+                          events=[{"desc": "ev", "date": _d(-5),
+                                   "notes": [f"⏩ {_d(-1)}"]}])
+        r = {x.item["desc"]: x for x in rows}
+        assert T._plan(r["t"], "plan", TODAY) == ("date", ISO, None)
+        assert T._plan(r["t"], "plan +1", TODAY) == ("date", _d(1), None)
+        assert "ya ha pasado" in T._plan(r["t"], f"plan {_d(-1)}", TODAY)
+        assert "no reconocida" in T._plan(r["t"], "plan nunca", TODAY)
+        assert "no se planifica" in T._plan(r["ev"], "plan", TODAY)
+        assert "crono" in T._plan(r["con crono"], "plan", TODAY)
+
+    def test_batch_plan_sets_date_and_clears_fup(self, ws, monkeypatch, capsys):
+        from core import triage as T
+        _seed(ws["hk-a"], tasks=[_fup("a", -1), _fup("b", 0)])
+        _feed(monkeypatch, "1-2 plan +1", "s", "q")
+        T.run_loop("t", [ws["hk-a"]], full=False, show_project=False,
+                   today_fn=lambda: TODAY, fup_only=True)
+        t = _by_desc(ws["hk-a"])
+        assert "→ 📅 fecha" in capsys.readouterr().out
+        for k in ("a", "b"):
+            assert t[k]["date"] == _d(1) and _fups(t[k]) == []
+
+
 class TestProposal:
 
     def test_rules(self, ws):

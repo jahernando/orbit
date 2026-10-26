@@ -10,6 +10,13 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — day fup: `plan` para planificar lo que aflora por un ⏩
+
+- En los lotes de `day fup` / `day @familia`, `3 plan` pone la tarea / hito
+  en hoy y `3 5 plan mañana` en esa fecha; los ⏩ vencidos se borran. Antes,
+  una fecha a una tarea que salía por un ⏩ solo movía el ⏩. Rechazado en
+  eventos, recordatorios, recurrentes y con crono (ADR-060 §9).
+
 ### Unreleased — ledger: compromiso y facturas como una operación
 
 - `ledger <p>` / `ls ledger` / lista de `edit`: cada gasto que consume un

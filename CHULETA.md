@@ -1092,6 +1092,7 @@ Eliges un número y una acción (mismo menú que `organize`):
   | `3` · `3 5` | pide la respuesta (Enter = mañana) |
   | `3 5 none` | sin fecha ni ⏩ (tareas e hitos sin crono, no recurrentes) |
   | `7 clean` | quita los ⏩ vencidos (la cita no se toca) |
+| `3 plan` · `3 5 plan mañana` | planificar: la tarea / hito recibe esa fecha (sin fecha = hoy) y sus ⏩ vencidos se borran; no vale en eventos, recurrentes ni con crono |
 
   **La fecha mueve lo que hace aflorar la cita** (ADR-060): si sale por
   fecha vencida (⚠️), cambia **su fecha** y se borran sus ⏩ vencidos; si sale
