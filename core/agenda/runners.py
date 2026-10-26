@@ -126,6 +126,18 @@ def _crono_ls(project_dir, item: dict) -> str:
     return f" {mark}" if mark else ""
 
 
+def _email_ls(item: dict) -> str:
+    """`` [✉️](message://…) [📝](./notes/…)``: el correo de origen y su nota
+    (`email --task/--ms`), clicables en terminal."""
+    from core.agenda.display import event_email_urls
+    out = "".join(f" [✉️]({u})" for u in event_email_urls(item)[:1])
+    for n in item.get("notes") or []:
+        if n.startswith("📝 [") and "](" in n:
+            out += f" [📝]({n.split('](', 1)[1].rstrip(')')})"
+            break
+    return out
+
+
 def run_task_list(projects: Optional[list] = None,
                   status_filter: str = "pending",
                   date_filter: Optional[str] = None,
@@ -182,7 +194,7 @@ def run_task_list(projects: Optional[list] = None,
                 if t.get("until"):
                     recur_s += f":{t['until']}"
             ring_s   = f" 🔔{t['ring']}"   if t.get("ring")  else ""
-            crono_s  = _crono_ls(project_dir, t)
+            crono_s  = _crono_ls(project_dir, t) + _email_ls(t)
             print(f"  {status_s} {t['desc']}{crono_s}{date_s}{time_s}{recur_s}{ring_s}")
             total += 1
 
@@ -331,7 +343,8 @@ def run_ms_list(projects: Optional[list] = None, status_filter: str = "pending",
         for ms in mss:
             status_s = {"pending": "[ ]", "done": "[x]", "cancelled": "[-]"}[ms["status"]]
             date_s   = f" ({ms['date']})" if ms.get("date") else ""
-            print(f"  {status_s} {ms['desc']}{_crono_ls(project_dir, ms)}{date_s}")
+            print(f"  {status_s} {ms['desc']}{_crono_ls(project_dir, ms)}"
+                  f"{_email_ls(ms)}{date_s}")
             total += 1
 
     if not total:

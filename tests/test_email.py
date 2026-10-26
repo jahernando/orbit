@@ -1221,3 +1221,13 @@ class TestTaskFromEmail:
         rows = T.number_rows(T.collect([env["proj"]], date.today(), full=False))
         line = T.format_row(1, rows[0], date.today(), True)
         assert "[✉️](message://%3Cacta@x%3E)" in line
+
+    def test_ls_tasks_links_email_and_note(self, env, monkeypatch, capsys):
+        from core import email as email_mod
+        from core.agenda.runners import _email_ls
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        email_mod.run_email("test-project", source="mail", item="task",
+                            date_val="2030-01-10", with_note=True)
+        (t,) = _agenda_items(env["proj"], "tasks")
+        assert _email_ls(t) == (" [✉️](message://%3Cacta@x%3E)"
+                                " [📝](./notes/emails/2026-10-20-acta-wp3.md)")
