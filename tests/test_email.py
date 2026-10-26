@@ -884,6 +884,7 @@ Content-Type: text/calendar; charset=utf-8
         log = (env["proj"] / "test-project-logbook.md").read_text()
         assert "[Invite WG12](message://%3Cevt2@x.com%3E)" in log
         assert "📝 [nota](./notes/emails/" in log
+        assert "📝 [nota](./notes/emails/" in (env["proj"] / "agenda.md").read_text()
         notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
         assert len(notes) == 1
         agenda_md = (env["proj"] / "agenda.md").read_text()
@@ -1142,3 +1143,81 @@ class TestCompleteEntry:
                 "  👤 Ana <ana@x.org> · 📅 2026-10-20 09:00\n"
                 "  📝 [nota](./notes/emails/2026-10-20-acta-wp3.md)\n"
                 "  🆔 `acta@x`\n\n2026-05-20 📝 Siguiente #apunte") in log
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Fase 4: --task / --ms (+ --date, --fup)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _agenda_items(proj, key):
+    from core.agenda_cmds import _read_agenda
+    return _read_agenda(proj / "agenda.md").get(key) or []
+
+
+class TestTaskFromEmail:
+
+    def test_task_with_date_links_email_note_and_original(self, env, cloud, monkeypatch):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected",
+                            lambda: _mail(subject="RE: Revisar presupuesto"))
+        monkeypatch.setattr(email_mod, "_apple_mail_selected_source",
+                            lambda mid: b"raw")
+        assert email_mod.run_email("test-project", source="mail", with_note=True,
+                                   keep=True, item="task",
+                                   date_val="2030-01-10") == 0
+        (t,) = _agenda_items(env["proj"], "tasks")
+        assert t["desc"] == "Revisar presupuesto" and t["date"] == "2030-01-10"
+        notes = "\n".join(t.get("notes") or [])
+        assert "✉️ message://%3Cacta@x%3E" in notes
+        agenda = (env["proj"] / "agenda.md").read_text()
+        assert "links: [✉️](message://%3Cacta@x%3E)" in agenda
+        assert "📝 [nota](./notes/emails/2026-10-20-revisar-presupuesto.md)" in notes
+        assert "📦 [original](./cloud/emails/2026-10-20-revisar-presupuesto.eml)" in notes
+        assert "#email" in (env["proj"] / "test-project-logbook.md").read_text()
+
+    def test_task_with_fup_only(self, env, monkeypatch):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        email_mod.run_email("test-project", source="mail", item="task",
+                            fup="2030-01-03")
+        (t,) = _agenda_items(env["proj"], "tasks")
+        assert not t.get("date")
+        assert any("⏩ 2030-01-03" in n for n in t.get("notes") or [])
+
+    def test_milestone(self, env, monkeypatch):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        email_mod.run_email("test-project", source="mail", item="ms",
+                            date_val="2030-02-01")
+        (m,) = _agenda_items(env["proj"], "milestones")
+        assert m["desc"] == "Acta WP3" and m["date"] == "2030-02-01"
+
+    def test_fup_without_item_is_rejected(self, env, monkeypatch, capsys):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        assert email_mod.run_email("test-project", source="mail",
+                                   fup="2030-01-03") == 1
+        assert "--task" in capsys.readouterr().out
+        assert "#email" not in (env["proj"] / "test-project-logbook.md").read_text()
+
+    def test_task_goes_to_one_project(self, env2, monkeypatch):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        email_mod.run_email("test-project", also=["otro"], source="mail",
+                            item="task", date_val="2030-01-10")
+        assert len(_agenda_items(env2["proj"], "tasks")) == 1     # el primero
+        assert not (env2["other"] / "agenda.md").exists() or \
+            not _agenda_items(env2["other"], "tasks")
+        assert "#email" in (env2["other"] / "otro-logbook.md").read_text()
+
+    def test_day_row_links_the_email(self, env, monkeypatch):
+        from core import email as email_mod
+        from core import triage as T
+        from datetime import date
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        today = date.today().isoformat()
+        email_mod.run_email("test-project", source="mail", item="task",
+                            date_val=today)
+        rows = T.number_rows(T.collect([env["proj"]], date.today(), full=False))
+        line = T.format_row(1, rows[0], date.today(), True)
+        assert "[✉️](message://%3Cacta@x%3E)" in line

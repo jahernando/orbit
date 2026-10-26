@@ -745,7 +745,10 @@ def run_email(project: Optional[str], query: Optional[str] = None,
               eml_path: Optional[str] = None,
               as_ev: bool = False,
               keep: bool = False,
-              also: Optional[list] = None) -> int:
+              also: Optional[list] = None,
+              item: Optional[str] = None,
+              date_val: Optional[str] = None,
+              fup: Optional[str] = None) -> int:
     """Capture an email; always log a link to the original.
 
     Modifiers (combinable):
@@ -755,10 +758,17 @@ def run_email(project: Optional[str], query: Optional[str] = None,
       as_ev=True      → also propose creating an event from the email content
       also=[…]        → ``--p``: register it in these projects too (one entry
                         and one copy per project; the event goes to one)
+      item="task"|"ms" → ``--task`` / ``--ms``: also a task / milestone with
+                        the email linked (``--date``, ``--fup``); one project
     """
+    if (date_val or fup) and not item:
+        print("⚠️  --date / --fup van con --task o --ms "
+              "(un ⏩ cuelga de una cita: email --task --fup viernes).")
+        return 1
     project_dirs = _resolve_projects(project, also)
     if not project_dirs:
         return 1
+    extra = dict(item=item, date_val=date_val, fup=fup)
 
     if eml_path:
         email = _capture_eml(Path(eml_path).expanduser())
@@ -766,7 +776,7 @@ def run_email(project: Optional[str], query: Optional[str] = None,
             return 1
         email["eml_path"] = str(Path(eml_path).expanduser())
         return _process_email(project_dirs, email, with_note=with_note,
-                              as_ev=as_ev, keep=keep)
+                              as_ev=as_ev, keep=keep, **extra)
 
     src = source or _default_source()
 
@@ -792,7 +802,57 @@ def run_email(project: Optional[str], query: Optional[str] = None,
     if not email:
         return 1
     return _process_email(project_dirs, email, with_note=with_note, as_ev=as_ev,
-                          keep=keep)
+                          keep=keep, **extra)
+
+
+def _entry_links(project_dir: Path, email: dict) -> tuple:
+    """``(📝, 📦)`` de la entrada del log de este correo, ya escrita."""
+    from views.emails import project_emails
+    mail = f"message://%3C{email['msg_id']}%3E" if email.get("msg_id") else None
+    for row in project_emails(project_dir):
+        if (email.get("msg_id") and row.msg_id == email["msg_id"]) or \
+                (mail and row.mail == mail):
+            return row.note, row.keep
+    return None, None
+
+
+_EMAIL_PREFIX = "✉️ "     # = core.agenda.display._EMAIL_NOTE_PREFIX
+
+
+def _copy_lines(project_dir: Path, email: dict) -> list:
+    """Líneas de cuerpo de la cita para las copias locales: 📝 · 📦."""
+    note, keep = _entry_links(project_dir, email)
+    return ([f"📝 [nota]({note})"] if note else []) + \
+           ([f"📦 [original]({keep})"] if keep else [])
+
+
+def _ask(prompt: str) -> str:
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return ""
+
+
+def _emit_item_from_email(project_dir: Path, email: dict, kind: str,
+                          date_val: Optional[str] = None,
+                          fup: Optional[str] = None) -> int:
+    """``--task`` / ``--ms``: tarea o hito con el correo enlazado en el
+    cuerpo (✉️, y 📝 / 📦 si los hay). Título = asunto sin ``Re:``/``Fw:``
+    (en terminal se puede cambiar). Sin ``--date`` ni ``--fup``, el
+    interrogador de ``add -i`` pregunta fecha, hora, aviso y ⏩."""
+    from core.agenda.runners import run_task_add, run_ms_add
+    label = "tarea" if kind == "task" else "hito"
+    title = _md_text(strip_reply_prefix(email["subject"])) or "(sin asunto)"
+    if sys.stdin.isatty():
+        got = _ask(f"  título de la {label} (enter = «{title}»): ") if kind == "task" \
+            else _ask(f"  título del {label} (enter = «{title}»): ")
+        title = _md_text(got) or title
+    body = _copy_lines(project_dir, email)
+    if email.get("msg_id"):              # ref estructurada → `links: [✉️](…)`
+        body.append(f"{_EMAIL_PREFIX}message://%3C{email['msg_id']}%3E")
+    add = run_task_add if kind == "task" else run_ms_add
+    return add(project_dir.name, title, date_val=date_val, fup=fup,
+               desc=body or None, ask=not (date_val or fup))
 
 
 def _pick_project(project_dirs: list, what: str) -> Optional[Path]:
@@ -813,13 +873,25 @@ def _pick_project(project_dirs: list, what: str) -> Optional[Path]:
 
 def _process_email(project_dirs, email: dict,
                    with_note: bool = False, as_ev: bool = False,
-                   keep: bool = False) -> int:
+                   keep: bool = False, item: Optional[str] = None,
+                   date_val: Optional[str] = None,
+                   fup: Optional[str] = None) -> int:
     """Always log (in every project); optionally save md note / original
-    .eml; optionally propose event (in one project)."""
+    .eml; optionally create a task / milestone (*item*) and/or propose an
+    event — each in one project."""
     if isinstance(project_dirs, Path):
         project_dirs = [project_dirs]
     for project_dir in project_dirs:
         rc = _emit_email(project_dir, email, with_note=with_note, keep=keep)
+        if rc != 0:
+            return rc
+    if item:
+        what = "la tarea" if item == "task" else "el hito"
+        project_dir = _pick_project(project_dirs, what)
+        if project_dir is None:
+            return 1
+        rc = _emit_item_from_email(project_dir, email, item,
+                                   date_val=date_val, fup=fup)
         if rc != 0:
             return rc
     if as_ev:
@@ -1178,7 +1250,8 @@ def _create_event_from_proposal(project_dir: Path, proposal: dict) -> int:
     # to the just-created event.
     extras_room = rooms[1:]
     extras_agenda = agendas[1:]
-    if not extras_room and not extras_agenda and not email_url:
+    copies = proposal.get("copies") or []
+    if not extras_room and not extras_agenda and not email_url and not copies:
         return 0
     agenda_path = resolve_file(project_dir, "agenda")
     data = _read_agenda(agenda_path)
@@ -1191,6 +1264,7 @@ def _create_event_from_proposal(project_dir: Path, proposal: dict) -> int:
                 notes.append(f"{_ROOM_NOTE_PREFIX}{r}")
             if email_url:
                 notes.append(f"{_EMAIL_NOTE_PREFIX}{email_url}")
+            notes.extend(copies)
             break
     _write_agenda(agenda_path, data)
     return 0
@@ -1211,6 +1285,7 @@ def _emit_event_from_email(project_dir: Path, email: dict) -> int:
     # to the original message from Calendar.app / khal / agenda.md.
     if email.get("msg_id"):
         confirmed["email_url"] = f"message://%3C{email['msg_id']}%3E"
+    confirmed["copies"] = _copy_lines(project_dir, email)
     return _create_event_from_proposal(project_dir, confirmed)
 
 

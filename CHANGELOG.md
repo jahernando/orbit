@@ -10,6 +10,17 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — email --task / --ms (ADR-061)
+
+- `email --task` / `--ms` (+ `--date`, `--fup`) crea además una tarea / hito
+  con el correo como ref `✉️` y 📝 / 📦 en el cuerpo; título = asunto sin
+  `Re:`/`Fw:`; sin fecha ni ⏩ pregunta como `add -i`. `--fup` suelto es
+  error. Con `--p`, la cita va a un proyecto.
+- `--ev` lleva también 📝 / 📦 al evento.
+- `day`: las citas con correo de origen muestran `[✉️]` clicable.
+- `_generic_add` acepta `desc` como lista de líneas de cuerpo.
+- ADR-061 recoge el diseño de las cuatro fases.
+
 ### Unreleased — email --p y completar entradas
 
 - `email <p> --p otro…` registra el correo en varios proyectos: una entrada y

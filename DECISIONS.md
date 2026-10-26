@@ -964,6 +964,28 @@ Tres fricciones reales:
 
 ---
 
+## ADR-061 — Correos en los proyectos: el índice es orbit, la verdad sigue en el log
+
+**Estado**: aceptada (2026-10-26). Diseño: `claude/notes/2026-10-26_email-diseno.md` (workspace).
+
+**Contexto**: buscar un correo en Mail cuesta, y muchos pertenecen a uno o varios proyectos. Mail no tiene etiquetas (cuenta USC = Exchange: 7 banderas, una por correo; copiar a buzones duplica en el servidor). El enlace `message://<Message-ID>` funciona mientras Mail tenga el correo en este Mac; no en iPhone, Outlook o web, ni si se borra.
+
+**Decisión**:
+1. **El índice es orbit**: `ls email [proyecto|@familia] [texto]` lista los correos registrados (fecha, remitente, asunto → Mail, 📝, 📦). Solo lectura.
+2. **La verdad sigue en el log** (`#email`), no en un fichero propio: a diferencia del ledger (ADR-054), un correo registrado no tiene estado, cálculo, numeración ni relaciones. Se sacaría a un listado propio solo si el volumen se dispara (un ayudante automático) o hay que editarlos a menudo. El estado («pendiente de responder») va en la agenda.
+3. **Entrada con cuerpo**: título → correo en Mail; cuerpo `👤 remitente · 📅 fecha del correo`, `📝 nota`, `📦 original`, `🆔 message-id` (lo que sirve si el enlace falla).
+4. **Tres niveles de seguridad**: enlace + datos en texto (siempre) · `--note` (texto en `notes/emails/`) · `--keep` (el `.eml` completo, con adjuntos, en `cloud/emails/`, ADR-040). Mismo nombre base `YYYY-MM-DD-<asunto sin Re:/Fw:>`.
+5. **Un correo, una entrada por proyecto**: `--p` lo registra en varios (copia por proyecto); registrar de nuevo + `--note`/`--keep` completa la entrada existente — única edición de una entrada del log que hace `email`.
+6. **Lo que el correo genera es una cita**: `--task` / `--ms` (`--date`, `--fup`) y `--ev`, en un solo proyecto (se pregunta con `--p`), con el correo como ref estructurada `✉️` (`links: [✉️](…)`) y 📝 / 📦 en el cuerpo. No hay `--fup` suelto: un ⏩ cuelga de una cita. `day` muestra `[✉️]` clicable.
+
+**Consecuencias**:
+- Pros: sin fichero de verdad nuevo; el correo queda en su contexto del log; las entradas antiguas se leen y se pueden completar; la tarea lleva al correo con un clic.
+- Contras: la búsqueda es en orbit, no en Mail; `message://` solo abre en el Mac con Mail; `--keep` depende de que Mail tenga el correo descargado (Exchange) y no funciona con el backend de Outlook.
+
+**Verificación**: `tests/test_email.py` (`TestLsEmail`, `TestKeep`, `TestMultiProject`, `TestCompleteEntry`, `TestTaskFromEmail`).
+
+---
+
 ## ADR-060 — Triaje por familia: propuesta, lotes y «la fecha mueve lo que aflora»
 
 **Estado**: aceptada (2026-10-23). Fase B de ADR-059. **Enmienda ADR-056 y ADR-058 en el modo por lotes**. Retira las formas antiguas de `organize` (ADR-051 las dejó «hasta que se retiren»).

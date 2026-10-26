@@ -1601,6 +1601,9 @@ def cmd_email(args):
         as_ev=getattr(args, "ev", False),
         keep=getattr(args, "keep", False),
         also=getattr(args, "also", None),
+        item=getattr(args, "item", None),
+        date_val=_d(getattr(args, "item_date", None)),
+        fup=getattr(args, "item_fup", None),
     )
 
 
@@ -2388,6 +2391,15 @@ def _build_parser():
                          help="Also propose creating an event from this email")
     email_p.add_argument("--keep", action="store_true",
                          help="Also store the full original (.eml, attachments included) in cloud/emails/")
+    item_g = email_p.add_mutually_exclusive_group()
+    item_g.add_argument("--task", action="store_const", const="task", dest="item",
+                        help="Also create a task with the email linked")
+    item_g.add_argument("--ms", action="store_const", const="ms", dest="item",
+                        help="Also create a milestone with the email linked")
+    email_p.add_argument("--date", default=None, dest="item_date",
+                         help="Date of the --task / --ms")
+    email_p.add_argument("--fup", default=None, dest="item_fup",
+                         help="⏩ followup date of the --task / --ms")
     src = email_p.add_mutually_exclusive_group()
     src.add_argument("--outlook", action="store_true",
                      help="Microsoft Outlook for Mac (default if no cartero.gmail)")

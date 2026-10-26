@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from core.agenda_cmds import _read_agenda, _write_agenda, _valid_time
-from core.agenda.display import (item_followups, add_followup,
+from core.agenda.display import (item_followups, add_followup, event_email_urls,
                                  drop_followup, drop_followup_at,
                                  format_item_block)
 from core.config import iter_project_dirs
@@ -431,6 +431,9 @@ def format_row(n: int, row: Row, today: date, show_project: bool,
     proj = f"  [{row.project_dir.name}]" if show_project else ""
     crono = crono_mark(row.project_dir, row.item)
     crono = f"  {crono}" if crono else ""
+    # El correo de origen (`email --task/--ms/--ev`), clicable en terminal.
+    mails = event_email_urls(row.item)
+    crono += f"  [✉️]({mails[0]})" if mails else ""
     # En el bloque Focus el 🎯 sobra: ya lo dice el bloque.
     target = ("🎯 " if row.section != FOCUS
               and row.item.get("orbit_id") in focus else "")

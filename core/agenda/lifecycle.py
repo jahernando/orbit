@@ -815,7 +815,10 @@ def _generic_add(type_name: str, project: str, text: str,
             return 1
         followups = followups + [_followup_line(fup_norm)]
 
-    notes_in = ([desc] if desc else []) + followups or None
+    # desc: una línea de cuerpo, o varias (lista; p. ej. `email --task`).
+    desc_lines = (list(desc) if isinstance(desc, (list, tuple))
+                  else [desc] if desc else [])
+    notes_in = desc_lines + followups or None
 
     try:
         if type_name == "task":
