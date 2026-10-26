@@ -277,8 +277,11 @@ class TestRunEmail:
         rc = email_mod.run_email("test-project", source="outlook")
         assert rc == 0
         log = (env["proj"] / "test-project-logbook.md").read_text()
-        # Email link is the primary [text](url) and the line starts with ✉️
-        assert "✉️ [Email: Capa 7 down](message://%3Cevt99@example.com%3E)" in log
+        # El título enlaza el correo; remitente, fecha e id van en el cuerpo
+        assert "✉️ [Capa 7 down](message://%3Cevt99@example.com%3E)" in log
+        assert "  👤 noc@example.com · 📅 2026-04-02 08:15\n" in log
+        assert "  🆔 `evt99@example.com`\n" in log
+        assert "📝" not in log
         # No "secondary" link of the form '✉️ [original](...)' since the
         # primary IS the email
         assert "[original](message://" not in log
@@ -297,9 +300,10 @@ class TestRunEmail:
         rc = email_mod.run_email("test-project", source="outlook", with_note=True)
         assert rc == 0
         log = (env["proj"] / "test-project-logbook.md").read_text()
-        # Primary link is the note, secondary is the email
-        assert "[Email: Capa 7 down](./notes/emails/" in log
-        assert "✉️ [original](message://%3Cevt99@example.com%3E)" in log
+        # El título sigue enlazando el correo; la nota va en el cuerpo
+        assert "✉️ [Capa 7 down](message://%3Cevt99@example.com%3E)" in log
+        assert "  📝 [nota](./notes/emails/2026-04-02-capa-7-down.md)" in log
+        assert "[original]" not in log
         notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
         assert len(notes) == 1
         assert "2026-04-02" in notes[0].name
@@ -321,7 +325,29 @@ class TestRunEmail:
         rc = email_mod.run_email("test-project", source="outlook",
                                  query="any subject")
         assert rc == 1
-        assert "no implementada" in capsys.readouterr().out.lower()
+        out = capsys.readouterr().out
+        assert "no busca correos" in out and "«any subject»" in out
+
+    def test_same_email_not_logged_twice(self, env, monkeypatch, capsys):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_outlook_selected",
+                            lambda: self._email())
+        email_mod.run_email("test-project", source="outlook")
+        rc = email_mod.run_email("test-project", source="outlook")
+        assert rc == 0
+        assert "ya registrado" in capsys.readouterr().out
+        log = (env["proj"] / "test-project-logbook.md").read_text()
+        assert log.count("#email") == 1
+
+    def test_note_filename_drops_reply_prefix(self, env, monkeypatch):
+        from core import email as email_mod
+        e = dict(self._email(), subject="RE: Fw: Capa 7 down")
+        monkeypatch.setattr(email_mod, "_capture_outlook_selected", lambda: e)
+        email_mod.run_email("test-project", source="outlook", with_note=True)
+        notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
+        assert [n.name for n in notes] == ["2026-04-02-capa-7-down.md"]
+        log = (env["proj"] / "test-project-logbook.md").read_text()
+        assert "[RE: Fw: Capa 7 down](message://" in log
 
     def test_unknown_project(self, env, monkeypatch, capsys):
         from core import email as email_mod
@@ -407,7 +433,7 @@ class TestEmlBackend:
         rc = run_email("test-project", eml_path=str(eml))
         assert rc == 0
         log = (env["proj"] / "test-project-logbook.md").read_text()
-        assert "[Email: From eml](message://%3Ceml-id@x.com%3E)" in log
+        assert "[From eml](message://%3Ceml-id@x.com%3E)" in log
         # Without --note, no .md saved
         assert not (env["proj"] / "notes" / "emails").exists()
 
@@ -419,8 +445,8 @@ class TestEmlBackend:
         rc = run_email("test-project", eml_path=str(eml), with_note=True)
         assert rc == 0
         log = (env["proj"] / "test-project-logbook.md").read_text()
-        assert "[Email: From eml](./notes/emails/" in log
-        assert "✉️ [original](message://%3Ceml-id@x.com%3E)" in log
+        assert "[From eml](message://%3Ceml-id@x.com%3E)" in log
+        assert "📝 [nota](./notes/emails/" in log
         notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
         assert len(notes) == 1
 
@@ -821,7 +847,7 @@ Content-Type: text/calendar; charset=utf-8
         # --ev still logs the email (no longer skips it); no md note unless --note
         assert not (env["proj"] / "notes" / "emails").exists()
         log = (env["proj"] / "test-project-logbook.md").read_text()
-        assert "[Email: Invite](message://%3Cevt@x.com%3E)" in log
+        assert "[Invite](message://%3Cevt@x.com%3E)" in log
         agenda_md = (env["proj"] / "agenda.md").read_text()
         assert "Reunión WG12 de CNID" in agenda_md
 
@@ -856,8 +882,8 @@ Content-Type: text/calendar; charset=utf-8
         assert rc == 0
         # All three artefacts present:
         log = (env["proj"] / "test-project-logbook.md").read_text()
-        assert "[Email: Invite WG12](./notes/emails/" in log
-        assert "✉️ [original](message://%3Cevt2@x.com%3E)" in log
+        assert "[Invite WG12](message://%3Cevt2@x.com%3E)" in log
+        assert "📝 [nota](./notes/emails/" in log
         notes = list((env["proj"] / "notes" / "emails").glob("*.md"))
         assert len(notes) == 1
         agenda_md = (env["proj"] / "agenda.md").read_text()
@@ -882,3 +908,78 @@ class TestHtmlToText:
         from core.email import _html_to_text
         html = "<style>x</style><script>y</script>visible"
         assert _html_to_text(html) == "visible"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ls email (views/emails.py)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_LOG = """# Logbook
+
+2026-05-01 ✉️ [Email: Viejo](message://%3Cold@x%3E) #email [O]
+
+2026-06-01 ✉️ [Email: Con nota](./notes/emails/n.md) ✉️ [original](message://%3Cn@x%3E) #email [O]
+
+2026-06-02 📝 Apunte cualquiera #apunte
+  con cuerpo que no es de correo
+
+2026-10-26 ✉️ [Informe (v2)](message://%3Cnew@x%3E) #email [O]
+  👤 Fulano de Tal <fulano@usc.es> · 📅 2026-10-24 10:12
+  📝 [nota](./notes/emails/2026-10-24-informe.md)
+  🆔 `new@x`
+
+2026-10-27 ✉️ Escrito a mano #email
+"""
+
+
+class TestLsEmail:
+
+    def test_parse_new_and_legacy(self):
+        from views.emails import parse_emails
+        rows = {r.subject: r for r in parse_emails(_LOG)}
+        assert set(rows) == {"Viejo", "Con nota", "Informe (v2)", "Escrito a mano"}
+        old = rows["Viejo"]
+        assert old.mail == "message://%3Cold@x%3E" and old.note is None
+        assert old.sender == "" and old.date == "2026-05-01"
+        legacy_note = rows["Con nota"]
+        assert legacy_note.note == "./notes/emails/n.md"
+        assert legacy_note.mail == "message://%3Cn@x%3E"
+        new = rows["Informe (v2)"]
+        assert new.sender == "Fulano de Tal <fulano@usc.es>"
+        assert new.sent == "2026-10-24 10:12" and new.date == "2026-10-24"
+        assert new.note == "./notes/emails/2026-10-24-informe.md"
+        assert new.msg_id == "new@x"
+        assert rows["Escrito a mano"].mail is None
+
+    def test_row_format(self):
+        from views.emails import parse_emails, format_row
+        new = [r for r in parse_emails(_LOG) if r.msg_id == "new@x"][0]
+        line = format_row(new)
+        assert line.startswith("  2026-10-24  Fulano de Tal ")
+        assert "<fulano" not in line
+        assert "[Informe (v2)](message://%3Cnew@x%3E)" in line
+        assert line.endswith("[📝](./notes/emails/2026-10-24-informe.md)")
+
+    def test_roundtrip_from_email_and_filter(self, env, monkeypatch):
+        from core import email as email_mod
+        from views.emails import project_emails
+        for i, (subj, who) in enumerate([("Acta WP3", "ana@x.org"),
+                                         ("Presupuesto", "luis@y.org")]):
+            e = {"subject": subj, "from": who, "date": f"2026-10-2{i}T09:00",
+                 "msg_id": f"m{i}@x", "body": "", "source": "mail"}
+            monkeypatch.setattr(email_mod, "_capture_apple_mail_selected",
+                                lambda e=e: e)
+            email_mod.run_email("test-project", source="mail")
+        rows = project_emails(env["proj"])
+        assert [r.subject for r in rows] == ["Presupuesto", "Acta WP3"]  # reciente arriba
+        assert rows[0].sender == "luis@y.org" and rows[0].msg_id == "m1@x"
+        assert [r.subject for r in project_emails(env["proj"], "ANA")] == ["Acta WP3"]
+
+    def test_legacy_title_with_brackets(self):
+        from views.emails import parse_emails, format_row
+        log = ("2026-06-12 ✉️ [Email: [IGFAE-all] 👂 Fellows](message://%3Cf@x%3E)"
+               " #email [O]\n")
+        (row,) = parse_emails(log)
+        assert row.subject == "[IGFAE-all] 👂 Fellows"
+        assert row.mail == "message://%3Cf@x%3E"
+        assert "[(IGFAE-all) 👂 Fellows](message://%3Cf@x%3E)" in format_row(row)

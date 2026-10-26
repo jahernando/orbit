@@ -379,7 +379,8 @@ def add_orbit_entry(project_dir: Path, message: str, tipo: str = "apunte",
                     path: Optional[str] = None,
                     extra_tags: Optional[list] = None,
                     secondary_link: Optional[tuple] = None,
-                    emoji_override: Optional[str] = None) -> None:
+                    emoji_override: Optional[str] = None,
+                    continuations: Optional[list] = None) -> None:
     """Write an Orbit-authored entry [O] to the project logbook. Never raises."""
     try:
         logbook_path = resolve_file(project_dir, "logbook")
@@ -388,7 +389,8 @@ def add_orbit_entry(project_dir: Path, message: str, tipo: str = "apunte",
         entry = format_entry(message, tipo, path, None, orbit=True,
                              extra_tags=extra_tags,
                              secondary_link=secondary_link,
-                             emoji_override=emoji_override)
+                             emoji_override=emoji_override,
+                             continuations=continuations)
         _append_entry(logbook_path, entry)
     except Exception:
         pass  # lifecycle events must never crash the caller

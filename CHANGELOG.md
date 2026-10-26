@@ -10,6 +10,19 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — email: entrada con cuerpo y `ls email`
+
+- `email` escribe el título enlazando **siempre** el correo en Mail (sin
+  «Email:») y un cuerpo con `👤 remitente · 📅 fecha del correo`, `📝 nota`
+  (con `--note`) y `🆔 message-id`, para encontrarlo si el enlace falla.
+  Desaparece el enlace secundario `✉️ [original]`.
+- Un correo ya registrado en el proyecto no se repite.
+- Nota de `--note`: el nombre ya no lleva `Re:`/`Fw:`/`RV:`.
+- `email <texto>` explica que no busca: registra el correo seleccionado.
+- Nuevo `ls email [proyecto|@familia] [texto]` (`views/emails.py`): fecha,
+  remitente, asunto clicable → Mail, 📝 → nota; lee también las entradas
+  antiguas. Diseño en `claude/notes/2026-10-26_email-diseno.md` (fase 1).
+
 ### Unreleased — day fup: `plan` para planificar lo que aflora por un ⏩
 
 - En los lotes de `day fup` / `day @familia`, `3 plan` pone la tarea / hito

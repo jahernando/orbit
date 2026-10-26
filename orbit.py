@@ -1764,6 +1764,13 @@ def cmd_ls(args):
         if not args.projects:
             return 0
     proj = _ga(args, "project")
+    if what == "email" and isinstance(proj, str) and proj.startswith("@"):
+        names = _family_project_names([proj])
+        if names is None:
+            return 1
+        from views.emails import run_ls_email
+        fn = lambda: run_ls_email(text=_ga(args, "text"), projects=names)
+        return _handle_output(args, fn, "ls email")
     if isinstance(proj, str) and proj.startswith("@"):
         import copy
         names = _family_project_names([proj])
@@ -1835,6 +1842,12 @@ def cmd_ls(args):
             period_from=_d(getattr(args, "period_from", None)),
             period_to=_d(getattr(args, "period_to", None)))
         return _handle_output(args, fn, "ls log")
+
+    if what == "email":
+        from views.emails import run_ls_email
+        fn = lambda: run_ls_email(project=_ga(args, "project"),
+                                  text=_ga(args, "text"))
+        return _handle_output(args, fn, "ls email")
 
     if what == "ledger":
         from views.ledger import run_ls_ledger
@@ -1953,7 +1966,7 @@ def _build_parser():
     _add_fed_args(search_p)
 
     # --- ls (unified listing) ---
-    ls_p   = subparsers.add_parser("ls", help="List projects, tasks, milestones, events, highlights, logbook, ledger, cronos, files, notes")
+    ls_p   = subparsers.add_parser("ls", help="List projects, tasks, milestones, events, highlights, logbook, email, ledger, cronos, files, notes")
     ls_sub = ls_p.add_subparsers(dest="what")
 
     # ls projects (default when no subcommand)
@@ -2024,6 +2037,14 @@ def _build_parser():
     ls_log.add_argument("--to",   dest="period_to",   default=None, metavar="DATE")
     _add_output_args(ls_log)
     _add_log_args(ls_log)
+
+    # ls email [project] [text]
+    ls_email = ls_sub.add_parser("email", help="List emails logged in the project (read-only)")
+    add_project_arg(ls_email, required=False, help="Project or @familia")
+    ls_email.add_argument("text", nargs="?", default=None,
+                          help="Filter by subject or sender")
+    _add_output_args(ls_email)
+    _add_log_args(ls_email)
 
     # ls ledger [project]
     ls_ledger = ls_sub.add_parser("ledger", help="List ledger movements and balance (read-only)")

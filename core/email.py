@@ -6,10 +6,16 @@ Backends:
   - mail:    AppleScript to Apple Mail.app           (selected message)
   - gmail:   Chrome active tab URL → Gmail API        — pending
 
-Each captured email writes one logbook entry. Two shapes (both tipo=email):
-  - default:  ✉️ [Email: <subject>](message://<id>)                       #email [O]
-  - --note:   ✉️ [Email: <subject>](./notes/emails/…md) ✉️ [original](…)  #email [O]
-            plus notes/emails/YYYY-MM-DD-<slug>.md (frontmatter + body).
+Each captured email writes one logbook entry (tipo=email); the title always
+links the email in Mail, and the body carries what survives a broken link:
+
+    2026-10-26 ✉️ [<subject>](message://%3C<id>%3E) #email [O]
+      👤 <sender> · 📅 2026-10-24 10:12
+      📝 [nota](./notes/emails/2026-10-24-<slug>.md)      ← only with --note
+      🆔 `<id>`
+
+``--note`` also writes notes/emails/YYYY-MM-DD-<slug>.md (frontmatter + body).
+Older entries (``[Email: …]``, one line) are still read by ``ls email``.
 """
 
 import email as _stdlib_email
@@ -583,6 +589,14 @@ def _format_email_md(email: dict) -> str:
     return "\n".join(fm)
 
 
+_REPLY_PREFIX_RE = re.compile(r"^\s*(?:(?:re|fw|fwd|rv|reenv)\s*:\s*)+", re.I)
+
+
+def strip_reply_prefix(subject: str) -> str:
+    """``Re: RV: Informe`` → ``Informe`` (para nombres de fichero)."""
+    return _REPLY_PREFIX_RE.sub("", subject).strip() or subject
+
+
 def _save_email_note(project_dir: Path, email: dict) -> Optional[Path]:
     """Write captured email to notes/emails/YYYY-MM-DD-<slug>.md. Returns path."""
     notes_dir = project_dir / "notes" / "emails"
@@ -591,7 +605,7 @@ def _save_email_note(project_dir: Path, email: dict) -> Optional[Path]:
     date_prefix = (email["date"] or "")[:10]
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_prefix):
         date_prefix = _date.today().isoformat()
-    slug = _slugify(email["subject"])
+    slug = _slugify(strip_reply_prefix(email["subject"]))
     fname = f"{date_prefix}-{slug}.md"
     path = notes_dir / fname
     # Avoid clobbering: append -2, -3 if needed
@@ -634,9 +648,12 @@ def run_email(project: str, query: Optional[str] = None,
 
     if src in ("outlook", "mail"):
         if query or msg_id:
-            app_name = "Microsoft Outlook" if src == "outlook" else "Apple Mail.app"
-            print(f"Búsqueda por subject/--id aún no implementada.")
-            print(f"Selecciona el email en {app_name} y vuelve a llamar sin args.")
+            app_name = "Microsoft Outlook" if src == "outlook" else "Apple Mail"
+            what = f"«{query}»" if query else f"--id {msg_id}"
+            print(f"⚠️  email no busca correos ({what} no se usa): registra "
+                  f"el que tengas seleccionado en {app_name}.")
+            print("   email · email --note · email --ev "
+                  "(el log se hace siempre)")
             return 1
         email = (_capture_outlook_selected() if src == "outlook"
                  else _capture_apple_mail_selected())
@@ -1048,14 +1065,51 @@ def _emit_event_from_email(project_dir: Path, email: dict) -> int:
     return _create_event_from_proposal(project_dir, confirmed)
 
 
+def _md_text(text: str) -> str:
+    """Texto seguro dentro de ``[…]`` de un enlace markdown."""
+    return text.replace("[", "(").replace("]", ")").strip()
+
+
+def email_body_lines(email: dict, note_link: Optional[str] = None) -> list:
+    """Cuerpo de la entrada del log: 👤 📅 · 📝 · 🆔 (lo que falte, se omite)."""
+    lines = []
+    who = (email.get("from") or "").strip()
+    when = (email.get("date") or "").replace("T", " ").strip()
+    meta = " · ".join(x for x in ((f"👤 {who}" if who else ""),
+                                  (f"📅 {when}" if when else "")) if x)
+    if meta:
+        lines.append(meta)
+    if note_link:
+        lines.append(f"📝 [nota]({note_link})")
+    if email.get("msg_id"):
+        lines.append(f"🆔 `{email['msg_id']}`")
+    return lines
+
+
+def already_logged(project_dir: Path, msg_id: str) -> bool:
+    """¿Este Message-ID ya está registrado en el logbook del proyecto?"""
+    from core.log import find_logbook_file
+    if not msg_id:
+        return False
+    lb = find_logbook_file(project_dir)
+    if not lb or not lb.exists():
+        return False
+    text = lb.read_text()
+    return f"`{msg_id}`" in text or f"%3C{msg_id}%3E" in text
+
+
 def _emit_email(project_dir: Path, email: dict, with_note: bool = False) -> int:
     """Write the logbook entry (always) and the markdown note (only with_note).
 
-    The log link layout:
-      - default            → primary link is the email itself (message://<id>)
-      - with_note=True     → primary link is the .md note;
-                              the email original goes as secondary  ✉️
+    The title links the email in Mail (``message://``); without a Message-ID
+    it links the note, if any. Sender, date, note and id go in the body.
+    Un correo ya registrado en el proyecto no se registra dos veces.
     """
+    if already_logged(project_dir, email.get("msg_id", "")):
+        print(f"⚠️  [{project_dir.name}] ya registrado: {email['subject']} "
+              "(no se repite)")
+        return 0
+
     note_link = None
     if with_note:
         note_path = _save_email_note(project_dir, email)
@@ -1064,29 +1118,17 @@ def _emit_email(project_dir: Path, email: dict, with_note: bool = False) -> int:
 
     mail_link = f"message://%3C{email['msg_id']}%3E" if email.get("msg_id") else None
 
-    # Rule: anything sourced from a message is tipo=email. With --note the
-    # primary link points at the local .md but the entry is still "email"
-    # (origin describes type). Secondary link keeps the original mail
-    # one click away.
-    tipo  = "email"
-    extra = None
-    if note_link:
-        path = note_link
-        secondary = ("✉️", "original", mail_link) if mail_link else None
-    else:
-        path = mail_link
-        secondary = None
-
     add_orbit_entry(
         project_dir,
-        f"Email: {email['subject']}",
-        tipo=tipo,
-        path=path,
-        extra_tags=extra,
-        secondary_link=secondary,
+        _md_text(email["subject"]) or "(sin asunto)",
+        tipo="email",
+        path=mail_link or note_link,
+        continuations=email_body_lines(email, note_link),
     )
 
     print(f"✓ [{project_dir.name}] Email registrado: {email['subject']}")
+    if email.get("from"):
+        print(f"  👤 {email['from']}")
     if note_link:
         print(f"  📝 {note_link}")
     if mail_link:

@@ -526,11 +526,21 @@ $ orbit link orbit /Users/hernando/orbit/DECISIONS.md
 orbit email <project> [--note] [--ev] [--mail|--outlook|--gmail|--eml PATH]
 ```
 
-- **Default**: añade entry al logbook con link al email original (`message://<id>`, abre Mail.app). Sin nota md.
-- Tag de log: `#referencia #email [O]`
+- **Default**: registra el correo **seleccionado** en Mail como entrada del logbook. El título enlaza el correo (`message://<id>`, abre Mail en este Mac); el cuerpo guarda lo que sirve si el enlace falla:
+
+  ```
+  2026-10-26 ✉️ [Informe intermedio](message://%3C…%3E) #email [O]
+    👤 Fulano de Tal <fulano@usc.es> · 📅 2026-10-24 10:12
+    📝 [nota](./notes/emails/2026-10-24-informe-intermedio.md)   ← solo con --note
+    🆔 `<message-id>`
+  ```
+- Un correo ya registrado en el proyecto no se repite (aviso).
+- `email <texto>` no busca correos: registra el seleccionado.
+- `ls email [proyecto|@familia] [texto]` lista los registrados (fecha del correo, remitente, asunto clicable → Mail, 📝 → nota), el más reciente arriba; `texto` filtra por asunto o remitente. Lee también las entradas antiguas (`[Email: …]`).
+- El enlace `message://` no abre en iPhone, Outlook ni web, ni si el correo se borra: para lo importante, `--note`.
 
 **Modificadores aditivos** (combinables):
-- `--note` — además guarda la nota `notes/emails/YYYY-MM-DD-<slug>.md` (frontmatter + cuerpo) y la entry pasa a doble link: `[Email: subject](nota.md) ✉️ [original](message://...)`. Con esto la nota es inmortal aunque borres el email original
+- `--note` — además guarda la nota `notes/emails/YYYY-MM-DD-<asunto>.md` (frontmatter + cuerpo; fecha del correo, asunto sin `Re:`/`Fw:`/`RV:`) y la enlaza con `📝` en el cuerpo de la entrada. La nota sobrevive aunque borres el correo
 - `--ev` — además propone crear un evento con los datos detectados: título, fecha, hora, room/agenda. Confirmación interactiva `[S/n/e=editar]`. Si el .eml trae ICS adjunto se usa primero (más fiable); fallback a heurística sobre body (URLs Zoom/Meet/Teams/Webex/Jitsi como rooms; Indico como agendas). No detecta recurrencia (la editas con `ev edit --recur` después)
 
 **Sources** (mutuamente exclusivos; default según `email_source` en `orbit.json`):
@@ -875,6 +885,7 @@ orbit ls reminders  [project]    # recordatorios activos (alias: ls rem)
 orbit ls hl        [project]    [--type T]
 orbit ls log       [project]    [--type T...] [--date D] [--from D] [--to D]
 orbit ls ledger    [project]    [--long]   # movimientos y saldo (solo lectura)
+orbit ls email     [project]    [texto]    # correos registrados (solo lectura)
 orbit ls cronos    [project]    # cronos: progreso, item que lo lleva, siguiente paso
 orbit ls files    [project]    # ficheros md del proyecto con estado git
 orbit ls notes    [project]    # notas con estado git
