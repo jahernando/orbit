@@ -10,6 +10,17 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 
 ---
 
+### Unreleased — folla con historia y facturas dentro (ADR-062)
+
+- `ledger <p> edit E PDF [--status aceptada --id CM…]`: el PDF pasa al título y
+  la versión anterior queda en la historia `📎` (sin `--force`, sin perder ☑️).
+- `--status solicitada|aceptada|cerrada` (compromisos); `cerrada` con PDF = la
+  factura (`🧾`) + 🔒. `--factura` añade una factura sin cerrar (varias por folla).
+- Estado deducido (sin 🆔 / 🆔 / 🔒 / 🚫) en `ls ledger`; facturas debajo.
+- `ledger <p> fold [--dry-run]`: gastos `🔗` → `🧾`, notas de justificante →
+  `📎`, anuladas fuera, renumera libro y rastro del logbook.
+- `ledger.json` v3 (`status`, `docs`, `invoices`).
+
 ### Unreleased — email --task / --ms (ADR-061)
 
 - `email --task` / `--ms` (+ `--date`, `--fup`) crea además una tarea / hito

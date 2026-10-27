@@ -48,10 +48,16 @@ from core.ledger import (
 BOOK_FILE   = "ledger.md"
 LEDGER_LOGS = "ledger-logs"          # cloud/ledger-logs/: justificantes del libro
 
-DATE_EMOJI   = "📅"
-CAT_EMOJI    = "🗂️"
-VALID_EMOJI  = "📆"
-CANCEL_EMOJI = "🚫"
+DATE_EMOJI    = "📅"
+CAT_EMOJI     = "🗂️"
+VALID_EMOJI   = "📆"
+CANCEL_EMOJI  = "🚫"
+DOC_EMOJI     = "📎"      # versión de la folla / hoja: fecha · paso · enlace
+INVOICE_EMOJI = "🧾"      # factura contra un compromiso: fecha · enlace · importe
+
+#: pasos de una folla (compromiso). El estado no se guarda: sale de los campos.
+SOLICITADA, ACEPTADA, CERRADA, ANULADA = "solicitada", "aceptada", "cerrada", "anulada"
+STEPS = (SOLICITADA, ACEPTADA, CERRADA)
 
 DEFAULT_CATEGORIES = ("viajes", "congresos", "personal", "fungible",
                       "inventariable")
@@ -73,6 +79,10 @@ _TYPE_RE    = re.compile(r"\s#(" + "|".join(USER_LABELS) + r")\b")
 _LINK_RE    = re.compile(r"^\[(?P<text>.+?)\]\((?P<url>[^)]*)\)$")
 _NUM_RE     = re.compile(r"^\d{1,4}$")
 _TRAIL_RE   = re.compile(r"·\s*ledger\s+(\d{4})\s+#(" + "|".join(USER_LABELS) + r")\b")
+_DOC_RE     = re.compile(r"^(\d{4}-\d{2}-\d{2})\s*(?P<step>[^\[]*?)\s*"
+                         r"(?:\[(?P<text>.+?)\]\((?P<url>[^)]*)\))?\s*$")
+_INVOICE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(?:\[(?P<text>.+?)\]\((?P<url>[^)]*)\)"
+                         r"|(?P<plain>[^·]+?))\s*(?:·\s*(?P<rest>.*))?$")
 
 
 class BookError(ValueError):
@@ -80,6 +90,46 @@ class BookError(ValueError):
 
 
 # ── Modelo ───────────────────────────────────────────────────────────────────
+
+@dataclass
+class Doc:
+    """Una versión del documento de la entrada (📎): la folla solicitada, la
+    aceptada… El título enlaza siempre la última."""
+    date: str                              # AAAA-MM-DD
+    step: Optional[str] = None             # solicitada | aceptada | cerrada | texto
+    link: Optional[str] = None
+
+
+@dataclass
+class Invoice:
+    """Una factura contra el compromiso (🧾). Lo gastado es la suma de ellas."""
+    date:   str                            # AAAA-MM-DD
+    text:   str = "factura"
+    link:   Optional[str] = None
+    amount: Optional[Decimal] = None       # con signo (< 0)
+    op_id:  Optional[str] = None           # 🆔 nº de factura
+    payee:  Optional[str] = None           # 👤 quien factura, si no es el de la folla
+
+
+def _doc_name(link: str) -> str:
+    return Path(link).name if "://" not in link else link
+
+
+def render_doc(d: Doc) -> str:
+    parts = [d.date] + ([d.step] if d.step else [])
+    if d.link:
+        parts.append(f"[{_doc_name(d.link)}]({d.link})")
+    return f"{DOC_EMOJI} " + " ".join(parts)
+
+
+def render_invoice(inv: Invoice) -> str:
+    head = f"[{inv.text}]({inv.link})" if inv.link else inv.text
+    tokens = [f"{inv.date} {head}",
+              f"{PAYEE_EMOJI} {inv.payee}" if inv.payee else None,
+              f"{AMOUNT_EMOJI} {format_amount(inv.amount)}" if inv.amount is not None else None,
+              f"{ID_EMOJI} {inv.op_id}" if inv.op_id else None]
+    return f"{INVOICE_EMOJI} " + _SEP.join(t for t in tokens if t)
+
 
 @dataclass
 class Entry:
@@ -98,12 +148,32 @@ class Entry:
     confirmed: Optional[Tuple[str, str]] = None   # ☑️ (fecha, ID externo)
     cancelled: Optional[str] = None        # 🚫 fecha
     notes:     List[str] = field(default_factory=list)
+    docs:      List[Doc] = field(default_factory=list)       # 📎 historia
+    invoices:  List[Invoice] = field(default_factory=list)   # 🧾 facturas
     start:     int = 0                     # líneas [start, end) del fichero
     end:       int = 0
 
     @property
     def live(self) -> bool:
         return not self.cancelled
+
+    @property
+    def invoiced(self) -> Decimal:
+        """Lo facturado contra el compromiso, en magnitud (≥ 0)."""
+        return sum((abs(i.amount) for i in self.invoices if i.amount is not None),
+                   Decimal(0))
+
+    @property
+    def status(self) -> Optional[str]:
+        """Paso de la folla, deducido de los campos (no se guarda):
+        anulada (🚫) · cerrada (🔒) · aceptada (🆔) · solicitada."""
+        if not self.live:
+            return ANULADA
+        if self.tag != ORDER_TAG:
+            return None
+        if self.closes:
+            return CERRADA
+        return ACEPTADA if self.op_id else SOLICITADA
 
     def to_movement(self, partida: Optional[str]) -> Movement:
         return Movement(
@@ -114,6 +184,28 @@ class Entry:
             closes=self.closes, note=None, raw=f"ledger {self.num}",
             num=self.num, category=self.category,
             confirmed_on=self.confirmed[0] if self.confirmed else None)
+
+    def to_movements(self, partida: Optional[str]) -> List[Movement]:
+        """La entrada y, si es un compromiso con facturas (🧾), un gasto por
+        factura que lo consume: así el saldo y las operaciones se calculan
+        igual que con gastos `🔗`. El 🔒 viaja en la última factura (si va en
+        el compromiso, las facturas llegarían a una operación ya cerrada)."""
+        main = self.to_movement(partida)
+        invoices = [i for i in self.invoices if i.amount is not None]
+        if not invoices:
+            return [main]
+        out = [replace(main, closes=False)]
+        for k, inv in enumerate(invoices, 1):
+            out.append(Movement(
+                date=date.fromisoformat(inv.date), tag=EXPENSE_TAG,
+                concept=f"{self.title} · {INVOICE_EMOJI} {inv.op_id or k}",
+                amount=inv.amount, partida=partida, payee=inv.payee or self.payee,
+                link=inv.link, op_id=inv.op_id, ref=self.num, label=EXPENSE_TAG,
+                usc=main.usc, closes=self.closes and k == len(invoices),
+                note=None, raw=f"ledger {self.num} {INVOICE_EMOJI}{k}",
+                num=self.num, category=self.category,
+                confirmed_on=main.confirmed_on))
+        return out
 
 
 @dataclass
@@ -135,7 +227,9 @@ class Book:
 
     def movements(self) -> List[Movement]:
         """Movimientos vivos, en el orden del saldo corrido (fecha, nº)."""
-        movs = [e.to_movement(self.partida) for e in self.live()]
+        movs = []
+        for e in self.live():
+            movs += e.to_movements(self.partida)
         movs.sort(key=lambda m: (m.date, m.num))
         return movs
 
@@ -186,6 +280,30 @@ def _parse_header(rest: str) -> Tuple[Optional[str], str, Optional[str]]:
     return tag, content, link
 
 
+def _parse_invoice(text: str, where: str, problems: List[str]) -> Optional[Invoice]:
+    m = _INVOICE_RE.match(text)
+    if not m:
+        problems.append(f"{where}: {INVOICE_EMOJI} sin «fecha [factura](enlace) · 💶 importe»")
+        return None
+    inv = Invoice(date=m.group(1), text=(m.group("text") or m.group("plain")).strip(),
+                  link=m.group("url"))
+    for token in (m.group("rest") or "").split("·"):
+        token = token.strip()
+        if token.startswith(PAYEE_EMOJI):
+            inv.payee = token[len(PAYEE_EMOJI):].strip() or None
+        elif token.startswith(AMOUNT_EMOJI):
+            try:
+                inv.amount = -abs(parse_amount(token[len(AMOUNT_EMOJI):].strip(),
+                                               allow_sign=True))
+            except ValueError as exc:
+                problems.append(f"{where}: {INVOICE_EMOJI} {exc}")
+        elif token.startswith(ID_EMOJI):
+            inv.op_id = token[len(ID_EMOJI):].strip() or None
+    if inv.amount is None:
+        problems.append(f"{where}: {INVOICE_EMOJI} {inv.date} sin importe ({AMOUNT_EMOJI})")
+    return inv
+
+
 def _parse_entry(num: str, rest: str, body: List[str],
                  problems: List[str]) -> Entry:
     tag, title, link = _parse_header(rest)
@@ -198,6 +316,18 @@ def _parse_entry(num: str, rest: str, body: List[str],
         line = _bare(raw.strip())
         if line.startswith(NOTE_EMOJI):
             e.notes.append(line[len(NOTE_EMOJI):].strip())
+            continue
+        if line.startswith(DOC_EMOJI):
+            m = _DOC_RE.match(line[len(DOC_EMOJI):].strip())
+            if m:
+                e.docs.append(Doc(m.group(1), m.group("step") or None, m.group("url")))
+            else:
+                problems.append(f"{where}: {DOC_EMOJI} sin «fecha [paso] [doc](enlace)»")
+            continue
+        if line.startswith(INVOICE_EMOJI):
+            inv = _parse_invoice(line[len(INVOICE_EMOJI):].strip(), where, problems)
+            if inv:
+                e.invoices.append(inv)
             continue
         if line.startswith(_bare(CONC_EMOJI)):
             parts = [p.strip() for p in line[len(_bare(CONC_EMOJI)):].split("·", 1)]
@@ -333,6 +463,8 @@ def render_entry(e: Entry) -> List[str]:
         out.append(f"  {CONC_EMOJI} {e.confirmed[0]}{_SEP}{e.confirmed[1]}")
     if e.cancelled:
         out.append(f"  {CANCEL_EMOJI} {e.cancelled}")
+    out += [f"  {render_doc(d)}" for d in e.docs]
+    out += [f"  {render_invoice(i)}" for i in e.invoices]
     out += [f"  {NOTE_EMOJI} {n}" for n in e.notes]
     return out
 
@@ -599,37 +731,63 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
                   doc: Optional[str] = None, amount: Optional[str] = None,
                   when: Optional[date] = None, op_id: Optional[str] = None,
                   note: Optional[str] = None, confirm: Optional[str] = None,
-                  unconfirm: bool = False, force: bool = False,
+                  unconfirm: bool = False, status: Optional[str] = None,
+                  invoice: bool = False, force: bool = False,
                   today: Optional[date] = None,
                   dry_run: bool = False) -> Tuple[Entry, Entry, List[str]]:
-    """Corrige, confirma o desconfirma una entrada. Devuelve `(antes, después,
-    cambios)`. Deja una nota automática con los cambios. Lanza `BookError`.
+    """Corrige, confirma, avanza o factura una entrada. Devuelve `(antes,
+    después, cambios)`. Lanza `BookError`.
 
     *dry_run*: calcula y devuelve lo mismo sin escribir el libro, el rastro
     ni copiar el justificante.
 
+    - **Documento** (`doc`): pasa a ser el del título; el anterior queda en la
+      historia (📎). No es una corrección: no pide `--force` ni quita el ☑️.
+    - **Paso** (`status`, solo compromisos): `aceptada` exige 🆔 (`op_id`);
+      `cerrada` pone 🔒. Deja una línea 📎 con el paso.
+    - **Factura** (`invoice`, o `status=cerrada` con `doc`): el documento,
+      `amount`, `op_id` y `payee` van a una línea 🧾, no a la cabecera. Sin
+      `amount`, lo que quede por facturar del compromiso.
+    - Las **correcciones** (título, importe…) dejan una nota automática. Una
+      entrada confirmada (☑️) solo se corrige con `force`, y pierde el ☑️
+      (salvo que la misma llamada la vuelva a confirmar). Poner un 🆔 que
+      faltaba no es corrección.
     - No cambia el tipo: se anula la entrada y se anota otra.
-    - Una entrada confirmada (☑️) solo se corrige con `force`, y pierde el ☑️
-      (salvo que la misma llamada la vuelva a confirmar).
-    - `confirm` sin cambios no deja nota: el ☑️ ya lleva fecha e ID.
     """
     today = (today or date.today()).isoformat()
     book = _require_book(project_dir)
     e = book.get(num)
     if e is None:
         raise BookError(f"no hay ninguna entrada {normalize_num(num)}")
-    before = replace(e, notes=list(e.notes))
+    before = replace(e, notes=list(e.notes), docs=list(e.docs),
+                     invoices=list(e.invoices))
     if confirm and unconfirm:
         raise BookError("--confirm y --unconfirm a la vez no tienen sentido")
+
+    if status is not None:
+        status = status.strip().lower()
+        if status not in STEPS:
+            raise BookError(f"paso «{status}» desconocido ({' · '.join(STEPS)})")
+        if e.tag != ORDER_TAG:
+            raise BookError(f"--status solo va en un #{ORDER_TAG} (folla); "
+                            f"en un #{e.tag} la aceptación es el {CONC_EMOJI}")
+    invoice = invoice or (status == CERRADA and doc is not None)
+    if invoice and e.tag != ORDER_TAG:
+        raise BookError(f"--factura solo va en un #{ORDER_TAG} (folla)")
+    if invoice and e.closes and not force:
+        raise BookError(f"el compromiso {e.num} ya está cerrado: --force para "
+                        f"añadirle otra factura")
+    if status == CERRADA and e.closes and not invoice:
+        raise BookError(f"el compromiso {e.num} ya está cerrado")
 
     wanted = {}
     if title is not None:
         wanted["title"] = _check_text("el título", title)
-    if payee is not None:
+    if payee is not None and not invoice:
         wanted["payee"] = _check_text("el beneficiario", payee)
     if category is not None:
         wanted["category"] = _check_category(e.tag, category, categories())
-    if amount is not None:
+    if amount is not None and not invoice:
         try:
             wanted["amount"] = signed_amount(e.tag, parse_amount(str(amount)))
         except ValueError as exc:
@@ -637,16 +795,39 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
     if when is not None:
         _check_date(book, when, force)
         wanted["date"] = when
-    if op_id is not None:
+    if op_id is not None and not invoice:
         wanted["op_id"] = _check_op_id(book, e.tag, op_id, skip=e.num)
+    if status == ACEPTADA and not (wanted.get("op_id") or e.op_id):
+        raise BookError("una folla aceptada lleva el nº que da as. eco.: --id CM…")
     changes = [(k, getattr(e, k), v) for k, v in wanted.items() if getattr(e, k) != v]
-    if doc is not None:
-        changes.append(("link", e.link, None))    # el enlace se resuelve después
+    # Corrección = cambia algo que ya estaba (rellenar un 🆔 vacío no lo es).
+    fixes = [c for c in changes if not (c[0] == "op_id" and c[1] is None)]
 
-    if not e.live and (changes or confirm or unconfirm):
+    new_invoice = None
+    if invoice:
+        inv_amount = amount
+        if inv_amount is None:
+            left = abs(e.amount or 0) - e.invoiced
+            if left <= 0:
+                raise BookError(f"el compromiso {e.num} ya está facturado entero: "
+                                f"--amount para otra factura")
+            inv_amount = str(left)
+        try:
+            inv_value = -abs(parse_amount(str(inv_amount)))
+        except ValueError as exc:
+            raise BookError(str(exc))
+        inv_id = (op_id or "").strip() or None
+        if inv_id and re.search(r"\s|#|·", inv_id):
+            raise BookError(f"el nº de factura '{inv_id}' no puede llevar espacios, '#' ni '·'")
+        new_invoice = Invoice(date=(when.isoformat() if when else today),
+                              amount=inv_value, op_id=inv_id,
+                              payee=_check_text("quien factura", payee, required=False))
+
+    if not e.live and (changes or confirm or unconfirm or status or invoice
+                       or doc is not None):
         raise BookError(f"la entrada {e.num} está anulada ({CANCEL_EMOJI} "
                         f"{e.cancelled}); solo admite --nota")
-    if changes and e.confirmed and not force:
+    if fixes and e.confirmed and not force:
         raise BookError(f"la entrada {e.num} está confirmada ({CONC_EMOJI} "
                         f"{e.confirmed[1]}): --force la corrige y le quita la "
                         f"confirmación")
@@ -659,35 +840,58 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
                             f"{e.confirmed[1]}: --force para cambiarlo")
     if unconfirm and not e.confirmed:
         raise BookError(f"la entrada {e.num} no está confirmada")
-    if not (changes or confirm or unconfirm or (note and note.strip())):
+    if not (changes or confirm or unconfirm or status or invoice or doc is not None
+            or (note and note.strip())):
         raise BookError("nada que cambiar: --title --payee --cat --doc --amount "
-                        "--date --id --nota --confirm --unconfirm")
+                        "--date --id --nota --status --factura --confirm --unconfirm")
 
-    doc_warning = None
+    # El documento, lo último: copia ficheros.
+    link, doc_warning = e.link, None
     if doc is not None:
         try:
             link = import_doc(project_dir, doc, dry_run=dry_run)
         except BookError as exc:
             # Un justificante que falla no tumba el resto de la edición.
-            if len(changes) == 1 and not (confirm or unconfirm
-                                          or (note and note.strip())):
+            if not (changes or confirm or unconfirm or status
+                    or (note and note.strip())):
                 raise
             link, doc_warning = e.link, f"⚠️ justificante sin cambiar: {exc}"
-        changes[-1] = ("link", e.link, link)
-        if link == e.link:
-            changes.pop()
+            if invoice:
+                link = None
+
     for name, _old, new in changes:
         setattr(e, name, new)
-
     shown = [f"{_FIELDS[n][0]} {_show(n, old)} → {_show(n, new)}"
              for n, old, new in changes]
+
+    if new_invoice is not None:
+        new_invoice.link = link if doc is not None else None
+        e.invoices.append(new_invoice)
+        shown.append(render_invoice(new_invoice))
+    elif doc is not None and link != e.link:
+        if not e.docs and e.link:            # la historia empieza con el de antes
+            e.docs.append(Doc(_doc_date(e.link) or (e.date.isoformat() if e.date
+                                                    else today), None, e.link))
+        e.link = link
+        e.docs.append(Doc(today, status, link))
+        shown.append(f"{_FIELDS['link'][0]} {_show('link', before.link)} → "
+                     f"{_show('link', link)}")
+    elif status:
+        e.docs.append(Doc(today, status, None))
+    if status == CERRADA:
+        e.closes = True
+        shown.append(f"{CLOSE_EMOJI} cerrada")
+    elif status:
+        shown.append(f"{DOC_EMOJI} {status}")
+
     if unconfirm:
         e.notes.append(f"{today} confirmación retirada (era {e.confirmed[1]})")
         e.confirmed = None
     if changes:
+        logged = [s for s, (n, _o, _n) in zip(shown, changes)]
         prefix = "modificado al confirmar" if confirm else "modificado"
-        text = f"{today} {prefix}: " + _SEP.join(shown)
-        if e.confirmed and not confirm:
+        text = f"{today} {prefix}: " + _SEP.join(logged)
+        if fixes and e.confirmed and not confirm:
             text += f"{_SEP}sin {CONC_EMOJI} (era {e.confirmed[1]})"
             e.confirmed = None
         e.notes.append(text)
@@ -705,6 +909,15 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
     if doc_warning:
         shown.append(doc_warning)
     return before, e, shown
+
+
+_DATE_PREFIX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_")
+
+
+def _doc_date(link: Optional[str]) -> Optional[str]:
+    """Fecha del prefijo `AAAA-MM-DD_` que pone la importación, si lo hay."""
+    m = _DATE_PREFIX_RE.match(Path(link or "").name)
+    return m.group(1) if m else None
 
 
 def close_commitment(project_dir: Path, num, today: Optional[date] = None) -> Entry:
@@ -742,9 +955,203 @@ def cancel_movement(project_dir: Path, num, force: bool = False,
         if users:
             raise BookError(f"el compromiso {e.num} tiene gastos ({', '.join(users)}): "
                             f"anúlalos antes, o ciérralo (close)")
+        if e.invoices and not force:
+            raise BookError(f"el compromiso {e.num} tiene facturas ({INVOICE_EMOJI}): "
+                            f"ciérralo (close), o --force para anularlo con ellas")
     e.cancelled = today
     _replace_entry(book, e)
     return e
+
+
+# ── Facturas dentro de la folla (ADR-062) ────────────────────────────────────
+
+#: nº de folla de as. eco. (CM26XXXX0001, o sin el CM delante)
+_FOLLA_ID_RE = re.compile(r"^(?:CM)?\d{2}[A-Z0-9]{4}\d{4}$")
+_MOD_NOTE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (modificado[^:]*):\s*(.*)$")
+_JUST_RE     = re.compile(r"^justificante (\S+) → (\S+)$")
+_NUM_IN_TEXT = re.compile(r"\b(\d{4})\b")
+
+
+@dataclass
+class FoldPlan:
+    """Lo que `ledger fold` va a hacer. Se calcula sin tocar nada."""
+    project_dir: Path
+    book:        Book
+    entries:     List[Entry] = field(default_factory=list)   # el libro nuevo
+    renum:       dict = field(default_factory=dict)          # nº viejo → nuevo
+    folded:      dict = field(default_factory=dict)          # gasto → compromiso
+    dropped:     List[str] = field(default_factory=list)     # anuladas que se van
+    changes:     List[str] = field(default_factory=list)
+    warnings:    List[str] = field(default_factory=list)
+
+    @property
+    def empty(self) -> bool:
+        return not (self.folded or self.dropped or self.changes
+                    or any(o != n for o, n in self.renum.items()))
+
+
+def _notes_to_docs(e: Entry, today: str) -> int:
+    """Pasa las notas `modificado: justificante A → B` a historia 📎 (A, B…),
+    quitando ese trozo de la nota. Si en la misma nota se puso el 🆔, esa
+    versión es la aceptada. Devuelve cuántas versiones ha recuperado."""
+    docs, notes = [], []
+    for n in e.notes:
+        m = _MOD_NOTE_RE.match(n)
+        parts = [p.strip() for p in m.group(3).split("·")] if m else []
+        just = [p for p in parts if _JUST_RE.match(p)]
+        if not just:
+            notes.append(n)
+            continue
+        old, new = _JUST_RE.match(just[0]).groups()
+        accepted = (e.tag == ORDER_TAG and any(
+            p.startswith(ID_EMOJI) and "— →" in p for p in parts))
+        if not docs:
+            docs.append(Doc(_doc_date(old) or (e.date.isoformat() if e.date else today),
+                            None, f"./cloud/{LEDGER_LOGS}/{old}"))
+        docs.append(Doc(m.group(1), ACEPTADA if accepted else None,
+                        f"./cloud/{LEDGER_LOGS}/{new}"))
+        rest = [p for p in parts if p not in just]
+        if rest and not all(p.startswith("sin ") for p in rest):
+            notes.append(f"{m.group(1)} {m.group(2)}: " + _SEP.join(rest))
+    if not docs:
+        return 0
+    if e.link and Path(docs[-1].link).name != Path(e.link).name:
+        docs.append(Doc(_doc_date(e.link) or today, None, e.link))
+    elif e.link:
+        docs[-1].link = e.link                 # el enlace tal cual está en el título
+    e.docs = e.docs + docs
+    e.notes = notes
+    return len(docs)
+
+
+def _link_exists(project_dir: Path, link: str) -> bool:
+    from urllib.parse import unquote
+    return "://" in link or (project_dir / unquote(link)).is_file()
+
+
+def plan_fold(project_dir: Path, today: Optional[date] = None) -> FoldPlan:
+    """Calcula el paso al modelo «factura dentro de la folla»: cada `#gasto`
+    con `🔗` pasa a ser una línea 🧾 de su compromiso; las anuladas se van;
+    las notas de cambio de justificante pasan a historia 📎; se renumera.
+
+    🆔 del compromiso: si la factura lleva el nº de la folla, manda ese; si
+    no, el que tenga la entrada (luego usc-ledger lo corrige si hace falta).
+    Un compromiso facturado entero queda cerrado (🔒), como se calculaba."""
+    today = (today or date.today()).isoformat()
+    book = _require_book(project_dir)
+    plan = FoldPlan(project_dir, book)
+    entries = [replace(e, notes=list(e.notes), docs=list(e.docs),
+                       invoices=list(e.invoices)) for e in book.entries]
+    by_num = {e.num: e for e in entries}
+
+    for e in entries:
+        if not e.live:
+            plan.dropped.append(e.num)
+            plan.changes.append(f"{e.num} {CANCEL_EMOJI} «{e.title}»: se elimina")
+
+    for e in entries:
+        if e.live and (k := _notes_to_docs(e, today)):
+            plan.changes.append(f"{e.num} «{e.title}»: {k} versiones del "
+                                f"documento → historia {DOC_EMOJI}")
+
+    for g in entries:
+        if not (g.live and g.tag == EXPENSE_TAG and g.commit):
+            continue
+        c = by_num.get(g.commit)
+        if c is None or not c.live or c.tag != ORDER_TAG:
+            plan.warnings.append(f"{g.num} «{g.title}»: {REF_EMOJI} {g.commit} no es un "
+                                 f"compromiso vivo; se queda como gasto")
+            continue
+        inv = Invoice(date=g.date.isoformat() if g.date else today, text=g.title,
+                      link=g.link, amount=g.amount,
+                      payee=g.payee if g.payee != c.payee else None)
+        if g.op_id and _FOLLA_ID_RE.match(g.op_id):
+            if c.op_id != g.op_id:
+                plan.changes.append(f"{c.num} {ID_EMOJI} {c.op_id or '—'} → {g.op_id} "
+                                    f"(lo dice la factura {g.num})")
+                if c.op_id:
+                    c.notes.append(f"{today} {ID_EMOJI} {c.op_id} → {g.op_id} "
+                                   f"(lo dice la factura)")
+                c.op_id = g.op_id
+        else:
+            inv.op_id = g.op_id
+        # Versiones anteriores de la factura: solo las que siguen existiendo
+        # (casi siempre fueron renombrados del mismo fichero).
+        c.docs += [Doc(d.date, "factura", d.link) for d in g.docs
+                   if d.link and d.link != g.link and _link_exists(project_dir, d.link)]
+        c.notes += [f"{INVOICE_EMOJI} {n}" for n in g.notes]
+        if g.category != c.category:
+            plan.warnings.append(f"{g.num}→{c.num}: la factura era {CAT_EMOJI} "
+                                 f"{g.category}, cuenta como {c.category}")
+        if g.confirmed:
+            plan.warnings.append(f"{g.num}: su {CONC_EMOJI} {g.confirmed[1]} se pierde "
+                                 f"(la confirmación va en la folla)")
+        c.invoices.append(inv)
+        c.invoices.sort(key=lambda i: i.date)
+        c.closes = c.closes or g.closes
+        plan.folded[g.num] = c.num
+        plan.changes.append(f"{g.num} «{g.title}» → {INVOICE_EMOJI} de {c.num}")
+
+    for c in entries:
+        if (c.live and c.tag == ORDER_TAG and c.invoices and not c.closes
+                and c.amount is not None and c.invoiced >= abs(c.amount)):
+            c.closes = True
+            plan.changes.append(f"{c.num} «{c.title}»: facturado entero → {CLOSE_EMOJI}")
+
+    kept = [e for e in entries if e.live and e.num not in plan.folded]
+    plan.renum = {e.num: f"{i:04d}" for i, e in enumerate(kept, 1)}
+    gone = set(plan.dropped) | set(plan.folded)
+    for e in kept:
+        mentions = {n for note in e.notes for n in _NUM_IN_TEXT.findall(note)}
+        moved = sorted(n for n in mentions
+                       if n in gone or (n in plan.renum and plan.renum[n] != n))
+        if moved:
+            plan.warnings.append(f"{e.num}: sus notas nombran {', '.join(moved)}, que "
+                                 f"cambia de nº o desaparece (revísalas a mano)")
+        if e.commit:
+            e.commit = plan.renum.get(e.commit, e.commit)
+        e.num = plan.renum[e.num]
+    ids = {}
+    for e in kept:
+        if e.tag == ORDER_TAG and e.op_id:
+            ids.setdefault(e.op_id.removeprefix("CM"), []).append(e.num)
+    for op_id, nums in ids.items():
+        if len(nums) > 1:
+            plan.warnings.append(f"{ID_EMOJI} {op_id} repetido en {', '.join(nums)} "
+                                 f"(nº nuevos): uno de los dos está mal")
+    plan.entries = kept
+    return plan
+
+
+def apply_fold(plan: FoldPlan) -> Path:
+    """Escribe el libro del plan y renumera el rastro del logbook (quita el de
+    las facturas fusionadas y las anuladas). Deja undo de los dos."""
+    from core.log import find_logbook_file
+    from core.undo import save_snapshot
+
+    book = plan.book
+    first = book.entries[0].start if book.entries else len(book.lines)
+    lines = list(book.lines[:first])
+    while lines and not lines[-1].strip():
+        lines.pop()
+    for e in plan.entries:
+        lines += [""] + render_entry(e)
+    _write(book, lines)
+
+    gone = set(plan.dropped) | set(plan.folded)
+    logbook = find_logbook_file(plan.project_dir)
+    if logbook and logbook.exists():
+        out = []
+        for line in logbook.read_text().splitlines():
+            m = None if line.startswith(" ") else _TRAIL_RE.search(line)
+            if m and m.group(1) in gone:
+                continue
+            if m and plan.renum.get(m.group(1), m.group(1)) != m.group(1):
+                line = line[:m.start(1)] + plan.renum[m.group(1)] + line[m.end(1):]
+            out.append(line)
+        save_snapshot(logbook)
+        logbook.write_text("\n".join(out) + "\n")
+    return book.path
 
 
 # ── Migración desde el logbook (ADR-054, F2) ─────────────────────────────────

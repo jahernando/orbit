@@ -285,7 +285,7 @@ class TestViews:
         assert "| viajes | -100,00 | -300,00 | -400,00 |" in summary
         assert "| 0002 | Vuelo |" in summary
         data = json.loads((book / "ledger.json").read_text())
-        assert data["version"] == 2 and data["valid_to"] == "2029-08-05"
+        assert data["version"] == 3 and data["valid_to"] == "2029-08-05"
         row = data["movements"][2]
         assert row["key"] == "0003" and row["validated"]["id"] == "A1"
         assert data["summary"]["available"] == "600.00"
@@ -592,7 +592,8 @@ class TestPick:
         pdf.write_bytes(b"%PDF")
         assert self._run("edit", "factura", "--doc", str(pdf)) == 0
         e = read_book(book).get("1")
-        assert e.link.endswith("_definitiva.pdf") and "justificante — →" in e.notes[-1]
+        assert e.link.endswith("_definitiva.pdf") and not e.notes
+        assert e.docs[-1].link == e.link                        # historia 📎
 
     def test_doc_posicional(self, book, tmp_path):
         _add(book, title="Factura vuelo")
@@ -652,7 +653,7 @@ class TestLineMarks:
         assert rows[1].endswith("Folla DI2026 · Pablo  🔒")
         assert rows[2].startswith("     └ 0003  09-01  gasto")
         assert rows[2].endswith("Factura DI2026 · Pablo  🔒")       # sin 🔗: ya va anidado
-        assert rows[3].endswith("Abierto · Ana  ⏳ pendiente 50,00")
+        assert rows[3].endswith("Abierto · Ana  solicitada ⏳ pendiente 50,00")
         assert rows[0].endswith("Dotación · Agencia")
 
     def test_picker_groups_too(self, book):
@@ -727,3 +728,183 @@ class TestDocAlreadyImported:
         _add(book)
         with pytest.raises(BookError, match="no encuentro el justificante"):
             edit_movement(book, "1", doc="/no/existe.pdf")
+
+
+# ── Folla con historia y facturas dentro (ADR-062) ───────────────────────────
+
+def _pdf(tmp_path, name):
+    f = tmp_path / name
+    f.write_bytes(b"%PDF " + name.encode())
+    return str(f)
+
+
+class TestFollaCycle:
+
+    def _folla(self, book, tmp_path, **kw):
+        base = dict(tag="compromiso", title="Folla vuelo", amount="300",
+                    doc=_pdf(tmp_path, "folla.pdf"))
+        base.update(kw)
+        return _add(book, **base)
+
+    def test_aceptada_pasa_al_titulo_y_guarda_la_anterior(self, book, tmp_path):
+        e0 = self._folla(book, tmp_path)
+        assert e0.status == "solicitada"
+        _b, e, _s = edit_movement(book, "1", doc=_pdf(tmp_path, "folla-ok.pdf"),
+                                  status="aceptada", op_id="CM26AB120001", today=T)
+        e = read_book(book).get("1")
+        assert e.link.endswith("_folla-ok.pdf") and e.op_id == "CM26AB120001"
+        assert e.status == "aceptada"
+        assert [d.link for d in e.docs] == [e0.link, e.link]
+        assert e.docs[0].step is None and e.docs[1].step == "aceptada"
+        assert "justificante" not in " ".join(e.notes)
+        assert "📎 2026-10-05 aceptada [" in (book / "ledger.md").read_text()
+
+    def test_aceptada_sin_id(self, book, tmp_path):
+        self._folla(book, tmp_path)
+        with pytest.raises(BookError, match="--id"):
+            edit_movement(book, "1", status="aceptada")
+
+    def test_status_solo_en_compromiso(self, book):
+        _add(book)
+        with pytest.raises(BookError, match="compromiso"):
+            edit_movement(book, "1", status="aceptada", op_id="X1")
+        with pytest.raises(BookError, match="compromiso"):
+            edit_movement(book, "1", invoice=True, doc=None)
+
+    def test_cerrada_con_factura(self, book, tmp_path):
+        from views.ledger import write_ledger
+        _add(book, tag="ingreso", title="Dotación", payee="Agencia", amount="1000",
+             category=None)
+        self._folla(book, tmp_path, op_id="CM26AB120001")
+        title_link = read_book(book).get("2").link
+        _b, e, shown = edit_movement(book, "2", doc=_pdf(tmp_path, "factura.pdf"),
+                                     status="cerrada", amount="280", op_id="F-77",
+                                     payee="Agencia de viajes", today=T)
+        e = read_book(book).get("2")
+        assert e.link == title_link                       # la factura no va al título
+        assert e.closes and e.status == "cerrada"
+        inv = e.invoices[0]
+        assert inv.amount == D("-280") and inv.op_id == "F-77"
+        assert inv.payee == "Agencia de viajes" and inv.link.endswith("_factura.pdf")
+        assert e.op_id == "CM26AB120001" and e.amount == D("-300")
+        write_ledger(book, force=True)
+        summary = (book / "ledger-summary.md").read_text()
+        assert "| Gastado | 0,00 | -280,00 |" in summary
+        assert "| **Disponible** | 0,00 | **720,00** |" in summary   # sobrante liberado
+        data = json.loads((book / "ledger.json").read_text())
+        row = data["movements"][1]
+        assert row["status"] == "cerrada" and row["invoices"][0]["id"] == "F-77"
+
+    def test_factura_sin_importe_toma_lo_pendiente(self, book, tmp_path):
+        self._folla(book, tmp_path)
+        edit_movement(book, "1", doc=_pdf(tmp_path, "f.pdf"), status="cerrada", today=T)
+        assert read_book(book).get("1").invoices[0].amount == D("-300")
+
+    def test_varias_facturas_y_cierre_a_mano(self, book, tmp_path):
+        from core.ledger_book import open_commitments
+        self._folla(book, tmp_path)
+        edit_movement(book, "1", doc=_pdf(tmp_path, "f1.pdf"), invoice=True,
+                      amount="100", op_id="F1", today=T)
+        b = read_book(book)
+        assert b.get("1").status == "solicitada" and not b.get("1").closes
+        [op] = open_commitments(b)
+        assert op.pending == D("200")
+        edit_movement(book, "1", doc=_pdf(tmp_path, "f2.pdf"), invoice=True,
+                      amount="150", op_id="F2", today=T)
+        edit_movement(book, "1", status="cerrada", today=T)
+        e = read_book(book).get("1")
+        assert e.closes and [i.op_id for i in e.invoices] == ["F1", "F2"]
+        assert e.docs[-1].step == "cerrada" and e.docs[-1].link is None
+        assert open_commitments(read_book(book)) == []
+        with pytest.raises(BookError, match="ya está cerrado"):
+            edit_movement(book, "1", status="cerrada")
+
+    def test_confirmada_no_pierde_el_check(self, book, tmp_path):
+        self._folla(book, tmp_path)
+        edit_movement(book, "1", confirm="1413061", today=T)
+        edit_movement(book, "1", doc=_pdf(tmp_path, "v2.pdf"), status="aceptada",
+                      op_id="CM26AB120002", today=T)
+        edit_movement(book, "1", doc=_pdf(tmp_path, "fac.pdf"), status="cerrada", today=T)
+        e = read_book(book).get("1")
+        assert e.confirmed == ("2026-10-05", "1413061")
+        with pytest.raises(BookError, match="--force"):
+            edit_movement(book, "1", amount="10")
+
+    def test_ida_y_vuelta(self, book, tmp_path):
+        self._folla(book, tmp_path)
+        edit_movement(book, "1", doc=_pdf(tmp_path, "fa.pdf"), invoice=True,
+                      amount="1234.5", op_id="F/9", payee="Prov S.L.", today=T)
+        text = (book / "ledger.md").read_text()
+        assert "🧾 2026-10-05 [factura](" in text
+        assert "· 👤 Prov S.L. · 💶 -1.234,50 · 🆔 F/9" in text
+        b = read_book(book)
+        assert not b.problems
+        from core.ledger_book import render_entry
+        e = b.get("1")
+        assert render_entry(e) == b.lines[e.start:e.end]
+
+    def test_cancel_con_facturas(self, book, tmp_path):
+        from core.ledger_book import cancel_movement
+        self._folla(book, tmp_path)
+        edit_movement(book, "1", doc=_pdf(tmp_path, "fa.pdf"), invoice=True,
+                      amount="10", today=T)
+        with pytest.raises(BookError, match="facturas"):
+            cancel_movement(book, "1")
+
+
+class TestFold:
+
+    def _legacy(self, book):
+        """Libro viejo: folla + factura 🔗 (con el nº de la folla), una
+        anulada, y una nota de cambio de justificante."""
+        (book / "logbook.md").write_text(
+            "# Logbook\n\n"
+            "2026-09-01 💶 Folla · ledger 0001 #compromiso\n"
+            "2026-09-02 💶 Error · ledger 0002 #ingreso\n"
+            "2026-09-03 💶 Factura · ledger 0003 #gasto\n"
+            "2026-09-04 💶 Dietas · ledger 0004 #gasto\n")
+        text = (book / "ledger.md").read_text() + """
+- 💶 0001 [Folla](./cloud/ledger-logs/2026-09-05_folla2.pdf) #compromiso
+  📅 2026-09-01 · 🗂️ viajes · 👤 Ana · 💶 -300,00 · 🆔 CM26AB120001
+  📝 2026-09-05 modificado: 🆔 — → CM26AB120001 · justificante 2026-09-01_folla.pdf → 2026-09-05_folla2.pdf
+
+- 💶 0002 Error #ingreso
+  📅 2026-09-02 · 👤 X · 💶 10,00
+  🚫 2026-09-02
+
+- 💶 0003 [Factura](./cloud/ledger-logs/2026-09-03_fac.pdf) #gasto
+  📅 2026-09-03 · 🗂️ viajes · 👤 Proveedor · 💶 -300,00 · 🆔 26AB120009 · 🔗 0001
+  📝 pagada
+
+- 💶 0004 Dietas #gasto
+  📅 2026-09-04 · 🗂️ viajes · 👤 Ana · 💶 -50,00
+  📝 ver 0003
+"""
+        (book / "ledger.md").write_text(text)
+
+    def test_plan_y_aplicar(self, book):
+        from core.ledger_book import apply_fold, plan_fold
+        self._legacy(book)
+        plan = plan_fold(book, today=T)
+        assert plan.dropped == ["0002"] and plan.folded == {"0003": "0001"}
+        assert plan.renum == {"0001": "0001", "0004": "0002"}
+        assert any("0003" in w for w in plan.warnings)            # nota «ver 0003»
+        assert (book / "ledger.md").read_text().count("💶 0003") == 1   # no escribe
+        apply_fold(plan)
+        b = read_book(book)
+        assert not b.problems and [e.num for e in b.entries] == ["0001", "0002"]
+        f = b.get("1")
+        assert f.op_id == "26AB120009"                 # manda el de la factura
+        assert f.closes and f.status == "cerrada"
+        [inv] = f.invoices
+        assert inv.text == "Factura" and inv.payee == "Proveedor" and inv.op_id is None
+        assert inv.amount == D("-300")
+        assert [d.link.rsplit("/", 1)[1] for d in f.docs] == [
+            "2026-09-01_folla.pdf", "2026-09-05_folla2.pdf"]
+        assert f.docs[1].step == "aceptada"
+        assert "🧾 pagada" in f.notes and not any("justificante" in n for n in f.notes)
+        assert any("CM26AB120001 → 26AB120009" in n for n in f.notes)
+        log = (book / "logbook.md").read_text()
+        assert "ledger 0003" not in log and "Error" not in log
+        assert "Dietas · ledger 0002 #gasto" in log
+        assert plan_fold(book, today=T).empty                      # idempotente

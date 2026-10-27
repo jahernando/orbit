@@ -964,6 +964,27 @@ Tres fricciones reales:
 
 ---
 
+## ADR-062 — La folla lleva su historia y sus facturas dentro
+
+**Estado**: aceptada (2026-10-27). Enmienda a ADR-054. Diseño: `claude/notes/2026-10-27_ledger-folla-ciclo.md` (workspace).
+
+**Contexto**: una folla pasa por solicitada → aceptada (as. eco. reenvía un nº) → cerrada (contra la factura, que se firma); cada paso trae un PDF nuevo. Seguirlo por correo es un infierno, y en el libro cada factura era otra entrada `#gasto` con `🔗` al compromiso: dos entradas por operación, casi siempre 1:1 (en un libro real, 8 de 8).
+
+**Decisión**:
+1. **El título enlaza la última versión de la folla** (o de la hoja de dietas firmada), nunca la factura. Cada versión queda en la entrada como `📎 fecha [paso] [fichero](enlace)`. Cambiar el documento no es una corrección: no pide `--force` ni quita el ☑️.
+2. **La factura vive dentro de la folla**: `🧾 fecha [texto](enlace) · 👤 quien factura · 💶 importe · 🆔 nº factura`, una o varias. Lo gastado es la suma de las `🧾`; desaparecen los `#gasto` con `🔗` (se siguen leyendo).
+3. **El estado se deduce, no se guarda**: solicitada (sin 🆔) · aceptada (🆔) · cerrada (🔒) · anulada (🚫). `edit --status aceptada` exige `--id`; `--status cerrada` pone 🔒 y, con PDF, ese PDF es la factura. **Cerrar es siempre explícito**; con varias facturas, `--factura` las añade sin cerrar. Las dietas (`#gasto` directo) no tienen paso: su aceptación es el ☑️ de usc-ledger.
+4. **`ledger fold`** pasa un libro al modelo: cada `#gasto 🔗` → `🧾` de su compromiso; las notas «justificante A → B» → historia `📎`; las anuladas se **eliminan** y se **renumera una vez** (excepción acordada a «el nº no se renumera»), con el rastro del logbook. 🆔 de la folla: si la factura lleva el nº de la folla, manda ese; si no, el de la entrada; después usc-ledger, que lee la verdad de la USC, propone las correcciones. Un compromiso facturado entero queda 🔒.
+5. `ledger.json` → **v3**: por entrada, `status`, `docs` e `invoices`.
+
+**Consecuencias**:
+- Pros: una entrada por operación, con su historia legible en Typora/Obsidian; el saldo no cambia (las 🧾 se convierten en gastos `🔗` al calcular, `build_operations` intacto); estado sin segunda verdad.
+- Contras: `fold` renumera (usc-ledger y notas que citan nº a mano: avisa); la conciliación ☑️ sigue por entrada, no por factura (esperar caso real).
+
+**Verificación**: `tests/test_ledger_book.py` (`TestFollaCycle`, `TestFold`); `fold` en seco sobre copia de un libro real: 29 → 19 entradas, saldo idéntico.
+
+---
+
 ## ADR-061 — Correos en los proyectos: el índice es orbit, la verdad sigue en el log
 
 **Estado**: aceptada (2026-10-26). Diseño: `claude/notes/2026-10-26_email-diseno.md` (workspace).

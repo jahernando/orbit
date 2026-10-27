@@ -24,7 +24,7 @@ from core.ledger import (
 from core.ledger_book import Book, categories
 
 SUMMARY_FILE = "ledger-summary.md"
-JSON_VERSION = 2
+JSON_VERSION = 3
 
 _ZERO = Decimal("0.00")
 
@@ -169,6 +169,11 @@ def build_book_json(project_dir: Path, book: Book) -> str:
             "closes": e.closes,
             "state": (state_of.get(e.num) if e.live and e.tag in (ORDER_TAG, EXPENSE_TAG)
                       else None),
+            "status": e.status,
+            "docs": [{"date": d.date, "step": d.step, "link": d.link} for d in e.docs],
+            "invoices": [{"date": i.date, "text": i.text, "link": i.link,
+                          "amount": str(i.amount) if i.amount is not None else None,
+                          "id": i.op_id, "payee": i.payee} for i in e.invoices],
             "cancelled": e.cancelled,
             "validated": ({"date": e.confirmed[0], "id": e.confirmed[1]}
                           if e.confirmed else None),
@@ -347,6 +352,8 @@ def entry_line(e, link: bool = False, closed: frozenset = frozenset(),
     title = f"[{e.title}]({e.link})" if link and e.link else e.title
     left = (pending or {}).get(e.num)
     marks = [m for m in (f"🔗 {e.commit}" if e.commit and not nested else "",
+                         e.status if (e.tag == ORDER_TAG and e.live and not e.closes
+                                      and e.num not in closed) else "",
                          "🔒" if e.closes or e.num in closed else "",
                          f"⏳ pendiente {format_amount(left)}" if left else "",
                          "☑️" if e.confirmed else "",
@@ -356,6 +363,15 @@ def entry_line(e, link: bool = False, closed: frozenset = frozenset(),
             else f"  {e.num}  {when}")
     return (f"{head}  {e.tag:<10} {amount:>12}  "
             f"{title} · {e.payee or '?'}" + ("  " + " ".join(marks) if marks else ""))
+
+
+def invoice_line(inv, link: bool = False) -> str:
+    """Una factura (🧾) pintada bajo su compromiso."""
+    amount = format_amount(inv.amount, plus=True) if inv.amount is not None else "?"
+    text = f"[{inv.text}]({inv.link})" if link and inv.link else inv.text
+    extra = [x for x in (inv.payee, f"🆔 {inv.op_id}" if inv.op_id else None) if x]
+    return (f"     └ 🧾  {inv.date[5:]}  {'':<10} {amount:>12}  {text}"
+            + (" · " + " · ".join(extra) if extra else ""))
 
 
 def grouped_lines(book: Book, entries=None, link: bool = False) -> list:
@@ -377,6 +393,8 @@ def grouped_lines(book: Book, entries=None, link: bool = False) -> list:
         if e.commit and e.commit in nums:
             continue                       # sale bajo su compromiso
         lines.append(entry_line(e, link=link, closed=closed, pending=pending))
+        for inv in e.invoices:
+            lines.append(invoice_line(inv, link=link))
         for c in sorted(children.get(e.num, []), key=key):
             lines.append(entry_line(c, link=link, closed=closed,
                                     pending=pending, nested=True))
@@ -519,6 +537,9 @@ def run_book_action(args) -> int:
         if action == "migrate":
             return _run_migrate(project_dir, args, _day)
 
+        if action == "fold":
+            return _run_fold(project_dir, args)
+
         if action == "add":
             if read_book(project_dir) is None:
                 init_hint = (f"orbit ledger {args.project} init --partida X "
@@ -560,7 +581,9 @@ def run_book_action(args) -> int:
                 project_dir, args.target, title=args.title, payee=args.payee,
                 category=args.cat, doc=args.doc, amount=args.amount,
                 when=_day(args.date, "--date"), op_id=args.op_id, note=args.nota,
-                confirm=args.confirm, unconfirm=args.unconfirm, force=args.force,
+                confirm=args.confirm, unconfirm=args.unconfirm,
+                status=getattr(args, "status", None),
+                invoice=getattr(args, "invoice", False), force=args.force,
                 dry_run=getattr(args, "dry_run", False))
             if getattr(args, "dry_run", False):
                 print(f"🔎 [{project_dir.name}] ledger {e.num} · simulación, "
@@ -606,6 +629,35 @@ def run_book_action(args) -> int:
         return 1
     print(f"⚠️  acción desconocida: {action}")
     return 1
+
+
+def _run_fold(project_dir: Path, args) -> int:
+    """`ledger <p> fold [--dry-run]`: facturas dentro de su folla (ADR-062)."""
+    from core.ledger_book import apply_fold, plan_fold
+    from views.ledger import write_ledger
+
+    plan = plan_fold(project_dir)
+    dry = getattr(args, "dry_run", False)
+    if plan.empty:
+        print(f"✓ [{project_dir.name}] nada que hacer: el libro ya está en el modelo nuevo")
+        return 0
+    print(f"{'🔎' if dry else '✓'} [{project_dir.name}] ledger fold"
+          + (" · simulación, no se ha tocado nada" if dry else ""))
+    for line in plan.changes:
+        print(f"  · {line}")
+    moved = [f"{o}→{n}" for o, n in plan.renum.items() if o != n]
+    if moved:
+        print(f"  · renumeradas: {', '.join(moved)}")
+    for w in plan.warnings:
+        print(f"  ⚠️  {w}")
+    if dry:
+        print(f"  Sin --dry-run: reescribe ledger.md ({len(plan.entries)} entradas) y "
+              f"el rastro del logbook (con undo).")
+        return 0
+    apply_fold(plan)
+    write_ledger(project_dir, force=True)
+    print(f"  {len(plan.entries)} entradas · ledger.json v{JSON_VERSION}")
+    return 0
 
 
 def _parse_cats(raw: Optional[str]) -> dict:

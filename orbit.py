@@ -2142,9 +2142,9 @@ def _build_parser():
     # Libro propio (ADR-054): ledger <proyecto> <acción> [N | PDF] [flags]
     ledger_p.add_argument("action", nargs="?", default=None,
                           choices=["init", "add", "edit", "close", "cancel", "check",
-                                   "migrate"],
+                                   "migrate", "fold"],
                           help="Libro de contabilidad: init · add [PDF] · edit N · "
-                               "close N · cancel N · check · migrate")
+                               "close N · cancel N · check · migrate · fold")
     ledger_p.add_argument("target", nargs="?", default=None,
                           help="add: justificante (PDF) · edit/close/cancel: nº de "
                                "entrada o trozo del título/beneficiario (sin él, se elige "
@@ -2171,7 +2171,16 @@ def _build_parser():
     ledger_p.add_argument("--closes", action="store_true",
                           help="add (gasto con --commit): cierra el compromiso")
     ledger_p.add_argument("--nota", default=None, help="add/edit: nota")
-    ledger_p.add_argument("--doc", default=None, help="edit: justificante nuevo")
+    ledger_p.add_argument("--doc", default=None,
+                          help="edit: versión nueva de la folla/hoja (pasa al título; "
+                               "la anterior queda en la historia 📎)")
+    ledger_p.add_argument("--status", default=None,
+                          choices=["solicitada", "aceptada", "cerrada"],
+                          help="edit (compromiso): paso de la folla; aceptada pide --id, "
+                               "cerrada con PDF = la factura (🧾) y 🔒")
+    ledger_p.add_argument("--factura", dest="invoice", action="store_true",
+                          help="edit (compromiso): el PDF es una factura (🧾), con "
+                               "--amount/--id/--payee propios; no cierra")
     ledger_p.add_argument("--confirm", default=None, metavar="ID",
                           help="edit: validada contra una fuente externa (☑️ hoy · ID)")
     ledger_p.add_argument("--unconfirm", action="store_true", help="edit: quita el ☑️")
@@ -2180,7 +2189,7 @@ def _build_parser():
     ledger_p.add_argument("--cats", default=None, metavar="N=CAT,…",
                           help="migrate: categoría de cada entrada (p. ej. 2=congresos,3=viajes)")
     ledger_p.add_argument("--dry-run", dest="dry_run", action="store_true",
-                          help="migrate / edit: enseña el plan sin tocar nada")
+                          help="migrate / fold / edit: enseña el plan sin tocar nada")
     ledger_p.add_argument("--force", action="store_true",
                           help="fecha fuera de validez, o corregir/anular una entrada confirmada")
 

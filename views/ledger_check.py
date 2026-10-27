@@ -225,8 +225,10 @@ def _check_book(project_dir: Path, book, today: date, cfg: dict) -> List[Finding
 
     logs = project_dir / "cloud" / LEDGER_LOGS
     if logs.is_dir():
-        linked = {p.name for p in (_resolve_link(project_dir, e.link)
-                                   for e in book.entries if e.link) if p is not None}
+        links = [e.link for e in book.entries]
+        links += [x.link for e in book.entries for x in e.docs + e.invoices]
+        linked = {p.name for p in (_resolve_link(project_dir, link)
+                                   for link in links if link) if p is not None}
         out += [Finding(WARNING, f"justificante sin entrada: cloud/{LEDGER_LOGS}/{f.name}")
                 for f in sorted(logs.iterdir())
                 if f.is_file() and not f.name.startswith(".") and f.name not in linked]

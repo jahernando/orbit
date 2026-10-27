@@ -619,6 +619,11 @@ orbit ledger <p> add [PDF] --type ingreso|compromiso|gasto --title … --payee �
 orbit ledger <p> edit E [PDF] [--title --payee --cat --doc --amount --date --id --nota] [--force] [--dry-run]
 orbit ledger <p> edit E --confirm ID [--amount …]   # ☑️ hoy · ID (herramienta externa)
 orbit ledger <p> edit E --unconfirm
+orbit ledger <p> edit E folla.pdf [--status aceptada --id CM…]   # versión nueva → título; la anterior → 📎
+orbit ledger <p> edit E factura.pdf --status cerrada [--amount N --id F… --payee …]  # 🧾 + 🔒
+orbit ledger <p> edit E factura.pdf --factura --amount N [--id F…]   # 🧾 sin cerrar (varias facturas)
+orbit ledger <p> edit E --status cerrada            # cierra tras la última factura
+orbit ledger <p> fold [--dry-run]                   # pasa el libro al modelo «factura dentro» (una vez)
 orbit ledger <p> close E                            # cierra un compromiso a mano (🔒)
 orbit ledger <p> cancel E [--force]                 # anula (🚫): se queda y no cuenta
 # E = nº de entrada o un trozo del título / beneficiario / referencia; sin E
@@ -648,8 +653,27 @@ Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
   📝 2026-10-05 modificado: 👤 Viajes Ejemplo → Viajes Ejemplo, S.L.
 ```
 
+- **La folla (compromiso) lleva su historia y sus facturas** (ADR-062):
+
+  ```markdown
+  - 💶 0006 [Vuelo Ginebra](./cloud/ledger-logs/2026-10-02_folla.pdf) #compromiso
+    📅 2026-09-18 · 🗂️ viajes · 👤 Viajes Ejemplo · 💶 -1.250,00 · 🆔 CM26XXXX0001 · 🔒
+    📎 2026-09-18 [2026-09-18_folla.pdf](…)
+    📎 2026-10-02 aceptada [2026-10-02_folla.pdf](…)
+    🧾 2026-10-27 [factura](…) · 💶 -1.198,00 · 🆔 F2026/0456
+  ```
+
+  El **título** enlaza la última versión de la folla (o de la hoja de dietas),
+  nunca la factura. **Estado deducido**: solicitada (sin 🆔) · aceptada (🆔) ·
+  cerrada (🔒) · anulada (🚫). Lo gastado = suma de las `🧾`; al cerrar se
+  libera lo no facturado. `--factura`/`--status cerrada` sin `--amount` toman
+  lo que queda por facturar. Dietas: sin pasos, la aceptación es el ☑️.
+- **`fold`** (una vez por libro): cada `#gasto` con `🔗` → `🧾` de su folla
+  (si la factura lleva el nº de la folla, manda ese), notas «justificante A →
+  B» → `📎`, anuladas fuera, **renumera** el libro y el rastro del logbook.
+  Facturado entero → 🔒. Primero `--dry-run`; avisa de notas que citan nº.
 - **Números** por orden de anotación: no se reutilizan, renumeran ni borran
-  (lo equivocado se **anula**). `🔗` apunta al **nº** del compromiso.
+  (lo equivocado se **anula**; excepción: `fold`). `🔗` apunta al **nº** del compromiso.
 - **Obligatorio**: tipo, fecha (dentro de la validez; `--force` si no),
   título, beneficiario, importe y, salvo en ingresos, **categoría** (lista
   cerrada en `orbit.json` → `ledger.categories`; por defecto viajes ·
@@ -657,12 +681,14 @@ Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
 - **Justificantes** a `cloud/ledger-logs/` (con fecha).
 - **Rastro en el logbook**: `💶 título · ledger N #tipo`, sin enlace ni
   importe (`--no-log` lo omite; `edit --title/--date` lo actualiza).
-- **`edit`** deja una nota `📝 fecha modificado: campo a → b`; no cambia el
-  tipo (se anula y se anota otra). Una entrada **confirmada** solo se corrige
-  con `--force`, y pierde el ☑️. `--confirm` sin cambios no deja nota.
+- **`edit`** deja una nota `📝 fecha modificado: campo a → b` (el documento
+  nuevo va a `📎`, no a nota); no cambia el tipo (se anula y se anota otra).
+  Una entrada **confirmada** solo se corrige con `--force`, y pierde el ☑️
+  (documento, paso, factura o un 🆔 que faltaba no cuentan como corrección).
+  `--confirm` sin cambios no deja nota.
 - **Derivados**: `ledger-summary.md` (validado ☑️ frente a vivo, por
   categoría, compromisos abiertos, movimientos con acumulados) y `ledger.json`
-  v2 (clave = nº). `ledger.md` no se regenera nunca.
+  v3 (clave = nº; `status`, `docs`, `invoices`). `ledger.md` no se regenera nunca.
 - **`ledger <p>` / `ls ledger [p]`** listan el libro con una línea por entrada
   (nº, fecha, tipo, importe, título · beneficiario y marcas: `🔒` cierra /
   compromiso cerrado, `⏳ pendiente X` compromiso abierto, ☑️, 🚫; la misma que
