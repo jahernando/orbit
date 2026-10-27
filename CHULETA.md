@@ -664,7 +664,8 @@ Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
   ```
 
   El **título** enlaza la última versión de la folla (o de la hoja de dietas),
-  nunca la factura. **Estado deducido**: solicitada (sin 🆔) · aceptada (🆔) ·
+  nunca la factura. **👤 de la folla = el proveedor** (a quien va el dinero;
+  la persona del grupo, en el título). **Estado deducido**: solicitada (sin 🆔) · aceptada (🆔) ·
   cerrada (🔒) · anulada (🚫). Lo gastado = suma de las `🧾`; al cerrar se
   libera lo no facturado. `--factura`/`--status cerrada` sin `--amount` toman
   lo que queda por facturar. Dietas: sin pasos, la aceptación es el ☑️.
