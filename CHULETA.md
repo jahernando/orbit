@@ -621,9 +621,9 @@ orbit ledger <p> edit E [PDF] [--title --payee --cat --doc --amount --date --id 
 orbit ledger <p> edit E --confirm ID [--amount …]   # ☑️ hoy · ID (herramienta externa)
 orbit ledger <p> edit E --unconfirm
 orbit ledger <p> edit E folla.pdf [--status aceptada --id CM…]   # versión nueva → título; la anterior → 📎
-orbit ledger <p> edit E factura.pdf --status cerrada [--amount N --id F… --payee …]  # 🧾 + 🔒
-orbit ledger <p> edit E factura.pdf --factura --amount N [--id F…]   # 🧾 sin cerrar (varias facturas)
-orbit ledger <p> edit E --status cerrada            # cierra tras la última factura
+orbit ledger <p> edit E factura.pdf --factura [--amount N --id F… --payee …]  # 🧾 (sin importe: lo que falta)
+orbit ledger <p> edit E --status cerrada            # 🔒: lo pone usc-ledger cuando la USC la cierra
+orbit ledger <p> edit E --status aceptada           # un paso anterior reabre (quita el 🔒)
 orbit ledger <p> fold [--dry-run]                   # pasa el libro al modelo «factura dentro» (una vez)
 orbit ledger <p> close E                            # cierra un compromiso a mano (🔒)
 orbit ledger <p> cancel E [--force]                 # anula (🚫): se queda y no cuenta
@@ -666,17 +666,19 @@ Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
   ```
 
   El **título** enlaza la última versión de la folla (o de la hoja de dietas),
-  nunca la factura. La **historia** (`📎` versiones, `✉️` correos con
+  nunca la factura. **Facturada no es cerrada**: la 🧾 dice que la factura
+  existe; el 🔒 solo lo pone usc-ledger cuando la USC cierra la entrada (o tú
+  a mano). La **historia** (`📎` versiones, `✉️` correos con
   `email --ledger`, `🧾` facturas) es una pila ordenada por fecha; las `📝`
   van al final. **👤 de la folla = el proveedor** (a quien va el dinero;
   la persona del grupo, en el título). **Estado deducido**: solicitada (sin 🆔) · aceptada (🆔) ·
-  cerrada (🔒) · anulada (🚫). Lo gastado = suma de las `🧾`; al cerrar se
-  libera lo no facturado. `--factura`/`--status cerrada` sin `--amount` toman
-  lo que queda por facturar. Dietas: sin pasos, la aceptación es el ☑️.
+  facturada (las `🧾` cubren lo comprometido) · cerrada (🔒) · anulada (🚫).
+  Lo gastado = suma de las `🧾`; al cerrar se libera lo no facturado.
+  `--factura` sin `--amount` toma lo que queda por facturar. Dietas: sin pasos, la aceptación es el ☑️.
 - **`fold`** (una vez por libro): cada `#gasto` con `🔗` → `🧾` de su folla
   (si la factura lleva el nº de la folla, manda ese), notas «justificante A →
   B» → `📎`, anuladas fuera, **renumera** el libro y el rastro del logbook.
-  Facturado entero → 🔒. Primero `--dry-run`; avisa de notas que citan nº.
+  No cierra nada (facturada ≠ cerrada). Primero `--dry-run`; avisa de notas que citan nº.
 - **Números** por orden de anotación: no se reutilizan, renumeran ni borran
   (lo equivocado se **anula**; excepción: `fold`). `🔗` apunta al **nº** del compromiso.
 - **Obligatorio**: tipo, fecha (dentro de la validez; `--force` si no),
@@ -695,7 +697,8 @@ Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
   categoría, compromisos abiertos, movimientos con acumulados) y `ledger.json`
   v3 (clave = nº; `status`, `docs`, `invoices`). `ledger.md` no se regenera nunca.
 - **`ledger <p>` / `ls ledger [p]`** listan el libro con una línea por entrada
-  (nº, fecha, tipo, importe, título · beneficiario y marcas: `🔒` cierra /
+  (nº, fecha, **tipo como icono** — 💰 ingreso · 📄 compromiso · 💸 gasto ·
+  🧾 factura, misma anchura —, importe alineado por las cifras, título · beneficiario y marcas: `🔒` cierra /
   compromiso cerrado, `⏳ pendiente X` compromiso abierto, ☑️, 🚫; la misma que
   `edit` sin nº). **Cada gasto que consume un compromiso sale debajo de él**
   (`└ 0021 …`), y el compromiso lleva su importe entre paréntesis: es una

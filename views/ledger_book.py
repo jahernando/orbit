@@ -337,6 +337,18 @@ def closed_commitments(book: Book) -> set:
             if e.tag == ORDER_TAG and e.live and e.num not in opens}
 
 
+#: icono por tipo (forma, no color): misma anchura en la terminal
+TYPE_ICONS = {INCOME_TAG: "💰", ORDER_TAG: "📄", EXPENSE_TAG: "💸"}
+INVOICE_ICON = "🧾"
+LEGEND = "💰 ingreso · 📄 compromiso (folla) · 💸 gasto · 🧾 factura"
+
+
+def _amount_cell(text: str, reserve: bool = False) -> str:
+    """Importe alineado por las cifras: la reserva va entre paréntesis y el
+    resto deja un hueco donde iría el «)»."""
+    return (f"({text})" if reserve else f"{text} ").rjust(15)
+
+
 def entry_line(e, link: bool = False, closed: frozenset = frozenset(),
                pending: Optional[dict] = None, nested: bool = False) -> str:
     """Una entrada en una línea: nº, fecha, tipo, importe, título ·
@@ -348,31 +360,32 @@ def entry_line(e, link: bool = False, closed: frozenset = frozenset(),
     Un compromiso lleva el importe entre paréntesis cuando se agrupa con sus
     gastos (*pending* dado): es una reserva, lo que cuenta es lo gastado.
     *nested*: gasto pintado bajo su compromiso (``└``, sin 🔗)."""
-    amount = format_amount(e.amount, plus=True) if e.amount is not None else "?"
-    if pending is not None and e.tag == ORDER_TAG and e.amount is not None:
-        amount = f"({amount})"
+    amount = _amount_cell(
+        format_amount(e.amount, plus=True) if e.amount is not None else "?",
+        reserve=pending is not None and e.tag == ORDER_TAG and e.amount is not None)
     title = f"[{e.title}]({e.link})" if link and e.link else e.title
     left = (pending or {}).get(e.num)
     marks = [m for m in (f"🔗 {e.commit}" if e.commit and not nested else "",
                          e.status if (e.tag == ORDER_TAG and e.live and not e.closes
-                                      and e.num not in closed) else "",
-                         "🔒" if e.closes or e.num in closed else "",
+                                      and (e.invoices or e.num not in closed)) else "",
+                         # con facturas 🧾, solo el 🔒 de verdad (lo pone usc-ledger)
+                         "🔒" if e.closes or (e.num in closed and not e.invoices) else "",
                          f"⏳ pendiente {format_amount(left)}" if left else "",
                          "☑️" if e.confirmed else "",
                          "🚫" if not e.live else "") if m]
-    when = str(e.date or "?")
-    head = (f"     └ {e.num}  {when[5:] if e.date else when}" if nested
-            else f"  {e.num}  {when}")
-    return (f"{head}  {e.tag:<10} {amount:>12}  "
-            f"{title} · {e.payee or '?'}" + ("  " + " ".join(marks) if marks else ""))
+    lead = f" └{e.num}" if nested else f"  {e.num}"
+    return (f"{lead}  {str(e.date or '?'):<10}  {TYPE_ICONS.get(e.tag, '❔')} "
+            f"{amount}  {title} · {e.payee or '?'}"
+            + ("  " + " ".join(marks) if marks else ""))
 
 
 def invoice_line(inv, link: bool = False) -> str:
     """Una factura (🧾) pintada bajo su compromiso."""
-    amount = format_amount(inv.amount, plus=True) if inv.amount is not None else "?"
+    amount = _amount_cell(format_amount(inv.amount, plus=True)
+                          if inv.amount is not None else "?")
     text = f"[{inv.text}]({inv.link})" if link and inv.link else inv.text
     extra = [x for x in (inv.payee, f"🆔 {inv.op_id}" if inv.op_id else None) if x]
-    return (f"     └ 🧾  {inv.date[5:]}  {'':<10} {amount:>12}  {text}"
+    return (f"{'└':>6}  {inv.date:<10}  {INVOICE_ICON} {amount}  {text}"
             + (" · " + " · ".join(extra) if extra else ""))
 
 
@@ -769,6 +782,7 @@ def print_book(project_dir: Path, book: Book, label: Optional[str] = None,
     if not book.entries:
         print(f"  (sin movimientos) · anota con: orbit ledger {name} add")
     elif not long:
+        print(f"  {LEGEND}")
         for line in grouped_lines(book, link=True):
             print(line)
     else:

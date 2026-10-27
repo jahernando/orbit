@@ -58,7 +58,10 @@ MAIL_EMOJI    = "✉️"      # correo sobre la entrada: fecha · asunto → Mai
 KEEP_EMOJI    = "📦"
 
 #: pasos de una folla (compromiso). El estado no se guarda: sale de los campos.
-SOLICITADA, ACEPTADA, CERRADA, ANULADA = "solicitada", "aceptada", "cerrada", "anulada"
+SOLICITADA, ACEPTADA, FACTURADA, CERRADA, ANULADA = (
+    "solicitada", "aceptada", "facturada", "cerrada", "anulada")
+#: pasos que se ponen a mano (--status). «facturada» sale de las 🧾; «cerrada»
+#: (🔒) la pone usc-ledger cuando la USC la cierra: la factura no basta.
 STEPS = (SOLICITADA, ACEPTADA, CERRADA)
 
 DEFAULT_CATEGORIES = ("viajes", "congresos", "personal", "fungible",
@@ -211,13 +214,16 @@ class Entry:
     @property
     def status(self) -> Optional[str]:
         """Paso de la folla, deducido de los campos (no se guarda):
-        anulada (🚫) · cerrada (🔒) · aceptada (🆔) · solicitada."""
+        anulada (🚫) · cerrada (🔒) · facturada (🧾 cubren lo comprometido)
+        · aceptada (🆔) · solicitada."""
         if not self.live:
             return ANULADA
         if self.tag != ORDER_TAG:
             return None
         if self.closes:
             return CERRADA
+        if self.invoices and self.amount is not None and self.invoiced >= abs(self.amount):
+            return FACTURADA
         return ACEPTADA if self.op_id else SOLICITADA
 
     def to_movement(self, partida: Optional[str]) -> Movement:
@@ -822,7 +828,9 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
         if e.tag != ORDER_TAG:
             raise BookError(f"--status solo va en un #{ORDER_TAG} (folla); "
                             f"en un #{e.tag} la aceptación es el {CONC_EMOJI}")
-    invoice = invoice or (status == CERRADA and doc is not None)
+    if status == CERRADA and doc is not None and not invoice:
+        raise BookError("la factura va con --factura; --status cerrada solo cierra "
+                        "(lo pone usc-ledger cuando la USC la cierra)")
     if invoice and e.tag != ORDER_TAG:
         raise BookError(f"--factura solo va en un #{ORDER_TAG} (folla)")
     if invoice and e.closes and not force:
@@ -927,11 +935,15 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
         e.push(Doc(today, status, link))
         shown.append(f"{_FIELDS['link'][0]} {_show('link', before.link)} → "
                      f"{_show('link', link)}")
-    elif status:
+    elif status and not (status != CERRADA and e.closes):
         e.push(Doc(today, status, None))
     if status == CERRADA:
         e.closes = True
         shown.append(f"{CLOSE_EMOJI} cerrada")
+    elif status and e.closes:            # un paso anterior reabre: nota, no paso
+        e.closes = False
+        e.notes.append(f"{today} reabierta (quitado el {CLOSE_EMOJI})")
+        shown.append(f"🔓 reabierta ({status})")
     elif status:
         shown.append(f"{DOC_EMOJI} {status}")
 
@@ -1113,7 +1125,7 @@ def plan_fold(project_dir: Path, today: Optional[date] = None) -> FoldPlan:
 
     🆔 del compromiso: si la factura lleva el nº de la folla, manda ese; si
     no, el que tenga la entrada (luego usc-ledger lo corrige si hace falta).
-    Un compromiso facturado entero queda cerrado (🔒), como se calculaba."""
+    No cierra nada: facturada no es cerrada (🔒 lo pone usc-ledger)."""
     today = (today or date.today()).isoformat()
     book = _require_book(project_dir)
     plan = FoldPlan(project_dir, book)
@@ -1169,15 +1181,11 @@ def plan_fold(project_dir: Path, today: Optional[date] = None) -> FoldPlan:
             plan.warnings.append(f"{g.num}: su {CONC_EMOJI} {g.confirmed[1]} se pierde "
                                  f"(la confirmación va en la folla)")
         c.push(inv)
-        c.closes = c.closes or g.closes
+        if g.closes:
+            plan.warnings.append(f"{g.num}: su {CLOSE_EMOJI} no pasa a {c.num} (cerrar "
+                                 f"lo hace usc-ledger cuando la USC lo cierra)")
         plan.folded[g.num] = c.num
         plan.changes.append(f"{g.num} «{g.title}» → {INVOICE_EMOJI} de {c.num}")
-
-    for c in entries:
-        if (c.live and c.tag == ORDER_TAG and c.invoices and not c.closes
-                and c.amount is not None and c.invoiced >= abs(c.amount)):
-            c.closes = True
-            plan.changes.append(f"{c.num} «{c.title}»: facturado entero → {CLOSE_EMOJI}")
 
     kept = [e for e in entries if e.live and e.num not in plan.folded]
     plan.renum = {e.num: f"{i:04d}" for i, e in enumerate(kept, 1)}

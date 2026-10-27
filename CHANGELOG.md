@@ -23,6 +23,9 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 - `email <p> --ledger [E]`: el correo a la historia de la entrada (`✉️`) y
   `💶 ledger N` en su entrada del log; sin E, lista y pregunta.
 - Historia de la entrada (`📎 🧾 ✉️`) como pila ordenada por fecha.
+- **Facturada ≠ cerrada**: la 🧾 no cierra; el 🔒 lo pone usc-ledger
+  (`--status cerrada`) o tú a mano; `--status aceptada` reabre. `fold` no cierra.
+- `ls ledger`: tipo como icono (💰 📄 💸 🧾) con leyenda, importes alineados.
 
 ### Unreleased — email --task / --ms (ADR-061)
 

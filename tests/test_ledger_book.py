@@ -530,7 +530,7 @@ class TestProjectLinkAndLs:
         out = capsys.readouterr().out
         lines = [l for l in out.splitlines() if l.startswith("  000")]
         assert len(lines) == 3
-        assert lines[0].startswith("  0001  2026-09-01  ingreso       +1.000,00  Dotación · Agencia")
+        assert lines[0].startswith("  0001  2026-09-01  💰      +1.000,00   Dotación · Agencia")
         assert lines[1].endswith("☑️") and lines[2].endswith("🚫")
         assert "Categoría" not in out and "Disponible:" in out    # sin tabla, con resumen
 
@@ -646,12 +646,12 @@ class TestLineMarks:
              category="viajes")
         run_ls_ledger("testproj")
         rows = [l for l in capsys.readouterr().out.splitlines()
-                if l.startswith("  000") or l.startswith("     └ ")]
+                if l.startswith("  000") or l.startswith(" └")]
         # El gasto sale debajo de su compromiso; el compromiso, entre
         # paréntesis; el abierto dice lo pendiente.
-        assert rows[1].startswith("  0002  2026-09-01  compromiso    (-219,23)")
+        assert rows[1].startswith("  0002  2026-09-01  📄       (-219,23)  Folla")
         assert rows[1].endswith("Folla DI2026 · Pablo  🔒")
-        assert rows[2].startswith("     └ 0003  09-01  gasto")
+        assert rows[2].startswith(" └0003  2026-09-01  💸        -219,23   Factura")
         assert rows[2].endswith("Factura DI2026 · Pablo  🔒")       # sin 🔗: ya va anidado
         assert rows[3].endswith("Abierto · Ana  solicitada ⏳ pendiente 50,00")
         assert rows[0].endswith("Dotación · Agencia")
@@ -664,8 +664,7 @@ class TestLineMarks:
         _add(book, title="Suelto")
         _add(book, title="Factura", amount="60", commit="1")
         lines = grouped_lines(read_book(book))
-        assert [l.split()[0] if not l.strip().startswith("└") else "└" + l.split()[1]
-                for l in lines] == ["0001", "└0003", "0002"]
+        assert [l.split()[0] for l in lines] == ["0001", "└0003", "0002"]
         assert "⏳ pendiente 40,00" in lines[0]
 
 
@@ -771,17 +770,25 @@ class TestFollaCycle:
         with pytest.raises(BookError, match="compromiso"):
             edit_movement(book, "1", invoice=True, doc=None)
 
-    def test_cerrada_con_factura(self, book, tmp_path):
+    def test_factura_no_cierra_y_cerrar_a_mano(self, book, tmp_path):
         from views.ledger import write_ledger
         _add(book, tag="ingreso", title="Dotación", payee="Agencia", amount="1000",
              category=None)
         self._folla(book, tmp_path, op_id="CM26AB120001")
         title_link = read_book(book).get("2").link
+        with pytest.raises(BookError, match="--factura"):
+            edit_movement(book, "2", doc=_pdf(tmp_path, "factura.pdf"), status="cerrada")
         _b, e, shown = edit_movement(book, "2", doc=_pdf(tmp_path, "factura.pdf"),
-                                     status="cerrada", amount="280", op_id="F-77",
+                                     invoice=True, amount="280", op_id="F-77",
                                      payee="Agencia de viajes", today=T)
         e = read_book(book).get("2")
         assert e.link == title_link                       # la factura no va al título
+        assert not e.closes and e.status == "aceptada"    # 280 de 300: aún no facturada
+        write_ledger(book, force=True)
+        assert "| **Disponible** | 0,00 | **700,00** |" in (
+            book / "ledger-summary.md").read_text()      # los 20 siguen comprometidos
+        edit_movement(book, "2", status="cerrada", today=T)   # lo hace usc-ledger
+        e = read_book(book).get("2")
         assert e.closes and e.status == "cerrada"
         inv = e.invoices[0]
         assert inv.amount == D("-280") and inv.op_id == "F-77"
@@ -797,8 +804,17 @@ class TestFollaCycle:
 
     def test_factura_sin_importe_toma_lo_pendiente(self, book, tmp_path):
         self._folla(book, tmp_path)
-        edit_movement(book, "1", doc=_pdf(tmp_path, "f.pdf"), status="cerrada", today=T)
-        assert read_book(book).get("1").invoices[0].amount == D("-300")
+        edit_movement(book, "1", doc=_pdf(tmp_path, "f.pdf"), invoice=True, today=T)
+        e = read_book(book).get("1")
+        assert e.invoices[0].amount == D("-300")
+        assert e.status == "facturada" and not e.closes   # facturada ≠ cerrada
+
+    def test_un_paso_anterior_reabre(self, book, tmp_path):
+        self._folla(book, tmp_path, op_id="CM26AB120001")
+        edit_movement(book, "1", status="cerrada", today=T)
+        _b, e, shown = edit_movement(book, "1", status="aceptada", today=T)
+        assert not read_book(book).get("1").closes
+        assert any("reabierta" in x for x in shown)
 
     def test_varias_facturas_y_cierre_a_mano(self, book, tmp_path):
         from core.ledger_book import open_commitments
@@ -824,7 +840,8 @@ class TestFollaCycle:
         edit_movement(book, "1", confirm="1413061", today=T)
         edit_movement(book, "1", doc=_pdf(tmp_path, "v2.pdf"), status="aceptada",
                       op_id="CM26AB120002", today=T)
-        edit_movement(book, "1", doc=_pdf(tmp_path, "fac.pdf"), status="cerrada", today=T)
+        edit_movement(book, "1", doc=_pdf(tmp_path, "fac.pdf"), invoice=True, today=T)
+        edit_movement(book, "1", status="cerrada", today=T)
         e = read_book(book).get("1")
         assert e.confirmed == ("2026-10-05", "1413061")
         with pytest.raises(BookError, match="--force"):
@@ -895,7 +912,7 @@ class TestFold:
         assert not b.problems and [e.num for e in b.entries] == ["0001", "0002"]
         f = b.get("1")
         assert f.op_id == "26AB120009"                 # manda el de la factura
-        assert f.closes and f.status == "cerrada"
+        assert not f.closes and f.status == "facturada"   # cerrar es de usc-ledger
         [inv] = f.invoices
         assert inv.text == "Factura" and inv.payee == "Proveedor" and inv.op_id is None
         assert inv.amount == D("-300")
