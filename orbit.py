@@ -1604,6 +1604,7 @@ def cmd_email(args):
         item=getattr(args, "item", None),
         date_val=_d(getattr(args, "item_date", None)),
         fup=getattr(args, "item_fup", None),
+        ledger=getattr(args, "ledger", None),
     )
 
 
@@ -2400,6 +2401,9 @@ def _build_parser():
                          help="Also propose creating an event from this email")
     email_p.add_argument("--keep", action="store_true",
                          help="Also store the full original (.eml, attachments included) in cloud/emails/")
+    email_p.add_argument("--ledger", nargs="?", const="", default=None, metavar="E",
+                         help="Also stack it (✉️) in the history of ledger entry E "
+                              "(nº or text; alone: pick from the list)")
     item_g = email_p.add_mutually_exclusive_group()
     item_g.add_argument("--task", action="store_const", const="task", dest="item",
                         help="Also create a task with the email linked")

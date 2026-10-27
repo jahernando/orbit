@@ -19,7 +19,10 @@ ver [DECISIONS.md](DECISIONS.md); para código retirado y pasos de revival ver
 - Estado deducido (sin 🆔 / 🆔 / 🔒 / 🚫) en `ls ledger`; facturas debajo.
 - `ledger <p> fold [--dry-run]`: gastos `🔗` → `🧾`, notas de justificante →
   `📎`, anuladas fuera, renumera libro y rastro del logbook.
-- `ledger.json` v3 (`status`, `docs`, `invoices`).
+- `ledger.json` v3 (`status`, `docs`, `invoices`, `mails`).
+- `email <p> --ledger [E]`: el correo a la historia de la entrada (`✉️`) y
+  `💶 ledger N` en su entrada del log; sin E, lista y pregunta.
+- Historia de la entrada (`📎 🧾 ✉️`) como pila ordenada por fecha.
 
 ### Unreleased — email --task / --ms (ADR-061)
 

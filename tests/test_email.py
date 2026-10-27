@@ -1231,3 +1231,82 @@ class TestTaskFromEmail:
         (t,) = _agenda_items(env["proj"], "tasks")
         assert _email_ls(t) == (" [✉️](message://%3Cacta@x%3E)"
                                 " [📝](./notes/emails/2026-10-20-acta-wp3.md)")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# email --ledger: el correo a la historia de una entrada del libro (ADR-062)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestLedger:
+
+    @pytest.fixture()
+    def book(self, env, monkeypatch):
+        from datetime import date
+        from core.ledger_book import add_movement, init_book
+        monkeypatch.setattr("core.deliver.ORBIT_DIR", env["home"])
+        init_book(env["proj"], "1234.AB12.64100", date(2026, 1, 1), date(2028, 12, 31))
+        add_movement(env["proj"], tag="compromiso", title="Folla vuelo GVA",
+                     when=date(2026, 9, 30), payee="Viajes Ejemplo",
+                     amount="320", category="viajes", trail=False)
+        add_movement(env["proj"], tag="compromiso", title="Folla inscripción",
+                     when=date(2026, 10, 1), payee="Escuela", amount="100",
+                     category="congresos", trail=False)
+        return env["proj"]
+
+    def _run(self, monkeypatch, target, **kw):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected",
+                            lambda: _mail(subject="Re: folla GVA [nº]", **kw))
+        return email_mod.run_email("test-project", source="mail", ledger=target)
+
+    def test_por_texto_apila_y_marca_el_log(self, book, monkeypatch):
+        from core.ledger_book import read_book
+        assert self._run(monkeypatch, "GVA") == 0
+        e = read_book(book).get("1")
+        (m,) = e.mails
+        assert m.date == "2026-10-20" and m.subject == "Re: folla GVA (nº)"
+        assert m.link == "message://%3Cacta@x%3E"
+        text = (book / "ledger.md").read_text()
+        assert "  ✉️ 2026-10-20 [Re: folla GVA (nº)](message://%3Cacta@x%3E)" in text
+        log = (book / "test-project-logbook.md").read_text()
+        assert "#email" in log and "💶 [ledger 0001](./ledger.md)" in log
+        assert not read_book(book).get("2").mails
+
+    def test_dos_veces_no_duplica(self, book, monkeypatch, capsys):
+        from core.ledger_book import read_book
+        self._run(monkeypatch, "1")
+        assert self._run(monkeypatch, "1") == 0
+        assert len(read_book(book).get("1").mails) == 1
+        assert "ya estaba" in capsys.readouterr().out
+
+    def test_otro_correo_va_por_fecha(self, book, monkeypatch):
+        from core.ledger_book import edit_movement, read_book
+        edit_movement(book, "1", status="aceptada", op_id="CM26AB120009")
+        self._run(monkeypatch, "1", msg_id="viejo@x", date="2026-10-01T10:00")
+        e = read_book(book).get("1")
+        dates = [x.date for x in e.history]
+        assert dates == sorted(dates)
+        text = (book / "ledger.md").read_text()
+        assert text.index("✉️ 2026-10-01") < text.index("📎 ")
+
+    def test_sin_valor_y_sin_terminal_lista(self, book, monkeypatch, capsys):
+        assert self._run(monkeypatch, "") == 1
+        out = capsys.readouterr().out
+        assert "¿cuál?" in out and "Folla vuelo GVA" in out and "Folla inscripción" in out
+        assert "#email" not in (book / "test-project-logbook.md").read_text()
+
+    def test_no_con_varios_proyectos(self, env2, book, monkeypatch, capsys):
+        from core import email as email_mod
+        monkeypatch.setattr(email_mod, "_capture_apple_mail_selected", _mail)
+        assert email_mod.run_email("test-project", source="mail", ledger="1",
+                                   also=["otro"]) == 1
+        assert "un solo proyecto" in capsys.readouterr().out
+
+    def test_ida_y_vuelta_con_eml(self, book):
+        from core.ledger_book import add_mail, read_book, render_entry
+        add_mail(book, "2", when="2026-10-02", subject="AE: falta firma",
+                 link="message://%3Cz@x%3E", keep="./cloud/emails/a.eml")
+        b = read_book(book)
+        e = b.get("2")
+        assert not b.problems and e.mails[0].keep == "./cloud/emails/a.eml"
+        assert render_entry(e) == b.lines[e.start:e.end]

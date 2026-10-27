@@ -227,6 +227,7 @@ def _check_book(project_dir: Path, book, today: date, cfg: dict) -> List[Finding
     if logs.is_dir():
         links = [e.link for e in book.entries]
         links += [x.link for e in book.entries for x in e.docs + e.invoices]
+        links += [m.keep for e in book.entries for m in e.mails]
         linked = {p.name for p in (_resolve_link(project_dir, link)
                                    for link in links if link) if p is not None}
         out += [Finding(WARNING, f"justificante sin entrada: cloud/{LEDGER_LOGS}/{f.name}")

@@ -523,7 +523,7 @@ $ orbit link orbit /Users/hernando/orbit/DECISIONS.md
 ## email — capturar un email a un proyecto
 
 ```bash
-orbit email <project> [--p otro…] [--note] [--keep] [--ev] [--task|--ms [--date D] [--fup D]] [--mail|--outlook|--gmail|--eml PATH]
+orbit email <project> [--p otro…] [--note] [--keep] [--ev] [--task|--ms [--date D] [--fup D]] [--ledger [E]] [--mail|--outlook|--gmail|--eml PATH]
 ```
 
 - **Default**: registra el correo **seleccionado** en Mail como entrada del logbook. El título enlaza el correo (`message://<id>`, abre Mail en este Mac); el cuerpo guarda lo que sirve si el enlace falla:
@@ -545,6 +545,7 @@ orbit email <project> [--p otro…] [--note] [--keep] [--ev] [--task|--ms [--dat
 - `--note` — además guarda la nota `notes/emails/YYYY-MM-DD-<asunto>.md` (frontmatter + cuerpo; fecha del correo, asunto sin `Re:`/`Fw:`/`RV:`) y la enlaza con `📝` en el cuerpo de la entrada. La nota sobrevive aunque borres el correo
 - `--keep` — además guarda el **original completo** (con adjuntos) en `cloud/emails/YYYY-MM-DD-<asunto>.eml` y lo enlaza con `📦`. Se abre con cualquier cliente de correo aunque el correo ya no esté en el servidor. Con Mail o `--eml`; con Outlook avisa y no lo guarda. Mismo contenido ya guardado → se reutiliza; si no, sufijo `_2`. Recomendado para minutas, decisiones y contratos
 - `--task` / `--ms` — además crea una tarea / hito con el correo enlazado (`links: [✉️](message://…)`, y 📝 / 📦 si los hay). Título = asunto sin `Re:`/`Fw:` (en terminal: Enter lo acepta o escribes otro). `--date D` y/o `--fup D` (⏩); sin ninguno, pregunta como `task add -i`. `--fup` sin `--task`/`--ms` es error: un ⏩ cuelga de una cita. Con `--p`, la tarea va a un proyecto (pregunta). En `day`, la fila lleva `[✉️]` clicable
+- `--ledger [E]` — además apila el correo en la **historia de la entrada E del ledger** (`✉️ fecha [asunto](message://…)`, y `· 📦 [.eml]` con `--keep`), en su sitio por fecha; la entrada del log gana `💶 [ledger N](./ledger.md)`. `E` = nº o trozo del título; **sin valor, enseña la lista y preguntas**. Un solo proyecto (sin `--p`). El mismo correo no se apila dos veces. Los correos que no son de una entrada concreta van sin `--ledger`
 - `--ev` — además propone crear un evento con los datos detectados: título, fecha, hora, room/agenda. Confirmación interactiva `[S/n/e=editar]`. Si el .eml trae ICS adjunto se usa primero (más fiable); fallback a heurística sobre body (URLs Zoom/Meet/Teams/Webex/Jitsi como rooms; Indico como agendas). No detecta recurrencia (la editas con `ev edit --recur` después)
 
 **Sources** (mutuamente exclusivos; default según `email_source` en `orbit.json`):
@@ -660,11 +661,14 @@ Primero `--dry-run`. Deja undo de los markdown; los PDF movidos no.
     📅 2026-09-18 · 🗂️ viajes · 👤 Viajes Ejemplo · 💶 -1.250,00 · 🆔 CM26XXXX0001 · 🔒
     📎 2026-09-18 [2026-09-18_folla.pdf](…)
     📎 2026-10-02 aceptada [2026-10-02_folla.pdf](…)
+    ✉️ 2026-10-20 [Re: folla, nº asignado](message://…)
     🧾 2026-10-27 [factura](…) · 💶 -1.198,00 · 🆔 F2026/0456
   ```
 
   El **título** enlaza la última versión de la folla (o de la hoja de dietas),
-  nunca la factura. **👤 de la folla = el proveedor** (a quien va el dinero;
+  nunca la factura. La **historia** (`📎` versiones, `✉️` correos con
+  `email --ledger`, `🧾` facturas) es una pila ordenada por fecha; las `📝`
+  van al final. **👤 de la folla = el proveedor** (a quien va el dinero;
   la persona del grupo, en el título). **Estado deducido**: solicitada (sin 🆔) · aceptada (🆔) ·
   cerrada (🔒) · anulada (🚫). Lo gastado = suma de las `🧾`; al cerrar se
   libera lo no facturado. `--factura`/`--status cerrada` sin `--amount` toman

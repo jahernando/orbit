@@ -976,13 +976,15 @@ Tres fricciones reales:
 3. **El estado se deduce, no se guarda**: solicitada (sin 🆔) · aceptada (🆔) · cerrada (🔒) · anulada (🚫). `edit --status aceptada` exige `--id`; `--status cerrada` pone 🔒 y, con PDF, ese PDF es la factura. **Cerrar es siempre explícito**; con varias facturas, `--factura` las añade sin cerrar. Las dietas (`#gasto` directo) no tienen paso: su aceptación es el ☑️ de usc-ledger.
 4. **`ledger fold`** pasa un libro al modelo: cada `#gasto 🔗` → `🧾` de su compromiso; las notas «justificante A → B» → historia `📎`; las anuladas se **eliminan** y se **renumera una vez** (excepción acordada a «el nº no se renumera»), con el rastro del logbook. 🆔 de la folla: si la factura lleva el nº de la folla, manda ese; si no, el de la entrada; después usc-ledger, que lee la verdad de la USC, propone las correcciones. Un compromiso facturado entero queda 🔒.
 5. **👤 de la folla = el proveedor** (a quien va el dinero); la persona del grupo va en el título. La `🧾` lleva 👤 solo si quien factura es otro.
-6. `ledger.json` → **v3**: por entrada, `status`, `docs` e `invoices`.
+6. **La historia es una pila por fecha**: `📎`, `🧾` y `✉️` (correos) en un solo bloque ordenado por fecha (lo de hoy va al final); `📝` detrás. `fold` reordena los libros ya convertidos.
+7. **`email P --ledger [E]`** apila el correo (`✉️ fecha [asunto](message://…)` y `📦` si `--keep`) en la entrada E; sin E, lista y pregunta. El correo **también** se registra en el log (`#email`, índice de `ls email`) con `💶 [ledger N](./ledger.md)`: el log es el índice, el ledger la traza. Sacar el PDF del correo queda aparcado (Exchange y adjuntos sin probar).
+8. `ledger.json` → **v3**: por entrada, `status`, `docs`, `invoices` y `mails`.
 
 **Consecuencias**:
 - Pros: una entrada por operación, con su historia legible en Typora/Obsidian; el saldo no cambia (las 🧾 se convierten en gastos `🔗` al calcular, `build_operations` intacto); estado sin segunda verdad.
 - Contras: `fold` renumera (usc-ledger y notas que citan nº a mano: avisa); la conciliación ☑️ sigue por entrada, no por factura (esperar caso real).
 
-**Verificación**: `tests/test_ledger_book.py` (`TestFollaCycle`, `TestFold`); `fold` en seco sobre copia de un libro real: 29 → 19 entradas, saldo idéntico.
+**Verificación**: `tests/test_ledger_book.py` (`TestFollaCycle`, `TestFold`), `tests/test_email.py` (`TestLedger`); `fold` en seco sobre copia de un libro real: 29 → 19 entradas, saldo idéntico.
 
 ---
 

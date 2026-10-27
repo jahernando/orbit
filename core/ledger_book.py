@@ -54,6 +54,8 @@ VALID_EMOJI   = "📆"
 CANCEL_EMOJI  = "🚫"
 DOC_EMOJI     = "📎"      # versión de la folla / hoja: fecha · paso · enlace
 INVOICE_EMOJI = "🧾"      # factura contra un compromiso: fecha · enlace · importe
+MAIL_EMOJI    = "✉️"      # correo sobre la entrada: fecha · asunto → Mail · 📦 .eml
+KEEP_EMOJI    = "📦"
 
 #: pasos de una folla (compromiso). El estado no se guarda: sale de los campos.
 SOLICITADA, ACEPTADA, CERRADA, ANULADA = "solicitada", "aceptada", "cerrada", "anulada"
@@ -81,6 +83,8 @@ _NUM_RE     = re.compile(r"^\d{1,4}$")
 _TRAIL_RE   = re.compile(r"·\s*ledger\s+(\d{4})\s+#(" + "|".join(USER_LABELS) + r")\b")
 _DOC_RE     = re.compile(r"^(\d{4}-\d{2}-\d{2})\s*(?P<step>[^\[]*?)\s*"
                          r"(?:\[(?P<text>.+?)\]\((?P<url>[^)]*)\))?\s*$")
+_MAIL_RE    = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+\[(?P<text>.+?)\]\((?P<url>[^)]*)\)"
+                         r"(?:\s*·\s*" + KEEP_EMOJI + r"\s*\[[^\]]*\]\((?P<keep>[^)]*)\))?\s*$")
 _INVOICE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(?:\[(?P<text>.+?)\]\((?P<url>[^)]*)\)"
                          r"|(?P<plain>[^·]+?))\s*(?:·\s*(?P<rest>.*))?$")
 
@@ -109,6 +113,28 @@ class Invoice:
     amount: Optional[Decimal] = None       # con signo (< 0)
     op_id:  Optional[str] = None           # 🆔 nº de factura
     payee:  Optional[str] = None           # 👤 quien factura, si no es el de la folla
+
+
+@dataclass
+class Mail:
+    """Un correo sobre la entrada (✉️): el título abre el correo en Mail."""
+    date:    str                           # AAAA-MM-DD, la del correo
+    subject: str
+    link:    str                           # message://…
+    keep:    Optional[str] = None          # 📦 el .eml guardado
+
+
+def render_mail(m: Mail) -> str:
+    out = f"{MAIL_EMOJI} {m.date} [{m.subject}]({m.link})"
+    return out + (f"{_SEP}{KEEP_EMOJI} [.eml]({m.keep})" if m.keep else "")
+
+
+def render_item(item) -> str:
+    if isinstance(item, Doc):
+        return render_doc(item)
+    if isinstance(item, Invoice):
+        return render_invoice(item)
+    return render_mail(item)
 
 
 def _doc_name(link: str) -> str:
@@ -148,14 +174,33 @@ class Entry:
     confirmed: Optional[Tuple[str, str]] = None   # ☑️ (fecha, ID externo)
     cancelled: Optional[str] = None        # 🚫 fecha
     notes:     List[str] = field(default_factory=list)
-    docs:      List[Doc] = field(default_factory=list)       # 📎 historia
-    invoices:  List[Invoice] = field(default_factory=list)   # 🧾 facturas
+    history:   list = field(default_factory=list)  # 📎 🧾 ✉️, por fecha (pila)
     start:     int = 0                     # líneas [start, end) del fichero
     end:       int = 0
 
     @property
     def live(self) -> bool:
         return not self.cancelled
+
+    @property
+    def docs(self) -> List[Doc]:
+        return [x for x in self.history if isinstance(x, Doc)]
+
+    @property
+    def invoices(self) -> List[Invoice]:
+        return [x for x in self.history if isinstance(x, Invoice)]
+
+    @property
+    def mails(self) -> List[Mail]:
+        return [x for x in self.history if isinstance(x, Mail)]
+
+    def push(self, item) -> None:
+        """Apila *item* en la historia: detrás de todo lo de su fecha o
+        anterior (lo normal, hoy, va al final)."""
+        k = len(self.history)
+        while k and self.history[k - 1].date > item.date:
+            k -= 1
+        self.history.insert(k, item)
 
     @property
     def invoiced(self) -> Decimal:
@@ -320,14 +365,22 @@ def _parse_entry(num: str, rest: str, body: List[str],
         if line.startswith(DOC_EMOJI):
             m = _DOC_RE.match(line[len(DOC_EMOJI):].strip())
             if m:
-                e.docs.append(Doc(m.group(1), m.group("step") or None, m.group("url")))
+                e.history.append(Doc(m.group(1), m.group("step") or None, m.group("url")))
             else:
                 problems.append(f"{where}: {DOC_EMOJI} sin «fecha [paso] [doc](enlace)»")
             continue
         if line.startswith(INVOICE_EMOJI):
             inv = _parse_invoice(line[len(INVOICE_EMOJI):].strip(), where, problems)
             if inv:
-                e.invoices.append(inv)
+                e.history.append(inv)
+            continue
+        if line.startswith(_bare(MAIL_EMOJI)):
+            m = _MAIL_RE.match(line[len(_bare(MAIL_EMOJI)):].strip())
+            if m:
+                e.history.append(Mail(m.group(1), m.group("text"), m.group("url"),
+                                      m.group("keep")))
+            else:
+                problems.append(f"{where}: {MAIL_EMOJI} sin «fecha [asunto](enlace)»")
             continue
         if line.startswith(_bare(CONC_EMOJI)):
             parts = [p.strip() for p in line[len(_bare(CONC_EMOJI)):].split("·", 1)]
@@ -463,8 +516,7 @@ def render_entry(e: Entry) -> List[str]:
         out.append(f"  {CONC_EMOJI} {e.confirmed[0]}{_SEP}{e.confirmed[1]}")
     if e.cancelled:
         out.append(f"  {CANCEL_EMOJI} {e.cancelled}")
-    out += [f"  {render_doc(d)}" for d in e.docs]
-    out += [f"  {render_invoice(i)}" for i in e.invoices]
+    out += [f"  {render_item(x)}" for x in sorted(e.history, key=lambda x: x.date)]
     out += [f"  {NOTE_EMOJI} {n}" for n in e.notes]
     return out
 
@@ -759,8 +811,7 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
     e = book.get(num)
     if e is None:
         raise BookError(f"no hay ninguna entrada {normalize_num(num)}")
-    before = replace(e, notes=list(e.notes), docs=list(e.docs),
-                     invoices=list(e.invoices))
+    before = replace(e, notes=list(e.notes), history=list(e.history))
     if confirm and unconfirm:
         raise BookError("--confirm y --unconfirm a la vez no tienen sentido")
 
@@ -866,18 +917,18 @@ def edit_movement(project_dir: Path, num, *, title: Optional[str] = None,
 
     if new_invoice is not None:
         new_invoice.link = link if doc is not None else None
-        e.invoices.append(new_invoice)
+        e.push(new_invoice)
         shown.append(render_invoice(new_invoice))
     elif doc is not None and link != e.link:
         if not e.docs and e.link:            # la historia empieza con el de antes
-            e.docs.append(Doc(_doc_date(e.link) or (e.date.isoformat() if e.date
-                                                    else today), None, e.link))
+            e.push(Doc(_doc_date(e.link) or (e.date.isoformat() if e.date
+                                             else today), None, e.link))
         e.link = link
-        e.docs.append(Doc(today, status, link))
+        e.push(Doc(today, status, link))
         shown.append(f"{_FIELDS['link'][0]} {_show('link', before.link)} → "
                      f"{_show('link', link)}")
     elif status:
-        e.docs.append(Doc(today, status, None))
+        e.push(Doc(today, status, None))
     if status == CERRADA:
         e.closes = True
         shown.append(f"{CLOSE_EMOJI} cerrada")
@@ -918,6 +969,31 @@ def _doc_date(link: Optional[str]) -> Optional[str]:
     """Fecha del prefijo `AAAA-MM-DD_` que pone la importación, si lo hay."""
     m = _DATE_PREFIX_RE.match(Path(link or "").name)
     return m.group(1) if m else None
+
+
+def add_mail(project_dir: Path, num, *, when: str, subject: str, link: str,
+             keep: Optional[str] = None) -> Tuple[Entry, bool]:
+    """Apila un correo (✉️) en la historia de la entrada. Devuelve `(entrada,
+    añadido)`: el mismo correo no se apila dos veces (sí se le añade el 📦 si
+    no lo tenía). No es una corrección: no toca el ☑️. Lanza `BookError`."""
+    book = _require_book(project_dir)
+    e = book.get(num)
+    if e is None:
+        raise BookError(f"no hay ninguna entrada {normalize_num(num)}")
+    if not link:
+        raise BookError("el correo no tiene Message-ID: no hay enlace que guardar")
+    subject = " ".join((subject or "").replace("[", "(").replace("]", ")").split()) \
+        or "(sin asunto)"
+    old = next((m for m in e.mails if m.link == link), None)
+    if old is not None:
+        if keep and not old.keep:
+            old.keep = keep
+            _replace_entry(book, e)
+            return e, True
+        return e, False
+    e.push(Mail(when, subject, link, keep))
+    _replace_entry(book, e)
+    return e, True
 
 
 def close_commitment(project_dir: Path, num, today: Optional[date] = None) -> Entry:
@@ -1019,7 +1095,8 @@ def _notes_to_docs(e: Entry, today: str) -> int:
         docs.append(Doc(_doc_date(e.link) or today, None, e.link))
     elif e.link:
         docs[-1].link = e.link                 # el enlace tal cual está en el título
-    e.docs = e.docs + docs
+    for d in docs:
+        e.push(d)
     e.notes = notes
     return len(docs)
 
@@ -1040,8 +1117,7 @@ def plan_fold(project_dir: Path, today: Optional[date] = None) -> FoldPlan:
     today = (today or date.today()).isoformat()
     book = _require_book(project_dir)
     plan = FoldPlan(project_dir, book)
-    entries = [replace(e, notes=list(e.notes), docs=list(e.docs),
-                       invoices=list(e.invoices)) for e in book.entries]
+    entries = [replace(e, notes=list(e.notes), history=list(e.history)) for e in book.entries]
     by_num = {e.num: e for e in entries}
 
     for e in entries:
@@ -1049,6 +1125,11 @@ def plan_fold(project_dir: Path, today: Optional[date] = None) -> FoldPlan:
             plan.dropped.append(e.num)
             plan.changes.append(f"{e.num} {CANCEL_EMOJI} «{e.title}»: se elimina")
 
+    for e in entries:
+        ordered = sorted(e.history, key=lambda x: x.date)
+        if e.live and ordered != e.history:
+            e.history = ordered
+            plan.changes.append(f"{e.num} «{e.title}»: historia ordenada por fecha")
     for e in entries:
         if e.live and (k := _notes_to_docs(e, today)):
             plan.changes.append(f"{e.num} «{e.title}»: {k} versiones del "
@@ -1077,8 +1158,9 @@ def plan_fold(project_dir: Path, today: Optional[date] = None) -> FoldPlan:
             inv.op_id = g.op_id
         # Versiones anteriores de la factura: solo las que siguen existiendo
         # (casi siempre fueron renombrados del mismo fichero).
-        c.docs += [Doc(d.date, "factura", d.link) for d in g.docs
-                   if d.link and d.link != g.link and _link_exists(project_dir, d.link)]
+        for d in g.docs:
+            if d.link and d.link != g.link and _link_exists(project_dir, d.link):
+                c.push(Doc(d.date, "factura", d.link))
         c.notes += [f"{INVOICE_EMOJI} {n}" for n in g.notes]
         if g.category != c.category:
             plan.warnings.append(f"{g.num}→{c.num}: la factura era {CAT_EMOJI} "
@@ -1086,8 +1168,7 @@ def plan_fold(project_dir: Path, today: Optional[date] = None) -> FoldPlan:
         if g.confirmed:
             plan.warnings.append(f"{g.num}: su {CONC_EMOJI} {g.confirmed[1]} se pierde "
                                  f"(la confirmación va en la folla)")
-        c.invoices.append(inv)
-        c.invoices.sort(key=lambda i: i.date)
+        c.push(inv)
         c.closes = c.closes or g.closes
         plan.folded[g.num] = c.num
         plan.changes.append(f"{g.num} «{g.title}» → {INVOICE_EMOJI} de {c.num}")

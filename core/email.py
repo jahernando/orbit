@@ -748,7 +748,8 @@ def run_email(project: Optional[str], query: Optional[str] = None,
               also: Optional[list] = None,
               item: Optional[str] = None,
               date_val: Optional[str] = None,
-              fup: Optional[str] = None) -> int:
+              fup: Optional[str] = None,
+              ledger: Optional[str] = None) -> int:
     """Capture an email; always log a link to the original.
 
     Modifiers (combinable):
@@ -760,6 +761,9 @@ def run_email(project: Optional[str], query: Optional[str] = None,
                         and one copy per project; the event goes to one)
       item="task"|"ms" → ``--task`` / ``--ms``: also a task / milestone with
                         the email linked (``--date``, ``--fup``); one project
+      ledger="…"      → ``--ledger [E]``: also stack it (✉️) in the history of
+                        ledger entry E (nº o texto; "" = elegir de la lista);
+                        the log entry gets ``💶 ledger N``. One project only.
     """
     if (date_val or fup) and not item:
         print("⚠️  --date / --fup van con --task o --ms "
@@ -769,6 +773,17 @@ def run_email(project: Optional[str], query: Optional[str] = None,
     if not project_dirs:
         return 1
     extra = dict(item=item, date_val=date_val, fup=fup)
+    if ledger is not None:
+        if len(project_dirs) > 1:
+            print("⚠️  --ledger va con un solo proyecto (el del libro), sin --p.")
+            return 1
+        from core.ledger_book import BookError
+        from views.ledger_book import pick_entry
+        try:
+            extra["ledger"] = pick_entry(project_dirs[0], ledger or None, "email")
+        except BookError as exc:
+            print(f"⚠️  {exc}")
+            return 1
 
     if eml_path:
         email = _capture_eml(Path(eml_path).expanduser())
@@ -855,6 +870,32 @@ def _emit_item_from_email(project_dir: Path, email: dict, kind: str,
                desc=body or None, ask=not (date_val or fup))
 
 
+def _stack_in_ledger(project_dir: Path, email: dict, num: str) -> int:
+    """``--ledger``: el correo (fecha · asunto → Mail · 📦) a la historia de
+    la entrada *num* del libro."""
+    from core.ledger_book import BookError, add_mail
+    from views.ledger import write_ledger
+    if not email.get("msg_id"):
+        print("⚠️  el correo no tiene Message-ID: no se apila en el ledger")
+        return 1
+    when = (email.get("date") or "")[:10]
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", when):
+        when = _date.today().isoformat()
+    _note, keep = _entry_links(project_dir, email)
+    try:
+        e, added = add_mail(project_dir, num, when=when, subject=email["subject"],
+                            link=f"message://%3C{email['msg_id']}%3E", keep=keep)
+    except BookError as exc:
+        print(f"⚠️  {exc}")
+        return 1
+    if added:
+        write_ledger(project_dir)
+        print(f"  💶 ledger {e.num} «{e.title}» · ✉️ {when} apilado en su historia")
+    else:
+        print(f"  💶 ledger {e.num}: ese correo ya estaba en su historia")
+    return 0
+
+
 def _pick_project(project_dirs: list, what: str) -> Optional[Path]:
     """Una cita vive en un proyecto: con varios, se pregunta (Enter = el
     primero; sin terminal, el primero)."""
@@ -875,14 +916,20 @@ def _process_email(project_dirs, email: dict,
                    with_note: bool = False, as_ev: bool = False,
                    keep: bool = False, item: Optional[str] = None,
                    date_val: Optional[str] = None,
-                   fup: Optional[str] = None) -> int:
+                   fup: Optional[str] = None,
+                   ledger: Optional[str] = None) -> int:
     """Always log (in every project); optionally save md note / original
     .eml; optionally create a task / milestone (*item*) and/or propose an
     event — each in one project."""
     if isinstance(project_dirs, Path):
         project_dirs = [project_dirs]
     for project_dir in project_dirs:
-        rc = _emit_email(project_dir, email, with_note=with_note, keep=keep)
+        rc = _emit_email(project_dir, email, with_note=with_note, keep=keep,
+                         ledger=ledger)
+        if rc != 0:
+            return rc
+    if ledger:
+        rc = _stack_in_ledger(project_dirs[0], email, ledger)
         if rc != 0:
             return rc
     if item:
@@ -1294,10 +1341,16 @@ def _md_text(text: str) -> str:
     return text.replace("[", "(").replace("]", ")").strip()
 
 
+def ledger_line(num: str) -> str:
+    """Línea del cuerpo del log que lleva a la entrada del ledger."""
+    return f"💶 [ledger {num}](./ledger.md)"
+
+
 def email_body_lines(email: dict, note_link: Optional[str] = None,
-                     keep_link: Optional[str] = None) -> list:
-    """Cuerpo de la entrada del log: 👤 📅 · 📝 · 📦 · 🆔 (lo que falte, se
-    omite)."""
+                     keep_link: Optional[str] = None,
+                     ledger: Optional[str] = None) -> list:
+    """Cuerpo de la entrada del log: 👤 📅 · 📝 · 📦 · 💶 · 🆔 (lo que falte,
+    se omite)."""
     lines = []
     who = (email.get("from") or "").strip()
     when = (email.get("date") or "").replace("T", " ").strip()
@@ -1309,6 +1362,8 @@ def email_body_lines(email: dict, note_link: Optional[str] = None,
         lines.append(f"📝 [nota]({note_link})")
     if keep_link:
         lines.append(f"📦 [original]({keep_link})")
+    if ledger:
+        lines.append(ledger_line(ledger))
     if email.get("msg_id"):
         lines.append(f"🆔 `{email['msg_id']}`")
     return lines
@@ -1358,7 +1413,8 @@ def _existing_links(project_dir: Path, msg_id: str) -> tuple:
 
 def complete_entry(project_dir: Path, email: dict,
                    note_link: Optional[str] = None,
-                   keep_link: Optional[str] = None) -> list:
+                   keep_link: Optional[str] = None,
+                   ledger: Optional[str] = None) -> list:
     """Completa la entrada ya registrada de este correo con lo que le falte
     (👤 📅, 📝, 📦, 🆔 — también en las entradas antiguas, de una línea).
     Devuelve las líneas añadidas. Única edición de una entrada del log que
@@ -1372,18 +1428,19 @@ def complete_entry(project_dir: Path, email: dict,
         return []
     head, end = span
     body = [l.strip() for l in lines[head + 1:end]]
-    want = email_body_lines(email, note_link, keep_link)
+    want = email_body_lines(email, note_link, keep_link, ledger)
     has = {
         "meta": any(b.startswith(("👤", "📅")) for b in body),
         "note": ".md)" in lines[head] or any(b.startswith("📝") for b in body),
         "keep": any(b.startswith("📦") for b in body),
         "id":   any(b.startswith("🆔") for b in body),
+        "ledger": ledger is not None and ledger_line(ledger or "") in body,
     }
     new_body, added = list(body), []
 
     def kind(line):
         return {"👤": "meta", "📅": "meta", "📝": "note",
-                "📦": "keep", "🆔": "id"}.get(line[:1], "")
+                "📦": "keep", "💶": "ledger", "🆔": "id"}.get(line[:1], "")
 
     for w in want:
         k = kind(w)
@@ -1394,7 +1451,7 @@ def complete_entry(project_dir: Path, email: dict,
             new_body.insert(0, w)
         elif k == "id":
             new_body.append(w)
-        else:                            # 📝 / 📦: antes del 🆔
+        else:                            # 📝 / 📦 / 💶: antes del 🆔
             ids = [i for i, b in enumerate(new_body) if b.startswith("🆔")]
             new_body.insert(ids[0] if ids else len(new_body), w)
     if not added:
@@ -1406,7 +1463,7 @@ def complete_entry(project_dir: Path, email: dict,
 
 
 def _emit_email(project_dir: Path, email: dict, with_note: bool = False,
-                keep: bool = False) -> int:
+                keep: bool = False, ledger: Optional[str] = None) -> int:
     """Write the logbook entry (always) and the markdown note (only with_note).
 
     The title links the email in Mail (``message://``); without a Message-ID
@@ -1422,7 +1479,7 @@ def _emit_email(project_dir: Path, email: dict, with_note: bool = False,
                          if note_path else None)
         if keep and not has_keep:
             keep_link = _save_email_original(project_dir, email)
-        added = complete_entry(project_dir, email, note_link, keep_link)
+        added = complete_entry(project_dir, email, note_link, keep_link, ledger)
         if added:
             print(f"✓ [{project_dir.name}] ya registrado, completado: "
                   f"{email['subject']}")
@@ -1448,7 +1505,7 @@ def _emit_email(project_dir: Path, email: dict, with_note: bool = False,
         _md_text(email["subject"]) or "(sin asunto)",
         tipo="email",
         path=mail_link or note_link or keep_link,
-        continuations=email_body_lines(email, note_link, keep_link),
+        continuations=email_body_lines(email, note_link, keep_link, ledger),
     )
 
     print(f"✓ [{project_dir.name}] Email registrado: {email['subject']}")

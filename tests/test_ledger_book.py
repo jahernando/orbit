@@ -750,14 +750,14 @@ class TestFollaCycle:
         e0 = self._folla(book, tmp_path)
         assert e0.status == "solicitada"
         _b, e, _s = edit_movement(book, "1", doc=_pdf(tmp_path, "folla-ok.pdf"),
-                                  status="aceptada", op_id="CM26AB120001", today=T)
+                                  status="aceptada", op_id="CM26AB120001")
         e = read_book(book).get("1")
         assert e.link.endswith("_folla-ok.pdf") and e.op_id == "CM26AB120001"
         assert e.status == "aceptada"
         assert [d.link for d in e.docs] == [e0.link, e.link]
         assert e.docs[0].step is None and e.docs[1].step == "aceptada"
         assert "justificante" not in " ".join(e.notes)
-        assert "📎 2026-10-05 aceptada [" in (book / "ledger.md").read_text()
+        assert f"📎 {date.today()} aceptada [" in (book / "ledger.md").read_text()
 
     def test_aceptada_sin_id(self, book, tmp_path):
         self._folla(book, tmp_path)

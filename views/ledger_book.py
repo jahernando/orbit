@@ -171,6 +171,8 @@ def build_book_json(project_dir: Path, book: Book) -> str:
                       else None),
             "status": e.status,
             "docs": [{"date": d.date, "step": d.step, "link": d.link} for d in e.docs],
+            "mails": [{"date": m.date, "subject": m.subject, "link": m.link,
+                       "keep": m.keep} for m in e.mails],
             "invoices": [{"date": i.date, "text": i.text, "link": i.link,
                           "amount": str(i.amount) if i.amount is not None else None,
                           "id": i.op_id, "payee": i.payee} for i in e.invoices],
@@ -417,7 +419,7 @@ def pick_entry(project_dir: Path, text: Optional[str], action: str) -> str:
         opens = {op.op_id for op in open_commitments(book)}
         pool = [e for e in book.entries if e.num in opens]
         what = "compromisos abiertos"
-    elif action == "cancel":
+    elif action in ("cancel", "email"):
         pool, what = [e for e in book.entries if e.live], "entradas vivas"
     else:
         pool, what = list(book.entries), "entradas"
